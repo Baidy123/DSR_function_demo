@@ -1,8 +1,8 @@
 extends Control
 
-## 精度为 1.0 时准星的半径（屏幕像素）；数值越小，收拢后的准星越小。
+## 稳定度为 1.0 时准星的半径（屏幕像素）；数值越小，收拢后的准星越小。
 @export var minimum_radius: float = 12.0
-## 精度为 0.0 时准星的半径（屏幕像素）；中间精度在两个半径之间插值，通常不小于 Minimum Radius。
+## 稳定度为 0.0 时准星的半径（屏幕像素）；中间稳定度在两个半径之间插值，通常不小于 Minimum Radius。
 @export var maximum_radius: float = 52.0
 var radius: float = 52.0
 var tint: Color = Color.WHITE
@@ -20,7 +20,7 @@ func _process(_delta: float) -> void:
 	if camera.is_position_behind(point):
 		hide()
 		return
-	# 3D 目标位置投影到 HUD：准星尺寸用屏幕像素，不受目标远近影响。
+	# 两种模式共用原圆形准星，大小提示稳定度，不代表实际弹道范围。
 	position = camera.unproject_position(point)
 	radius = lerpf(maximum_radius, minimum_radius, clampf(combat.accuracy, 0.0, 1.0))
 	tint = Color(1.0, 0.55, 0.2).lerp(Color(0.35, 1.0, 0.55), combat.accuracy)

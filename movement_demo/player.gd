@@ -1,5 +1,10 @@
 extends CharacterBody3D
 
+enum AimMode { PROBABILITY, SPREAD_CONE }
+## 主场景 v3 的射击模式：旧概率模式先判定直射中心，否则在8～20度偏转；新模式在武器散布锥内连续取样。
+## 两种模式共用锁定和稳定度惩罚；此选项不改变鼠标/键盘操作。
+@export_enum("旧概率模式:0", "新散布锥模式:1") var aim_mode: int = AimMode.SPREAD_CONE
+
 ## 基础行走速度（米/秒）；奔跑和锁定慢走均以此值乘各自倍率。
 @export_range(0.1, 10.0, 0.1) var move_speed: float = 3.0
 ## 每秒转过的角度；720 表示转 90 度约需 0.125 秒。

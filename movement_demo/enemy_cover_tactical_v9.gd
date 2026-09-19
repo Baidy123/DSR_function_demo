@@ -43,8 +43,8 @@ enum Phase { NONE, RUN_TO_COVER, HIDE, PEEK_OUT, WATCH }
 @export_range(0.0, 10.0, 0.1) var away_from_threat_weight: float = 4.0
 ## 路径或掩体位置比当前位置更靠近威胁时的惩罚。
 @export_range(0.0, 10.0, 0.1) var closer_to_threat_weight: float = 5.0
-## 开启时，Hide 必须挂 cover_point.gd、指定 Cover Body，且由该墙挡住中心射线。
-## 关闭时改用中心和身体两侧都被静态墙遮挡的判定，不要求绑定指定墙。
+## 开启时额外使用所属掩体的质量门槛和评分；关闭时要求身体中心及两侧被静态墙遮挡。
+## 两种模式都必须先位于威胁对侧，且中心射线被当前掩体挡住；不再手动指定 Cover Body。
 @export var require_assigned_cover: bool = true
 ## 模拟威胁左右移动的距离（米）；仅在要求指定掩体时参与质量门槛和评分，0 表示不做横向模拟。
 @export_range(0.0, 2.0, 0.1) var cover_lateral_test_distance: float = 0.5
@@ -52,10 +52,11 @@ enum Phase { NONE, RUN_TO_COVER, HIDE, PEEK_OUT, WATCH }
 @export_range(0.0, 1.0, 0.05) var minimum_cover_quality: float = 0.20
 ## 掩护质量越高，越优先选择。
 @export_range(0.0, 10.0, 0.1) var cover_quality_weight: float = 3.0
-## Peek 点当前能直接看到威胁时的选位奖励。Peek 看不到不会淘汰这个 Hide，只是不获得奖励。
-@export_range(0.0, 10.0, 0.1) var peek_los_weight: float = 1.5
-## 调试时打印每类淘汰原因。
+## 调试时打印区域候选数量、合格数量及最终选择的掩体和位置。
 @export var debug_cover_selection: bool = true
+
+# 命中通知先于同一枪的近身来弹通知；本帧退出躲藏后不再被后者重新送回掩体。
+var _hide_damage_frame: int = -1
 
 var phase: Phase = Phase.NONE
 var hide_position: Vector3
@@ -84,6 +85,7 @@ func _ready() -> void:
 
 
 func reset() -> void:
+	_hide_damage_frame = -1
 	phase = Phase.NONE
 	timer = 0.0
 	hide_position = enemy.global_position
@@ -107,6 +109,8 @@ func is_active() -> bool:
 
 # 收到的是已经被第一个碰撞物截断的实际弹道，不是无限延长的射线。
 func notice_shot(origin: Vector3, endpoint: Vector3) -> void:
+	if _hide_damage_frame == Engine.get_physics_frames():
+		return
 	# 场外射击不能在玩家进入竞技场前启动掩体动作。
 	if not enemy.is_arena_active() or enemy.is_dead or enemy.combat_type != enemy.CombatType.RANGED:
 		return
@@ -219,10 +223,12 @@ func step(delta: float, sees_player: bool) -> Vector3:
 		# 靠近 Hide 不代表已经躲好：必须由当前实际位置验证掩护。
 		# 未躲好时继续最后一小段，不能重选同一个点并不断刷新计时器。
 		var near_destination: bool = distance_to_destination <= 0.7
-		var reached_destination: bool = near_destination and (
-			phase == Phase.PEEK_OUT
-			or _selected_cover_blocks(enemy.global_position, threat_origin)
-		)
+		var reached_destination: bool
+		if phase == Phase.PEEK_OUT:
+			# 真正走到墙角外且射界通畅才进入观察，不能提前 0.7 米停在墙后。
+			reached_destination = distance_to_destination <= 0.12 and _peek_has_los(enemy.global_position)
+		else:
+			reached_destination = near_destination and _selected_cover_blocks(enemy.global_position, threat_origin)
 		if reached_destination:
 			cover_detour_active = false
 			_reset_cover_progress_monitor()
@@ -232,18 +238,18 @@ func step(delta: float, sees_player: bool) -> Vector3:
 			enemy.agent.target_position = enemy.global_position
 			return Vector3.ZERO
 
-		# Agent 可在距离目标 0.4 米处结束；墙角处这仍可能暴露。
-		# 仅在短段身体空间通畅时补走到 Hide，仍经过下方超时与卡住检查。
-		var finishing_hide: bool = (
-			phase == Phase.RUN_TO_COVER and not cover_detour_active
-			and near_destination and _cover_short_segment_is_clear(hide_position)
+		# Agent 会在到点前结束路径；仅在最后短段身体空间通畅时继续走向 Hide/Peek。
+		# 仍经过下方超时与卡住检查，不穿过墙角。
+		var finishing_move: bool = (
+			not cover_detour_active and near_destination
+			and _cover_short_segment_is_clear(final_destination)
 		)
-		if finishing_hide:
-			next_position = hide_position
+		if finishing_move:
+			next_position = final_destination
 
 		# Agent 认为导航结束，但实际上还没到 Hide。
 		# 跑掩体时先主动绕行，而不是直接保持 RUN_TO_COVER 卡死。
-		if enemy.agent.is_navigation_finished() and not finishing_hide:
+		if enemy.agent.is_navigation_finished() and not finishing_move:
 			if phase == Phase.RUN_TO_COVER:
 				if _try_cover_detour():
 					return Vector3.ZERO
@@ -327,6 +333,23 @@ func _start_move(next_phase: Phase, destination: Vector3) -> void:
 
 	enemy.agent.target_position = destination
 	_refresh_move_timer(destination)
+
+# 只由真正扣血的存活分支调用；receive_hit 已更新攻击者的大体位置。
+func on_damage_received() -> void:
+	if not enemy.is_arena_active():
+		return
+	if phase == Phase.HIDE:
+		reset()
+		_hide_damage_frame = Engine.get_physics_frames()
+		enemy.state = enemy.State.REPOSITION
+		enemy.ranged_has_destination = false
+		enemy.ranged_repath_timer = 0.0
+		enemy.agent.target_position = enemy.last_known_position
+		if debug_cover_selection:
+			print("[Cover] 躲藏中受伤 -> 退出躲藏，回到接敌流程")
+		return
+	on_damage_during_transfer()
+
 
 func on_damage_during_transfer() -> void:
 	if phase != Phase.RUN_TO_COVER:
@@ -551,167 +574,98 @@ func _finish(sees_player: bool) -> void:
 
 
 func _choose_cover() -> bool:
-	var points = enemy.get_parent().get_node_or_null("CoverPositions")
-	if points == null:
-		if debug_cover_selection:
-			print("[Cover] 找不到 CoverPositions")
-		return false
-
 	var best_score: float = INF
 	var best_cover: StaticBody3D = null
-	var current_threat_distance: float = enemy._horizontal_distance_between(
-		enemy.global_position, threat_origin
-	)
+	var current_threat_distance: float = enemy._horizontal_distance_between(enemy.global_position, threat_origin)
+	var candidate_count: int = 0
+	var viable_count: int = 0
 
-	var total_points: int = 0
-	var rejected_type: int = 0
-	var rejected_assignment: int = 0
-	var rejected_space: int = 0
-	var rejected_cover: int = 0
-	var rejected_quality: int = 0
-	var no_peek_los: int = 0
-	var rejected_path: int = 0
-
-	for child in points.get_children():
-		total_points += 1
-
-		if not child is Marker3D:
-			rejected_type += 1
+	# 每个掩体自己提供四面区域；候选只来自本竞技场，且已经筛到威胁的对侧。
+	for region in get_tree().get_nodes_in_group("cover_region"):
+		if not enemy.navigation_region.is_ancestor_of(region):
 			continue
-
-		var point: Marker3D = child as Marker3D
-		var peek: Marker3D = point.get_node_or_null("Peek") as Marker3D
-		if peek == null:
-			rejected_type += 1
-			continue
-
-		# 不依赖 class_name。只读取 Marker3D 脚本导出的 cover_body 属性。
-		var assigned_cover: StaticBody3D = null
-		if "cover_body" in point:
-			assigned_cover = point.get("cover_body") as StaticBody3D
-
-		if require_assigned_cover and not is_instance_valid(assigned_cover):
-			rejected_assignment += 1
-			continue
-
-		var hiding: Vector3 = point.global_position
-		var peeking: Vector3 = peek.global_position
-
-		if not enemy._ranged_point_is_free(hiding) or not enemy._ranged_point_is_free(peeking):
-			rejected_space += 1
-			continue
-
-		# 同一候选的质量同时用于门槛与评分，复用结果以免重复发射整组射线。
-		var quality: float = 0.0
-		# 硬条件：玩家/威胁 -> Hide 中心，第一处碰撞必须是这个点手动绑定的墙。
-		if require_assigned_cover:
-			if not _center_hidden_by_cover(hiding, threat_origin, assigned_cover):
-				rejected_cover += 1
+		for candidate in region.get_candidates(threat_origin, enemy.global_position):
+			candidate_count += 1
+			var hiding: Vector3 = candidate.hide
+			if not enemy._ranged_point_is_free(hiding):
 				continue
-
-			# 玩家左右拉出、AI身体宽度只作为“掩护质量”，不再一票否决。
-			quality = _cover_quality(hiding, threat_origin, assigned_cover)
-			if quality < minimum_cover_quality:
-				rejected_quality += 1
+			# “位于背面”还不等于真的安全：必须由当前掩体挡住射线。
+			if not _center_hidden_by_cover(hiding, threat_origin, region):
 				continue
-		else:
-			if not is_hidden_at(hiding, threat_origin):
-				rejected_cover += 1
+			var quality: float = _cover_quality(hiding, threat_origin, region)
+			if require_assigned_cover:
+				if quality < minimum_cover_quality:
+					continue
+			elif not is_hidden_at(hiding, threat_origin):
 				continue
+			var path: PackedVector3Array = _path_to(enemy.global_position, hiding)
+			if path.is_empty():
+				continue
+			var peeking: Vector3 = _choose_peek(hiding, candidate.peeks)
+			if not peeking.is_finite():
+				continue
+			viable_count += 1
 
-		# Peek 能看到威胁只作为“更喜欢这个掩体”的评分项，不再是一票否决。
-		# 这样只要 Hide 本身真的安全，NPC 就会先去躲；之后探头看不到再进入 TRACK / SEARCH。
-		var peek_has_los: bool = has_clear_line(
-			peeking + Vector3.UP * 0.8,
-			look_position + Vector3.UP * 0.8
-		)
-		if not peek_has_los:
-			no_peek_los += 1
+			var length: float = _path_length_from_path(path)
+			var move_direction: Vector3 = hiding - enemy.global_position
+			move_direction.y = 0.0
+			var away_direction: Vector3 = enemy.global_position - threat_origin
+			away_direction.y = 0.0
+			var away_alignment: float = 0.0
+			if not move_direction.is_zero_approx() and not away_direction.is_zero_approx():
+				away_alignment = move_direction.normalized().dot(away_direction.normalized())
+			var cover_threat_distance: float = enemy._horizontal_distance_between(hiding, threat_origin)
+			var min_path_distance: float = _minimum_path_distance_to_threat(path, threat_origin)
 
-		var path: PackedVector3Array = _path_to(enemy.global_position, hiding)
-		var peek_path: PackedVector3Array = _path_to(hiding, peeking)
-		if path.is_empty() or peek_path.is_empty():
-			rejected_path += 1
-			continue
-
-		var length: float = _path_length_from_path(path)
-
-		var move_direction: Vector3 = hiding - enemy.global_position
-		move_direction.y = 0.0
-		var away_direction: Vector3 = enemy.global_position - threat_origin
-		away_direction.y = 0.0
-
-		var away_alignment: float = 0.0
-		if not move_direction.is_zero_approx() and not away_direction.is_zero_approx():
-			away_alignment = move_direction.normalized().dot(away_direction.normalized())
-
-		var cover_threat_distance: float = enemy._horizontal_distance_between(
-			hiding, threat_origin
-		)
-		var min_path_distance: float = _minimum_path_distance_to_threat(
-			path, threat_origin
-		)
-
-		var score: float = length
-		score -= maxf(0.0, away_alignment) * away_from_threat_weight
-		score += maxf(0.0, -away_alignment) * away_from_threat_weight
-		score += maxf(
-			0.0, current_threat_distance - cover_threat_distance
-		) * closer_to_threat_weight
-		score += maxf(
-			0.0, current_threat_distance - min_path_distance
-		) * closer_to_threat_weight
-
-		if require_assigned_cover:
-			score -= quality * cover_quality_weight
-
-		# Peek 有直接射界时奖励，但没有射界仍然是合法掩体。
-		if peek_has_los:
-			score -= peek_los_weight
-
-		if score < best_score:
-			best_score = score
-			hide_position = hiding
-			peek_position = peeking
-			best_cover = assigned_cover
+			var score: float = length
+			score -= maxf(0.0, away_alignment) * away_from_threat_weight
+			score += maxf(0.0, -away_alignment) * away_from_threat_weight
+			score += maxf(0.0, current_threat_distance - cover_threat_distance) * closer_to_threat_weight
+			score += maxf(0.0, current_threat_distance - min_path_distance) * closer_to_threat_weight
+			if require_assigned_cover:
+				score -= quality * cover_quality_weight
+			if score < best_score:
+				best_score = score
+				hide_position = hiding
+				peek_position = peeking
+				best_cover = region
 
 	if is_inf(best_score):
 		if debug_cover_selection:
-			print(
-				"[Cover] 无有效点 total=", total_points,
-				" type/peek=", rejected_type,
-				" assignment=", rejected_assignment,
-				" space=", rejected_space,
-				" wrongCover=", rejected_cover,
-				" quality=", rejected_quality,
-				" peekNoLOS(kept)=", no_peek_los,
-				" path=", rejected_path
-			)
+			print("[Cover] 四面区域无有效躲藏/探头组合，候选=", candidate_count)
 		return false
-
 	active_cover_body = best_cover
-
 	if debug_cover_selection:
-		var quality: float = 1.0
-		if require_assigned_cover and is_instance_valid(active_cover_body):
-			quality = _cover_quality(hide_position, threat_origin, active_cover_body)
-		var selected_peek_has_los: bool = has_clear_line(
-			peek_position + Vector3.UP * 0.8,
-			look_position + Vector3.UP * 0.8
-		)
-		print(
-			"[Cover] 选择 Hide=", hide_position,
-			" Cover=", active_cover_body.name if is_instance_valid(active_cover_body) else "unassigned",
-			" quality=", quality,
-			" peekLOS=", selected_peek_has_los
-		)
-
+		print("[Cover] 区域选位 Cover=", best_cover.name, " Hide=", hide_position,
+			" Peek=", peek_position, " 合格候选=", viable_count)
 	return true
 
 
+# 用已知威胁位置检测射界；不以墙后玩家的新坐标来调整 Peek。
+func _peek_has_los(point: Vector3) -> bool:
+	return has_clear_line(point + Vector3.UP * 0.8, look_position + Vector3.UP * 0.8)
+
+
+func _choose_peek(hiding: Vector3, points: Array) -> Vector3:
+	var best := Vector3.INF
+	var best_length := INF
+	for point: Vector3 in points:
+		if not enemy._ranged_point_is_free(point) or not _peek_has_los(point):
+			continue
+		var path := _path_to(hiding, point)
+		if path.is_empty():
+			continue
+		var length := _path_length_from_path(path)
+		if length < best_length:
+			best = point
+			best_length = length
+	return best
+
 func _path_to(from: Vector3, to: Vector3) -> PackedVector3Array:
 	var nav_point: Vector3 = NavigationServer3D.region_get_closest_point(enemy.navigation_region.get_rid(), to)
-	if enemy._horizontal_distance_between(nav_point, to) > 0.6:
+	# 导航只允许厘米级水平误差；不能把墙外/地图外的点吸附到边缘后当作可达。
+	# 当前烘焙导航比地面高约 0.3 米，因此高度单独留出容差。
+	if enemy._horizontal_distance_between(nav_point, to) > 0.05 or absf(nav_point.y - to.y) > 0.5:
 		return PackedVector3Array()
 	var path: PackedVector3Array = NavigationServer3D.map_get_path(
 		enemy.agent.get_navigation_map(), from, nav_point, true, enemy.agent.navigation_layers)
@@ -749,6 +703,8 @@ func _path_length(from: Vector3, to: Vector3) -> float:
 
 
 func _selected_cover_blocks(point: Vector3, origin: Vector3) -> bool:
+	if not is_instance_valid(active_cover_body) or not active_cover_body.is_hiding_position(point, origin):
+		return false
 	if require_assigned_cover:
 		return (
 			is_instance_valid(active_cover_body)

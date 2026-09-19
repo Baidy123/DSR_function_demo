@@ -4,6 +4,9 @@
 
 [resource]
 script = ExtResource("1")
+cone_angle_degrees = 45.0
+min_spread_angle_degrees = 5.0
+max_spread_angle_degrees = 24.0
 stabilize_seconds = 1.0
 moving_accuracy_cap = 0.4
 shot_accuracy_penalty = 0.05

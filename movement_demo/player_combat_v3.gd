@@ -1,9 +1,9 @@
 extends Node
 
 signal weapon_changed(data: WeaponData)
-signal shot_fired(hit: bool, probability: float)
+signal shot_fired(hit: bool, stability: float)
 
-## 当前装备的 WeaponData 资源（例如 test_pistol.tres）；保存枪械参数，运行中的精度由 Combat 单独维护。
+## 当前装备的 WeaponData 资源（例如 test_pistol.tres）；保存枪械参数，运行中的稳定度由 Combat 单独维护。
 @export var weapon: WeaponData
 
 var is_aiming: bool = false
@@ -26,7 +26,7 @@ func _ready() -> void:
 	equip_weapon(weapon)
 
 
-## 以后装备菜单调用这个接口。Resource 只保存配置，不保存运行中的精度。
+## 以后装备菜单调用这个接口。Resource 只保存配置，不保存运行中的稳定度。
 func equip_weapon(data: WeaponData) -> void:
 	weapon = data
 	accuracy = weapon.initial_accuracy if weapon != null else 0.0
@@ -78,8 +78,8 @@ func begin_frame(delta: float, aim_pressed: bool) -> void:
 		if is_instance_valid(new_target):
 			locked_target = new_target
 			_start_target_movement_tracking(new_target)
-			# 锁定只改变瞄准目标，不重置当前精度。
-			# 因此无锁定持续瞄准积累的精度会自然带入锁定状态。
+			# 锁定只改变瞄准目标，不重置当前稳定度。
+			# 因此无锁定持续瞄准积累的稳定度会自然带入锁定状态。
 	if is_instance_valid(locked_target):
 		var direction: Vector3 = locked_target.global_position - player.global_position
 		if Vector2(direction.x, direction.z).length_squared() > 0.0001:
@@ -103,9 +103,9 @@ func end_frame(delta: float, moving: bool) -> void:
 			accuracy = minf(accuracy, weapon.moving_accuracy_cap)
 			accuracy_recovery_timer = weapon.accuracy_recovery_delay
 		elif target_moving:
-			# 目标移动时，若当前精度已经低于“移动目标最低精度”，
+			# 目标移动时，若当前稳定度已经低于“移动目标最低稳定度”，
 			# 仍允许按正常稳定速度恢复，但最多只恢复到这个下限。
-			# 若当前精度已经达到/高于该下限，则只承受目标移动惩罚，不再额外恢复，
+			# 若当前稳定度已经达到/高于该下限，则只承受目标移动惩罚，不再额外恢复，
 			# 避免移动惩罚被稳定恢复抵消。
 			var movement_floor: float = _get_target_move_accuracy_floor()
 			if accuracy < movement_floor:
@@ -117,7 +117,7 @@ func end_frame(delta: float, moving: bool) -> void:
 			var recovery_delta: float = maxf(0.0, delta - accuracy_recovery_timer)
 			accuracy_recovery_timer = maxf(0.0, accuracy_recovery_timer - delta)
 			# 没有玩家/目标移动惩罚时，延迟结束后按稳定速度恢复到 100%。
-			# 未瞄准时 begin_frame 会先把精度限制到初始值；此处仍按本帧时间恢复。
+			# 未瞄准时 begin_frame 会先把稳定度限制到初始值；此处仍按本帧时间恢复。
 			accuracy = minf(1.0, accuracy + recovery * recovery_delta)
 	if shot_requested:
 		shot_requested = false
@@ -163,12 +163,12 @@ func _apply_target_movement_accuracy_penalty(delta: float) -> bool:
 	)
 	var movement_penalty: float = moved_distance * loss_per_meter
 
-	# “目标移动”只允许把精度压到自己的下限；它不会覆盖其他来源已经造成的更低精度。
+	# “目标移动”只允许把稳定度压到自己的下限；它不会覆盖其他来源已经造成的更低稳定度。
 	var movement_floor: float = _get_target_move_accuracy_floor()
 	if accuracy > movement_floor:
 		accuracy = maxf(movement_floor, accuracy - movement_penalty)
-	# 如果精度已经被射击/玩家移动等其他因素压到 movement_floor 以下，
-	# 目标移动不会反过来提高精度，也不会继续额外降低它。
+	# 如果稳定度已经被射击/玩家移动等其他因素压到 movement_floor 以下，
+	# 目标移动不会反过来提高稳定度，也不会继续额外降低它。
 	return true
 
 
@@ -223,18 +223,18 @@ func shoot() -> void:
 		_reset_target_movement_tracking()
 	shot_count += 1
 	shot_cooldown = weapon.shot_interval
-	var probability: float = accuracy
+	var stability: float = accuracy
 	var origin: Vector3 = player.global_position + Vector3.UP * 0.8
 	var direction: Vector3 = -player.visual.global_basis.z
 	var has_lock: bool = is_instance_valid(locked_target)
 	if has_lock:
 		direction = (locked_target.global_position + Vector3.UP * 0.8 - origin).normalized()
 
-	# 有无锁定都使用当前 accuracy 判定这一枪是否准确。
-	# 因此无锁定时不再是 100% 直射；持续瞄准后 accuracy 才会逐渐升高。
-	var aimed_at_center: bool = randf() < probability
-	if not aimed_at_center:
-		# 锁定时围绕“目标方向”射偏；无锁定时围绕“玩家当前瞄准方向”射偏。
+	if is_using_spread_cone():
+		# 有无锁定都在整个三维锥内取样，稳定度只控制锥的半角。
+		direction = _random_direction_in_spread_cone(direction, get_spread_half_angle_degrees())
+	elif randf() >= stability:
+		# 旧模式保留“直射中心概率 + 8～20度三维偏转”，便于对比手感。
 		direction = _random_direction_in_miss_cone(direction, 8.0, 20.0)
 	var endpoint: Vector3 = origin + direction * weapon.fire_range
 	var hit: Dictionary = _ray_to(endpoint)
@@ -255,8 +255,13 @@ func shoot() -> void:
 	accuracy_recovery_timer = weapon.accuracy_recovery_delay
 	last_result = "命中" if target_hit else "未命中"
 	_draw_shot(origin, endpoint, target_hit)
-	shot_fired.emit(target_hit, probability)
+	shot_fired.emit(target_hit, stability)
 	_update_status()
+
+
+## Player 检查器选择算法；不重置锁定、稳定度或冷却。
+func is_using_spread_cone() -> bool:
+	return player.aim_mode == player.AimMode.SPREAD_CONE
 
 
 # 返回围绕 forward 的随机锥形偏移方向。
@@ -285,6 +290,33 @@ func _random_direction_in_miss_cone(
 	return (cone_axis * cos(theta) + radial * sin(theta)).normalized()
 
 
+## 当前散布半角，射击和 HUD 共用；最大值填得更小时按最小值处理。
+func get_spread_half_angle_degrees() -> float:
+	if weapon == null:
+		return 0.0
+	var minimum: float = clampf(weapon.min_spread_angle_degrees, 0.0, 45.0)
+	var maximum: float = clampf(weapon.max_spread_angle_degrees, minimum, 45.0)
+	return lerpf(maximum, minimum, clampf(accuracy, 0.0, 1.0))
+
+
+# 在整个锥内按立体角均匀取样，不再先判定是否直射中心。
+func _random_direction_in_spread_cone(forward: Vector3, half_angle_degrees: float) -> Vector3:
+	var cone_axis: Vector3 = forward.normalized() if not forward.is_zero_approx() else Vector3.FORWARD
+	var angle: float = deg_to_rad(clampf(half_angle_degrees, 0.0, 45.0))
+	if is_zero_approx(angle):
+		return cone_axis
+	# 接近竖直方向时换参考轴，避免叉乘退化。
+	var reference_axis: Vector3 = Vector3.UP if absf(cone_axis.y) < 0.999 else Vector3.RIGHT
+	var cone_right: Vector3 = cone_axis.cross(reference_axis).normalized()
+	var cone_up: Vector3 = cone_right.cross(cone_axis).normalized()
+	var phi: float = randf_range(0.0, TAU)
+	# 均匀取 cos(theta)，避免直接均匀取角度导致弹道过度集中在中心。
+	var cosine: float = lerpf(1.0, cos(angle), randf())
+	var sine: float = sqrt(maxf(0.0, 1.0 - cosine * cosine))
+	var radial: Vector3 = cone_right * cos(phi) + cone_up * sin(phi)
+	return (cone_axis * cosine + radial * sine).normalized()
+
+
 func _draw_shot(origin: Vector3, endpoint: Vector3, hit: bool) -> void:
 	var mesh := ImmediateMesh.new()
 	mesh.surface_begin(Mesh.PRIMITIVE_LINES)
@@ -307,4 +339,5 @@ func _update_status() -> void:
 	var target_name: String = str(locked_target.name) if is_instance_valid(locked_target) else "无"
 	var precision: String = "%d%%" % roundi(accuracy * 100.0)
 	var hint: String = "右键瞄准 / 左键单发" if can_combat() else "非战斗区域：请进入靶场"
-	status.text = "%s　%s\n锁定：%s　命中率：%s\n%s" % [title, hint, target_name, precision, last_result]
+	var accuracy_label: String = "稳定度" if is_using_spread_cone() else "中心概率"
+	status.text = "%s　%s\n锁定：%s　%s：%s\n%s" % [title, hint, target_name, accuracy_label, precision, last_result]

@@ -4,7 +4,7 @@
 [ext_resource type="Script" uid="uid://cdtb026xgaew2" path="res://enemy_tactical_v8.gd" id="3_fu4bq"]
 [ext_resource type="Script" uid="uid://dcc2vkow4q8cl" path="res://shooting_range.gd" id="3_reset"]
 [ext_resource type="Script" uid="uid://cmrfdeloqwi6t" path="res://enemy_cover_tactical_v9.gd" id="4_sbb53"]
-[ext_resource type="Script" uid="uid://cbkvbic0b471c" path="res://cover_point.gd" id="5_sbb53"]
+[ext_resource type="Script" uid="uid://b6f1cehvgci4k" path="res://cover_region.gd" id="5_region"]
 
 [sub_resource type="StandardMaterial3D" id="FloorMaterial"]
 albedo_color = Color(0.26, 0.24, 0.3, 1)
@@ -135,6 +135,7 @@ shape = SubResource("Shape0Floor")
 
 [node name="CoverA" type="StaticBody3D" parent="NavigationRegion3D/Environment" unique_id=704352125]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -3.6225033, 1.1, -0.57203555)
+script = ExtResource("5_region")
 
 [node name="Mesh" type="MeshInstance3D" parent="NavigationRegion3D/Environment/CoverA" unique_id=1497260564]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 1.437561)
@@ -146,6 +147,7 @@ shape = SubResource("Shape0CoverA")
 
 [node name="CoverB" type="StaticBody3D" parent="NavigationRegion3D/Environment" unique_id=913943400]
 transform = Transform3D(-0.018502058, 0, -0.9998288, 0, 1, 0, 0.9998288, 0, -0.018502058, 7.1962805, 1.1, -2.8742487)
+script = ExtResource("5_region")
 
 [node name="Mesh" type="MeshInstance3D" parent="NavigationRegion3D/Environment/CoverB" unique_id=1818784245]
 mesh = SubResource("Mesh0CoverB")
@@ -155,6 +157,7 @@ shape = SubResource("Shape0CoverB")
 
 [node name="CoverC" type="StaticBody3D" parent="NavigationRegion3D/Environment" unique_id=1545426448]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -7.979108, 1.1, 6.5940037)
+script = ExtResource("5_region")
 
 [node name="Mesh" type="MeshInstance3D" parent="NavigationRegion3D/Environment/CoverC" unique_id=1476982745]
 mesh = SubResource("Mesh0CoverC")
@@ -164,6 +167,7 @@ shape = SubResource("Shape0CoverC")
 
 [node name="CoverD" type="StaticBody3D" parent="NavigationRegion3D/Environment" unique_id=998803542]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 12.146425, 1.1, 5.8851247)
+script = ExtResource("5_region")
 
 [node name="Mesh" type="MeshInstance3D" parent="NavigationRegion3D/Environment/CoverD" unique_id=595042555]
 mesh = SubResource("Mesh0CoverB")
@@ -173,6 +177,7 @@ shape = SubResource("Shape0CoverB")
 
 [node name="CoverE" type="StaticBody3D" parent="NavigationRegion3D/Environment" unique_id=1374712086]
 transform = Transform3D(-0.012486058, 0, 0.99992204, 0, 1, 0, -0.99992204, 0, -0.012486058, 3, 1.1, 8.976278)
+script = ExtResource("5_region")
 
 [node name="Mesh" type="MeshInstance3D" parent="NavigationRegion3D/Environment/CoverE" unique_id=640991885]
 mesh = SubResource("Mesh0CoverB")
@@ -182,6 +187,7 @@ shape = SubResource("Shape0CoverB")
 
 [node name="CoverF" type="StaticBody3D" parent="NavigationRegion3D/Environment" unique_id=1955732264]
 transform = Transform3D(-0.012486058, 0, 0.99992204, 0, 1, 0, -0.99992204, 0, -0.012486058, 5.4195333, 1.1, 3.679556)
+script = ExtResource("5_region")
 
 [node name="Mesh" type="MeshInstance3D" parent="NavigationRegion3D/Environment/CoverF" unique_id=1877995171]
 mesh = SubResource("Mesh0CoverB")
@@ -339,101 +345,3 @@ billboard = 1
 text = "竞技场
 视野 / 寻路测试"
 font_size = 42
-
-[node name="CoverPositions" type="Node3D" parent="." unique_id=732554905]
-
-[node name="AWestNorth" type="Marker3D" parent="CoverPositions" unique_id=1888484483 node_paths=PackedStringArray("cover_body")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -5, 0, -0.5)
-script = ExtResource("5_sbb53")
-cover_body = NodePath("../../NavigationRegion3D/Environment/CoverA")
-
-[node name="Peek" type="Marker3D" parent="CoverPositions/AWestNorth" unique_id=1507263603]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, -3)
-
-[node name="AEastNorth" type="Marker3D" parent="CoverPositions" unique_id=1639580013 node_paths=PackedStringArray("cover_body")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -2.2, 0, -0.5)
-script = ExtResource("5_sbb53")
-cover_body = NodePath("../../NavigationRegion3D/Environment/CoverA")
-
-[node name="Peek" type="Marker3D" parent="CoverPositions/AEastNorth" unique_id=1814145161]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, -3)
-
-[node name="AWestSouth" type="Marker3D" parent="CoverPositions" unique_id=1108694404 node_paths=PackedStringArray("cover_body")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -5, 0, 2.5)
-script = ExtResource("5_sbb53")
-cover_body = NodePath("../../NavigationRegion3D/Environment/CoverA")
-
-[node name="Peek" type="Marker3D" parent="CoverPositions/AWestSouth" unique_id=1534051671]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 2.8)
-
-[node name="AEastSouth" type="Marker3D" parent="CoverPositions" unique_id=28326899 node_paths=PackedStringArray("cover_body")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -2.2, 0, 2.5)
-script = ExtResource("5_sbb53")
-cover_body = NodePath("../../NavigationRegion3D/Environment/CoverA")
-
-[node name="Peek" type="Marker3D" parent="CoverPositions/AEastSouth" unique_id=1564461162]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 2.8)
-
-[node name="EWest" type="Marker3D" parent="CoverPositions" unique_id=241432302 node_paths=PackedStringArray("cover_body")]
-transform = Transform3D(-0.9990096, 0, -0.044494808, 0, 1, 0, 0.044494808, 0, -0.9990096, 1.5672808, 0, 9.521205)
-script = ExtResource("5_sbb53")
-cover_body = NodePath("../../NavigationRegion3D/Environment/CoverE")
-
-[node name="Peek" type="Marker3D" parent="CoverPositions/EWest" unique_id=1457778552]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 2.8)
-
-[node name="EEast" type="Marker3D" parent="CoverPositions" unique_id=1134519120 node_paths=PackedStringArray("cover_body")]
-transform = Transform3D(-0.9995618, 0, 0.029600486, 0, 1, 0, -0.029600486, 0, -0.9995618, 4.1886725, 0, 9.617098)
-script = ExtResource("5_sbb53")
-cover_body = NodePath("../../NavigationRegion3D/Environment/East")
-
-[node name="Peek" type="Marker3D" parent="CoverPositions/EEast" unique_id=323476204]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 2.8)
-
-[node name="BWest" type="Marker3D" parent="CoverPositions" unique_id=972895086 node_paths=PackedStringArray("cover_body")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 5.9, 0, -2.8)
-script = ExtResource("5_sbb53")
-cover_body = NodePath("../../NavigationRegion3D/Environment/CoverB")
-
-[node name="Peek" type="Marker3D" parent="CoverPositions/BWest" unique_id=965701009]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 2.35)
-
-[node name="BEast" type="Marker3D" parent="CoverPositions" unique_id=1332534133 node_paths=PackedStringArray("cover_body")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 8.5, 0, -2.8)
-script = ExtResource("5_sbb53")
-cover_body = NodePath("../../NavigationRegion3D/Environment/CoverB")
-
-[node name="Peek" type="Marker3D" parent="CoverPositions/BEast" unique_id=57499573]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 2.35)
-
-[node name="DSouth" type="Marker3D" parent="CoverPositions" unique_id=1601344155 node_paths=PackedStringArray("cover_body")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 12.284261, 0, 7.2211065)
-script = ExtResource("5_sbb53")
-cover_body = NodePath("../../NavigationRegion3D/Environment/CoverD")
-
-[node name="Peek" type="Marker3D" parent="CoverPositions/DSouth" unique_id=1076412162]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -2.390154, 0, 0.06193161)
-
-[node name="DNorth" type="Marker3D" parent="CoverPositions" unique_id=499639963 node_paths=PackedStringArray("cover_body")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 12.753018, 0, 4.595312)
-script = ExtResource("5_sbb53")
-cover_body = NodePath("../../NavigationRegion3D/Environment/CoverD")
-
-[node name="Peek" type="Marker3D" parent="CoverPositions/DNorth" unique_id=786159396]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -2.390154, 0, 0.06193161)
-
-[node name="FWest" type="Marker3D" parent="CoverPositions" unique_id=2011734939 node_paths=PackedStringArray("cover_body")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 4.1, 0, 3.7)
-script = ExtResource("5_sbb53")
-cover_body = NodePath("../../NavigationRegion3D/Environment/CoverF")
-
-[node name="Peek" type="Marker3D" parent="CoverPositions/FWest" unique_id=1754617358]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, -2.5)
-
-[node name="FEast" type="Marker3D" parent="CoverPositions" unique_id=2085423569 node_paths=PackedStringArray("cover_body")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 6.8, 0, 3.7)
-script = ExtResource("5_sbb53")
-cover_body = NodePath("../../NavigationRegion3D/Environment/CoverF")
-
-[node name="Peek" type="Marker3D" parent="CoverPositions/FEast" unique_id=1363460629]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, -2.5)

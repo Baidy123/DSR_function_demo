@@ -1385,10 +1385,9 @@ func receive_hit(damage: float, attacker_position: Vector3 = Vector3.INF) -> voi
 		if attacker_position.is_finite():
 			_investigate_attack(attacker_position)
 
-		# 掩护转移期间每次真正受伤都重新判定是否放弃慢速掩护撤退、改为全速冲刺。
-		# 这一步也会把 _investigate_attack() 临时改写的导航目标重新锁回 Hide。
+		# 躲藏中受伤立即回到接敌；转移中受伤仍沿用冲刺判定和导航目标恢复。
 		if cover != null:
-			cover.on_damage_during_transfer()
+			cover.on_damage_received()
 
 	_update_label()
 
