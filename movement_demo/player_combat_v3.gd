@@ -1,5 +1,9 @@
 extends Node
 
+enum AimMode { PROBABILITY, SPREAD_CONE }
+## 选择本节点的射击算法；两种模式共用锁定、碰撞和伤害结算。
+@export_enum("旧概率模式:0", "新散布锥模式:1") var aim_mode: int = AimMode.SPREAD_CONE
+
 signal weapon_changed(data: WeaponData)
 signal shot_fired(hit: bool, stability: float)
 
@@ -29,7 +33,7 @@ func _ready() -> void:
 ## 以后装备菜单调用这个接口。Resource 只保存配置，不保存运行中的稳定度。
 func equip_weapon(data: WeaponData) -> void:
 	weapon = data
-	accuracy = weapon.initial_accuracy if weapon != null else 0.0
+	accuracy = weapon.get_aim_settings(is_using_spread_cone()).initial if weapon != null else 0.0
 	accuracy_recovery_timer = 0.0
 	cancel_aim()
 	shot_cooldown = 0.0
@@ -51,7 +55,7 @@ func cancel_aim() -> void:
 	_reset_target_movement_tracking()
 	shot_requested = false
 	# 松开再按瞄准不能消除刚刚累积的射击惩罚。
-	accuracy = minf(accuracy, weapon.initial_accuracy) if weapon != null else 0.0
+	accuracy = minf(accuracy, weapon.get_aim_settings(is_using_spread_cone()).initial) if weapon != null else 0.0
 	$HUD/Reticle.hide()
 
 
@@ -98,10 +102,11 @@ func end_frame(delta: float, moving: bool) -> void:
 		# 新锁定的第一帧只记录位置，不产生瞬间惩罚。
 		var target_moving: bool = _apply_target_movement_accuracy_penalty(delta)
 
-		var recovery: float = (1.0 - weapon.initial_accuracy) / maxf(weapon.stabilize_seconds, 0.01)
+		var settings: Dictionary = weapon.get_aim_settings(is_using_spread_cone())
+		var recovery: float = settings.recovery
 		if moving:
-			accuracy = minf(accuracy, weapon.moving_accuracy_cap)
-			accuracy_recovery_timer = weapon.accuracy_recovery_delay
+			accuracy = minf(accuracy, settings.moving_cap)
+			accuracy_recovery_timer = settings.delay
 		elif target_moving:
 			# 目标移动时，若当前稳定度已经低于“移动目标最低稳定度”，
 			# 仍允许按正常稳定速度恢复，但最多只恢复到这个下限。
@@ -154,11 +159,12 @@ func _apply_target_movement_accuracy_penalty(delta: float) -> bool:
 	if moved_distance <= 0.0001:
 		return false
 
+	var settings: Dictionary = weapon.get_aim_settings(is_using_spread_cone())
 	var target_speed: float = moved_distance / maxf(delta, 0.0001)
-	var speed_factor: float = clampf(target_speed / maxf(weapon.target_move_fast_speed, 0.01), 0.0, 1.0)
+	var speed_factor: float = clampf(target_speed / maxf(settings.fast_speed, 0.01), 0.0, 1.0)
 	var loss_per_meter: float = lerpf(
-		weapon.target_move_accuracy_loss_per_meter_slow,
-		weapon.target_move_accuracy_loss_per_meter_fast,
+		settings.slow,
+		settings.fast,
 		speed_factor
 	)
 	var movement_penalty: float = moved_distance * loss_per_meter
@@ -175,11 +181,7 @@ func _apply_target_movement_accuracy_penalty(delta: float) -> bool:
 func _get_target_move_accuracy_floor() -> float:
 	if weapon == null:
 		return 0.0
-	# 目标移动下限取配置值与“射击下限 + 0.01”的较大值，最终不超过 1.0。
-	return minf(
-		1.0,
-		maxf(weapon.target_move_minimum_accuracy, weapon.minimum_accuracy + 0.01)
-	)
+	return weapon.get_aim_settings(is_using_spread_cone()).target_floor
 
 
 func _find_target() -> Node3D:
@@ -251,17 +253,18 @@ func shoot() -> void:
 	# 使用实际命中点截断后的线段检测近处来弹；墙后的延长线不会触发。
 	for listener in get_tree().get_nodes_in_group("shot_listener"):
 		listener.notice_shot(origin, endpoint)
-	accuracy = maxf(minf(accuracy, weapon.minimum_accuracy), accuracy - weapon.shot_accuracy_penalty)
-	accuracy_recovery_timer = weapon.accuracy_recovery_delay
+	var settings: Dictionary = weapon.get_aim_settings(is_using_spread_cone())
+	accuracy = maxf(minf(accuracy, settings.shot_floor), accuracy - settings.shot_penalty)
+	accuracy_recovery_timer = settings.delay
 	last_result = "命中" if target_hit else "未命中"
 	_draw_shot(origin, endpoint, target_hit)
 	shot_fired.emit(target_hit, stability)
 	_update_status()
 
 
-## Player 检查器选择算法；不重置锁定、稳定度或冷却。
+## Combat 检查器选择算法；不重置锁定、稳定度或冷却。
 func is_using_spread_cone() -> bool:
-	return player.aim_mode == player.AimMode.SPREAD_CONE
+	return aim_mode == AimMode.SPREAD_CONE
 
 
 # 返回围绕 forward 的随机锥形偏移方向。
@@ -290,7 +293,7 @@ func _random_direction_in_miss_cone(
 	return (cone_axis * cos(theta) + radial * sin(theta)).normalized()
 
 
-## 当前散布半角，射击和 HUD 共用；最大值填得更小时按最小值处理。
+## 当前实际弹道半角；准星保留原圆形样式，仅用稳定度表现收拢。
 func get_spread_half_angle_degrees() -> float:
 	if weapon == null:
 		return 0.0

@@ -1,53 +1,106 @@
 class_name WeaponData
 extends Resource
 
-## 武器在战斗 HUD 中显示的名称；每把枪可单独保存为一份 .tres 资源。
+@export_group("共用参数")
+## 武器显示名称。
 @export var display_name: String = "测试手枪"
-## 两种模式共用：实际射线命中后的单发伤害；训练靶只计数，不扣生命。
+## 实际射线命中后的单发伤害。
 @export_range(1.0, 1000.0, 1.0) var damage: float = 25.0
-## 两种模式共用：允许锁定和保持锁定的最大距离（米），不决定 v3 弹道射程。
+## 允许锁定目标的最大距离（米）。
 @export_range(0.5, 50.0, 0.5) var aim_range: float = 8.0
-## 两种模式共用：v3 瞬时弹道射线的最大距离（米）；独立 Combat 场景的旧 v2 仍用 Aim Range。
+## 子弹射线的最大距离（米）。
 @export_range(0.5, 200.0, 0.5) var fire_range: float = 30.0
-## 两种模式共用：索敌扇形总角度，只决定选择哪个锁定目标，不是子弹散布角。
+## 索敌扇形总角度，不是子弹散布角。
 @export_range(1.0, 180.0, 1.0) var cone_angle_degrees: float = 70.0
-## 仅新散布锥模式：稳定度1.0时的最小散布半角（度）；0可完全收拢，大于0仍有三维散布。旧概率模式不读取。
-@export_range(0.0, 45.0, 0.1) var min_spread_angle_degrees: float = 0.0
-## 仅新散布锥模式：稳定度0.0时的最大散布半角（度）；全开角是本值两倍。小于最小值时按最小值处理；旧模式不读取。
-@export_range(0.0, 45.0, 0.1) var max_spread_angle_degrees: float = 12.0
-## 两种模式共用的初始值（0～1），装备时设置，松开瞄准时也限制到不超过它。
-## 新模式：稳定度，当前半角=最大半角×(1-稳定度)+最小半角×稳定度，0.5不等于50%命中率。
-## 旧模式：直射中心的概率；未直射时随机偏转8～20度，最终命中仍取决于碰撞。保留accuracy属性名以兼容资源。
-@export_range(0.0, 1.0, 0.01) var initial_accuracy: float = 0.5
-## 无玩家/目标移动和射击惩罚时，从初始值恢复到1.0的秒数，不含恢复延迟；从更低值恢复更久。
-## 新模式逐渐收拢到最小散布；旧模式逐渐恢复到100%直射中心。
-@export_range(0.1, 10.0, 0.1) var stabilize_seconds: float = 2.0
-## 玩家实际移动时，将当前值限制到这个上限（0～1），不会抬高已经更低的值。
-## 新模式限制稳定度，所以移动时不能完全收拢；旧模式限制直射中心概率。不是移动时的最大散布角。
-@export_range(0.0, 1.0, 0.01) var moving_accuracy_cap: float = 0.35
-## 两种模式共用：锁定时的走路速度倍率；锁定期间不能奔跑。
+## 锁定时的走路速度倍率，锁定期间禁跑。
 @export_range(0.1, 1.0, 0.05) var locked_move_multiplier: float = 0.5
-## 每枪结束后从当前值扣除的量（0～1），连续射击累积；0.05表示扣5个百分点，不是扣5度。
-## 新模式：降低稳定度，半角增加约“本值×(最大半角-最小半角)”，达到射击下限时会截断。
-## 旧模式：降低直射中心概率；本枪先使用扣除前的值取弹道，惩罚影响后续射击。
-@export_range(0.0, 1.0, 0.01) var shot_accuracy_penalty: float = 0.25
-## 射击惩罚能压到的当前值下限（0～1）；若其他因素已压得更低，开枪不会抬高它。
-## 新模式：稳定度下限，间接限制连射能扩大的半角；不是最小散布角。旧模式：直射中心概率下限。
-@export_range(0.0, 1.0, 0.01) var minimum_accuracy: float = 0.1
-## 停止玩家移动和射击后等待的恢复延迟（秒）。新模式等待后恢复稳定度并收拢；旧模式恢复中心概率。
-## 目标持续移动时仍受下面的跟枪惩罚，可能无法完全恢复。
-@export_range(0.0, 3.0, 0.05) var accuracy_recovery_delay: float = 0.6
-## 两种模式共用：两次有效射击的最短间隔（秒）；冷却中按下射击不执行。
+## 两次射击的最短间隔（秒）。
 @export_range(0.05, 3.0, 0.05) var shot_interval: float = 0.2
 
-## 锁定目标低速移动时，每实际移动1米扣多少当前值；0.03表示每米扣3个百分点。
-## 新模式扣稳定度、扩大散布；旧模式扣中心概率。仅主场景v3使用，独立旧v2不读取跟枪参数。
+@export_group("概率模式参数（百分比）")
+## 初始直射中心概率：0.5表示50%；松开瞄准也将概率限制到不超过本值。
+@export_range(0.0, 1.0, 0.01) var initial_accuracy: float = 0.5
+## 从初始概率恢复到100%需要的秒数，不含恢复延迟。
+@export_range(0.1, 10.0, 0.1) var stabilize_seconds: float = 2.0
+## 玩家移动时的中心概率上限：0.35表示35%；不会抬高已经更低的概率。
+@export_range(0.0, 1.0, 0.01) var moving_accuracy_cap: float = 0.35
+## 每枪结束后降低多少中心概率：0.05表示5个百分点，连续射击累积。
+@export_range(0.0, 1.0, 0.01) var shot_accuracy_penalty: float = 0.25
+## 射击惩罚的中心概率下限：0.1表示10%；不会抬高其他因素造成的更低概率。
+@export_range(0.0, 1.0, 0.01) var minimum_accuracy: float = 0.1
+## 玩家停步、停火后等多久开始恢复中心概率（秒）。
+@export_range(0.0, 3.0, 0.05) var accuracy_recovery_delay: float = 0.6
+## 目标慢速移动时，每米扣除的中心概率：0.03表示每米3个百分点。
 @export_range(0.0, 0.5, 0.005) var target_move_accuracy_loss_per_meter_slow: float = 0.03
-## 锁定目标高速移动时，每米最多扣多少当前值；0.10表示每米扣10个百分点。
-## 新模式扣稳定度、扩大散布；旧模式扣中心概率。按实际速度在慢/高速每米惩罚间插值。
+## 目标高速移动时，每米扣除的中心概率：0.10表示每米10个百分点。
 @export_range(0.0, 0.5, 0.005) var target_move_accuracy_loss_per_meter_fast: float = 0.10
-## 仅跟枪惩罚的下限：新模式为稳定度下限，旧模式为中心概率下限，不是散布角。
-## v3取本值与Minimum Accuracy+0.01的较大值，最高1.0；其他惩罚造成的更低值保留，允许恢复到此下限。
+## 跟枪惩罚的概率下限，至少比射击下限高1个百分点，最高100%。
 @export_range(0.0, 1.0, 0.01) var target_move_minimum_accuracy: float = 0.30
-## 两种模式共用：目标达到这个速度（米/秒）时使用高速每米惩罚；低于它时在慢/高速惩罚间插值。
+## 目标达到此速度（米/秒）时使用高速惩罚，较慢时在两种每米惩罚间插值。
 @export_range(0.1, 30.0, 0.1) var target_move_fast_speed: float = 6.0
+
+@export_group("散布锥模式参数（角度）")
+## 完全稳定时的最小散布半角；0度可完全收拢，大于0仍会随机射偏。
+@export_range(0.0, 45.0, 0.1, "suffix:°") var min_spread_angle_degrees: float = 0.0
+## 最不稳定时的最大散布半角，通常不小于最小半角；全开角是半角两倍。
+@export_range(0.0, 45.0, 0.1, "suffix:°") var max_spread_angle_degrees: float = 12.0
+## 装备时的散布半角；松开瞄准后，散布也不会比本值更小。
+@export_range(0.0, 45.0, 0.1, "suffix:°") var initial_spread_angle_degrees: float = 6.0
+## 停稳并经过恢复延迟后，每秒收拢多少度；0表示不自动收拢。
+@export_range(0.0, 90.0, 0.1, "suffix:°/s") var spread_recovery_degrees_per_second: float = 3.0
+## 玩家移动时至少保留多大的散布半角；若已经更散，不会反过来收拢。
+@export_range(0.0, 45.0, 0.1, "suffix:°") var moving_spread_angle_degrees: float = 7.8
+## 每枪结束后扩大多少度，连续射击累积；例如1表示半角增加1度。
+@export_range(0.0, 45.0, 0.05, "suffix:°") var shot_spread_penalty_degrees: float = 3.0
+## 仅连射惩罚最多把半角扩大到多少度；不会收拢其他因素已经扩得更大的散布。
+@export_range(0.0, 45.0, 0.1, "suffix:°") var shot_max_spread_angle_degrees: float = 10.8
+## 玩家停步、停火后等多久开始收拢（秒）。
+@export_range(0.0, 3.0, 0.05) var spread_recovery_delay: float = 0.6
+## 目标慢速移动时，每米扩大多少度。
+@export_range(0.0, 45.0, 0.01, "suffix:°/m") var target_move_spread_degrees_per_meter_slow: float = 0.36
+## 目标高速移动时，每米扩大多少度。
+@export_range(0.0, 45.0, 0.01, "suffix:°/m") var target_move_spread_degrees_per_meter_fast: float = 1.2
+## 仅跟枪惩罚最多把半角扩大到多少度；不会把其他原因造成的更大散布继续扩大。
+@export_range(0.0, 45.0, 0.1, "suffix:°") var target_move_max_spread_angle_degrees: float = 8.4
+## 目标达到此速度（米/秒）时使用高速每米扩散；较慢时在慢/高速扩散之间插值。
+@export_range(0.1, 30.0, 0.1) var spread_target_move_fast_speed: float = 6.0
+
+
+## 两套输入在这里换算，战斗脚本继续共用惩罚、等待、恢复流程。
+func get_aim_settings(use_spread: bool) -> Dictionary:
+	if not use_spread:
+		return {
+			"initial": initial_accuracy,
+			"recovery": (1.0 - initial_accuracy) / maxf(stabilize_seconds, 0.01),
+			"moving_cap": moving_accuracy_cap,
+			"shot_penalty": shot_accuracy_penalty,
+			"shot_floor": minimum_accuracy,
+			"delay": accuracy_recovery_delay,
+			"slow": target_move_accuracy_loss_per_meter_slow,
+			"fast": target_move_accuracy_loss_per_meter_fast,
+			"target_floor": minf(1.0, maxf(target_move_minimum_accuracy, minimum_accuracy + 0.01)),
+			"fast_speed": target_move_fast_speed,
+		}
+	var minimum: float = clampf(min_spread_angle_degrees, 0.0, 45.0)
+	var maximum: float = clampf(max_spread_angle_degrees, minimum, 45.0)
+	var span: float = maximum - minimum
+	# 零宽度的锥始终使用同一角度，变化量为0，避免除零。
+	var degrees_to_fraction: float = 1.0 / span if span > 0.00001 else 0.0
+	return {
+		"initial": _angle_to_stability(initial_spread_angle_degrees, minimum, span),
+		"recovery": maxf(0.0, spread_recovery_degrees_per_second) * degrees_to_fraction,
+		"moving_cap": _angle_to_stability(moving_spread_angle_degrees, minimum, span),
+		"shot_penalty": maxf(0.0, shot_spread_penalty_degrees) * degrees_to_fraction,
+		"shot_floor": _angle_to_stability(shot_max_spread_angle_degrees, minimum, span),
+		"delay": maxf(0.0, spread_recovery_delay),
+		"slow": maxf(0.0, target_move_spread_degrees_per_meter_slow) * degrees_to_fraction,
+		"fast": maxf(0.0, target_move_spread_degrees_per_meter_fast) * degrees_to_fraction,
+		"target_floor": _angle_to_stability(target_move_max_spread_angle_degrees, minimum, span),
+		"fast_speed": spread_target_move_fast_speed,
+	}
+
+
+func _angle_to_stability(angle: float, minimum: float, span: float) -> float:
+	if span <= 0.00001:
+		return 1.0
+	return 1.0 - clampf((angle - minimum) / span, 0.0, 1.0)

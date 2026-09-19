@@ -13,6 +13,7 @@ func run(scene: Node) -> Dictionary:
 	p.rotation = Vector3.ZERO
 	a.position = Vector3(0, 0, -4.5)
 	wall.position = Vector3(7, 1, -2)
+	c.aim_mode = c.AimMode.SPREAD_CONE
 	var weapon = c.weapon.duplicate()
 	weapon.min_spread_angle_degrees = 20.0
 	weapon.max_spread_angle_degrees = 20.0

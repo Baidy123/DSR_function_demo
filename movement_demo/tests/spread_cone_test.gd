@@ -13,6 +13,7 @@ func run(scene: Node) -> Dictionary:
 	checks["combat_provides_current_angle"] = combat.has_method("get_spread_half_angle_degrees")
 	if not checks.weapon_exports_min_and_max_spread or not checks.combat_provides_current_angle:
 		return checks
+	combat.aim_mode = combat.AimMode.SPREAD_CONE
 	player.set_physics_process(false)
 	player.position = Vector3(0, 0, -1)
 	player.rotation = Vector3.ZERO
@@ -91,9 +92,9 @@ func run(scene: Node) -> Dictionary:
 	combat.begin_frame(0.0, true)
 	combat.accuracy = 1.0
 	combat.end_frame(0.1, true)
-	checks["movement_still_limits_stability"] = combat.accuracy <= weapon.moving_accuracy_cap
+	checks["movement_still_limits_stability"] = combat.get_spread_half_angle_degrees() >= minf(weapon.moving_spread_angle_degrees, weapon.max_spread_angle_degrees) - 0.001
 	var angle_before: float = combat.get_spread_half_angle_degrees()
-	combat.end_frame(weapon.accuracy_recovery_delay + weapon.stabilize_seconds * 4.0, false)
+	combat.end_frame(weapon.spread_recovery_delay + 10.0, false)
 	checks["rest_recovers_and_shrinks_cone"] = combat.get_spread_half_angle_degrees() < angle_before
 	combat._update_status()
 	checks["hud_reports_stability"] = combat.get_node("HUD/Panel/Status").text.contains("稳定度")
