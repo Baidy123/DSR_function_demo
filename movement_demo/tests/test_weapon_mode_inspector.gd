@@ -24,6 +24,8 @@ func test_inspector_02_expand() -> void:
 func test_inspector_03_probability() -> void:
 	var f := _fixture()
 	var properties := _editors(EditorInterface.get_inspector(), f.weapon)
+	assert_true(properties.has("player_move_accuracy_loss_per_meter"), "player movement percentage visible")
+	assert_true(not properties.has("player_move_spread_degrees_per_meter"), "player movement angle hidden")
 	assert_true(properties.has("shot_accuracy_penalty"), "probability fields visible: " + str(properties.keys()))
 	assert_true(not properties.has("shot_spread_penalty_degrees"), "cone fields hidden")
 	assert_true(properties.has("damage"), "common fields visible")
@@ -43,6 +45,8 @@ func test_inspector_04_expand_cone() -> void:
 func test_inspector_05_cone() -> void:
 	var f := _fixture()
 	var properties := _editors(EditorInterface.get_inspector(), f.weapon)
+	assert_true(properties.has("player_move_spread_degrees_per_meter"), "player movement angle visible")
+	assert_true(not properties.has("player_move_accuracy_loss_per_meter"), "player movement percentage hidden")
 	assert_true(properties.has("shot_spread_penalty_degrees"), "cone fields visible: " + str(properties.keys()))
 	assert_true(not properties.has("shot_accuracy_penalty"), "probability fields hidden")
 	assert_true(properties.has("damage"), "common fields still visible")

@@ -4,7 +4,8 @@ extends EditorInspectorPlugin
 const PROBABILITY_FIELDS := {
 	"initial_accuracy": "初始中心概率",
 	"stabilize_seconds": "恢复到满概率用时",
-	"moving_accuracy_cap": "移动时概率上限",
+	"moving_accuracy_cap": "移动惩罚概率下限",
+	"player_move_accuracy_loss_per_meter": "玩家每米降低概率",
 	"shot_accuracy_penalty": "每枪降低概率",
 	"minimum_accuracy": "连射概率下限",
 	"accuracy_recovery_delay": "恢复等待时间",
@@ -18,7 +19,8 @@ const SPREAD_FIELDS := {
 	"max_spread_angle_degrees": "最大散布半角",
 	"initial_spread_angle_degrees": "初始散布半角",
 	"spread_recovery_degrees_per_second": "每秒收拢角度",
-	"moving_spread_angle_degrees": "移动时最小散布",
+	"moving_spread_angle_degrees": "移动最大散布",
+	"player_move_spread_degrees_per_meter": "玩家每米扩大角度",
 	"shot_spread_penalty_degrees": "每枪扩大角度",
 	"shot_max_spread_angle_degrees": "连射最大散布",
 	"spread_recovery_delay": "收拢等待时间",
@@ -35,7 +37,7 @@ const COMMON_FIELDS := {
 const PERCENT_FIELDS := [
 	"initial_accuracy", "moving_accuracy_cap", "shot_accuracy_penalty", "minimum_accuracy",
 	"target_move_accuracy_loss_per_meter_slow", "target_move_accuracy_loss_per_meter_fast",
-	"target_move_minimum_accuracy",
+	"target_move_minimum_accuracy", "player_move_accuracy_loss_per_meter",
 ]
 
 

@@ -91,8 +91,9 @@ func run(scene: Node) -> Dictionary:
 	checks["reaim_does_not_clear_penalty"] = combat.accuracy <= penalized
 	combat.begin_frame(0.0, true)
 	combat.accuracy = 1.0
+	player.position.x += 0.1
 	combat.end_frame(0.1, true)
-	checks["movement_still_limits_stability"] = combat.get_spread_half_angle_degrees() >= minf(weapon.moving_spread_angle_degrees, weapon.max_spread_angle_degrees) - 0.001
+	checks["movement_gradually_reduces_stability"] = combat.get_spread_half_angle_degrees() > 0.0 and combat.get_spread_half_angle_degrees() < minf(weapon.moving_spread_angle_degrees, weapon.max_spread_angle_degrees)
 	var angle_before: float = combat.get_spread_half_angle_degrees()
 	combat.end_frame(weapon.spread_recovery_delay + 10.0, false)
 	checks["rest_recovers_and_shrinks_cone"] = combat.get_spread_half_angle_degrees() < angle_before

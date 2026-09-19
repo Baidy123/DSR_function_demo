@@ -21,6 +21,8 @@ var last_result: String = ""
 var accuracy_recovery_timer: float = 0.0
 var last_target_position: Vector3 = Vector3.ZERO
 var has_last_target_position: bool = false
+# 每帧移动前记录位置；不把转向、顶墙或跨帧传送当作行走距离。
+var player_position_before_move: Vector3 = Vector3.ZERO
 
 @onready var player = get_parent()
 @onready var status: Label = $HUD/Panel/Status
@@ -69,6 +71,7 @@ func can_combat() -> bool:
 
 # Player 在移动前调用：检查锁定，再由 Player 应用朝向。
 func begin_frame(delta: float, aim_pressed: bool) -> void:
+	player_position_before_move = player.global_position
 	shot_cooldown = maxf(0.0, shot_cooldown - delta)
 	if weapon == null or player.is_in_dialogue or not aim_pressed or not can_combat():
 		cancel_aim()
@@ -105,7 +108,11 @@ func end_frame(delta: float, moving: bool) -> void:
 		var settings: Dictionary = weapon.get_aim_settings(is_using_spread_cone())
 		var recovery: float = settings.recovery
 		if moving:
-			accuracy = minf(accuracy, settings.moving_cap)
+			var displacement: Vector3 = player.global_position - player_position_before_move
+			var distance: float = Vector2(displacement.x, displacement.z).length()
+			# 两种模式都逐米累积；移动惩罚不能覆盖其他来源造成的更低稳定度。
+			if accuracy > settings.moving_cap:
+				accuracy = maxf(settings.moving_cap, accuracy - distance * settings.player_move_loss)
 			accuracy_recovery_timer = settings.delay
 		elif target_moving:
 			# 目标移动时，若当前稳定度已经低于“移动目标最低稳定度”，

@@ -22,8 +22,10 @@ extends Resource
 @export_range(0.0, 1.0, 0.01) var initial_accuracy: float = 0.5
 ## 从初始概率恢复到100%需要的秒数，不含恢复延迟。
 @export_range(0.1, 10.0, 0.1) var stabilize_seconds: float = 2.0
-## 玩家移动时的中心概率上限：0.35表示35%；不会抬高已经更低的概率。
+## 玩家移动惩罚最多将中心概率降到此值：0.35表示35%；不会抬高已经更低的概率。
 @export_range(0.0, 1.0, 0.01) var moving_accuracy_cap: float = 0.35
+## 玩家实际水平移动每米降低多少概率；0.15表示15个百分点，0表示不增加移动惩罚。
+@export_range(0.0, 1.0, 0.005) var player_move_accuracy_loss_per_meter: float = 0.15
 ## 每枪结束后降低多少中心概率：0.05表示5个百分点，连续射击累积。
 @export_range(0.0, 1.0, 0.01) var shot_accuracy_penalty: float = 0.25
 ## 射击惩罚的中心概率下限：0.1表示10%；不会抬高其他因素造成的更低概率。
@@ -48,8 +50,10 @@ extends Resource
 @export_range(0.0, 45.0, 0.1, "suffix:°") var initial_spread_angle_degrees: float = 6.0
 ## 停稳并经过恢复延迟后，每秒收拢多少度；0表示不自动收拢。
 @export_range(0.0, 90.0, 0.1, "suffix:°/s") var spread_recovery_degrees_per_second: float = 3.0
-## 玩家移动时至少保留多大的散布半角；若已经更散，不会反过来收拢。
+## 玩家移动惩罚最多把半角扩大到多少度；若已经更散，不会反过来收拢。
 @export_range(0.0, 45.0, 0.1, "suffix:°") var moving_spread_angle_degrees: float = 7.8
+## 玩家实际水平移动每米扩大多少度；随距离逐渐累积，0表示不增加移动散布。
+@export_range(0.0, 45.0, 0.05, "suffix:°/m") var player_move_spread_degrees_per_meter: float = 3.0
 ## 每枪结束后扩大多少度，连续射击累积；例如1表示半角增加1度。
 @export_range(0.0, 45.0, 0.05, "suffix:°") var shot_spread_penalty_degrees: float = 3.0
 ## 仅连射惩罚最多把半角扩大到多少度；不会收拢其他因素已经扩得更大的散布。
@@ -73,6 +77,7 @@ func get_aim_settings(use_spread: bool) -> Dictionary:
 			"initial": initial_accuracy,
 			"recovery": (1.0 - initial_accuracy) / maxf(stabilize_seconds, 0.01),
 			"moving_cap": moving_accuracy_cap,
+			"player_move_loss": maxf(0.0, player_move_accuracy_loss_per_meter),
 			"shot_penalty": shot_accuracy_penalty,
 			"shot_floor": minimum_accuracy,
 			"delay": accuracy_recovery_delay,
@@ -90,6 +95,7 @@ func get_aim_settings(use_spread: bool) -> Dictionary:
 		"initial": _angle_to_stability(initial_spread_angle_degrees, minimum, span),
 		"recovery": maxf(0.0, spread_recovery_degrees_per_second) * degrees_to_fraction,
 		"moving_cap": _angle_to_stability(moving_spread_angle_degrees, minimum, span),
+		"player_move_loss": maxf(0.0, player_move_spread_degrees_per_meter) * degrees_to_fraction,
 		"shot_penalty": maxf(0.0, shot_spread_penalty_degrees) * degrees_to_fraction,
 		"shot_floor": _angle_to_stability(shot_max_spread_angle_degrees, minimum, span),
 		"delay": maxf(0.0, spread_recovery_delay),
