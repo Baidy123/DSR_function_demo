@@ -1,0 +1,14 @@
+[gd_resource type="Resource" script_class="WeaponData" format=3 uid="uid://b6bap6hpl63cp"]
+
+[ext_resource type="Script" uid="uid://b7iqg2tyib57x" path="res://weapon_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+stabilize_seconds = 1.0
+moving_accuracy_cap = 0.4
+shot_accuracy_penalty = 0.05
+minimum_accuracy = 0.4
+accuracy_recovery_delay = 0.4
+target_move_accuracy_loss_per_meter_slow = 0.01
+target_move_accuracy_loss_per_meter_fast = 0.05
+target_move_minimum_accuracy = 0.7

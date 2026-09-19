@@ -1,0 +1,15 @@
+# 本机工具与原始设计参考
+/*.exe
+/整合.docx
+
+# Godot 导入缓存、插件更新备份和编辑器临时文件
+.godot/
+.godot_ai_update/
+*.tmp
+*.log
+export_credentials.cfg
+
+# 本机凭据配置
+.env
+.env.*
+!.env.example

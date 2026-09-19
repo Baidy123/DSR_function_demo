@@ -1,0 +1,8 @@
+~ start
+if GameState.help_choice == "accepted"
+	B: 听说你答应帮忙了，谢谢。
+elif GameState.help_choice == "refused"
+	B: 听说你拒绝帮忙了，我知道了。
+else
+	B: 你先去找 A。
+=> END

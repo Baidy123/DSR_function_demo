@@ -1,0 +1,17 @@
+~ start
+if GameState.help_choice == "accepted"
+	A: 谢谢，你可以去找 B 了。
+	=> END
+elif GameState.help_choice == "refused"
+	A: 好的，我知道了。
+	=> END
+A: 你愿意帮忙吗？
+- 答应帮忙
+	$> GameState.help_choice = "accepted"
+	$> GameState.talked_to_a = true
+	A: 谢谢，你可以去找 B 了。
+- 拒绝帮忙
+	$> GameState.help_choice = "refused"
+	$> GameState.talked_to_a = true
+	A: 好的，我知道了。
+=> END
