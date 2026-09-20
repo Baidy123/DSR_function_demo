@@ -30,6 +30,11 @@ func _input(event: InputEvent) -> void:
 		and event.button_index == MOUSE_BUTTON_LEFT
 		and event.pressed
 	)
+	if left_click:
+		# 独立 HUD 的按钮先交给 GUI（例如无敌开关），不能同时推进对话。
+		var hovered: Control = get_viewport().gui_get_hovered_control()
+		if hovered is BaseButton and not dialogue_panel.is_ancestor_of(hovered):
+			return
 	if not interact_pressed and not left_click:
 		return
 

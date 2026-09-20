@@ -62,6 +62,8 @@ func cancel_aim() -> void:
 
 
 func can_combat() -> bool:
+	if player.is_dead():
+		return false
 	# 查询实际重叠区域；支持多个区域重叠，不需要全局开关。
 	for area in get_tree().get_nodes_in_group("combat_zone"):
 		if area is Area3D and area.monitoring and area.overlaps_body(player):

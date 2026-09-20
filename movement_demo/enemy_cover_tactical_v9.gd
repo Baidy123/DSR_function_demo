@@ -130,7 +130,7 @@ func notice_shot(origin: Vector3, endpoint: Vector3) -> void:
 	# 所以它仍会按主 AI 的 REPOSITION / TRACK 等逻辑反应，而不是完全无视枪击。
 	if not is_active() and randf() > take_cover_chance:
 		if debug_cover_selection:
-			print("[Cover] 本次未触发寻找掩体，chance=", take_cover_chance)
+			print("[AI][掩体] 本次未触发寻找掩体，chance=", take_cover_chance)
 		return
 
 	# 已经选中的 Hide 只要仍然能真正挡住威胁、质量合格，就可以继续复用。
@@ -171,7 +171,7 @@ func step(delta: float, sees_player: bool) -> Vector3:
 		# 不再等 hide_seconds，也不再进入 PEEK_OUT。
 		if sees_player:
 			if debug_cover_selection:
-				print("[Cover] HIDE 中重新发现玩家 -> 直接交战，跳过 PEEK")
+				print("[AI][掩体] HIDE 中重新发现玩家 -> 直接交战，跳过 PEEK")
 			_finish(true)
 			return Vector3.ZERO
 
@@ -187,7 +187,7 @@ func step(delta: float, sees_player: bool) -> Vector3:
 	# 已经开始探头时如果真实发现玩家，也直接交战，不必把探头路径走完。
 	if phase == Phase.PEEK_OUT and sees_player:
 		if debug_cover_selection:
-			print("[Cover] PEEK_OUT 中重新发现玩家 -> 直接交战")
+			print("[AI][掩体] PEEK_OUT 中重新发现玩家 -> 直接交战")
 		_finish(true)
 		return Vector3.ZERO
 
@@ -205,7 +205,7 @@ func step(delta: float, sees_player: bool) -> Vector3:
 				enemy.agent.target_position = hide_position
 				_reset_cover_progress_monitor()
 				if debug_cover_selection:
-					print("[Cover] 临时绕行完成 -> 继续跑向原 Hide")
+					print("[AI][掩体] 临时绕行完成 -> 继续跑向原 Hide")
 				return Vector3.ZERO
 			elif enemy.agent.is_navigation_finished():
 				# Agent 提前结束但并没有真正走到临时点：这个绕行点也不可靠，换一个。
@@ -254,7 +254,7 @@ func step(delta: float, sees_player: bool) -> Vector3:
 				if _try_cover_detour():
 					return Vector3.ZERO
 				if debug_cover_selection:
-					print("[Cover] 导航提前结束且无法绕行 -> 退出本次掩体转移")
+					print("[AI][掩体] 导航提前结束且无法绕行 -> 退出本次掩体转移")
 			_finish(sees_player)
 			return Vector3.ZERO
 
@@ -277,7 +277,7 @@ func step(delta: float, sees_player: bool) -> Vector3:
 
 				if debug_cover_selection:
 					print(
-						"[Cover] RUN_TO_COVER 无法朝路径点推进，且找不到可用绕行点 retries=",
+						"[AI][掩体] RUN_TO_COVER 无法朝路径点推进，且找不到可用绕行点 retries=",
 						cover_detour_retries,
 						"/",
 						cover_max_detour_retries
@@ -346,7 +346,7 @@ func on_damage_received() -> void:
 		enemy.ranged_repath_timer = 0.0
 		enemy.agent.target_position = enemy.last_known_position
 		if debug_cover_selection:
-			print("[Cover] 躲藏中受伤 -> 退出躲藏，回到接敌流程")
+			print("[AI][掩体] 躲藏中受伤 -> 退出躲藏，回到接敌流程")
 		return
 	on_damage_during_transfer()
 
@@ -364,9 +364,9 @@ func on_damage_during_transfer() -> void:
 	if covering_retreat and force_sprint:
 		covering_retreat = false
 		if debug_cover_selection:
-			print("[Cover] 掩护转移中受伤 -> 改为全速冲刺，chance=", damage_force_sprint_chance)
+			print("[AI][掩体] 掩护转移中受伤 -> 改为全速冲刺，chance=", damage_force_sprint_chance)
 	elif debug_cover_selection and covering_retreat:
-		print("[Cover] 掩护转移中受伤 -> 继续掩护撤退，chance=", damage_force_sprint_chance)
+		print("[AI][掩体] 掩护转移中受伤 -> 继续掩护撤退，chance=", damage_force_sprint_chance)
 
 	# 受伤导致导航目标被改写后重新计算剩余路程和超时；如果已经切冲刺，也按新速度刷新。
 	var remaining_time: float = timer
@@ -523,7 +523,7 @@ func _try_cover_detour() -> bool:
 		cover_detour_side *= -1.0
 		if debug_cover_selection:
 			print(
-				"[Cover] 找不到临时绕行点 retry=",
+				"[AI][掩体] 找不到临时绕行点 retry=",
 				cover_detour_retries,
 				"/",
 				cover_max_detour_retries
@@ -542,7 +542,7 @@ func _try_cover_detour() -> bool:
 
 	if debug_cover_selection:
 		print(
-			"[Cover] RUN_TO_COVER 卡住 -> 临时绕行 ",
+			"[AI][掩体] RUN_TO_COVER 卡住 -> 临时绕行 ",
 			cover_detour_position,
 			" retry=",
 			cover_detour_retries,
@@ -632,11 +632,11 @@ func _choose_cover() -> bool:
 
 	if is_inf(best_score):
 		if debug_cover_selection:
-			print("[Cover] 四面区域无有效躲藏/探头组合，候选=", candidate_count)
+			print("[AI][掩体] 四面区域无有效躲藏/探头组合，候选=", candidate_count)
 		return false
 	active_cover_body = best_cover
 	if debug_cover_selection:
-		print("[Cover] 区域选位 Cover=", best_cover.name, " Hide=", hide_position,
+		print("[AI][掩体] 区域选位 Cover=", best_cover.name, " Hide=", hide_position,
 			" Peek=", peek_position, " 合格候选=", viable_count)
 	return true
 

@@ -17,9 +17,6 @@ extends CharacterBody3D
 ## 从走路速度减速到停止需要的时间。
 @export_range(0.01, 2.0, 0.01) var deceleration_time: float = 0.2
 
-#DEBUG
-var last_printed_stamina: int = 100
-
 const MAX_STAMINA: float = 100.0
 var stamina: float = MAX_STAMINA
 var stamina_exhausted: bool = false
@@ -32,8 +29,11 @@ var is_in_dialogue: bool = false
 
 @onready var visual: Node3D = $"."
 @onready var combat = get_node_or_null("Combat")
+@onready var health = get_node_or_null("Health")
 
 func _physics_process(delta: float) -> void:
+	if is_dead():
+		return
 	if combat != null:
 		combat.begin_frame(delta, Input.is_action_pressed("aim"))
 	var input_direction: Vector2 = Input.get_vector(
@@ -144,11 +144,6 @@ func _update_stamina(delta: float) -> void:
 		if is_equal_approx(stamina, MAX_STAMINA):
 			stamina = MAX_STAMINA
 			stamina_exhausted = false
-#	DEBUG
-	var current_stamina: int = int(stamina)
-	if current_stamina != last_printed_stamina:
-		print("当前耐力：", current_stamina)
-		last_printed_stamina = current_stamina
 		
 func set_dialogue_active(active: bool) -> void:
 	is_in_dialogue = active
@@ -166,3 +161,13 @@ func face_npc(npc_position: Vector3) -> void:
 	npc_direction.y = 0.0
 	if not npc_direction.is_zero_approx():
 		is_facing_npc = true
+
+
+## 统一受伤入口，后续敌人命中玩家时调用；当前不使用攻击者位置。
+func receive_hit(damage: float = 25.0, _attacker_position: Vector3 = Vector3.ZERO) -> void:
+	if health != null:
+		health.receive_hit(damage)
+
+
+func is_dead() -> bool:
+	return health != null and health.is_dead

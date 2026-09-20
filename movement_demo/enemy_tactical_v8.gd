@@ -741,34 +741,34 @@ func _custom_search_hint_decay_multiplier(
 ## 成功后只保存 suspected_position；后续 TRACK 不会持续跟踪隐藏玩家。
 func _try_tracking_cheat_hint(chance: float) -> bool:
 	if debug_tracking_cheat:
-		print("[TrackingCheat] 尝试提示 chance=", snappedf(chance, 0.001))
+		print("[AI][追踪提示] 尝试提示 chance=", snappedf(chance, 0.001))
 
 	if not tracking_cheat_enabled:
 		if debug_tracking_cheat:
-			print("[TrackingCheat] 失败：tracking_cheat_enabled=false")
+			print("[AI][追踪提示] 失败：tracking_cheat_enabled=false")
 		return false
 	if chance <= 0.0:
 		if debug_tracking_cheat:
-			print("[TrackingCheat] 失败：当前实际概率<=0")
+			print("[AI][追踪提示] 失败：当前实际概率<=0")
 		return false
 	if randf() > chance:
 		if debug_tracking_cheat:
-			print("[TrackingCheat] 失败：概率未命中")
+			print("[AI][追踪提示] 失败：概率未命中")
 		return false
 	if not is_alerted or not is_instance_valid(player):
 		if debug_tracking_cheat:
-			print("[TrackingCheat] 失败：AI未激活或player无效")
+			print("[AI][追踪提示] 失败：AI未激活或player无效")
 		return false
 	if not arena_zone.overlaps_body(player):
 		if debug_tracking_cheat:
-			print("[TrackingCheat] 失败：player不在CombatZone")
+			print("[AI][追踪提示] 失败：player不在CombatZone")
 		return false
 
 	var player_distance: float = _horizontal_distance_between(global_position, player.global_position)
 	if player_distance > tracking_cheat_max_distance:
 		if debug_tracking_cheat:
 			print(
-				"[TrackingCheat] 失败：距离超限 distance=",
+				"[AI][追踪提示] 失败：距离超限 distance=",
 				snappedf(player_distance, 0.01),
 				" max=",
 				tracking_cheat_max_distance
@@ -795,7 +795,7 @@ func _try_tracking_cheat_hint(chance: float) -> bool:
 				search_direction = hint_direction.normalized()
 			if debug_tracking_cheat:
 				print(
-					"[TrackingCheat] 成功：误差采样 ",
+					"[AI][追踪提示] 成功：误差采样 ",
 					attempt_index + 1,
 					"/",
 					attempts,
@@ -814,7 +814,7 @@ func _try_tracking_cheat_hint(chance: float) -> bool:
 			search_direction = fallback_direction.normalized()
 		if debug_tracking_cheat:
 			print(
-				"[TrackingCheat] 成功：使用真实位置的宽松Nav回退 suspected=",
+				"[AI][追踪提示] 成功：使用真实位置的宽松Nav回退 suspected=",
 				suspected_position,
 				" look=",
 				suspected_look_position
@@ -822,7 +822,7 @@ func _try_tracking_cheat_hint(chance: float) -> bool:
 		return true
 
 	if debug_tracking_cheat:
-		print("[TrackingCheat] 失败：概率已命中，但玩家附近与通往该区域的导航路径都不可用")
+		print("[AI][追踪提示] 失败：概率已命中，但玩家附近与通往该区域的导航路径都不可用")
 	return false
 
 
@@ -1054,7 +1054,7 @@ func _begin_search(center: Vector3 = Vector3.INF) -> void:
 
 	if debug_systematic_search:
 		print(
-			"[SearchSweep] 开始区域覆盖搜索 center=",
+			"[AI][搜索] 开始区域覆盖搜索 center=",
 			search_origin,
 			" forward=",
 			search_direction,
@@ -1071,7 +1071,7 @@ func _process_search(delta: float) -> Vector3:
 		search_timer = maxf(0.0, search_timer - delta)
 		if search_timer <= 0.0:
 			if debug_systematic_search:
-				print("[SearchSweep] 达到搜索保险超时")
+				print("[AI][搜索] 达到搜索保险超时")
 			_end_search()
 			return Vector3.ZERO
 
@@ -1093,7 +1093,7 @@ func _process_search(delta: float) -> Vector3:
 
 			if not _advance_systematic_search_target():
 				if debug_systematic_search:
-					print("[Search] 本轮搜索结束，覆盖比例=", get_search_coverage())
+					print("[AI][搜索] 本轮搜索结束，覆盖比例=", get_search_coverage())
 				_end_search()
 				return Vector3.ZERO
 
@@ -1116,7 +1116,7 @@ func _process_search(delta: float) -> Vector3:
 	if agent.is_navigation_finished():
 		if debug_systematic_search:
 			print(
-				"[SearchSweep] 路径提前结束，跳过 point ",
+				"[AI][搜索] 路径提前结束，跳过 point ",
 				search_sweep_index,
 				" target=",
 				search_current_target
@@ -1246,13 +1246,13 @@ func _advance_systematic_search_target() -> bool:
 		search_target_timer = path_length / maxf(0.1, move_speed * search_move_speed_multiplier) + 3.0
 		agent.target_position = destination
 		if debug_systematic_search:
-			print("[Search] 随机目标=", destination, " 已覆盖=", snappedf(get_search_coverage() * 100.0, 0.1), "%")
+			print("[AI][搜索] 随机目标=", destination, " 已覆盖=", snappedf(get_search_coverage() * 100.0, 0.1), "%")
 		return true
 	# 动态障碍使所有剩余目标失败时退出，不把失败点当作已覆盖。
 	search_current_target_active = false
 	agent.target_position = global_position
 	if debug_systematic_search:
-		print("[Search] 无剩余可用目标，实际覆盖=", get_search_coverage())
+		print("[AI][搜索] 无剩余可用目标，实际覆盖=", get_search_coverage())
 	return false
 
 func _finish_current_search_point() -> void:
