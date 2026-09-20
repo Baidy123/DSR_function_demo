@@ -92,7 +92,7 @@ func _run() -> void:
 	_check("重开隐藏死亡界面", not health.get_node("DeathScreen").visible)
 	_check("重开保留对话选择", game_state.talked_to_a and game_state.help_choice == "accepted")
 	enemy = scene.get_node("Arena/Enemy")
-	_check("重开恢复敌人且场外不激活", not enemy.is_dead and enemy.health == enemy.max_health and not enemy.is_arena_active())
+	_check("重开恢复敌人且场外不激活", not enemy.is_dead and enemy.health == enemy.max_health and not enemy.get_node("AI").is_arena_active())
 	target_a = scene.get_node("CombatTest/TargetA")
 	target_b = scene.get_node("CombatTest/TargetB")
 	_check("重开恢复靶子计数与生命", target_a.hit_count == 0 and target_b.health == target_b.max_health and not target_b.is_dead)

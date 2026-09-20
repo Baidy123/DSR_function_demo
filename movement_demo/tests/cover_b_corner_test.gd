@@ -48,7 +48,7 @@ func run(scene: Node, path_distance: float = -1.0, focused: bool = false, damage
 	var player = scene.get_node("Player")
 	var cover = enemy.get_node("Cover")
 	var wall = arena.get_node("NavigationRegion3D/Environment/CoverB")
-	enemy.set_physics_process(false)
+	enemy.get_node("AI").set_physics_process(false)
 	player.set_physics_process(false)
 	player.global_position = arena.to_global(Vector3(3, 0, -3))
 	cover.debug_cover_selection = false
@@ -62,7 +62,7 @@ func run(scene: Node, path_distance: float = -1.0, focused: bool = false, damage
 	var peek := Vector3.INF
 	for candidate in wall.get_candidates(cover.threat_origin, enemy.global_position):
 		var point: Vector3 = candidate.hide
-		if arena.to_local(point).x < 8.25 or not enemy._ranged_point_is_free(point):
+		if arena.to_local(point).x < 8.25 or not enemy.get_node("AI")._ranged_point_is_free(point):
 			continue
 		var next_peek: Vector3 = cover._choose_peek(point, candidate.peeks)
 		if next_peek.is_finite() and point.z < target.z:
@@ -102,7 +102,7 @@ func run(scene: Node, path_distance: float = -1.0, focused: bool = false, damage
 					enemy.receive_hit(1.0, attacker)
 					cover.notice_shot(attacker + Vector3.UP * 0.8, enemy.global_position + Vector3.UP * 0.8)
 				var direction: Vector3 = cover.step(1.0 / 60.0, false)
-				enemy._move_character(direction, 1.0 / 60.0, cover.movement_multiplier())
+				enemy.move_character(direction, 1.0 / 60.0, cover.movement_multiplier())
 				if frame % 60 == 0:
 					trace.append({"position": arena.to_local(enemy.global_position), "next": arena.to_local(enemy.agent.get_next_path_position()), "retries": cover.cover_detour_retries, "stuck": cover.cover_stuck_timer, "detour": cover.cover_detour_active, "hide": arena.to_local(cover.hide_position), "timer": cover.timer})
 				if cover.phase == cover.Phase.HIDE:

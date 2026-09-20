@@ -3,11 +3,12 @@ extends RefCounted
 func run_cycle(scene: Node) -> Dictionary:
 	var arena = scene.get_node("Arena")
 	var enemy = arena.get_node("Enemy")
+	var ai = enemy.get_node("AI")
 	var player = scene.get_node("Player")
 	var cover = enemy.get_node("Cover")
 	var checks := {}
 	var tree = scene.get_tree()
-	enemy.set_physics_process(false)
+	ai.set_physics_process(false)
 	player.set_physics_process(false)
 	enemy.global_position = arena.to_global(Vector3(-4.75126, 0, 3.100522))
 	player.global_position = arena.to_global(Vector3(7, 0, 2))
@@ -28,7 +29,7 @@ func run_cycle(scene: Node) -> Dictionary:
 	for frame in range(1500):
 		await tree.physics_frame
 		var direction: Vector3 = cover.step(1.0 / 60.0, false)
-		enemy._move_character(direction, 1.0 / 60.0, cover.movement_multiplier())
+		enemy.move_character(direction, 1.0 / 60.0, cover.movement_multiplier())
 		hidden = hidden or (cover.phase == cover.Phase.HIDE and cover._selected_cover_blocks(enemy.global_position, cover.threat_origin))
 		peeking = peeking or cover.phase == cover.Phase.PEEK_OUT
 		if cover.phase == cover.Phase.WATCH:
@@ -46,6 +47,7 @@ func run_cycle(scene: Node) -> Dictionary:
 # 通过实际物理移动检查两侧的 Hide -> Peek，不仅核对候选点的数学位置。
 func run_walk(scene: Node) -> Dictionary:
 	var enemy = scene.get_node("Arena/Enemy")
+	var ai = enemy.get_node("AI")
 	var arena = scene.get_node("Arena")
 	var cover = enemy.get_node("Cover")
 	var player = scene.get_node("Player")
@@ -53,7 +55,7 @@ func run_walk(scene: Node) -> Dictionary:
 	var collision = wall.get_node("CollisionShape3D")
 	var tree = scene.get_tree()
 	var checks := {}
-	enemy.set_physics_process(false)
+	ai.set_physics_process(false)
 	player.set_physics_process(false)
 	cover.debug_cover_selection = false
 	for side in [-1.0, 1.0]:
@@ -63,7 +65,7 @@ func run_walk(scene: Node) -> Dictionary:
 		cover.look_position = player.global_position
 		var chosen := false
 		for candidate in wall.get_candidates(cover.threat_origin, enemy.global_position):
-			if not enemy._ranged_point_is_free(candidate.hide):
+			if not ai._ranged_point_is_free(candidate.hide):
 				continue
 			if not cover._center_hidden_by_cover(candidate.hide, cover.threat_origin, wall):
 				continue
@@ -89,7 +91,7 @@ func run_walk(scene: Node) -> Dictionary:
 		for frame in range(900):
 			await tree.physics_frame
 			var direction: Vector3 = cover.step(1.0 / 60.0, false)
-			enemy._move_character(direction, 1.0 / 60.0, cover.movement_multiplier())
+			enemy.move_character(direction, 1.0 / 60.0, cover.movement_multiplier())
 			if cover.phase == cover.Phase.WATCH:
 				watched = true
 				break
@@ -97,7 +99,7 @@ func run_walk(scene: Node) -> Dictionary:
 				break
 		checks["walk_reaches_watch" + suffix] = watched
 		checks["actual_standing_view_is_clear" + suffix] = watched and cover._peek_has_los(enemy.global_position)
-		checks["actual_standing_reaches_peek" + suffix] = watched and enemy._horizontal_distance(cover.peek_position) <= 0.12
+		checks["actual_standing_reaches_peek" + suffix] = watched and ai._horizontal_distance(cover.peek_position) <= 0.12
 	cover.reset()
 	scene.set_meta("cover_region_walk_checks", checks)
 	return checks
@@ -105,11 +107,12 @@ func run_walk(scene: Node) -> Dictionary:
 
 func run(scene: Node) -> Dictionary:
 	var enemy = scene.get_node("Arena/Enemy")
+	var ai = enemy.get_node("AI")
 	var arena = scene.get_node("Arena")
 	var cover = enemy.get_node("Cover")
 	var player = scene.get_node("Player")
 	player.set_physics_process(false)
-	enemy.set_physics_process(false)
+	ai.set_physics_process(false)
 	player.global_position = arena.to_global(Vector3(7, 0, 2))
 	for frame in range(5):
 		await scene.get_tree().physics_frame

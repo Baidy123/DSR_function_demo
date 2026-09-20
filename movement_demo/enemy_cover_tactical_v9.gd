@@ -78,6 +78,7 @@ var cover_detour_side: float = 1.0
 var cover_detour_retries: int = 0
 
 @onready var enemy = get_parent()
+@onready var ai = enemy.get_node("AI")
 
 
 func _ready() -> void:
@@ -112,7 +113,7 @@ func notice_shot(origin: Vector3, endpoint: Vector3) -> void:
 	if _hide_damage_frame == Engine.get_physics_frames():
 		return
 	# 场外射击不能在玩家进入竞技场前启动掩体动作。
-	if not enemy.is_arena_active() or enemy.is_dead or enemy.combat_type != enemy.CombatType.RANGED:
+	if not ai.is_arena_active() or enemy.is_dead or ai.combat_type != ai.CombatType.RANGED:
 		return
 	var chest: Vector3 = enemy.global_position + Vector3.UP * 0.8
 	var closest: Vector3 = Geometry3D.get_closest_point_to_segment(chest, origin, endpoint)
@@ -121,8 +122,8 @@ func notice_shot(origin: Vector3, endpoint: Vector3) -> void:
 	# 警戒球可能伸到墙另一侧；墙挡住近处弹道时不能隔墙触发。
 	if not has_clear_line(chest, closest):
 		return
-	enemy._investigate_attack(origin - Vector3.UP * 0.8)
-	look_position = enemy.last_known_position
+	ai._investigate_attack(origin - Vector3.UP * 0.8)
+	look_position = ai.last_known_position
 	threat_origin = origin
 
 	# 只有“新开始一次掩体反应”时才掷骰子。
@@ -158,11 +159,11 @@ func notice_shot(origin: Vector3, endpoint: Vector3) -> void:
 
 
 func step(delta: float, sees_player: bool) -> Vector3:
-	if enemy.combat_type != enemy.CombatType.RANGED:
+	if ai.combat_type != ai.CombatType.RANGED:
 		reset()
 		return Vector3.ZERO
 	if sees_player:
-		look_position = enemy.last_known_position
+		look_position = ai.last_known_position
 
 	timer = maxf(0.0, timer - delta)
 
@@ -198,7 +199,7 @@ func step(delta: float, sees_player: bool) -> Vector3:
 		# 绕行点到达后再继续追最终 Hide。
 		if phase == Phase.RUN_TO_COVER and cover_detour_active:
 			var detour_reached: bool = (
-				enemy._horizontal_distance(cover_detour_position) <= cover_detour_arrival_distance
+				ai._horizontal_distance(cover_detour_position) <= cover_detour_arrival_distance
 			)
 			if detour_reached:
 				cover_detour_active = false
@@ -218,7 +219,7 @@ func step(delta: float, sees_player: bool) -> Vector3:
 				return Vector3.ZERO
 
 		var next_position: Vector3 = enemy.agent.get_next_path_position()
-		var distance_to_destination: float = enemy._horizontal_distance(final_destination)
+		var distance_to_destination: float = ai._horizontal_distance(final_destination)
 
 		# 靠近 Hide 不代表已经躲好：必须由当前实际位置验证掩护。
 		# 未躲好时继续最后一小段，不能重选同一个点并不断刷新计时器。
@@ -336,15 +337,15 @@ func _start_move(next_phase: Phase, destination: Vector3) -> void:
 
 # 只由真正扣血的存活分支调用；receive_hit 已更新攻击者的大体位置。
 func on_damage_received() -> void:
-	if not enemy.is_arena_active():
+	if not ai.is_arena_active():
 		return
 	if phase == Phase.HIDE:
 		reset()
 		_hide_damage_frame = Engine.get_physics_frames()
-		enemy.state = enemy.State.REPOSITION
-		enemy.ranged_has_destination = false
-		enemy.ranged_repath_timer = 0.0
-		enemy.agent.target_position = enemy.last_known_position
+		ai.state = ai.State.REPOSITION
+		ai.ranged_has_destination = false
+		ai.ranged_repath_timer = 0.0
+		enemy.agent.target_position = ai.last_known_position
 		if debug_cover_selection:
 			print("[AI][掩体] 躲藏中受伤 -> 退出躲藏，回到接敌流程")
 		return
@@ -391,13 +392,13 @@ func _cover_navigation_is_stuck(next_position: Vector3, delta: float) -> bool:
 	)
 
 	# NavigationAgent 换了下一个路径点，说明路径有推进；重新观察新 waypoint。
-	if enemy._horizontal_distance_between(cover_progress_waypoint, waypoint) > 0.25:
+	if ai._horizontal_distance_between(cover_progress_waypoint, waypoint) > 0.25:
 		cover_progress_waypoint = waypoint
-		cover_progress_best_distance = enemy._horizontal_distance(waypoint)
+		cover_progress_best_distance = ai._horizontal_distance(waypoint)
 		cover_stuck_timer = 0.0
 		return false
 
-	var distance_to_waypoint: float = enemy._horizontal_distance(waypoint)
+	var distance_to_waypoint: float = ai._horizontal_distance(waypoint)
 
 	if is_inf(cover_progress_best_distance):
 		cover_progress_best_distance = distance_to_waypoint
@@ -423,7 +424,7 @@ func _cover_short_segment_is_clear(destination: Vector3) -> bool:
 		start.y,
 		destination.z
 	)
-	var distance: float = enemy._horizontal_distance_between(start, horizontal_destination)
+	var distance: float = ai._horizontal_distance_between(start, horizontal_destination)
 	if distance <= 0.01:
 		return false
 
@@ -433,7 +434,7 @@ func _cover_short_segment_is_clear(destination: Vector3) -> bool:
 	for sample_index in range(1, sample_count + 1):
 		var t: float = float(sample_index) / float(sample_count)
 		var sample: Vector3 = start.lerp(horizontal_destination, t)
-		if not enemy._ranged_point_is_free(sample):
+		if not ai._ranged_point_is_free(sample):
 			return false
 
 	return true
@@ -482,12 +483,12 @@ func _try_cover_detour() -> bool:
 
 			var raw_target: Vector3 = enemy.global_position + detour_direction * distance_value
 			var nav_point: Vector3 = NavigationServer3D.region_get_closest_point(
-				enemy.navigation_region.get_rid(),
+				ai.navigation_region.get_rid(),
 				raw_target
 			)
 
 			# 如果候选被吸附得太远，说明这个方向并没有真实可走空间。
-			if enemy._horizontal_distance_between(raw_target, nav_point) > 0.75:
+			if ai._horizontal_distance_between(raw_target, nav_point) > 0.75:
 				continue
 
 			var candidate: Vector3 = Vector3(
@@ -496,9 +497,9 @@ func _try_cover_detour() -> bool:
 				nav_point.z
 			)
 
-			if enemy._horizontal_distance(candidate) < 0.45:
+			if ai._horizontal_distance(candidate) < 0.45:
 				continue
-			if not enemy._ranged_point_is_free(candidate):
+			if not ai._ranged_point_is_free(candidate):
 				continue
 
 			# 临时绕行就是为了从当前墙角直接挪出去。
@@ -512,7 +513,7 @@ func _try_cover_detour() -> bool:
 
 			# 优先容易到达、同时不会把自己带得离最终 Hide 太远的临时点。
 			var score: float = _path_length_from_path(path)
-			score += enemy._horizontal_distance_between(candidate, hide_position) * 0.2
+			score += ai._horizontal_distance_between(candidate, hide_position) * 0.2
 
 			if score < best_score:
 				best_score = score
@@ -562,32 +563,32 @@ func _refresh_move_timer(destination: Vector3) -> void:
 func _finish(sees_player: bool) -> void:
 	var remembered: Vector3 = look_position
 	reset()
-	enemy.ranged_has_destination = false
-	enemy.ranged_repath_timer = 0.0
+	ai.ranged_has_destination = false
+	ai.ranged_repath_timer = 0.0
 	enemy.agent.target_position = enemy.global_position
 	if sees_player:
-		enemy.state = enemy.State.REPOSITION
+		ai.state = ai.State.REPOSITION
 	else:
-		enemy.last_known_position = remembered
+		ai.last_known_position = remembered
 		# 探头没重新发现玩家时，不立刻机械搜索；先尝试一次模糊方向追踪。
-		enemy._begin_tracking_or_search(true)
+		ai._begin_tracking_or_search(true)
 
 
 func _choose_cover() -> bool:
 	var best_score: float = INF
 	var best_cover: StaticBody3D = null
-	var current_threat_distance: float = enemy._horizontal_distance_between(enemy.global_position, threat_origin)
+	var current_threat_distance: float = ai._horizontal_distance_between(enemy.global_position, threat_origin)
 	var candidate_count: int = 0
 	var viable_count: int = 0
 
 	# 每个掩体自己提供四面区域；候选只来自本竞技场，且已经筛到威胁的对侧。
 	for region in get_tree().get_nodes_in_group("cover_region"):
-		if not enemy.navigation_region.is_ancestor_of(region):
+		if not ai.navigation_region.is_ancestor_of(region):
 			continue
 		for candidate in region.get_candidates(threat_origin, enemy.global_position):
 			candidate_count += 1
 			var hiding: Vector3 = candidate.hide
-			if not enemy._ranged_point_is_free(hiding):
+			if not ai._ranged_point_is_free(hiding):
 				continue
 			# “位于背面”还不等于真的安全：必须由当前掩体挡住射线。
 			if not _center_hidden_by_cover(hiding, threat_origin, region):
@@ -614,7 +615,7 @@ func _choose_cover() -> bool:
 			var away_alignment: float = 0.0
 			if not move_direction.is_zero_approx() and not away_direction.is_zero_approx():
 				away_alignment = move_direction.normalized().dot(away_direction.normalized())
-			var cover_threat_distance: float = enemy._horizontal_distance_between(hiding, threat_origin)
+			var cover_threat_distance: float = ai._horizontal_distance_between(hiding, threat_origin)
 			var min_path_distance: float = _minimum_path_distance_to_threat(path, threat_origin)
 
 			var score: float = length
@@ -650,7 +651,7 @@ func _choose_peek(hiding: Vector3, points: Array) -> Vector3:
 	var best := Vector3.INF
 	var best_length := INF
 	for point: Vector3 in points:
-		if not enemy._ranged_point_is_free(point) or not _peek_has_los(point):
+		if not ai._ranged_point_is_free(point) or not _peek_has_los(point):
 			continue
 		var path := _path_to(hiding, point)
 		if path.is_empty():
@@ -662,10 +663,10 @@ func _choose_peek(hiding: Vector3, points: Array) -> Vector3:
 	return best
 
 func _path_to(from: Vector3, to: Vector3) -> PackedVector3Array:
-	var nav_point: Vector3 = NavigationServer3D.region_get_closest_point(enemy.navigation_region.get_rid(), to)
+	var nav_point: Vector3 = NavigationServer3D.region_get_closest_point(ai.navigation_region.get_rid(), to)
 	# 导航只允许厘米级水平误差；不能把墙外/地图外的点吸附到边缘后当作可达。
 	# 当前烘焙导航比地面高约 0.3 米，因此高度单独留出容差。
-	if enemy._horizontal_distance_between(nav_point, to) > 0.05 or absf(nav_point.y - to.y) > 0.5:
+	if ai._horizontal_distance_between(nav_point, to) > 0.05 or absf(nav_point.y - to.y) > 0.5:
 		return PackedVector3Array()
 	var path: PackedVector3Array = NavigationServer3D.map_get_path(
 		enemy.agent.get_navigation_map(), from, nav_point, true, enemy.agent.navigation_layers)
@@ -798,7 +799,7 @@ func has_clear_line(from: Vector3, to: Vector3) -> bool:
 
 func _ray_query(from: Vector3, to: Vector3) -> PhysicsRayQueryParameters3D:
 	var query: PhysicsRayQueryParameters3D = PhysicsRayQueryParameters3D.create(from, to, 1, [enemy.get_rid()])
-	if is_instance_valid(enemy.player) and enemy.player is CollisionObject3D:
-		query.exclude = [enemy.get_rid(), enemy.player.get_rid()]
+	if is_instance_valid(ai.player) and ai.player is CollisionObject3D:
+		query.exclude = [enemy.get_rid(), ai.player.get_rid()]
 	query.hit_from_inside = true
 	return query

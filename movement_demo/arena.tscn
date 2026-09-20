@@ -1,7 +1,8 @@
 [gd_scene format=3 uid="uid://blgostylso8me"]
 
 [ext_resource type="NavigationMesh" uid="uid://doqxf2mdcxwui" path="res://arena_navigation.tres" id="2"]
-[ext_resource type="Script" uid="uid://cdtb026xgaew2" path="res://enemy_tactical_v8.gd" id="3_fu4bq"]
+[ext_resource type="Script" path="res://enemy_actor.gd" id="3_fu4bq"]
+[ext_resource type="Script" path="res://enemy_ai.gd" id="6_ai"]
 [ext_resource type="Script" uid="uid://dcc2vkow4q8cl" path="res://shooting_range.gd" id="3_reset"]
 [ext_resource type="Script" uid="uid://cmrfdeloqwi6t" path="res://enemy_cover_tactical_v9.gd" id="4_sbb53"]
 [ext_resource type="Script" uid="uid://b6f1cehvgci4k" path="res://cover_region.gd" id="5_region"]
@@ -284,6 +285,10 @@ shape = SubResource("CombatZoneShape")
 [node name="Enemy" type="CharacterBody3D" parent="." unique_id=171186539 groups=["combat_target"]]
 transform = Transform3D(-4.371139e-08, 0, 1, 0, 1, 0, -1, 0, -4.371139e-08, 4, 0, -2)
 script = ExtResource("3_fu4bq")
+max_health = 10000.0
+
+[node name="AI" type="Node" parent="Enemy"]
+script = ExtResource("6_ai")
 combat_type = 1
 ranged_flank_weight = 5.0
 ranged_wall_support_weight = 4.0
@@ -296,7 +301,6 @@ debug_tracking_cheat = true
 track_seconds = 10.0
 search_pause_seconds = 0.6
 search_stuck_repath_seconds = 0.8
-max_health = 10000.0
 
 [node name="Body" type="MeshInstance3D" parent="Enemy" unique_id=1631920254]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.8, 0)

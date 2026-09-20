@@ -3,10 +3,11 @@ extends RefCounted
 # 在真实竞技场找一个可用短边端面，实走到射界通畅的 Peek。
 func run_short_walk(scene: Node) -> Dictionary:
 	var enemy = scene.get_node("Arena/Enemy")
+	var ai = enemy.get_node("AI")
 	var player = scene.get_node("Player")
 	var cover = enemy.get_node("Cover")
 	var arena = scene.get_node("Arena")
-	enemy.set_physics_process(false)
+	ai.set_physics_process(false)
 	player.set_physics_process(false)
 	player.global_position = arena.to_global(Vector3(7, 0, 2))
 	for frame in range(5):
@@ -25,7 +26,7 @@ func run_short_walk(scene: Node) -> Dictionary:
 			cover.look_position = collision.to_global(axis * side * (maxf(size.x, size.z) * 0.5 + 2.5)) - Vector3.UP * size.y * 0.5
 			cover.threat_origin = cover.look_position + Vector3.UP * 0.8
 			for candidate in region.get_candidates(cover.threat_origin, enemy.global_position):
-				if not enemy._ranged_point_is_free(candidate.hide) or cover._path_to(candidate.hide, candidate.hide).is_empty():
+				if not ai._ranged_point_is_free(candidate.hide) or cover._path_to(candidate.hide, candidate.hide).is_empty():
 					continue
 				if not cover._center_hidden_by_cover(candidate.hide, cover.threat_origin, region):
 					continue
@@ -49,7 +50,7 @@ func run_short_walk(scene: Node) -> Dictionary:
 		for frame in range(1200):
 			await scene.get_tree().physics_frame
 			var direction: Vector3 = cover.step(1.0 / 60.0, false)
-			enemy._move_character(direction, 1.0 / 60.0, cover.movement_multiplier())
+			enemy.move_character(direction, 1.0 / 60.0, cover.movement_multiplier())
 			if cover.phase == cover.Phase.WATCH:
 				watched = true
 				break
@@ -57,7 +58,7 @@ func run_short_walk(scene: Node) -> Dictionary:
 				break
 		checks["short_face_reaches_watch"] = watched
 		checks["short_face_actual_view_clear"] = watched and cover._peek_has_los(enemy.global_position)
-		checks["short_face_actual_peek_reached"] = watched and enemy._horizontal_distance(cover.peek_position) <= 0.12
+		checks["short_face_actual_peek_reached"] = watched and ai._horizontal_distance(cover.peek_position) <= 0.12
 	scene.set_meta("short_face_walk_checks", checks)
 	return checks
 
@@ -65,9 +66,10 @@ func run_short_walk(scene: Node) -> Dictionary:
 func run(scene: Node) -> Dictionary:
 	var arena = scene.get_node("Arena")
 	var enemy = arena.get_node("Enemy")
+	var ai = enemy.get_node("AI")
 	var player = scene.get_node("Player")
 	var cover = enemy.get_node("Cover")
-	enemy.set_physics_process(false)
+	ai.set_physics_process(false)
 	player.set_physics_process(false)
 	player.global_position = arena.to_global(Vector3(7, 0, 2))
 	for frame in range(5):
@@ -119,7 +121,7 @@ func run(scene: Node) -> Dictionary:
 	blocker.global_position = inside + Vector3.UP
 	for frame in range(3):
 		await scene.get_tree().physics_frame
-	checks["wall_blocks_standing"] = not enemy._ranged_point_is_free(inside)
+	checks["wall_blocks_standing"] = not ai._ranged_point_is_free(inside)
 	checks["wall_blocks_peek"] = not cover._choose_peek(inside + Vector3.LEFT * 2, [inside]).is_finite()
 	blocker.queue_free()
 	return checks

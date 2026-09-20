@@ -3,12 +3,13 @@ extends RefCounted
 func run(scene: Node) -> Dictionary:
 	var arena = scene.get_node("Arena")
 	var enemy = arena.get_node("Enemy")
+	var ai = enemy.get_node("AI")
 	var player = scene.get_node("Player")
 	var cover = enemy.get_node("Cover")
 	var wall = arena.get_node("NavigationRegion3D/Environment/CoverA")
 	var collision = wall.get_node("CollisionShape3D")
 	player.set_physics_process(false)
-	enemy.set_physics_process(false)
+	ai.set_physics_process(false)
 	player.global_position = collision.to_global(Vector3(-4, -1.1, 0))
 	enemy.global_position = collision.to_global(Vector3(-1.4, -1.1, 0))
 	enemy.look_at(enemy.global_position + Vector3.RIGHT)
@@ -17,7 +18,7 @@ func run(scene: Node) -> Dictionary:
 	var checks := {}
 	cover.debug_cover_selection = false
 	cover.take_cover_chance = 1.0
-	enemy.attack_position_uncertainty = 0.0
+	ai.attack_position_uncertainty = 0.0
 	cover.look_position = player.global_position
 	cover.threat_origin = cover.look_position + Vector3.UP * 0.8
 	checks["same_shot_has_available_cover"] = cover._choose_cover()
@@ -29,26 +30,26 @@ func run(scene: Node) -> Dictionary:
 	cover.active_cover_body = wall
 	cover.timer = 2.0
 	var health_before: float = enemy.health
-	checks["hidden_from_vision_before_hit"] = not enemy.can_see_player()
+	checks["hidden_from_vision_before_hit"] = not ai.can_see_player()
 	enemy.receive_hit(1.0, player.global_position)
 	checks["actual_damage_applied"] = is_equal_approx(enemy.health, health_before - 1.0)
 	checks["hit_exits_hide_immediately"] = not cover.is_active()
-	checks["hit_returns_to_engagement"] = enemy.state == enemy.State.REPOSITION
-	checks["hit_keeps_attack_memory"] = enemy.last_known_position.distance_to(player.global_position) <= enemy.attack_position_uncertainty + 0.01
-	checks["hit_does_not_fake_visual_memory"] = not enemy.has_visual_memory
+	checks["hit_returns_to_engagement"] = ai.state == ai.State.REPOSITION
+	checks["hit_keeps_attack_memory"] = ai.last_known_position.distance_to(player.global_position) <= ai.attack_position_uncertainty + 0.01
+	checks["hit_does_not_fake_visual_memory"] = not ai.has_visual_memory
 	# 实际枪械先调用 receive_hit，再向所有 shot_listener 通知同一枪。
 	var chest: Vector3 = enemy.global_position + Vector3.UP * 0.8
 	cover.notice_shot(player.global_position + Vector3.UP * 0.8, chest)
 	checks["same_shot_does_not_restart_cover"] = not cover.is_active()
-	enemy._physics_process(1.0 / 60.0)
+	ai._physics_process(1.0 / 60.0)
 	checks["next_tick_uses_main_ai"] = not cover.is_active()
 	# 后续正常来弹仍有效，不能永久屏蔽掩体反应。
 	for frame in range(2):
 		await scene.get_tree().physics_frame
 	cover.take_cover_chance = 0.0
-	enemy.is_alerted = false
+	ai.is_alerted = false
 	cover.notice_shot(player.global_position + Vector3.UP * 0.8, enemy.global_position + Vector3.UP * 0.8)
-	checks["later_shot_still_alerts"] = enemy.is_alerted
+	checks["later_shot_still_alerts"] = ai.is_alerted
 	# 无伤害不会强行打断躲藏。
 	cover.phase = cover.Phase.HIDE
 	enemy.receive_hit(0.0, player.global_position)
