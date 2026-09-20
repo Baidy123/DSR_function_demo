@@ -1,5 +1,7 @@
 # 敌人开火：有限跟枪速度与三维散布
 
+> 2026-09-20 最新：敌人已接入 WeaponData，伤害、射程、射速与动态散布在 Enemy/Weapon 调整；执行接口为 try_fire()，移动散布按实际距离累计。见 [ENEMY_WEAPON.md](ENEMY_WEAPON.md)。下文固定站立／移动散布参数为历史实施记录。
+
 > 最新节点归属：射击决策、反应和每轮停顿已迁到 Enemy/AI/Tactics；Enemy 继续执行跟枪、冷却、散布和伤害。撤退射击还需 Tactics 的 Can Covering Retreat 能力开关。参见 [ENEMY_MODULES.md](ENEMY_MODULES.md)，下方为分阶段实施记录。
 
 初版已完成停稳验证后开放移动射击，并采用有限跟枪速度加散布锥。用户后续确认新增发现后的反应时间和每轮射击停顿，最新规则见文末。

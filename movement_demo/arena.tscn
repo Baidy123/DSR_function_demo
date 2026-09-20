@@ -11,6 +11,7 @@
 [ext_resource type="Script" path="res://enemy_perception.gd" id="9_perception"]
 [ext_resource type="Script" path="res://enemy_cover_selection.gd" id="10_selection"]
 [ext_resource type="Script" path="res://enemy_cover_action.gd" id="11_action"]
+[ext_resource type="Resource" path="res://enemy_test_pistol.tres" id="12_weapon"]
 
 [sub_resource type="StandardMaterial3D" id="FloorMaterial"]
 albedo_color = Color(0.26, 0.24, 0.3, 1)
@@ -291,8 +292,7 @@ shape = SubResource("CombatZoneShape")
 transform = Transform3D(-4.371139e-08, 0, 1, 0, 1, 0, -1, 0, -4.371139e-08, 4, 0, -2)
 script = ExtResource("3_fu4bq")
 max_health = 10000.0
-shot_range = 30.1
-moving_spread_degrees = 23.9
+weapon = ExtResource("12_weapon")
 
 [node name="AI" type="Node" parent="Enemy" unique_id=1624589162]
 script = ExtResource("6_ai")

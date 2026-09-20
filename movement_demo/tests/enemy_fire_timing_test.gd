@@ -24,8 +24,9 @@ func _run() -> void:
 	cover.selection.debug_cover_selection = false
 	p.global_position = e.global_position + Vector3(0, 0, 4.8)
 	e.look_at(p.global_position)
-	e.standing_spread_degrees = 0.0
-	e.moving_spread_degrees = 0.0
+	e.equip_weapon(e.weapon.duplicate())
+	e.weapon.min_spread_angle_degrees = 0.0
+	e.weapon.max_spread_angle_degrees = 0.0
 	for frame in range(5):
 		await physics_frame
 	ai.state = ai.State.HOLD_POSITION
@@ -89,7 +90,7 @@ func _run() -> void:
 	ai.tactics.fire_reaction_seconds = 0.0
 	ai.tactics.burst_shot_count = 1
 	ai.tactics.burst_pause_seconds = 0.2
-	e.shot_interval = 2.0
+	e.weapon.shot_interval = 2.0
 	ai.tactics.update_shooting(0.0, true, false)
 	ai.tactics.update_shooting(0.3, true, false)
 	_check("停顿结束不会缩短慢枪冷却", e.shot_count == 1)
@@ -100,7 +101,7 @@ func _run() -> void:
 	e.look_at(p.global_position)
 	ai.state = ai.State.HOLD_POSITION
 	ai.tactics.burst_pause_seconds = 0.0
-	e.shot_interval = 0.8
+	e.weapon.shot_interval = 0.8
 	ai.tactics.update_shooting(0.0, true, false)
 	_check("零反应可恢复立即开枪", e.shot_count == 1)
 	ai.tactics.update_shooting(0.81, true, false)

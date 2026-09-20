@@ -25,8 +25,9 @@ func _run() -> void:
 	player.get_node("Health").debug_invincible = true
 	player.global_position = actor.global_position + Vector3(0, 0, 4.8)
 	actor.look_at(player.global_position)
-	actor.standing_spread_degrees = 0.0
-	actor.moving_spread_degrees = 0.0
+	actor.equip_weapon(actor.weapon.duplicate())
+	actor.weapon.min_spread_angle_degrees = 0.0
+	actor.weapon.max_spread_angle_degrees = 0.0
 	tactics.fire_reaction_seconds = 0.0
 	tactics.burst_pause_seconds = 0.0
 	action.covering_retreat_chance = 1.0

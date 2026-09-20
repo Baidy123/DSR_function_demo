@@ -34,8 +34,9 @@ func _run() -> void:
 		await physics_frame
 	var target: Vector3 = player.global_position + Vector3.UP * 0.8
 	_check("射击场景有真实视线", ai.perception.can_see_player())
-	enemy.standing_spread_degrees = 0.0
-	enemy.moving_spread_degrees = 0.0
+	enemy.equip_weapon(enemy.weapon.duplicate())
+	enemy.weapon.min_spread_angle_degrees = 0.0
+	enemy.weapon.max_spread_angle_degrees = 0.0
 	enemy.aim_turn_speed_degrees = 90.0
 	# 瞄准从身体朝向开始；90度偏转不能一步瞬间完成。
 	enemy.rotation.y += PI / 2.0
@@ -50,13 +51,13 @@ func _run() -> void:
 	health.debug_invincible = false
 	var hp: float = health.health
 	_check("射击执行返回成功", enemy.try_fire())
-	_check("真实射线命中玩家扣血", enemy.last_shot_collider == player and health.health == hp - enemy.shot_damage)
+	_check("真实射线命中玩家扣血", enemy.last_shot_collider == player and health.health == hp - enemy.weapon.damage)
 	var count: int = enemy.shot_count
 	_check("冷却阻止重复开火", not enemy.try_fire() and enemy.shot_count == count)
 	enemy.update_weapon(0.0)
 	enemy.update_weapon(0.0, target)
 	_check("丢失重瞄不能绕过射击冷却", not enemy.try_fire() and enemy.shot_count == count)
-	enemy.update_weapon(enemy.shot_interval, target)
+	enemy.update_weapon(enemy.weapon.shot_interval, target)
 	health.debug_invincible = true
 	hp = health.health
 	enemy.try_fire()
@@ -75,8 +76,8 @@ func _run() -> void:
 	enemy.try_fire()
 	_check("零散布弹道沿实际滞后瞄准方向", enemy.last_shot_direction.is_equal_approx(enemy.aim_direction) and enemy.last_shot_direction.angle_to((shifted - enemy.get_shot_origin()).normalized()) > deg_to_rad(18.0))
 	# 三维散布有上下和左右偏移，并且受半角限制。
-	enemy.standing_spread_degrees = 4.0
-	enemy.moving_spread_degrees = 8.0
+	enemy.weapon.min_spread_angle_degrees = 4.0
+	enemy.weapon.max_spread_angle_degrees = 8.0
 	var bounded := true
 	var vertical := false
 	var horizontal := false
@@ -85,15 +86,16 @@ func _run() -> void:
 	for sample in range(160):
 		enemy.update_weapon(0.1, target)
 		enemy.shot_cooldown = 0.0
-		enemy.try_fire(sample % 2 == 1)
+		enemy.weapon_stability = 0.0 if sample % 2 == 1 else 1.0
+		enemy.try_fire()
 		var angle: float = rad_to_deg(enemy.aim_direction.angle_to(enemy.last_shot_direction))
 		bounded = bounded and angle <= (8.001 if sample % 2 == 1 else 4.001)
 		vertical = vertical or absf(enemy.last_shot_direction.y) > 0.02
 		horizontal = horizontal or absf(enemy.last_shot_direction.x) > 0.02
 		wider = wider or (sample % 2 == 1 and angle > 4.0)
-	_check("站立与移动散布都在各自锥内", bounded)
+	_check("稳定与不稳定散布都在各自锥内", bounded)
 	_check("散布包含上下和左右偏移", vertical and horizontal)
-	_check("移动散布可比站立更大", wider)
+	_check("低稳定度散布可比高稳定度更大", wider)
 	# 实体墙挡住同一枪；不是根据目标名单直接扣血。
 	var wall := StaticBody3D.new()
 	var shape := CollisionShape3D.new()
@@ -105,7 +107,8 @@ func _run() -> void:
 	wall.global_position = (enemy.global_position + player.global_position) * 0.5 + Vector3.UP
 	for frame in range(3):
 		await physics_frame
-	enemy.standing_spread_degrees = 0.0
+	enemy.weapon.min_spread_angle_degrees = 0.0
+	enemy.weapon.max_spread_angle_degrees = 0.0
 	enemy.shot_cooldown = 0.0
 	enemy.update_weapon(1.0, target)
 	hp = health.health
@@ -157,10 +160,10 @@ func _run() -> void:
 	ai.tactics.update_shooting(1.0, true, false)
 	_check("对话期间不射击", enemy.shot_count == count)
 	player.is_in_dialogue = false
-	enemy.shot_range = 1.0
+	enemy.weapon.fire_range = 1.0
 	ai.tactics.update_shooting(1.0, true, false)
 	_check("射程之外不射击", enemy.shot_count == count)
-	enemy.shot_range = 12.0
+	enemy.weapon.fire_range = 12.0
 	enemy.shooting_enabled = false
 	ai.tactics.update_shooting(1.0, true, false)
 	_check("检查器关闭射击有效", enemy.shot_count == count)
@@ -197,10 +200,11 @@ func _check_live_encounter() -> void:
 	health.debug_invincible = true
 	ai.search.debug_tracking_cheat = false
 	enemy.get_node("AI/Tactics/CoverAction").selection.debug_cover_selection = false
-	enemy.standing_spread_degrees = 0.0
-	enemy.moving_spread_degrees = 0.0
+	enemy.equip_weapon(enemy.weapon.duplicate())
+	enemy.weapon.min_spread_angle_degrees = 0.0
+	enemy.weapon.max_spread_angle_degrees = 0.0
 	enemy.aim_turn_speed_degrees = 720.0
-	enemy.shot_interval = 0.1
+	enemy.weapon.shot_interval = 0.1
 	p.global_position = enemy.global_position + Vector3(0, 0, 2.0)
 	enemy.look_at(p.global_position)
 	var moving_shot := false
@@ -235,7 +239,7 @@ func _check_live_encounter() -> void:
 	game_state.talked_to_a = true
 	game_state.help_choice = "accepted"
 	health.debug_invincible = false
-	enemy.shot_damage = health.max_health
+	enemy.weapon.damage = health.max_health
 	enemy.shot_cooldown = 0.0
 	for frame in range(60):
 		await physics_frame

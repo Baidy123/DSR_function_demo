@@ -24,8 +24,9 @@ func _run() -> void:
 	ai.search.debug_tracking_cheat = false
 	p.global_position = e.global_position + Vector3(0, 0, 4.8)
 	e.look_at(p.global_position)
-	e.standing_spread_degrees = 0.0
-	e.moving_spread_degrees = 0.0
+	e.equip_weapon(e.weapon.duplicate())
+	e.weapon.min_spread_angle_degrees = 0.0
+	e.weapon.max_spread_angle_degrees = 0.0
 	for frame in range(5):
 		await physics_frame
 	# Cover优先控制移动时，主状态可能仍是其他状态，不能要求先回REPOSITION。

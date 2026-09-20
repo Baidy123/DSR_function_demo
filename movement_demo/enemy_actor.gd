@@ -14,18 +14,11 @@ signal reset_completed
 @export_group("Shooting")
 ## 是否允许执行射击；可暂时关闭以单独观察移动和掩体行为。
 @export var shooting_enabled: bool = true
-## 每次真实命中玩家造成的伤害；玩家无敌时仍走受伤日志入口。
-@export_range(0.0, 1000.0, 1.0) var shot_damage: float = 10.0
-## 射线最大长度（米）；墙体和第一个碰撞物会截断弹道。
-@export_range(0.1, 100.0, 0.5) var shot_range: float = 12.0
-## 两枪之间的最短间隔（秒）；冷却结束不会补发积压子弹。
-@export_range(0.05, 10.0, 0.05) var shot_interval: float = 0.8
+## 枪械伤害、射程、射速与散布参数；敌人使用散布锥参数，空资源表示没有枪。
+## 运行时换枪调用 equip_weapon；反应时间与连射节奏仍由 AI/Tactics 决定。
+@export var weapon: WeaponData
 ## 枪口瞄准方向的最大跟随角速度（度/秒），独立于身体转速。
 @export_range(1.0, 720.0, 1.0) var aim_turn_speed_degrees: float = 90.0
-## 站立时三维散布锥的半角（度），与跟枪误差分别计算。
-@export_range(0.0, 45.0, 0.1) var standing_spread_degrees: float = 4.0
-## 移动时三维散布半角（度）；是否允许移动射击由 AI 决定。
-@export_range(0.0, 45.0, 0.1) var moving_spread_degrees: float = 8.0
 ## 输出每枪结果到 Godot 输出面板；玩家受伤/无敌日志不受此开关影响。
 @export var debug_shooting: bool = false
 
@@ -39,6 +32,11 @@ var shot_cooldown: float = 0.0
 var shot_count: int = 0
 var last_shot_collider: Object
 var last_shot_direction: Vector3 = Vector3.ZERO
+# 武器资源只保存参数；每个持枪者分别保存稳定度、恢复等待与位移记录。
+var weapon_stability: float = 1.0
+var weapon_recovery_timer: float = 0.0
+var _weapon_move_distance: float = 0.0
+var _last_visible_point: Vector3 = Vector3.INF
 # 射击取样不消耗全局随机序列，避免改变巡逻/搜索/掩体的随机选择。
 var _shot_rng := RandomNumberGenerator.new()
 
@@ -68,7 +66,9 @@ func move_character(direction: Vector3, delta: float, speed_multiplier: float = 
 		velocity += get_gravity() * delta
 	else:
 		velocity.y = 0.0
+	var before: Vector3 = global_position
 	move_and_slide()
+	_weapon_move_distance += Vector2(global_position.x - before.x, global_position.z - before.z).length()
 
 
 
@@ -113,6 +113,7 @@ func reset_target() -> void:
 	$CollisionShape3D.set_deferred("disabled", false)
 	add_to_group("combat_target")
 	health = max_health
+	equip_weapon(weapon)
 	clear_aim()
 	shot_cooldown = 0.0
 	shot_count = 0
@@ -139,8 +140,11 @@ func _update_health_label() -> void:
 
 ## 由决策层每帧调用一次；INF 表示没有可见瞄准点，冷却仍继续计时。
 func update_weapon(delta: float, visible_point: Vector3 = Vector3.INF) -> void:
-	shot_cooldown = maxf(0.0, shot_cooldown - maxf(delta, 0.0))
-	if is_dead or not shooting_enabled or not visible_point.is_finite():
+	var elapsed: float = maxf(delta, 0.0)
+	shot_cooldown = maxf(0.0, shot_cooldown - elapsed)
+	var can_aim: bool = weapon != null and not is_dead and shooting_enabled and visible_point.is_finite()
+	_update_weapon_stability(elapsed, visible_point if can_aim else Vector3.INF)
+	if not can_aim:
 		clear_aim()
 		return
 	var desired: Vector3 = visible_point - get_shot_origin()
@@ -168,6 +172,52 @@ func update_weapon(delta: float, visible_point: Vector3 = Vector3.INF) -> void:
 func clear_aim() -> void:
 	has_aim = false
 	aim_acquired = false
+	_last_visible_point = Vector3.INF
+	if weapon != null:
+		weapon_stability = minf(weapon_stability, weapon.get_aim_settings(true).initial)
+
+
+## 不修改共享资源，也不通过换枪清掉尚未结束的开火冷却。
+func equip_weapon(data: WeaponData) -> void:
+	weapon = data
+	weapon_stability = weapon.get_aim_settings(true).initial if weapon != null else 0.0
+	weapon_recovery_timer = 0.0
+	_weapon_move_distance = 0.0
+	clear_aim()
+
+
+func get_spread_degrees() -> float:
+	if weapon == null:
+		return 0.0
+	var minimum: float = clampf(weapon.min_spread_angle_degrees, 0.0, 45.0)
+	var maximum: float = clampf(weapon.max_spread_angle_degrees, minimum, 45.0)
+	return lerpf(maximum, minimum, clampf(weapon_stability, 0.0, 1.0))
+
+
+func _update_weapon_stability(delta: float, visible_point: Vector3) -> void:
+	var distance: float = _weapon_move_distance
+	_weapon_move_distance = 0.0
+	if weapon == null or is_dead:
+		return
+	var settings: Dictionary = weapon.get_aim_settings(true)
+	var target_moving := false
+	if visible_point.is_finite() and _last_visible_point.is_finite():
+		var target_distance: float = visible_point.distance_to(_last_visible_point)
+		target_moving = target_distance > 0.0001
+		if target_moving and weapon_stability > settings.target_floor:
+			var speed: float = target_distance / maxf(delta, 0.0001)
+			var loss: float = lerpf(settings.slow, settings.fast, clampf(speed / maxf(settings.fast_speed, 0.01), 0.0, 1.0))
+			weapon_stability = maxf(settings.target_floor, weapon_stability - target_distance * loss)
+	_last_visible_point = visible_point
+	if distance > 0.0001:
+		if weapon_stability > settings.moving_cap:
+			weapon_stability = maxf(settings.moving_cap, weapon_stability - distance * settings.player_move_loss)
+		weapon_recovery_timer = settings.delay
+	elif not target_moving or weapon_stability < settings.target_floor:
+		# 与玩家一致：目标仍移动时，只允许更差的精度恢复到跟枪惩罚下限。
+		var recovery_delta: float = maxf(0.0, delta - weapon_recovery_timer)
+		weapon_recovery_timer = maxf(0.0, weapon_recovery_timer - delta)
+		weapon_stability = minf(settings.target_floor if target_moving else 1.0, weapon_stability + settings.recovery * recovery_delta)
 
 
 func get_shot_origin() -> Vector3:
@@ -175,29 +225,33 @@ func get_shot_origin() -> Vector3:
 
 
 ## 只执行请求，不寻找玩家或决定行为；实际射线围绕当前枪口方向取样。
-func try_fire(moving: bool = false) -> bool:
-	if is_dead or not shooting_enabled or not has_aim or not aim_acquired or shot_cooldown > 0.0:
+func try_fire() -> bool:
+	if weapon == null or is_dead or not shooting_enabled or not has_aim or not aim_acquired or shot_cooldown > 0.0:
 		return false
 	# 不从身体背后开枪；只检查水平夹角，保留上下瞄准。
 	var horizontal_aim := Vector3(aim_direction.x, 0.0, aim_direction.z)
 	var body_forward := Vector3(-global_basis.z.x, 0.0, -global_basis.z.z)
 	if not horizontal_aim.is_zero_approx() and body_forward.angle_to(horizontal_aim) > MAX_GUN_BODY_ANGLE:
 		return false
-	var spread: float = moving_spread_degrees if moving else standing_spread_degrees
+	var spread: float = get_spread_degrees()
 	last_shot_direction = _random_direction_in_spread_cone(aim_direction, spread)
 	var origin: Vector3 = get_shot_origin()
-	var endpoint: Vector3 = origin + last_shot_direction * maxf(0.0, shot_range)
+	var endpoint: Vector3 = origin + last_shot_direction * maxf(0.0, weapon.fire_range)
 	var query := PhysicsRayQueryParameters3D.create(origin, endpoint, 1, [get_rid()])
 	query.hit_from_inside = true
 	var hit: Dictionary = get_world_3d().direct_space_state.intersect_ray(query)
 	last_shot_collider = hit.get("collider")
 	shot_count += 1
-	shot_cooldown = maxf(0.05, shot_interval)
+	shot_cooldown = maxf(0.05, weapon.shot_interval)
+	var settings: Dictionary = weapon.get_aim_settings(true)
+	if weapon_stability > settings.shot_floor:
+		weapon_stability = maxf(settings.shot_floor, weapon_stability - settings.shot_penalty)
+	weapon_recovery_timer = settings.delay
 	var hit_player := false
 	if not hit.is_empty():
 		endpoint = hit.position
 		if hit.collider.is_in_group("player"):
-			hit.collider.receive_hit(shot_damage)
+			hit.collider.receive_hit(weapon.damage)
 			hit_player = true
 	if debug_shooting:
 		print("[敌人][开火] ", "命中玩家" if hit_player else ("被物体挡住" if not hit.is_empty() else "未命中"), "；散布半角=", spread)

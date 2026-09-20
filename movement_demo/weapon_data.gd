@@ -6,13 +6,13 @@ extends Resource
 @export var display_name: String = "测试手枪"
 ## 实际射线命中后的单发伤害。
 @export_range(1.0, 1000.0, 1.0) var damage: float = 25.0
-## 允许锁定目标的最大距离（米）。
+## 玩家锁定目标的最大距离（米）；敌人视野仍由 Perception 决定。
 @export_range(0.5, 50.0, 0.5) var aim_range: float = 8.0
 ## 子弹射线的最大距离（米）。
 @export_range(0.5, 200.0, 0.5) var fire_range: float = 30.0
-## 索敌扇形总角度，不是子弹散布角。
+## 玩家索敌扇形总角度，不是子弹散布角，也不修改敌人的视野。
 @export_range(1.0, 180.0, 1.0) var cone_angle_degrees: float = 70.0
-## 锁定时的走路速度倍率，锁定期间禁跑。
+## 玩家锁定时的走路速度倍率，锁定期间禁跑；敌人移动由 AI 决定。
 @export_range(0.1, 1.0, 0.05) var locked_move_multiplier: float = 0.5
 ## 两次射击的最短间隔（秒）。
 @export_range(0.05, 3.0, 0.05) var shot_interval: float = 0.2
@@ -50,15 +50,15 @@ extends Resource
 @export_range(0.0, 45.0, 0.1, "suffix:°") var initial_spread_angle_degrees: float = 6.0
 ## 停稳并经过恢复延迟后，每秒收拢多少度；0表示不自动收拢。
 @export_range(0.0, 90.0, 0.1, "suffix:°/s") var spread_recovery_degrees_per_second: float = 3.0
-## 玩家移动惩罚最多把半角扩大到多少度；若已经更散，不会反过来收拢。
+## 持枪者移动惩罚最多把半角扩大到多少度；若已经更散，不会反过来收拢。
 @export_range(0.0, 45.0, 0.1, "suffix:°") var moving_spread_angle_degrees: float = 7.8
-## 玩家实际水平移动每米扩大多少度；随距离逐渐累积，0表示不增加移动散布。
+## 持枪者实际水平移动每米扩大多少度；随距离逐渐累积，0表示不增加移动散布。
 @export_range(0.0, 45.0, 0.05, "suffix:°/m") var player_move_spread_degrees_per_meter: float = 3.0
 ## 每枪结束后扩大多少度，连续射击累积；例如1表示半角增加1度。
 @export_range(0.0, 45.0, 0.05, "suffix:°") var shot_spread_penalty_degrees: float = 3.0
 ## 仅连射惩罚最多把半角扩大到多少度；不会收拢其他因素已经扩得更大的散布。
 @export_range(0.0, 45.0, 0.1, "suffix:°") var shot_max_spread_angle_degrees: float = 10.8
-## 玩家停步、停火后等多久开始收拢（秒）。
+## 持枪者停步、停火后等多久开始收拢（秒）。
 @export_range(0.0, 3.0, 0.05) var spread_recovery_delay: float = 0.6
 ## 目标慢速移动时，每米扩大多少度。
 @export_range(0.0, 45.0, 0.01, "suffix:°/m") var target_move_spread_degrees_per_meter_slow: float = 0.36

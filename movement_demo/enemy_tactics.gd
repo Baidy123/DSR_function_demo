@@ -49,7 +49,7 @@ func update_shooting(delta: float, sees_player: bool, movement_requested: bool) 
 	var elapsed: float = maxf(0.0, delta)
 	fire_pause_remaining = maxf(0.0, fire_pause_remaining - elapsed)
 	var visible_target: bool = (
-		not actor.is_dead and actor.shooting_enabled and ai.is_arena_active() and sees_player
+		not actor.is_dead and actor.shooting_enabled and actor.weapon != null and ai.is_arena_active() and sees_player
 		and ai.combat_type == ai.CombatType.RANGED
 		and not ai.player.is_dead() and not ai.player.is_in_dialogue
 	)
@@ -60,7 +60,7 @@ func update_shooting(delta: float, sees_player: bool, movement_requested: bool) 
 		actor.update_weapon(delta)
 		return
 	var point: Vector3 = ai.player.global_position + Vector3.UP * 0.8
-	if actor.get_shot_origin().distance_to(point) > actor.shot_range:
+	if actor.get_shot_origin().distance_to(point) > actor.weapon.fire_range:
 		fire_reaction_elapsed = 0.0
 		actor.update_weapon(delta)
 		return
@@ -80,7 +80,7 @@ func update_shooting(delta: float, sees_player: bool, movement_requested: bool) 
 	var moving: bool = movement_requested or Vector2(actor.velocity.x, actor.velocity.z).length() > 0.05
 	if moving and not fire_while_moving:
 		return
-	if actor.try_fire(moving):
+	if actor.try_fire():
 		fire_burst_shots += 1
 		if fire_burst_shots >= maxi(1, burst_shot_count):
 			fire_burst_shots = 0
