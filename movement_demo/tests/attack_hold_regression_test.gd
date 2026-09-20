@@ -28,6 +28,11 @@ func _run() -> void:
 	enemy.global_position = Vector3(17.68982, 0, -1.900597)
 	var destination := Vector3(17.63248, 0, -2.00449)
 	var wall = scene.get_node("Arena/NavigationRegion3D/Environment/CoverA")
+	# 固定复现时的碰撞几何；用户可继续在编辑器调整场景，测试不写回资源。
+	var collision = wall.get_node("CollisionShape3D")
+	collision.shape = collision.shape.duplicate()
+	collision.shape.size = Vector3(1.2, 2.2, 6.890625)
+	collision.position = Vector3(0, 0, 1.4453125)
 	player.global_position = Vector3(20, 0, -3)
 	for frame in range(60):
 		await physics_frame

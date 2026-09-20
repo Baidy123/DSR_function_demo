@@ -273,6 +273,8 @@ func _on_hit_received(damage: float, attacker_position: Vector3) -> void:
 		# 保持原顺序：更新受击记忆后再处理退出躲藏/冲刺。
 		if cover != null:
 			cover.on_damage_received()
+		if attacker_position.is_finite():
+			tactics.attack_position.on_damage_received()
 	_update_label()
 
 
