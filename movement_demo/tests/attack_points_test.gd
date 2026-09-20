@@ -10,7 +10,7 @@ func _initialize() -> void:
 func _run() -> void:
 	var wall = load("res://cover_region.gd").new()
 	root.add_child(wall)
-	_check("提供候选攻击点接口", wall.has_method("get_attack_candidates"))
+	_check("提供连续攻击区域参数", wall.get("attack_inner_radius") != null)
 	if not checks.values().all(func(value): return value):
 		wall.free()
 		_finish()
@@ -24,10 +24,14 @@ func _run() -> void:
 	wall.add_child(collision)
 	var before: Array = wall.get_candidates(Vector3(0, 0, 4), Vector3(0, 0, -4))
 	var points: Array = wall.get_attack_candidates()
-	_check("四角各有两面候选且不重复", points.size() == 8 and _unique_count(points) == 8)
+	_check("四角区域提供多个不重复站位", points.size() > 8 and _unique_count(points) == points.size())
 	_check("脚底位于碰撞盒底面", points.all(func(point): return is_zero_approx(point.y)))
-	_check("身体中心与实体保持距离", points.all(func(point):
-		return Vector2(maxf(absf(point.x) - 2.0, 0.0), maxf(absf(point.z) - 0.5, 0.0)).length() >= 0.54))
+	_check("几何候选不进入墙体内部", points.all(func(point): return absf(point.x) >= 1.999 or absf(point.z) >= 0.499))
+	for side_x in [-1.0, 1.0]:
+		for side_z in [-1.0, 1.0]:
+			var corner := Vector3(side_x * 2.0, 0, side_z * 0.5)
+			var diagonal := corner + Vector3(side_x, 0, side_z).normalized()
+			_check("中间斜角参与候选_%s_%s" % [side_x, side_z], points.any(func(point): return point.distance_to(diagonal) < 0.3))
 	wall.position = Vector3(6, 0.4, -3)
 	wall.rotation.y = 0.71
 	wall.scale = Vector3(1.3, 1.2, 0.8)
@@ -40,17 +44,20 @@ func _run() -> void:
 	_check("跟随掩体及碰撞盒的平移旋转缩放", follows)
 	wall.transform = Transform3D.IDENTITY
 	collision.transform = Transform3D(Basis.IDENTITY, Vector3.UP)
-	wall.attack_wall_gap = 0.8
+	wall.attack_inner_radius = 0.8
 	var wider: Array = wall.get_attack_candidates()
-	_check("离墙参数调整候选位置", not wider[0].is_equal_approx(points[0]))
-	wall.attack_corner_offset = -0.15
+	_check("内半径调整内侧边界", not wider[0].is_equal_approx(points[0]))
+	wall.attack_outer_radius = 2.0
 	var inward: Array = wall.get_attack_candidates()
-	_check("沿墙偏移独立于离墙距离", is_equal_approx(inward[0].z, wider[0].z) and not is_equal_approx(inward[0].x, wider[0].x))
+	_check("外半径扩大范围而保留内侧边界", inward.size() > wider.size() and inward[0].is_equal_approx(wider[0]))
+	wall.attack_sample_spacing = 0.25
+	_check("采样间距可调密度", wall.get_attack_candidates().size() > inward.size())
+	wall.attack_sample_spacing = 0.4
 	_check("调整攻击点不改变躲藏及Peek", before == wall.get_candidates(Vector3(0, 0, 4), Vector3(0, 0, -4)))
 	wall.show_attack_points_in_editor = false
 	_check("关闭辅助显示不影响候选数据", inward == wall.get_attack_candidates())
 	collision.shape.size = Vector3(1, 2, 4)
-	_check("支持Z方向长墙", wall.get_attack_candidates().size() == 8)
+	_check("支持Z方向长墙", wall.get_attack_candidates().size() > 8)
 	collision.shape = SphereShape3D.new()
 	_check("非长方体不生成候选", wall.get_attack_candidates().is_empty())
 	wall.free()
@@ -59,11 +66,11 @@ func _run() -> void:
 	var second = packed.instantiate()
 	root.add_child(first)
 	root.add_child(second)
-	_check("独立掩体场景自带碰撞及点位", first.has_node("Mesh") and first.has_node("CollisionShape3D") and first.get_attack_candidates().size() == 8 and first.is_in_group("cover_region"))
+	_check("独立掩体场景自带碰撞及区域", first.has_node("Mesh") and first.has_node("CollisionShape3D") and first.get_attack_candidates().size() > 8 and first.is_in_group("cover_region"))
 	_check("新实例的外观与碰撞尺寸一致", first.get_node("Mesh").mesh.size == first.get_node("CollisionShape3D").shape.size)
-	first.attack_wall_gap = 1.0
+	first.attack_inner_radius = 1.0
 	first.get_node("CollisionShape3D").shape.size.x = 5.0
-	_check("实例参数及形状资源相互独立", is_equal_approx(second.attack_wall_gap, 0.55) and is_equal_approx(second.get_node("CollisionShape3D").shape.size.x, 3.0))
+	_check("实例参数及形状资源相互独立", is_equal_approx(second.attack_inner_radius, 0.55) and is_equal_approx(second.get_node("CollisionShape3D").shape.size.x, 3.0))
 	first.free()
 	second.free()
 	var arena = load("res://arena.tscn").instantiate()

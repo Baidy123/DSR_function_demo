@@ -15,11 +15,13 @@ extends StaticBody3D
 @export_range(0.25, 2.0, 0.05) var sample_spacing: float = 0.75
 ## 仅在编辑器显示青色四面候选区域和黄色 Peek 十字；实际可用性由导航和碰撞过滤。
 @export var show_regions_in_editor: bool = true
-## 候选攻击点的身体中心到墙面的距离（米，随节点缩放）；实际身体空间后续由 AI 检查。
-@export_range(0.35, 2.0, 0.05) var attack_wall_gap: float = 0.55
-## 沿墙相对墙角的偏移（米）：0 对齐墙角，正数向外探出，负数向墙内侧收回。
-@export_range(-0.5, 1.0, 0.05) var attack_corner_offset: float = 0.0
-## 仅在编辑器显示橙色菱形候选攻击点；尚未验证射界、遮挡或可达性，也未接入 AI。
+## 墙角到攻击候选区域内侧的半径（米，随节点缩放）；不是到墙面的距离，身体空间仍需过滤。
+@export_range(0.2, 2.0, 0.05) var attack_inner_radius: float = 0.55
+## 墙角到区域外侧的半径；实际至少比内半径大0.05米。四角各为墙外270度连续扇环。
+@export_range(0.25, 3.0, 0.05) var attack_outer_radius: float = 1.5
+## 区域内径向及圆弧采样的最大间距（米，随节点缩放）；越小越密，也增加运行检查量。
+@export_range(0.2, 1.0, 0.05) var attack_sample_spacing: float = 0.4
+## 仅在编辑器显示橙色连续扇环；运行时再检查站立空间、射界、遮挡和可达性。
 @export var show_attack_points_in_editor: bool = true
 
 var _preview_signature: String = ""
@@ -118,19 +120,47 @@ func _local_peeks(end_face: bool = false) -> Array[Vector3]:
 	return [_face_point(-half_length, 0.0, end_face), _face_point(half_length, 0.0, end_face)]
 
 
-# 每个墙角的相邻两面各提供一处候选；是否能遮住部分身体，要结合已知威胁方向另行检查。
+# 在碰撞盒局部XZ平面定义四角，各排除朝墙内的90度；保留墙外相连的270度。
+func _attack_sectors() -> Array[Dictionary]:
+	var sectors: Array[Dictionary] = []
+	if _dimensions().is_zero_approx():
+		return sectors
+	var half: Vector3 = _collision().shape.size * 0.5
+	var corners := [Vector2(-1, 1), Vector2(1, 1), Vector2(1, -1), Vector2(-1, -1)]
+	var starts := [0.0, 270.0, 180.0, 90.0]
+	for index in range(4):
+		sectors.append({"center": Vector3(corners[index].x * half.x, -half.y, corners[index].y * half.z),
+			"start": deg_to_rad(starts[index])})
+	return sectors
+
+
+func _attack_radii() -> Vector2:
+	var inner := maxf(0.2, attack_inner_radius)
+	return Vector2(inner, maxf(inner + 0.05, attack_outer_radius))
+
+
+func _attack_offset(angle: float, radius: float) -> Vector3:
+	return Vector3(cos(angle), 0, sin(angle)) * radius
+
+
+# 区域保持连续定义，查询时才采样；相邻墙角完全重合的样本不重复检查。
 func _local_attack_points() -> Array[Vector3]:
 	var points: Array[Vector3] = []
-	if _dimensions().is_zero_approx():
-		return points
-	for end_face in [false, true]:
-		var dimensions := _face_dimensions(end_face)
-		# 极短的面向内收回时不越过中点；仍让两端保留各自的候选位置。
-		var along := maxf(dimensions.x * 0.5 + attack_corner_offset, dimensions.x * 0.05)
-		var across := dimensions.y * 0.5 + attack_wall_gap
-		for side in [-1.0, 1.0]:
-			for end in [-1.0, 1.0]:
-				points.append(_face_point(end * along, side * across, end_face))
+	var seen := {}
+	var radii := _attack_radii()
+	var spacing := maxf(0.2, attack_sample_spacing)
+	var radial_steps := maxi(1, ceili((radii.y - radii.x) / spacing))
+	for sector in _attack_sectors():
+		for ring in range(radial_steps + 1):
+			var radius := lerpf(radii.x, radii.y, float(ring) / radial_steps)
+			var angular_steps := maxi(1, ceili(radius * PI * 1.5 / spacing))
+			for index in range(angular_steps + 1):
+				var angle: float = sector.start + PI * 1.5 * float(index) / angular_steps
+				var point: Vector3 = sector.center + _attack_offset(angle, radius)
+				var key := point.snapped(Vector3.ONE * 0.001)
+				if not seen.has(key):
+					seen[key] = true
+					points.append(point)
 	return points
 
 
@@ -165,7 +195,7 @@ func _process(_delta: float) -> void:
 	if collision == null or not collision.shape is BoxShape3D:
 		return
 	var signature := str(collision.shape.size, hide_length_ratio, short_hide_length_ratio, hide_depth, wall_gap, peek_outset, show_regions_in_editor,
-		attack_wall_gap, attack_corner_offset, show_attack_points_in_editor)
+		attack_inner_radius, attack_outer_radius, attack_sample_spacing, show_attack_points_in_editor)
 	if signature == _preview_signature:
 		return
 	_preview_signature = signature
@@ -176,6 +206,8 @@ func _process(_delta: float) -> void:
 		# 辅助节点不写入场景，也不产生碰撞。
 		collision.add_child(preview, false, Node.INTERNAL_MODE_BACK)
 	preview.visible = show_regions_in_editor or show_attack_points_in_editor
+	if not preview.visible:
+		return
 	var mesh := ImmediateMesh.new()
 	mesh.surface_begin(Mesh.PRIMITIVE_LINES)
 	for end_face in [false, true]:
@@ -197,20 +229,44 @@ func _process(_delta: float) -> void:
 			_preview_line(mesh, center - Vector3.RIGHT * 0.18, center + Vector3.RIGHT * 0.18, Color.YELLOW)
 			_preview_line(mesh, center - Vector3.FORWARD * 0.18, center + Vector3.FORWARD * 0.18, Color.YELLOW)
 	if show_attack_points_in_editor:
-		for center in _local_attack_points():
-			var diamond: Array[Vector3] = [Vector3.RIGHT, Vector3.FORWARD, Vector3.LEFT, Vector3.BACK]
-			for index in range(4):
-				_preview_line(mesh, center + diamond[index] * 0.16, center + diamond[(index + 1) % 4] * 0.16, Color.ORANGE)
-	# 两种预览均关闭时不提交空网格，旧网格随节点隐藏即可。
-	if not preview.visible:
-		return
+		_preview_attack_regions(mesh, false)
 	mesh.surface_end()
+	if show_attack_points_in_editor:
+		mesh.surface_begin(Mesh.PRIMITIVE_TRIANGLES)
+		_preview_attack_regions(mesh, true)
+		mesh.surface_end()
 	var material := StandardMaterial3D.new()
 	material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	material.vertex_color_use_as_albedo = true
 	material.no_depth_test = true
+	material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	material.cull_mode = BaseMaterial3D.CULL_DISABLED
 	preview.mesh = mesh
 	preview.material_override = material
+
+
+# 预览和采样共用四角与半径；轮廓表示整片范围，不随采样密度改变形状。
+func _preview_attack_regions(mesh: ImmediateMesh, filled: bool) -> void:
+	var radii := _attack_radii()
+	for sector in _attack_sectors():
+		for index in range(36):
+			var a: float = sector.start + PI * 1.5 * float(index) / 36.0
+			var b: float = sector.start + PI * 1.5 * float(index + 1) / 36.0
+			var inside_a: Vector3 = sector.center + _attack_offset(a, radii.x)
+			var outside_a: Vector3 = sector.center + _attack_offset(a, radii.y)
+			var inside_b: Vector3 = sector.center + _attack_offset(b, radii.x)
+			var outside_b: Vector3 = sector.center + _attack_offset(b, radii.y)
+			if filled:
+				for point in [inside_a, outside_a, outside_b, inside_a, outside_b, inside_b]:
+					mesh.surface_set_color(Color(1.0, 0.65, 0.1, 0.12))
+					mesh.surface_add_vertex(point + Vector3.UP * 0.025)
+			else:
+				_preview_line(mesh, inside_a, inside_b, Color.ORANGE)
+				_preview_line(mesh, outside_a, outside_b, Color.ORANGE)
+				if index == 0:
+					_preview_line(mesh, inside_a, outside_a, Color.ORANGE)
+				if index == 35:
+					_preview_line(mesh, inside_b, outside_b, Color.ORANGE)
 
 
 func _preview_line(mesh: ImmediateMesh, from: Vector3, to: Vector3, color: Color) -> void:

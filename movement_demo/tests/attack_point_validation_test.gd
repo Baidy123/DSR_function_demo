@@ -105,13 +105,16 @@ func _run() -> void:
 	var destination_before: Vector3 = enemy.agent.target_position
 	var shots_before: int = enemy.shot_count
 	var before: Array = selection.get_attack_assessments(threat, threat)
+	var expected_count := 0
+	for region in get_nodes_in_group("cover_region"):
+		expected_count += region.get_attack_candidates().size()
 	player.global_position = point
 	for frame in range(3):
 		await physics_frame
 	var after: Array = selection.get_attack_assessments(threat, threat)
 	_check("隐藏玩家移动不影响固定已知位置评估", before == after)
 	_check("评估不切换AI状态导航目标或开火", ai.state == state_before and enemy.agent.target_position == destination_before and enemy.shot_count == shots_before)
-	_check("评估保留全部候选并给出原因", before.size() == 48 and before.all(func(item): return not item.reason.is_empty()))
+	_check("评估保留全部候选并给出原因", before.size() == expected_count and before.all(func(item): return not item.reason.is_empty()))
 	# 用临时障碍验证空间查询，不改地图或导航资源。
 	var obstacle := StaticBody3D.new()
 	var shape_node := CollisionShape3D.new()
@@ -132,8 +135,24 @@ func _run() -> void:
 	ai.is_alerted = true
 	ai.has_visual_memory = true
 	ai.last_seen_position = threat - Vector3.UP * 0.8
+	preview.set_physics_process(false)
+	preview.clear()
+	preview._physics_process(1.0 / 60.0)
+	_check("自动预览不会同帧检查整个区域", preview.assessments.is_empty())
+	for frame in range(200):
+		if preview.assessments.size() == expected_count:
+			break
+		preview._physics_process(1.0 / 60.0)
+	_check("分帧检查完整结果与直接查询一致", preview.assessments == selection.get_attack_assessments(threat, threat))
+	preview.clear()
+	preview._physics_process(1.0 / 60.0)
+	selection.debug_attack_points = false
+	preview._physics_process(1.0 / 60.0)
+	_check("关闭显示中止未完成批次", preview._pending.is_empty() and preview._results.is_empty() and preview.assessments.is_empty())
+	selection.debug_attack_points = true
 	preview.refresh()
-	_check("运行显示为所有候选给出评估", preview.assessments.size() == 48)
+	_check("运行显示为所有候选给出评估", preview.assessments.size() == expected_count)
+	_check("大量样本共用网格且每个掩体只有一个标签", preview.get_children().size() == 7)
 	var remembered: Array = preview.assessments.duplicate(true)
 	ai.last_seen_position = other_side - Vector3.UP * 0.8
 	preview.refresh()
