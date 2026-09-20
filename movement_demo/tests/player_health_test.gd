@@ -12,6 +12,8 @@ func _run() -> void:
 	var scene = load("res://main.tscn").instantiate()
 	root.add_child(scene)
 	current_scene = scene
+	# 本组只验证原行为；射击与玩家死亡联动由 enemy_shooting_test 覆盖。
+	scene.get_node("Arena/Enemy").shooting_enabled = false
 	await process_frame
 	var player = scene.get_node("Player")
 	var health = player.get_node_or_null("Health")

@@ -14,8 +14,10 @@ enum SearchHintDecayMode {
 	CUSTOM
 }
 
-## 近战沿用接近行为；远程寻找射击位置。本步尚无攻击。
+## 近战沿用接近行为，尚无近战攻击；远程寻找射击位置并开火。
 @export var combat_type: CombatType = CombatType.MELEE
+## 接敌侧移/后退时允许开火；关闭后只在停稳时射击，跑掩体仍停火。
+@export var fire_while_moving: bool = true
 ## 远程敌人希望保持的距离区间，单位为米。
 @export_range(1.0, 20.0, 0.5) var ranged_min_distance: float = 4.0
 ## 远程期望距离上限（米）；与下限共同决定射击候选点的采样范围。
@@ -228,6 +230,7 @@ func is_arena_active() -> bool:
 
 func _physics_process(delta: float) -> void:
 	if actor.is_dead or not is_arena_active():
+		actor.update_weapon(delta)
 		return
 
 	# 地图同步完成前不能请求路径。
@@ -265,6 +268,7 @@ func _physics_process(delta: float) -> void:
 			# 掩护撤退、躲藏和探头均面向最后已知威胁；脚下仍沿导航路径移动。
 			actor.face_direction(cover.look_position - actor.global_position, delta)
 		actor.move_character(cover_direction, delta, cover.movement_multiplier())
+		_update_shooting(delta, sees_player, not cover_direction.is_zero_approx())
 		was_seeing_player = sees_player
 		_update_label()
 		return
@@ -383,8 +387,37 @@ func _physics_process(delta: float) -> void:
 		movement_speed_multiplier = search_move_speed_multiplier
 
 	actor.move_character(direction, delta, movement_speed_multiplier)
+	_update_shooting(delta, sees_player, not direction.is_zero_approx())
 	_update_label()
 
+
+
+## 决策层只授权开火；瞄准跟随、冷却和真实弹道由 Enemy 执行。
+func _update_shooting(delta: float, sees_player: bool, movement_requested: bool) -> void:
+	var visible_target: bool = (
+		not actor.is_dead and is_arena_active() and sees_player
+		and combat_type == CombatType.RANGED
+		and not player.is_dead() and not player.is_in_dialogue
+	)
+	# 身体刚移动过，射击前再核实实际视线，避免用移动前的可见结果隔墙射击。
+	visible_target = visible_target and can_see_player()
+	if not visible_target:
+		actor.update_weapon(delta)
+		return
+	var point: Vector3 = player.global_position + Vector3.UP * 0.8
+	if actor.get_shot_origin().distance_to(point) > actor.shot_range:
+		actor.update_weapon(delta)
+		return
+	actor.update_weapon(delta, point)
+	# 跑掩体、躲藏、尚未完成探头时不射击；探头真实看见玩家后沿用原流程回接敌。
+	if cover != null and cover.is_active():
+		return
+	if state != State.REPOSITION and state != State.HOLD_POSITION:
+		return
+	var moving: bool = movement_requested or Vector2(actor.velocity.x, actor.velocity.z).length() > 0.05
+	if moving and not fire_while_moving:
+		return
+	actor.try_fire(moving)
 
 func _process_ranged_position(delta: float, sees_player: bool) -> Vector3:
 	var band := _ranged_distance_band()
