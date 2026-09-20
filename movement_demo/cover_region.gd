@@ -15,6 +15,12 @@ extends StaticBody3D
 @export_range(0.25, 2.0, 0.05) var sample_spacing: float = 0.75
 ## 仅在编辑器显示青色四面候选区域和黄色 Peek 十字；实际可用性由导航和碰撞过滤。
 @export var show_regions_in_editor: bool = true
+## 候选攻击点的身体中心到墙面的距离（米，随节点缩放）；实际身体空间后续由 AI 检查。
+@export_range(0.35, 2.0, 0.05) var attack_wall_gap: float = 0.55
+## 沿墙相对墙角的偏移（米）：0 对齐墙角，正数向外探出，负数向墙内侧收回。
+@export_range(-0.5, 1.0, 0.05) var attack_corner_offset: float = 0.0
+## 仅在编辑器显示橙色菱形候选攻击点；尚未验证射界、遮挡或可达性，也未接入 AI。
+@export var show_attack_points_in_editor: bool = true
 
 var _preview_signature: String = ""
 
@@ -112,6 +118,29 @@ func _local_peeks(end_face: bool = false) -> Array[Vector3]:
 	return [_face_point(-half_length, 0.0, end_face), _face_point(half_length, 0.0, end_face)]
 
 
+# 每个墙角的相邻两面各提供一处候选；是否能遮住部分身体，要结合已知威胁方向另行检查。
+func _local_attack_points() -> Array[Vector3]:
+	var points: Array[Vector3] = []
+	if _dimensions().is_zero_approx():
+		return points
+	for end_face in [false, true]:
+		var dimensions := _face_dimensions(end_face)
+		# 极短的面向内收回时不越过中点；仍让两端保留各自的候选位置。
+		var along := maxf(dimensions.x * 0.5 + attack_corner_offset, dimensions.x * 0.05)
+		var across := dimensions.y * 0.5 + attack_wall_gap
+		for side in [-1.0, 1.0]:
+			for end in [-1.0, 1.0]:
+				points.append(_face_point(end * along, side * across, end_face))
+	return points
+
+
+func get_attack_candidates() -> Array[Vector3]:
+	var points: Array[Vector3] = []
+	for point in _local_attack_points():
+		points.append(_collision().to_global(point))
+	return points
+
+
 func is_hiding_position(point: Vector3, threat: Vector3) -> bool:
 	if _dimensions().is_zero_approx():
 		return false
@@ -135,7 +164,8 @@ func _process(_delta: float) -> void:
 	var collision := _collision()
 	if collision == null or not collision.shape is BoxShape3D:
 		return
-	var signature := str(collision.shape.size, hide_length_ratio, short_hide_length_ratio, hide_depth, wall_gap, peek_outset, show_regions_in_editor)
+	var signature := str(collision.shape.size, hide_length_ratio, short_hide_length_ratio, hide_depth, wall_gap, peek_outset, show_regions_in_editor,
+		attack_wall_gap, attack_corner_offset, show_attack_points_in_editor)
 	if signature == _preview_signature:
 		return
 	_preview_signature = signature
@@ -145,10 +175,12 @@ func _process(_delta: float) -> void:
 		preview.name = "_CoverPreview"
 		# 辅助节点不写入场景，也不产生碰撞。
 		collision.add_child(preview, false, Node.INTERNAL_MODE_BACK)
-	preview.visible = show_regions_in_editor
+	preview.visible = show_regions_in_editor or show_attack_points_in_editor
 	var mesh := ImmediateMesh.new()
 	mesh.surface_begin(Mesh.PRIMITIVE_LINES)
 	for end_face in [false, true]:
+		if not show_regions_in_editor:
+			continue
 		var dimensions := _face_dimensions(end_face)
 		var half_length := _hide_half_length(end_face)
 		var near_edge := dimensions.y * 0.5 + wall_gap
@@ -164,6 +196,14 @@ func _process(_delta: float) -> void:
 		for center in _local_peeks(end_face):
 			_preview_line(mesh, center - Vector3.RIGHT * 0.18, center + Vector3.RIGHT * 0.18, Color.YELLOW)
 			_preview_line(mesh, center - Vector3.FORWARD * 0.18, center + Vector3.FORWARD * 0.18, Color.YELLOW)
+	if show_attack_points_in_editor:
+		for center in _local_attack_points():
+			var diamond: Array[Vector3] = [Vector3.RIGHT, Vector3.FORWARD, Vector3.LEFT, Vector3.BACK]
+			for index in range(4):
+				_preview_line(mesh, center + diamond[index] * 0.16, center + diamond[(index + 1) % 4] * 0.16, Color.ORANGE)
+	# 两种预览均关闭时不提交空网格，旧网格随节点隐藏即可。
+	if not preview.visible:
+		return
 	mesh.surface_end()
 	var material := StandardMaterial3D.new()
 	material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED

@@ -3,7 +3,7 @@
 [ext_resource type="NavigationMesh" uid="uid://doqxf2mdcxwui" path="res://arena_navigation.tres" id="2"]
 [ext_resource type="Script" uid="uid://bhntfyti6ofag" path="res://enemy_actor.gd" id="3_fu4bq"]
 [ext_resource type="Script" uid="uid://dcc2vkow4q8cl" path="res://shooting_range.gd" id="3_reset"]
-[ext_resource type="Script" uid="uid://b6f1cehvgci4k" path="res://cover_region.gd" id="5_region"]
+[ext_resource type="PackedScene" path="res://cover.tscn" id="5_cover"]
 [ext_resource type="Script" uid="uid://ct4eye1xj03ld" path="res://enemy_ai.gd" id="6_ai"]
 [ext_resource type="Script" uid="uid://r1l2xiwmswn5" path="res://enemy_tactics.gd" id="7_tactics"]
 [ext_resource type="Script" uid="uid://b2p3kv7u52vpc" path="res://enemy_search.gd" id="8_search"]
@@ -28,17 +28,10 @@ albedo_color = Color(0.34, 0.39, 0.45, 1)
 
 [sub_resource type="BoxMesh" id="Mesh0CoverA"]
 material = SubResource("CoverMaterial")
-size = Vector3(1.2, 2.2, 6.875122)
+size = Vector3(1.2, 2.2, 6.890625)
 
 [sub_resource type="BoxShape3D" id="Shape0CoverA"]
 size = Vector3(1.2, 2.2, 6.890625)
-
-[sub_resource type="BoxMesh" id="Mesh0CoverB"]
-material = SubResource("CoverMaterial")
-size = Vector3(3, 2.2, 1)
-
-[sub_resource type="BoxShape3D" id="Shape0CoverB"]
-size = Vector3(3, 2.2, 1)
 
 [sub_resource type="BoxMesh" id="Mesh0CoverC"]
 material = SubResource("CoverMaterial")
@@ -140,67 +133,37 @@ mesh = SubResource("Mesh0Floor")
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 2.324768, 0, 2.9089355)
 shape = SubResource("Shape0Floor")
 
-[node name="CoverA" type="StaticBody3D" parent="NavigationRegion3D/Environment" unique_id=704352125]
+[node name="CoverA" parent="NavigationRegion3D/Environment" unique_id=704352125 instance=ExtResource("5_cover")]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -3.6225033, 1.1, -0.57203555)
-script = ExtResource("5_region")
 
-[node name="Mesh" type="MeshInstance3D" parent="NavigationRegion3D/Environment/CoverA" unique_id=1497260564]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 1.437561)
+[node name="Mesh" parent="NavigationRegion3D/Environment/CoverA" index="0" unique_id=1497260564]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 1.4453125)
 mesh = SubResource("Mesh0CoverA")
 
-[node name="CollisionShape3D" type="CollisionShape3D" parent="NavigationRegion3D/Environment/CoverA" unique_id=1449035470]
+[node name="CollisionShape3D" parent="NavigationRegion3D/Environment/CoverA" index="1" unique_id=1449035470]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 1.4453125)
 shape = SubResource("Shape0CoverA")
 
-[node name="CoverB" type="StaticBody3D" parent="NavigationRegion3D/Environment" unique_id=913943400]
+[node name="CoverB" parent="NavigationRegion3D/Environment" unique_id=913943400 instance=ExtResource("5_cover")]
 transform = Transform3D(-0.018502058, 0, -0.9998288, 0, 1, 0, 0.9998288, 0, -0.018502058, 7.1962805, 1.1, -2.8742487)
-script = ExtResource("5_region")
 
-[node name="Mesh" type="MeshInstance3D" parent="NavigationRegion3D/Environment/CoverB" unique_id=1818784245]
-mesh = SubResource("Mesh0CoverB")
-
-[node name="CollisionShape3D" type="CollisionShape3D" parent="NavigationRegion3D/Environment/CoverB" unique_id=1117406576]
-shape = SubResource("Shape0CoverB")
-
-[node name="CoverC" type="StaticBody3D" parent="NavigationRegion3D/Environment" unique_id=1545426448]
+[node name="CoverC" parent="NavigationRegion3D/Environment" unique_id=1545426448 instance=ExtResource("5_cover")]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -7.979108, 1.1, 6.5940037)
-script = ExtResource("5_region")
 
-[node name="Mesh" type="MeshInstance3D" parent="NavigationRegion3D/Environment/CoverC" unique_id=1476982745]
+[node name="Mesh" parent="NavigationRegion3D/Environment/CoverC" index="0" unique_id=1476982745]
 mesh = SubResource("Mesh0CoverC")
 
-[node name="CollisionShape3D" type="CollisionShape3D" parent="NavigationRegion3D/Environment/CoverC" unique_id=1831908265]
+[node name="CollisionShape3D" parent="NavigationRegion3D/Environment/CoverC" index="1" unique_id=1831908265]
 shape = SubResource("Shape0CoverC")
 
-[node name="CoverD" type="StaticBody3D" parent="NavigationRegion3D/Environment" unique_id=998803542]
+[node name="CoverD" parent="NavigationRegion3D/Environment" unique_id=998803542 instance=ExtResource("5_cover")]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 12.146425, 1.1, 5.8851247)
-script = ExtResource("5_region")
 
-[node name="Mesh" type="MeshInstance3D" parent="NavigationRegion3D/Environment/CoverD" unique_id=595042555]
-mesh = SubResource("Mesh0CoverB")
-
-[node name="CollisionShape3D" type="CollisionShape3D" parent="NavigationRegion3D/Environment/CoverD" unique_id=315174073]
-shape = SubResource("Shape0CoverB")
-
-[node name="CoverE" type="StaticBody3D" parent="NavigationRegion3D/Environment" unique_id=1374712086]
+[node name="CoverE" parent="NavigationRegion3D/Environment" unique_id=1374712086 instance=ExtResource("5_cover")]
 transform = Transform3D(-0.012486058, 0, 0.99992204, 0, 1, 0, -0.99992204, 0, -0.012486058, 3, 1.1, 8.976278)
-script = ExtResource("5_region")
 
-[node name="Mesh" type="MeshInstance3D" parent="NavigationRegion3D/Environment/CoverE" unique_id=640991885]
-mesh = SubResource("Mesh0CoverB")
-
-[node name="CollisionShape3D" type="CollisionShape3D" parent="NavigationRegion3D/Environment/CoverE" unique_id=1027548392]
-shape = SubResource("Shape0CoverB")
-
-[node name="CoverF" type="StaticBody3D" parent="NavigationRegion3D/Environment" unique_id=1955732264]
+[node name="CoverF" parent="NavigationRegion3D/Environment" unique_id=1955732264 instance=ExtResource("5_cover")]
 transform = Transform3D(-0.012486058, 0, 0.99992204, 0, 1, 0, -0.99992204, 0, -0.012486058, 5.4195333, 1.1, 3.679556)
-script = ExtResource("5_region")
-
-[node name="Mesh" type="MeshInstance3D" parent="NavigationRegion3D/Environment/CoverF" unique_id=1877995171]
-mesh = SubResource("Mesh0CoverB")
-
-[node name="CollisionShape3D" type="CollisionShape3D" parent="NavigationRegion3D/Environment/CoverF" unique_id=1389716735]
-shape = SubResource("Shape0CoverB")
 
 [node name="North" type="StaticBody3D" parent="NavigationRegion3D/Environment" unique_id=61551692]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 2.461725, 0.8, -5.125)
