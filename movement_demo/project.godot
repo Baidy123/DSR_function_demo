@@ -74,6 +74,26 @@ fire={
 ]
 }
 
+weapon_primary={
+"deadzone": 0.5,
+"events": [Object(InputEventKey,"physical_keycode":49)]
+}
+
+weapon_secondary={
+"deadzone": 0.5,
+"events": [Object(InputEventKey,"physical_keycode":50)]
+}
+
+weapon_previous={
+"deadzone": 0.5,
+"events": [Object(InputEventMouseButton,"button_index":4)]
+}
+
+weapon_next={
+"deadzone": 0.5,
+"events": [Object(InputEventMouseButton,"button_index":5)]
+}
+
 [internationalization]
 
 locale/translations_pot_files=PackedStringArray("res://tests/test.dialogue", "res://tests/npc_a.dialogue", "res://tests/npc_b.dialogue")

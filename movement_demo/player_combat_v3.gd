@@ -32,13 +32,15 @@ func _ready() -> void:
 	equip_weapon(weapon)
 
 
-## 以后装备菜单调用这个接口。Resource 只保存配置，不保存运行中的稳定度。
-func equip_weapon(data: WeaponData) -> void:
+## 装备组件调用此接口；切槽传 true 保留上一枪冷却，避免快速切枪绕过射速。
+## Resource 只保存配置，不保存运行中的稳定度。
+func equip_weapon(data: WeaponData, preserve_cooldown: bool = false) -> void:
 	weapon = data
 	accuracy = weapon.get_aim_settings(is_using_spread_cone()).initial if weapon != null else 0.0
 	accuracy_recovery_timer = 0.0
 	cancel_aim()
-	shot_cooldown = 0.0
+	if not preserve_cooldown:
+		shot_cooldown = 0.0
 	last_result = ""
 	weapon_changed.emit(weapon)
 

@@ -1,5 +1,7 @@
 # 玩家射击与武器调参
 
+> 2026-09-20：主、副武器现在由 Main/Player/WeaponSlots 配置，1/2或滚轮切换；Combat仍选择瞄准模式。槽位资源展开后显示两组参数，按Combat模式调整对应一组。见 [WEAPON_SLOTS.md](WEAPON_SLOTS.md)。下方直接展开Combat/Weapon的说明保留用于单武器配置与模式过滤介绍。
+
 ## 在哪里切换模式（2026-09-19）
 
 选中 **Main → Player → Combat**，在 **Aim Mode** 选择旧概率模式或新散布锥模式，再展开下方 **Weapon** 资源：
@@ -93,3 +95,6 @@ Godot AI 运行时执行：`await load("res://tests/combat_test.gd").new().run(s
 - 本次通过 tests/range_reset_test.gd 的 7 项刷新检查、tests/range_door_test.gd 的 9 项门和围墙检查，已检查运行画面。F5 后按 E 开门进入，射击后走出门，再进入可重复测试。
 
 最新门操作：E 只开门，玩家离开门口 Sensor 范围后自动关门，关门途中折返会重新打开防夹。已通过 7 项针对性运行检查；上述旧门测试中的手动关闭预期不再适用。
+## 玩家武器槽补充（2026-09-20）
+
+当前在 Main/Player/WeaponSlots 检查器配置主、副 WeaponData，按1/2或滚轮切换，右下角显示两槽并高亮当前武器。Combat仍决定瞄准模式并执行战斗；初始化和切槽时由WeaponSlots提供实际武器。游戏内装备留到商人系统完善后再做，操作与验证见 [WEAPON_SLOTS.md](WEAPON_SLOTS.md)。
