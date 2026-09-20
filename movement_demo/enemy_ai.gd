@@ -77,6 +77,7 @@ func is_arena_active() -> bool:
 func _physics_process(delta: float) -> void:
 	if actor.is_dead or not is_arena_active():
 		tactics.attack_position.reset()
+		tactics.suppression.reset()
 		tactics.update_shooting(delta, false, false)
 		return
 
@@ -99,11 +100,14 @@ func _physics_process(delta: float) -> void:
 				last_seen_direction = seen_motion.normalized()
 		last_seen_position = new_seen_position
 		has_visual_memory = true
+		if tactics.suppression.is_active():
+			tactics.suppression.finish(true)
 
 	# 躲藏循环优先处理。躲在墙后时“看不见玩家”是主动行为，不在这里触发丢失目标判定；
 	# 如果探头后仍未重新发现玩家，由 Cover 自己进入 TRACK/SEARCH。
 	if cover != null and cover.is_active():
 		tactics.attack_position.reset()
+		tactics.suppression.reset()
 		if sees_player:
 			is_alerted = true
 			last_known_position = last_seen_position
@@ -148,9 +152,11 @@ func _physics_process(delta: float) -> void:
 		search.search_pause_timer = 0.0
 		search.search_is_pausing = false
 
-	# 真正从“看见”切到“看不见”时，只掷一次方向线索。
-	elif lost_player_this_frame and not tactics.attack_position.is_active():
-		search.begin_tracking_or_search(true)
+	# 真实失视先尝试压制；没有接管的攻击动作时才转入原追踪／搜索。
+	elif lost_player_this_frame:
+		tactics.start_suppression()
+		if not tactics.attack_position.is_active() and not tactics.suppression.is_active():
+			search.begin_tracking_or_search(true)
 
 	# 没有可用方向信息时，旧的近战调查仍可走到最后目击位置再搜索。
 	elif state == State.APPROACH:
@@ -182,7 +188,8 @@ func _physics_process(delta: float) -> void:
 
 	# 远程走位和 TRACK 允许侧移/后退，同时把武器方向保持在威胁方向。
 	if state == State.REPOSITION or state == State.HOLD_POSITION:
-		actor.face_direction(last_known_position - actor.global_position, delta)
+		var facing_position: Vector3 = tactics.suppression.aim_point if tactics.suppression.is_active() else last_known_position
+		actor.face_direction(facing_position - actor.global_position, delta)
 	elif state == State.TRACK or state == State.SEARCH:
 		var facing: Vector3 = search.facing_direction(direction)
 		if not facing.is_zero_approx():
@@ -258,6 +265,7 @@ func _horizontal_distance_between(a: Vector3, b: Vector3) -> float:
 func _on_hit_received(damage: float, attacker_position: Vector3) -> void:
 	if actor.is_dead:
 		tactics.attack_position.reset()
+		tactics.suppression.reset()
 		tactics.reset_fire_timing()
 		if cover != null:
 			cover.reset()
@@ -268,13 +276,19 @@ func _on_hit_received(damage: float, attacker_position: Vector3) -> void:
 		search.search_sample_count = 0
 		search.search_current_target_active = false
 	elif damage > 0.0:
+		var was_suppressing: bool = tactics.suppression.is_active()
 		if attacker_position.is_finite():
 			_investigate_attack(attacker_position)
 		# 保持原顺序：更新受击记忆后再处理退出躲藏/冲刺。
-		if cover != null:
-			cover.on_damage_received()
-		if attacker_position.is_finite():
-			tactics.attack_position.on_damage_received()
+		if was_suppressing:
+			tactics.suppression.reset()
+			state = State.REPOSITION
+			cover.take_cover_after_suppression_hit()
+		else:
+			if cover != null:
+				cover.on_damage_received()
+			if attacker_position.is_finite():
+				tactics.attack_position.on_damage_received()
 	_update_label()
 
 
@@ -311,6 +325,8 @@ func _update_label() -> void:
 	var state_text: String = cover.state_label() if cover != null and cover.is_active() else names[state]
 	if tactics.attack_position.is_active():
 		state_text = tactics.attack_position.state_label()
+	if tactics.suppression.is_active():
+		state_text = tactics.suppression.state_label()
 	var type_text = "近战" if combat_type == CombatType.MELEE else "远程"
 	actor.set_status_text("%s敌人：%s\n生命 %d / %d\n%s" % [
 		type_text,

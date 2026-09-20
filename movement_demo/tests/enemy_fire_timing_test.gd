@@ -125,6 +125,9 @@ func _check_real_frames() -> void:
 	current_scene = scene
 	var e = scene.get_node("Arena/Enemy")
 	var ai = e.get_node("AI")
+	# 本组固定射击位验证节奏；专项选位与失视压制由各自的实走／射击测试覆盖。
+	ai.tactics.can_use_attack_positions = false
+	ai.tactics.can_suppress_fire = false
 	ai.tactics.fire_reaction_seconds = 0.5
 	ai.tactics.burst_pause_seconds = 1.0
 	var p = scene.get_node("Player")

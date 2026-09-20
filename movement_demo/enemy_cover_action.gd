@@ -111,13 +111,26 @@ func notice_shot(origin: Vector3, endpoint: Vector3) -> void:
 	if not selection.has_clear_line(chest, closest):
 		return
 	ai._investigate_attack(origin - Vector3.UP * 0.8)
+	_try_take_cover(origin)
+
+
+# 压制中真正受伤时必定尝试找掩体，但仍须有合法可达的躲藏位置。
+func take_cover_after_suppression_hit() -> void:
+	if not ai.is_arena_active() or enemy.is_dead or ai.combat_type != ai.CombatType.RANGED:
+		return
+	_try_take_cover(ai.last_known_position + Vector3.UP * 0.8, true)
+	# 同一枪的来弹通知不能在选择失败后重新抽选／更改本次反应。
+	_hide_damage_frame = Engine.get_physics_frames()
+
+
+func _try_take_cover(origin: Vector3, force_attempt: bool = false) -> void:
 	look_position = ai.last_known_position
 	threat_origin = origin
 
 	# 只有“新开始一次掩体反应”时才掷骰子。
 	# 没触发掩体行为时，_investigate_attack() 已经让敌人进入“知道玩家”状态，
 	# 所以它仍会按主 AI 的 REPOSITION / TRACK 等逻辑反应，而不是完全无视枪击。
-	if not is_active() and randf() > take_cover_chance:
+	if not force_attempt and not is_active() and randf() > take_cover_chance:
 		if selection.debug_cover_selection:
 			print("[AI][掩体] 本次未触发寻找掩体，chance=", take_cover_chance)
 		return
@@ -137,6 +150,7 @@ func notice_shot(origin: Vector3, endpoint: Vector3) -> void:
 		return
 	# 成功进入躲藏流程才抢占主动攻击占位；概率失败或无有效掩体不打断。
 	tactics.attack_position.reset()
+	tactics.suppression.reset()
 	if phase == Phase.RUN_TO_COVER and can_reuse:
 		# 连续来弹保持原绕行目标和计时，不能每枪重启转移。
 		enemy.agent.target_position = cover_detour_position if cover_detour_active else hide_position

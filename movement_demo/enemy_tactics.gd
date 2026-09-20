@@ -8,6 +8,11 @@ extends Node
 ## 是否掌握主动选择部分遮身攻击位置；关闭时不会进行这项专项选位。
 ## 默认开启供试玩，后续可由训练配置赋值；不影响普通换位或躲藏能力。
 @export var can_use_attack_positions: bool = true
+## 是否掌握失视后朝最后目击区域压制的能力；具体持续时间和范围在SuppressionAction。
+@export var can_suppress_fire: bool = true
+## 高训练专属动作的临时能力接口，默认关闭；还需最后目击邻近掩体且两端可射击。
+## 分类挂载架构尚未实现，当前手动勾选以测试；开启不自动代表某个训练等级。
+@export var can_suppress_exits: bool = false
 ## 首次／重新真实目击玩家，或真正受伤且有攻击者位置时，尝试攻击占位的概率。
 ## 持续可见不重抽；攻击占位或掩体动作中不重选。0=不触发，1=每次满足条件都尝试。
 ## 两种触发共用此概率；0.5是可调试玩初值。
@@ -54,12 +59,30 @@ const Actor = preload("res://enemy_actor.gd")
 @onready var cover = $CoverAction
 @onready var fire_decision = $FireDecision
 @onready var attack_position = $AttackPositionAction
+@onready var area_suppression = $SuppressionAction
+@onready var exit_suppression = $ExitSuppressionAction
+# 只允许一个压制动作运行；AI和射击流程共用当前动作接口。
+@onready var suppression = $SuppressionAction
+
+
+func start_suppression() -> void:
+	if suppression.is_active():
+		return
+	exit_suppression.on_target_lost()
+	if exit_suppression.is_active():
+		suppression = exit_suppression
+	else:
+		suppression = area_suppression
+		suppression.on_target_lost()
 
 
 func update_shooting(delta: float, sees_player: bool, movement_requested: bool) -> void:
 	# 停顿按经过的时间计算；短暂失去视野或进入掩体不清掉已打枪数/剩余停顿。
 	var elapsed: float = maxf(0.0, delta)
 	fire_pause_remaining = maxf(0.0, fire_pause_remaining - elapsed)
+	if suppression.is_active():
+		_update_suppression_shooting(delta, movement_requested)
+		return
 	var visible_target: bool = (
 		not actor.is_dead and actor.shooting_enabled and actor.weapon != null and ai.is_arena_active() and sees_player
 		and ai.combat_type == ai.CombatType.RANGED
@@ -113,10 +136,32 @@ func update_shooting(delta: float, sees_player: bool, movement_requested: bool) 
 			return
 	if actor.try_fire():
 		fire_decision.on_shot_fired()
-		fire_burst_shots += 1
-		if fire_burst_shots >= maxi(1, burst_shot_count):
-			fire_burst_shots = 0
-			fire_pause_remaining = maxf(0.0, burst_pause_seconds)
+		_record_burst_shot()
+
+
+func _update_suppression_shooting(delta: float, movement_requested: bool) -> void:
+	fire_decision.reset()
+	# 压制不保留旧目击的反应进度；重新看到目标仍需遵守原反应时间。
+	fire_reaction_elapsed = 0.0
+	# 仅此动作允许未目击时按记忆开火；不读取墙后玩家的当前坐标。
+	if actor.is_dead or not actor.shooting_enabled or actor.weapon == null or not ai.is_arena_active() or ai.combat_type != ai.CombatType.RANGED or ai.player.is_dead() or ai.player.is_in_dialogue or cover.is_active():
+		actor.update_weapon(delta)
+		return
+	var point: Vector3 = suppression.aim_point
+	actor.update_weapon(delta, point)
+	var moving: bool = movement_requested or Vector2(actor.velocity.x, actor.velocity.z).length() > 0.05
+	if actor.get_shot_origin().distance_to(point) > actor.weapon.fire_range or fire_pause_remaining > 0.0 or (moving and not fire_while_moving):
+		return
+	if actor.try_fire():
+		_record_burst_shot()
+		suppression.on_shot_fired()
+
+
+func _record_burst_shot() -> void:
+	fire_burst_shots += 1
+	if fire_burst_shots >= maxi(1, burst_shot_count):
+		fire_burst_shots = 0
+		fire_pause_remaining = maxf(0.0, burst_pause_seconds)
 
 
 func _current_firing_stability() -> float:
@@ -328,9 +373,14 @@ func reset() -> void:
 	ranged_has_destination = false
 	cover.reset()
 	attack_position.reset()
+	area_suppression.reset()
+	exit_suppression.reset()
+	suppression = area_suppression
 
 
 func step(delta: float, sees_player: bool) -> Vector3:
+	if suppression.is_active():
+		return suppression.step(delta, sees_player)
 	if attack_position.is_active():
 		return attack_position.step(delta, sees_player)
 	if ai.state != ai.State.APPROACH:

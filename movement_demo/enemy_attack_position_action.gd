@@ -51,7 +51,7 @@ func on_damage_received() -> void:
 
 
 func _try_start(trigger: String, from_hit: bool) -> void:
-	if is_active() or tactics.cover.is_active() or not tactics.can_use_attack_positions:
+	if is_active() or tactics.cover.is_active() or tactics.suppression.is_active() or not tactics.can_use_attack_positions:
 		return
 	if actor.is_dead or not ai.is_arena_active() or actor.weapon == null or ai.combat_type != ai.CombatType.RANGED:
 		return
