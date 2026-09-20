@@ -161,6 +161,8 @@ func _prepare() -> void:
 	ai.was_seeing_player = false
 	ai.state = ai.State.IDLE
 	ai.is_alerted = false
+	# 此处验证成功躲藏抢占，不让受击位置的随机误差改变可用掩体。
+	ai.attack_position_uncertainty = 0.0
 	ai.search.debug_tracking_cheat = false
 	ai.search.lost_target_hint_chance = 0.0
 

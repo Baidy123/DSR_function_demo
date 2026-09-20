@@ -44,6 +44,8 @@ func on_player_seen() -> void:
 	if actor.is_dead or not ai.is_arena_active() or not ai.has_visual_memory or actor.weapon == null or ai.combat_type != ai.CombatType.RANGED:
 		return
 	if randf() >= clampf(tactics.attack_position_chance, 0.0, 1.0):
+		if selection.debug_cover_selection:
+			print("[AI][攻击占位] 本次新目击未触发，chance=", tactics.attack_position_chance)
 		return
 	reset()
 	_query_target = ai.last_seen_position + Vector3.UP * 0.8
@@ -65,31 +67,37 @@ func step(delta: float, sees_player: bool) -> Vector3:
 		reset()
 		return Vector3.ZERO
 	if not tactics.can_use_attack_positions or actor.weapon == null or ai.combat_type != ai.CombatType.RANGED:
-		_finish(sees_player)
+		_finish(sees_player, "能力关闭、无武器或非远程")
 		return Vector3.ZERO
 	if phase == Phase.FIND:
 		_find_position(sees_player)
 		return Vector3.ZERO
+	# 到位后已经站在实际落脚点，不再用早先的采样目的地决定是否离开。
+	if phase == Phase.HOLD:
+		if not sees_player:
+			_finish(false, "占位后失去真实视线")
+		else:
+			var reason := _unusable_reason(actor.global_position)
+			if not reason.is_empty():
+				_finish(true, "实际站位失效：" + reason)
+		return Vector3.ZERO
 	_recheck -= delta
 	if _recheck <= 0.0:
 		_recheck = 0.25
-		if not _usable(destination):
-			_finish(sees_player)
+		var reason := _unusable_reason(destination)
+		if not reason.is_empty():
+			_finish(sees_player, "前往的目的地失效：" + reason)
 			return Vector3.ZERO
-	if phase == Phase.HOLD:
-		if not sees_player or not _usable(actor.global_position):
-			_finish(sees_player)
-		return Vector3.ZERO
 	_remaining -= delta
 	if _remaining <= 0.0:
-		_finish(sees_player)
+		_finish(sees_player, "转移超时")
 		return Vector3.ZERO
 	var distance: float = ai._horizontal_distance(destination)
 	if distance <= 0.12:
 		# 不能提前停在墙后；实际脚下也必须合格才算完成占位。
 		if _usable(actor.global_position):
 			if not sees_player:
-				_finish(false)
+				_finish(false, "到点仍未看见玩家")
 				return Vector3.ZERO
 			phase = Phase.HOLD
 			ai.state = ai.State.HOLD_POSITION
@@ -98,7 +106,7 @@ func step(delta: float, sees_player: bool) -> Vector3:
 				print("[AI][攻击占位] 到位，保持射击位置 ", actor.global_position)
 			return Vector3.ZERO
 		if distance <= 0.02:
-			_finish(sees_player)
+			_finish(sees_player, "抵达但实际站位不合格")
 			return Vector3.ZERO
 	# 来弹／受击可能更新普通导航目标；未进入躲藏时继续当前攻击目的地。
 	if actor.agent.target_position.distance_to(destination) > 0.01:
@@ -108,7 +116,7 @@ func step(delta: float, sees_player: bool) -> Vector3:
 	if finishing:
 		next = destination
 	elif actor.agent.is_navigation_finished():
-		_finish(sees_player)
+		_finish(sees_player, "导航提前结束且最后一段不通")
 		return Vector3.ZERO
 	# 卡住时退出本次行动，不持续向同一堵墙走，也不重新抽概率。
 	var waypoint_distance: float = ai._horizontal_distance(next)
@@ -121,7 +129,7 @@ func step(delta: float, sees_player: bool) -> Vector3:
 	else:
 		_stuck += delta
 	if _stuck >= 2.0:
-		_finish(sees_player)
+		_finish(sees_player, "路径连续两秒无进展")
 		return Vector3.ZERO
 	var direction: Vector3 = next - actor.global_position
 	direction.y = 0.0
@@ -149,8 +157,12 @@ func _find_position(sees_player: bool) -> void:
 		return
 	_candidates.clear()
 	# 查找期间玩家可能移动，提交时再按最新真实目击复核所选点。
-	if is_inf(_best_length) or not _usable(destination):
-		_finish(sees_player)
+	if is_inf(_best_length):
+		_finish(sees_player, "本轮没有合格候选（含感知距离限制）")
+		return
+	var reason := _unusable_reason(destination)
+	if not reason.is_empty():
+		_finish(sees_player, "查找期间目标变化，原选点失效：" + reason)
 		return
 	phase = Phase.MOVE
 	ai.state = ai.State.REPOSITION
@@ -161,12 +173,17 @@ func _find_position(sees_player: bool) -> void:
 
 
 func _usable(point: Vector3) -> bool:
+	return _unusable_reason(point).is_empty()
+
+
+func _unusable_reason(point: Vector3) -> String:
 	if not is_instance_valid(active_cover):
-		return false
+		return "所属掩体失效"
 	if not _within_sight_range(point, ai.last_seen_position):
-		return false
+		return "超过感知距离"
 	var target: Vector3 = ai.last_seen_position + Vector3.UP * 0.8
-	return selection.assess_attack_point(point, active_cover, target, target).usable
+	var result: Dictionary = selection.assess_attack_point(point, active_cover, target, target)
+	return "" if result.usable else result.reason
 
 
 # 射程够但感知距离不够的点，到位仍不能发现／攻击目标，不作为主动占位目的地。
@@ -182,7 +199,7 @@ func _final_segment_clear() -> bool:
 	return true
 
 
-func _finish(sees_player: bool) -> void:
+func _finish(sees_player: bool, reason: String = "结束行动") -> void:
 	reset()
 	tactics.ranged_has_destination = false
 	tactics.ranged_repath_timer = 0.0
@@ -193,7 +210,7 @@ func _finish(sees_player: bool) -> void:
 		ai.last_known_position = ai.last_seen_position
 		ai.search.begin_tracking_or_search(true)
 	if selection.debug_cover_selection:
-		print("[AI][攻击占位] 结束，回到交战／追踪流程")
+		print("[AI][攻击占位] 结束：", reason, "；回到交战／追踪流程")
 
 
 func state_label() -> String:
