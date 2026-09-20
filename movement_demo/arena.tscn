@@ -12,6 +12,7 @@
 [ext_resource type="Script" uid="uid://dudlxf36bl7ew" path="res://enemy_cover_action.gd" id="11_action"]
 [ext_resource type="Resource" uid="uid://kayehxxh8jes" path="res://enemy_test_pistol.tres" id="12_weapon"]
 [ext_resource type="Script" path="res://enemy_fire_decision.gd" id="13_fire_decision"]
+[ext_resource type="Script" uid="uid://b88jwtctnk1ab" path="res://enemy_attack_position_action.gd" id="14_attack_position"]
 
 [sub_resource type="StandardMaterial3D" id="FloorMaterial"]
 albedo_color = Color(0.26, 0.24, 0.3, 1)
@@ -274,6 +275,9 @@ ranged_wall_support_weight = 4.0
 
 [node name="FireDecision" type="Node" parent="Enemy/AI/Tactics"]
 script = ExtResource("13_fire_decision")
+
+[node name="AttackPositionAction" type="Node" parent="Enemy/AI/Tactics"]
+script = ExtResource("14_attack_position")
 
 [node name="CoverAction" type="Node" parent="Enemy/AI/Tactics" unique_id=1122228340]
 script = ExtResource("11_action")

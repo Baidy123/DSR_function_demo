@@ -76,6 +76,7 @@ func is_arena_active() -> bool:
 
 func _physics_process(delta: float) -> void:
 	if actor.is_dead or not is_arena_active():
+		tactics.attack_position.reset()
 		tactics.update_shooting(delta, false, false)
 		return
 
@@ -85,6 +86,7 @@ func _physics_process(delta: float) -> void:
 
 	var sees_player: bool = perception.can_see_player()
 	var lost_player_this_frame: bool = was_seeing_player and not sees_player
+	var saw_player_this_frame: bool = sees_player and not was_seeing_player
 
 	# 只用“连续两帧都真正看见玩家”来估计移动方向。
 	# 这样不需要额外的“是否曾目击玩家”状态，也不会把第一次看见时的长距离差误当成移动。
@@ -101,12 +103,16 @@ func _physics_process(delta: float) -> void:
 	# 躲藏循环优先处理。躲在墙后时“看不见玩家”是主动行为，不在这里触发丢失目标判定；
 	# 如果探头后仍未重新发现玩家，由 Cover 自己进入 TRACK/SEARCH。
 	if cover != null and cover.is_active():
+		tactics.attack_position.reset()
 		if sees_player:
 			is_alerted = true
 			last_known_position = last_seen_position
 			search.has_suspected_position = false
 			search.search_hint_timer = 0.0
 		var cover_direction: Vector3 = cover.step(delta, sees_player)
+		# 躲藏／探头因重新目击结束时，这一次接敌也可以触发攻击占位。
+		if not cover.is_active() and saw_player_this_frame:
+			tactics.attack_position.on_player_seen()
 		if cover.phase == cover.Phase.RUN_TO_COVER and not cover.covering_retreat and not cover_direction.is_zero_approx():
 			# 普通跑掩体：直接朝移动方向转身冲过去。
 			actor.face_direction(cover_direction, delta)
@@ -143,7 +149,7 @@ func _physics_process(delta: float) -> void:
 		search.search_is_pausing = false
 
 	# 真正从“看见”切到“看不见”时，只掷一次方向线索。
-	elif lost_player_this_frame:
+	elif lost_player_this_frame and not tactics.attack_position.is_active():
 		search.begin_tracking_or_search(true)
 
 	# 没有可用方向信息时，旧的近战调查仍可走到最后目击位置再搜索。
@@ -151,6 +157,8 @@ func _physics_process(delta: float) -> void:
 		state = State.INVESTIGATE
 		agent.target_position = last_known_position
 
+	if saw_player_this_frame:
+		tactics.attack_position.on_player_seen()
 	var direction = Vector3.ZERO
 
 	if state == State.IDLE:
@@ -249,6 +257,7 @@ func _horizontal_distance_between(a: Vector3, b: Vector3) -> float:
 
 func _on_hit_received(damage: float, attacker_position: Vector3) -> void:
 	if actor.is_dead:
+		tactics.attack_position.reset()
 		tactics.reset_fire_timing()
 		if cover != null:
 			cover.reset()
@@ -298,6 +307,8 @@ func _update_label() -> void:
 	var knowledge_text = "知道玩家" if is_alerted else "未激活"
 
 	var state_text: String = cover.state_label() if cover != null and cover.is_active() else names[state]
+	if tactics.attack_position.is_active():
+		state_text = tactics.attack_position.state_label()
 	var type_text = "近战" if combat_type == CombatType.MELEE else "远程"
 	actor.set_status_text("%s敌人：%s\n生命 %d / %d\n%s" % [
 		type_text,

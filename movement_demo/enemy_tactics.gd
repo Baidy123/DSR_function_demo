@@ -5,6 +5,12 @@ extends Node
 ## 是否掌握面向威胁的撤退射击；关闭时概率再高也不会使用。
 ## 后续由训练配置决定；当前默认开启，保留现有敌人的表现。
 @export var can_covering_retreat: bool = true
+## 是否掌握主动选择部分遮身攻击位置；关闭时不会进行这项专项选位。
+## 默认开启供试玩，后续可由训练配置赋值；不影响普通换位或躲藏能力。
+@export var can_use_attack_positions: bool = true
+## 首次／重新真实目击玩家时尝试攻击占位的概率；持续可见不重抽，动作中不重选。
+## 0=不触发，1=每次新目击都尝试；0.5是可调试玩初值。
+@export_range(0.0, 1.0, 0.05) var attack_position_chance: float = 0.5
 @export_group("Fire Timing")
 ## 接敌侧移/后退和掩护撤退时允许开火；关闭后只在停稳时射击，转身冲刺仍停火。
 @export var fire_while_moving: bool = true
@@ -46,6 +52,7 @@ const Actor = preload("res://enemy_actor.gd")
 
 @onready var cover = $CoverAction
 @onready var fire_decision = $FireDecision
+@onready var attack_position = $AttackPositionAction
 
 
 func update_shooting(delta: float, sees_player: bool, movement_requested: bool) -> void:
@@ -319,9 +326,12 @@ func reset() -> void:
 	ranged_repath_timer = 0.0
 	ranged_has_destination = false
 	cover.reset()
+	attack_position.reset()
 
 
 func step(delta: float, sees_player: bool) -> Vector3:
+	if attack_position.is_active():
+		return attack_position.step(delta, sees_player)
 	if ai.state != ai.State.APPROACH:
 		return process_ranged_position(delta, sees_player)
 	var next_position: Vector3 = agent.get_next_path_position()

@@ -135,6 +135,8 @@ func notice_shot(origin: Vector3, endpoint: Vector3) -> void:
 	if not can_reuse and not _choose_cover():
 		reset()
 		return
+	# 成功进入躲藏流程才抢占主动攻击占位；概率失败或无有效掩体不打断。
+	tactics.attack_position.reset()
 	if phase == Phase.RUN_TO_COVER and can_reuse:
 		# 连续来弹保持原绕行目标和计时，不能每枪重启转移。
 		enemy.agent.target_position = cover_detour_position if cover_detour_active else hide_position

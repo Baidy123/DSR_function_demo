@@ -13,6 +13,8 @@ func _run() -> void:
 	current_scene = scene
 	var e = scene.get_node("Arena/Enemy")
 	var ai = e.get_node("AI")
+	# 本测试验证固定交战位置的射击节奏；主动占位的移动与开火由独立行为测试覆盖。
+	ai.tactics.can_use_attack_positions = false
 	ai.tactics.fire_reaction_seconds = 0.5
 	ai.tactics.burst_pause_seconds = 1.0
 	var p = scene.get_node("Player")
