@@ -12,7 +12,9 @@
 
 展开槽内资源可以调整枪械参数。已有主武器为 `test_pistol.tres`，用户原参数保持；新增 `test_sidearm.tres` 为单发测试副武器，伤害15、间隔0.4秒，其余采用 WeaponData 初值，仅用于比较切换效果，非最终平衡设定。槽位暂不限制枪械种类。
 
-本步装备来源是 WeaponSlots，初始化与切槽时将选中资源交给 Combat。Combat 继续负责瞄准模式、稳定度计算、射线和伤害；不要通过 Combat 的 Weapon 字段配置双槽。直接展开槽内资源会显示两种模式参数，实际使用哪种仍由 Combat 的 Aim Mode 决定。
+装备来源统一为 WeaponSlots，初始化与切槽时将选中资源交给 Combat。Combat 保留运行时武器引用，检查器不再提供重复的 Weapon 配置；它继续负责瞄准模式、稳定度计算、射线和伤害。展开槽内资源会按 Combat 的 Aim Mode 显示对应模式参数；从文件系统直接打开资源才显示两组。
+
+每把武器的 `Fire Mode` 可选“单发／自动”：单发每次点击发一枪，自动在瞄准时按住左键持续开火；射速仍由 `Shot Interval` 决定。现有资源默认单发，切枪后需要重新按下左键。完整规则及测试见 [PLAYER_FIRE_MODES.md](PLAYER_FIRE_MODES.md)。
 
 ## 操作与边界
 

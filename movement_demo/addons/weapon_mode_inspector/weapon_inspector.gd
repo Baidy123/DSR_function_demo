@@ -66,6 +66,11 @@ func _context_mode(weapon: Object) -> int:
 	if combat == null or combat.get_script() == null:
 		return -1
 	var script_path: String = combat.get_script().resource_path
+	if script_path == "res://player_weapon_slots.gd":
+		if weapon != combat.get("primary_weapon") and weapon != combat.get("secondary_weapon"):
+			return -1
+		var player_combat = combat.get_node_or_null("../Combat")
+		return int(player_combat.get("aim_mode")) if player_combat != null else -1
 	if script_path not in ["res://player_combat_v3.gd", "res://enemy_actor.gd"]:
 		return -1
 	if combat.get("weapon") != weapon:

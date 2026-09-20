@@ -7,8 +7,8 @@ enum AimMode { PROBABILITY, SPREAD_CONE }
 signal weapon_changed(data: WeaponData)
 signal shot_fired(hit: bool, stability: float)
 
-## 当前装备的 WeaponData 资源（例如 test_pistol.tres）；保存枪械参数，运行中的稳定度由 Combat 单独维护。
-@export var weapon: WeaponData
+## 由 WeaponSlots 装备的运行时引用；武器资源只在槽位中配置。
+var weapon: WeaponData
 
 var is_aiming: bool = false
 var locked_target: Node3D = null
@@ -17,6 +17,7 @@ var shot_cooldown: float = 0.0
 var shot_count: int = 0
 var last_shot_collider: Object = null
 var shot_requested: bool = false
+var fire_held: bool = false
 var last_result: String = ""
 var accuracy_recovery_timer: float = 0.0
 var last_target_position: Vector3 = Vector3.ZERO
@@ -46,10 +47,14 @@ func equip_weapon(data: WeaponData, preserve_cooldown: bool = false) -> void:
 
 
 func _unhandled_input(event: InputEvent) -> void:
+	if event.is_action_released("fire"):
+		fire_held = false
+		return
 	if player.is_in_dialogue or weapon == null or not can_combat():
 		return
 	if event.is_action_pressed("fire") and Input.is_action_pressed("aim"):
 		shot_requested = true
+		fire_held = true
 		get_viewport().set_input_as_handled()
 
 
@@ -58,6 +63,7 @@ func cancel_aim() -> void:
 	locked_target = null
 	_reset_target_movement_tracking()
 	shot_requested = false
+	fire_held = false
 	# 松开再按瞄准不能消除刚刚累积的射击惩罚。
 	accuracy = minf(accuracy, weapon.get_aim_settings(is_using_spread_cone()).initial) if weapon != null else 0.0
 	$HUD/Reticle.hide()
@@ -77,6 +83,9 @@ func can_combat() -> bool:
 func begin_frame(delta: float, aim_pressed: bool) -> void:
 	player_position_before_move = player.global_position
 	shot_cooldown = maxf(0.0, shot_cooldown - delta)
+	# 0.2秒按60Hz扣减会留下浮点尾差，不能因此让连发额外等待一帧。
+	if is_zero_approx(shot_cooldown):
+		shot_cooldown = 0.0
 	if weapon == null or player.is_in_dialogue or not aim_pressed or not can_combat():
 		cancel_aim()
 		return
@@ -135,7 +144,11 @@ func end_frame(delta: float, moving: bool) -> void:
 			# 没有玩家/目标移动惩罚时，延迟结束后按稳定速度恢复到 100%。
 			# 未瞄准时 begin_frame 会先把稳定度限制到初始值；此处仍按本帧时间恢复。
 			accuracy = minf(1.0, accuracy + recovery * recovery_delta)
-	if shot_requested:
+	# 只有未被 UI 消费的按下事件才能启动连发；释放事件即使被 UI 消费也能停火。
+	if not Input.is_action_pressed("fire"):
+		fire_held = false
+	var automatic_fire: bool = weapon != null and weapon.fire_mode == WeaponData.FireMode.AUTOMATIC and fire_held
+	if shot_requested or automatic_fire:
 		shot_requested = false
 		shoot()
 	_update_status()
@@ -352,6 +365,7 @@ func _update_status() -> void:
 	var title: String = weapon.display_name if weapon != null else "未装备"
 	var target_name: String = str(locked_target.name) if is_instance_valid(locked_target) else "无"
 	var precision: String = "%d%%" % roundi(accuracy * 100.0)
-	var hint: String = "右键瞄准 / 左键单发" if can_combat() else "非战斗区域：请进入靶场"
+	var fire_hint: String = "按住左键连发" if weapon != null and weapon.fire_mode == WeaponData.FireMode.AUTOMATIC else "左键单发"
+	var hint: String = "右键瞄准 / " + fire_hint if can_combat() else "非战斗区域：请进入靶场"
 	var accuracy_label: String = "稳定度" if is_using_spread_cone() else "中心概率"
 	status.text = "%s　%s\n锁定：%s　%s：%s\n%s" % [title, hint, target_name, accuracy_label, precision, last_result]

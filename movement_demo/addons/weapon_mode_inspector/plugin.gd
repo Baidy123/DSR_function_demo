@@ -18,7 +18,7 @@ func _exit_tree() -> void:
 
 
 func _on_property_edited(property: String) -> void:
-	if property != "aim_mode" and property != "weapon":
+	if property not in ["aim_mode", "weapon", "primary_weapon", "secondary_weapon"]:
 		return
 	# 当前事件结束后再重建资源面板；撤销/重做模式选择也会触发该信号。
 	_refresh_weapon.call_deferred()
@@ -28,8 +28,15 @@ func _refresh_weapon() -> void:
 	var combat = EditorInterface.get_inspector().get_edited_object()
 	if combat == null or combat.get_script() == null:
 		return
-	if combat.get_script().resource_path not in ["res://player_combat_v3.gd", "res://enemy_actor.gd"]:
-		return
-	var weapon = combat.get("weapon")
-	if weapon is Resource:
-		weapon.notify_property_list_changed()
+	var script_path: String = combat.get_script().resource_path
+	var weapons: Array = []
+	if script_path == "res://enemy_actor.gd":
+		weapons.append(combat.get("weapon"))
+	elif script_path in ["res://player_combat_v3.gd", "res://player_weapon_slots.gd"]:
+		var slots = combat if script_path == "res://player_weapon_slots.gd" else combat.get_node_or_null("../WeaponSlots")
+		if slots != null:
+			weapons.append(slots.get("primary_weapon"))
+			weapons.append(slots.get("secondary_weapon"))
+	for weapon in weapons:
+		if weapon is Resource:
+			weapon.notify_property_list_changed()

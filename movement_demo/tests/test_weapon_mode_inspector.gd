@@ -6,17 +6,19 @@ const KEY := "weapon_mode_inspector_fixture"
 
 func test_inspector_01_setup() -> void:
 	var c = EditorInterface.get_edited_scene_root().get_node("Player/Combat")
-	var fixture := {"combat": c, "original_weapon": c.get("weapon"), "mode": c.get("aim_mode")}
+	var slots = c.get_node("../WeaponSlots")
+	var fixture := {"combat": c, "slots": slots, "original_weapon": slots.get("primary_weapon"), "mode": c.get("aim_mode")}
 	fixture.weapon = fixture.original_weapon.duplicate()
 	EditorInterface.get_base_control().set_meta(KEY, fixture)
-	c.set("weapon", fixture.weapon)
+	slots.set("primary_weapon", fixture.weapon)
 	c.set("aim_mode", 0)
-	EditorInterface.edit_node(c)
+	EditorInterface.edit_node(slots)
 	assert_true(EditorInterface.is_plugin_enabled("weapon_mode_inspector"), "plugin enabled")
 
 
 func test_inspector_02_expand() -> void:
-	assert_true(_open_weapon(EditorInterface.get_inspector(), _fixture().weapon), "weapon picker opened")
+	if _editors(EditorInterface.get_inspector(), _fixture().weapon).is_empty():
+		assert_true(_open_weapon(EditorInterface.get_inspector(), _fixture().weapon), "weapon picker opened")
 	EditorInterface.get_inspector().expand_all_folding()
 	assert_true(_fixture().combat.get("aim_mode") == 0, "probability mode selected")
 
@@ -29,6 +31,7 @@ func test_inspector_03_probability() -> void:
 	assert_true(properties.has("shot_accuracy_penalty"), "probability fields visible: " + str(properties.keys()))
 	assert_true(not properties.has("shot_spread_penalty_degrees"), "cone fields hidden")
 	assert_true(properties.has("damage"), "common fields visible")
+	assert_true(properties.has("fire_mode"), "fire mode visible in weapon slot")
 	if properties.has("shot_accuracy_penalty"):
 		var field = properties.shot_accuracy_penalty
 		assert_true(is_equal_approx(field.spin.value, f.weapon.shot_accuracy_penalty * 100.0), "percentage scale")
@@ -89,7 +92,7 @@ func test_inspector_09_standalone_and_restore() -> void:
 	var f := _fixture()
 	var properties := _editors(EditorInterface.get_inspector(), f.weapon)
 	assert_true(properties.has("shot_accuracy_penalty") and properties.has("shot_spread_penalty_degrees"), "standalone resource shows both groups")
-	f.combat.set("weapon", f.original_weapon)
+	f.slots.set("primary_weapon", f.original_weapon)
 	f.combat.set("aim_mode", f.mode)
 	EditorInterface.edit_node(f.combat)
 	f.original_weapon.notify_property_list_changed()

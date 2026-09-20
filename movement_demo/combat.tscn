@@ -1,12 +1,10 @@
 [gd_scene format=3 uid="uid://bo1umuc15khr4"]
 
-[ext_resource type="Script" uid="uid://c4d4bbvi27vad" path="res://player_combat_v2.gd" id="1_kx3u1"]
-[ext_resource type="Resource" uid="uid://b6bap6hpl63cp" path="res://test_pistol.tres" id="2"]
+[ext_resource type="Script" uid="uid://d2lnycebyk6px" path="res://player_combat_v3.gd" id="1_kx3u1"]
 [ext_resource type="Script" uid="uid://druibtssmbihn" path="res://lock_reticle.gd" id="3"]
 
 [node name="Combat" type="Node" unique_id=1292262048]
 script = ExtResource("1_kx3u1")
-weapon = ExtResource("2")
 
 [node name="HUD" type="CanvasLayer" parent="." unique_id=1620599981]
 

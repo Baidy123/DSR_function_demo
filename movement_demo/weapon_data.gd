@@ -1,6 +1,8 @@
 class_name WeaponData
 extends Resource
 
+enum FireMode { SEMI_AUTO, AUTOMATIC }
+
 @export_group("共用参数")
 ## 武器显示名称。
 @export var display_name: String = "测试手枪"
@@ -14,6 +16,8 @@ extends Resource
 @export_range(1.0, 180.0, 1.0) var cone_angle_degrees: float = 70.0
 ## 玩家锁定时的走路速度倍率，锁定期间禁跑；敌人移动由 AI 决定。
 @export_range(0.1, 1.0, 0.05) var locked_move_multiplier: float = 0.5
+## 玩家扳机操作：单发每次按下一枪，自动按住持续射击。敌人射击节奏仍由 AI 控制。
+@export_enum("单发:0", "自动:1") var fire_mode: int = FireMode.SEMI_AUTO
 ## 两次射击的最短间隔（秒）。
 @export_range(0.05, 3.0, 0.05) var shot_interval: float = 0.2
 
