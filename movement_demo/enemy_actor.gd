@@ -224,14 +224,21 @@ func get_shot_origin() -> Vector3:
 	return global_position + Vector3.UP * 0.8
 
 
-## 只执行请求，不寻找玩家或决定行为；实际射线围绕当前枪口方向取样。
-func try_fire() -> bool:
+## 纯查询执行条件；让评分只在枪械确实能发射时积累主动等待时间。
+func can_fire() -> bool:
 	if weapon == null or is_dead or not shooting_enabled or not has_aim or not aim_acquired or shot_cooldown > 0.0:
 		return false
 	# 不从身体背后开枪；只检查水平夹角，保留上下瞄准。
 	var horizontal_aim := Vector3(aim_direction.x, 0.0, aim_direction.z)
 	var body_forward := Vector3(-global_basis.z.x, 0.0, -global_basis.z.z)
 	if not horizontal_aim.is_zero_approx() and body_forward.angle_to(horizontal_aim) > MAX_GUN_BODY_ANGLE:
+		return false
+	return true
+
+
+## 只执行请求，不寻找玩家或决定行为；实际射线围绕当前枪口方向取样。
+func try_fire() -> bool:
+	if not can_fire():
 		return false
 	var spread: float = get_spread_degrees()
 	last_shot_direction = _random_direction_in_spread_cone(aim_direction, spread)

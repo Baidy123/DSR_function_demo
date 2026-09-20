@@ -43,15 +43,16 @@ func _run() -> void:
 	e.equip_weapon(w)
 	e.shot_cooldown = 0.0
 	t.reset_fire_timing()
-	e.weapon_stability = 0.69
+	e.weapon_stability = 0.5
 	var count: int = e.shot_count
-	t.update_shooting(1.0, true, false)
-	_check("低于目标继续等待且不计入本轮枪数", e.shot_count == count and t.fire_burst_shots == 0)
+	t.update_shooting(0.3, true, false)
+	_check("短暂等待时优先稳枪且不计入本轮枪数", e.shot_count == count and t.fire_burst_shots == 0)
 	e.weapon_stability = 0.7
 	t.update_shooting(0.0, true, false)
 	_check("达到目标允许普通开火", e.shot_count == count + 1)
-	t.update_shooting(1.0, true, false)
-	_check("连射惩罚降到目标以下后重新稳枪", e.shot_count == count + 1)
+	e.shot_cooldown = 0.0
+	t.update_shooting(0.1, true, false)
+	_check("连射惩罚后短时间仍偏好稳枪", e.shot_count == count + 1)
 	e.weapon_stability = 0.7
 	t.update_shooting(0.0, true, false)
 	_check("恢复到目标后继续本轮射击", e.shot_count == count + 2 and t.fire_burst_shots == 2)
@@ -59,7 +60,7 @@ func _run() -> void:
 	e.shot_cooldown = 0.0
 	ai.state = ai.State.REPOSITION
 	t.update_shooting(1.0, true, true)
-	_check("普通跑打也遵守稳定度目标", e.shot_count == count + 2)
+	_check("普通跑打精度低且等待不久时仍偏好稳枪", e.shot_count == count + 2)
 	cover.phase = cover.Phase.RUN_TO_COVER
 	cover.covering_retreat = true
 	ai.state = ai.State.TRACK

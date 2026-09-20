@@ -11,7 +11,7 @@ extends Node
 ## 首次发现或重新取得有效视线后，至少观察多久才允许射击（秒）；0可关闭。
 @export_range(0.0, 5.0, 0.05) var fire_reaction_seconds: float = 0.3
 ## 普通交火（含接敌跑打）期望的稳定度；0.7表示70%，不是命中率。
-## 低于目标继续跟枪等待；掩护撤退不受此限制。0表示关闭稳枪限制。
+## 用作FireDecision评分的精度偏好，低于目标也可选择射击；掩护撤退不等待稳枪。
 @export_range(0.0, 1.0, 0.05) var fire_stability_target: float = 0.7
 ## 每轮实际打出几枪后暂停；只统计执行成功的射击，不按命中次数计数。
 @export_range(1, 20, 1) var burst_shot_count: int = 3
@@ -45,6 +45,7 @@ const Actor = preload("res://enemy_actor.gd")
 
 
 @onready var cover = $CoverAction
+@onready var fire_decision = $FireDecision
 
 
 func update_shooting(delta: float, sees_player: bool, movement_requested: bool) -> void:
@@ -60,47 +61,65 @@ func update_shooting(delta: float, sees_player: bool, movement_requested: bool) 
 	visible_target = visible_target and ai.perception.can_see_player()
 	if not visible_target:
 		fire_reaction_elapsed = 0.0
+		fire_decision.reset()
 		actor.update_weapon(delta)
 		return
 	var point: Vector3 = ai.player.global_position + Vector3.UP * 0.8
 	if actor.get_shot_origin().distance_to(point) > actor.weapon.fire_range:
 		fire_reaction_elapsed = 0.0
+		fire_decision.reset()
 		actor.update_weapon(delta)
 		return
 	# 反应与停顿期间仍然跟枪；两者只阻止开火，不阻止移动、转身或瞄准。
+	var previous_stability: float = _current_firing_stability()
 	actor.update_weapon(delta, point)
 	var reaction_seconds: float = maxf(0.0, fire_reaction_seconds)
 	fire_reaction_elapsed = minf(reaction_seconds, fire_reaction_elapsed + elapsed)
 	if fire_reaction_elapsed < reaction_seconds or fire_pause_remaining > 0.0:
+		fire_decision.reset()
 		return
 	# 掩护撤退面向威胁，允许边退边打；转身冲刺、躲藏和有效探头仍停火。
 	if cover != null and cover.is_active():
 		if not can_covering_retreat or cover.phase != cover.Phase.RUN_TO_COVER or not cover.covering_retreat:
+			fire_decision.reset()
 			return
 	# Cover接管期间主状态可能仍是TRACK/SEARCH，按当前掩体动作授权即可。
 	elif ai.state != ai.State.REPOSITION and ai.state != ai.State.HOLD_POSITION:
-		return
-	elif not _is_weapon_stable_enough():
+		fire_decision.reset()
 		return
 	var moving: bool = movement_requested or Vector2(actor.velocity.x, actor.velocity.z).length() > 0.05
 	if moving and not fire_while_moving:
+		fire_decision.reset()
 		return
+	if not actor.can_fire():
+		fire_decision.reset()
+		return
+	if cover != null and cover.is_active():
+		fire_decision.reset()
+	else:
+		var stability: float = _current_firing_stability()
+		var recovery_rate: float = maxf(0.0, stability - previous_stability) / maxf(elapsed, 0.0001)
+		var distance: float = actor.get_shot_origin().distance_to(point)
+		var close_pressure: float = clampf(1.0 - distance / maxf(ranged_min_distance, 0.01), 0.0, 1.0)
+		if fire_decision.choose_action(elapsed, stability, fire_stability_target, recovery_rate, close_pressure) != fire_decision.Action.FIRE:
+			return
 	if actor.try_fire():
+		fire_decision.on_shot_fired()
 		fire_burst_shots += 1
 		if fire_burst_shots >= maxi(1, burst_shot_count):
 			fire_burst_shots = 0
 			fire_pause_remaining = maxf(0.0, burst_pause_seconds)
 
 
-func _is_weapon_stable_enough() -> bool:
-	# 将稳定度目标换成这把武器的实际半角；最小=最大时无需稳枪，直接达标。
+func _current_firing_stability() -> float:
+	# 固定散布没有可等待的收拢过程，评分按完全稳定处理。
 	var minimum: float = clampf(actor.weapon.min_spread_angle_degrees, 0.0, 45.0)
 	var maximum: float = clampf(actor.weapon.max_spread_angle_degrees, minimum, 45.0)
-	var target_spread: float = lerpf(maximum, minimum, clampf(fire_stability_target, 0.0, 1.0))
-	return actor.get_spread_degrees() <= target_spread + 0.00001
+	return 1.0 if maximum - minimum <= 0.00001 else clampf(actor.weapon_stability, 0.0, 1.0)
 
 
 func reset_fire_timing() -> void:
+	fire_decision.reset()
 	fire_reaction_elapsed = 0.0
 	fire_burst_shots = 0
 	fire_pause_remaining = 0.0
