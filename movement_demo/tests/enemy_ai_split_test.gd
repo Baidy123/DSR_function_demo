@@ -23,17 +23,16 @@ func _run() -> void:
 		return
 	_check("父节点是物理角色而AI只是普通节点", actor is CharacterBody3D and ai is Node and not ai is Node3D)
 	_check("基础脚本不包含感知和搜索方法", not actor.has_method("can_see_player") and not actor.has_method("_begin_search"))
-	_check("AI保存感知与搜索行为", ai.has_method("can_see_player") and ai.has_method("_begin_search"))
-	# 用保留的旧脚本默认值和迁移前场景覆盖值逐项核对全部导出配置。
+	_check("AI协调独立感知与搜寻板块", ai.perception.has_method("can_see_player") and ai.search.has_method("begin_search"))
+	# 原默认值继续对比旧脚本；当前场景覆盖值从保存的场景读取，允许用户调参。
 	var legacy = load("res://enemy_tactical_v8.gd").new()
-	var overrides := {
-		"combat_type": 1, "ranged_flank_weight": 5.0, "ranged_wall_support_weight": 4.0,
-		"lost_target_hint_chance": 0.8, "search_hint_chance": 0.5,
-		"search_hint_decay_mode": 3, "search_hint_min_multiplier": 0.1,
-		"search_hint_distance_falloff": 10.0, "debug_tracking_cheat": true,
-		"track_seconds": 10.0, "search_pause_seconds": 0.6,
-		"search_stuck_repath_seconds": 0.8, "max_health": 10000.0
-	}
+	var overrides: Dictionary = {}
+	var saved: SceneState = load("res://arena.tscn").get_state()
+	for index in range(saved.get_node_count()):
+		if not String(saved.get_node_path(index)).trim_prefix("./").begins_with("Enemy"):
+			continue
+		for property_index in range(saved.get_node_property_count(index)):
+			overrides[String(saved.get_node_property_name(index, property_index))] = saved.get_node_property_value(index, property_index)
 	var migrated := true
 	for property in legacy.get_script().get_script_property_list():
 		if not property.usage & PROPERTY_USAGE_EDITOR:
@@ -42,19 +41,27 @@ func _run() -> void:
 		if key in ["Tracking Cheat", "Tracking Movement", "Search"]:
 			continue
 		var expected = overrides.get(key, legacy.get(key))
-		var owner_node = actor if key in ["move_speed", "turn_speed_degrees", "max_health"] else ai
+		var owner_node = null
+		for candidate in [actor, ai, ai.tactics, ai.search, ai.perception]:
+			if candidate.get(key) != null:
+				owner_node = candidate
+				break
+		if owner_node == null:
+			print("CONFIG MISSING ", key)
+			migrated = false
+			continue
 		if owner_node.get(key) != expected:
 			print("CONFIG MISMATCH ", key, " expected=", expected, " actual=", owner_node.get(key))
 			migrated = false
 	_check("所有导出参数默认值和场景调参保持", migrated)
 	legacy.free()
 	_check("场景生命一万未被默认值覆盖", actor.max_health == 10000.0 and actor.health == 10000.0)
-	_check("掩体读取对应AI和实体", actor.get_node("Cover").ai == ai and actor.get_node("Cover").enemy == actor)
+	_check("掩体读取对应AI和实体", actor.get_node("AI/Tactics/CoverAction").ai == ai and actor.get_node("AI/Tactics/CoverAction").enemy == actor)
 	var p = scene.get_node("Player")
 	p.set_physics_process(false)
 	ai.set_physics_process(false)
-	ai.sight_distance = 0.0
-	ai.close_awareness_radius = 0.0
+	ai.perception.sight_distance = 0.0
+	ai.perception.close_awareness_radius = 0.0
 	p.global_position = actor.global_position + Vector3(1.0, 0.0, 0.0)
 	for frame in range(5):
 		await physics_frame
@@ -66,13 +73,13 @@ func _run() -> void:
 	_check("实体结算伤害", actor.health == actor.max_health - 25.0)
 	_check("伤害信号驱动AI调查", ai.is_alerted and ai.last_known_position.is_equal_approx(Vector3(p.global_position.x, actor.global_position.y, p.global_position.z)))
 	actor.receive_hit(actor.health)
-	_check("死亡同步AI与掩体", actor.is_dead and ai.state == ai.State.DEAD and not actor.get_node("Cover").is_active())
+	_check("死亡同步AI与掩体", actor.is_dead and ai.state == ai.State.DEAD and not actor.get_node("AI/Tactics/CoverAction").is_active())
 	actor.reset_target()
 	_check("复位同步生命与AI记忆", not actor.is_dead and actor.health == actor.max_health and ai.state == ai.State.IDLE and not ai.is_alerted and not ai.has_visual_memory)
 	# 走真实 Combat 射线入口，确认命中物仍是 Enemy 身体，AI 接到受击信号。
 	p.global_position = actor.global_position + Vector3(0.0, 0.0, 2.0)
 	p.rotation = Vector3.ZERO
-	actor.get_node("Cover").take_cover_chance = 0.0
+	actor.get_node("AI/Tactics/CoverAction").take_cover_chance = 0.0
 	var combat = p.get_node("Combat")
 	var weapon = combat.weapon.duplicate()
 	weapon.min_spread_angle_degrees = 0.0
@@ -95,7 +102,6 @@ func _run() -> void:
 	var detached = actor.duplicate()
 	detached.name = "ActorWithoutAI"
 	detached.get_node("AI").free()
-	detached.get_node("Cover").free()
 	detached.position = Vector3(0, 0, 2)
 	root.add_child(detached)
 	for frame in range(3):

@@ -3,7 +3,7 @@ extends RefCounted
 # 只读试玩记录：不改敌人状态、移动或地图；在 Main metadata 留下最近12秒与停滞快照。
 func watch(scene: Node) -> void:
 	var enemy = scene.get_node("Arena/Enemy")
-	var cover = enemy.get_node("Cover")
+	var cover = enemy.get_node("AI/Tactics/CoverAction")
 	var arena = scene.get_node("Arena")
 	var trace: Array = []
 	var anchor: Vector3 = enemy.global_position
@@ -46,12 +46,12 @@ func run(scene: Node, path_distance: float = -1.0, focused: bool = false, damage
 	var arena = scene.get_node("Arena")
 	var enemy = arena.get_node("Enemy")
 	var player = scene.get_node("Player")
-	var cover = enemy.get_node("Cover")
+	var cover = enemy.get_node("AI/Tactics/CoverAction")
 	var wall = arena.get_node("NavigationRegion3D/Environment/CoverB")
 	enemy.get_node("AI").set_physics_process(false)
 	player.set_physics_process(false)
 	player.global_position = arena.to_global(Vector3(3, 0, -3))
-	cover.debug_cover_selection = false
+	cover.selection.debug_cover_selection = false
 	if path_distance > 0.0:
 		enemy.agent.path_desired_distance = path_distance
 	for frame in range(5):
@@ -64,7 +64,7 @@ func run(scene: Node, path_distance: float = -1.0, focused: bool = false, damage
 		var point: Vector3 = candidate.hide
 		if arena.to_local(point).x < 8.25 or not enemy.get_node("AI")._ranged_point_is_free(point):
 			continue
-		var next_peek: Vector3 = cover._choose_peek(point, candidate.peeks)
+		var next_peek: Vector3 = cover.selection._choose_peek(point, candidate.peeks)
 		if next_peek.is_finite() and point.z < target.z:
 			target = point
 			peek = next_peek

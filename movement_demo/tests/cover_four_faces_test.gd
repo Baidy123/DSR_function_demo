@@ -5,7 +5,7 @@ func run_short_walk(scene: Node) -> Dictionary:
 	var enemy = scene.get_node("Arena/Enemy")
 	var ai = enemy.get_node("AI")
 	var player = scene.get_node("Player")
-	var cover = enemy.get_node("Cover")
+	var cover = enemy.get_node("AI/Tactics/CoverAction")
 	var arena = scene.get_node("Arena")
 	ai.set_physics_process(false)
 	player.set_physics_process(false)
@@ -26,11 +26,11 @@ func run_short_walk(scene: Node) -> Dictionary:
 			cover.look_position = collision.to_global(axis * side * (maxf(size.x, size.z) * 0.5 + 2.5)) - Vector3.UP * size.y * 0.5
 			cover.threat_origin = cover.look_position + Vector3.UP * 0.8
 			for candidate in region.get_candidates(cover.threat_origin, enemy.global_position):
-				if not ai._ranged_point_is_free(candidate.hide) or cover._path_to(candidate.hide, candidate.hide).is_empty():
+				if not ai.is_position_free(candidate.hide) or cover.selection._path_to(candidate.hide, candidate.hide).is_empty():
 					continue
-				if not cover._center_hidden_by_cover(candidate.hide, cover.threat_origin, region):
+				if not cover.selection._center_hidden_by_cover(candidate.hide, cover.threat_origin, region):
 					continue
-				var peek: Vector3 = cover._choose_peek(candidate.hide, candidate.peeks)
+				var peek: Vector3 = cover.selection._choose_peek(candidate.hide, candidate.peeks, cover.look_position)
 				if not peek.is_finite():
 					continue
 				enemy.global_position = candidate.hide
@@ -68,7 +68,7 @@ func run(scene: Node) -> Dictionary:
 	var enemy = arena.get_node("Enemy")
 	var ai = enemy.get_node("AI")
 	var player = scene.get_node("Player")
-	var cover = enemy.get_node("Cover")
+	var cover = enemy.get_node("AI/Tactics/CoverAction")
 	ai.set_physics_process(false)
 	player.set_physics_process(false)
 	player.global_position = arena.to_global(Vector3(7, 0, 2))
@@ -105,11 +105,11 @@ func run(scene: Node) -> Dictionary:
 		checks[str(region.name) + "_diagonal_two_faces"] = found_x and found_z
 	var inside: Vector3 = arena.to_global(Vector3(12, 0, 8))
 	var outside: Vector3 = arena.to_global(Vector3(13.2, 0, 8))
-	checks["inside_navigation_reachable"] = not cover._path_to(inside, inside).is_empty()
-	checks["outside_navigation_rejected"] = cover._path_to(inside, outside).is_empty()
-	checks["wrong_floor_rejected"] = cover._path_to(inside, inside + Vector3.UP * 3).is_empty()
+	checks["inside_navigation_reachable"] = not cover.selection._path_to(inside, inside).is_empty()
+	checks["outside_navigation_rejected"] = cover.selection._path_to(inside, outside).is_empty()
+	checks["wrong_floor_rejected"] = cover.selection._path_to(inside, inside + Vector3.UP * 3).is_empty()
 	cover.look_position = arena.to_global(Vector3(11, 0, 8))
-	checks["outside_peek_rejected"] = not cover._choose_peek(inside, [outside]).is_finite()
+	checks["outside_peek_rejected"] = not cover.selection._choose_peek(inside, [outside], cover.look_position).is_finite()
 	# 临时墙只加入运行中的场景，不改竞技场布局。
 	var blocker := StaticBody3D.new()
 	var shape_node := CollisionShape3D.new()
@@ -121,7 +121,7 @@ func run(scene: Node) -> Dictionary:
 	blocker.global_position = inside + Vector3.UP
 	for frame in range(3):
 		await scene.get_tree().physics_frame
-	checks["wall_blocks_standing"] = not ai._ranged_point_is_free(inside)
-	checks["wall_blocks_peek"] = not cover._choose_peek(inside + Vector3.LEFT * 2, [inside]).is_finite()
+	checks["wall_blocks_standing"] = not ai.is_position_free(inside)
+	checks["wall_blocks_peek"] = not cover.selection._choose_peek(inside + Vector3.LEFT * 2, [inside], cover.look_position).is_finite()
 	blocker.queue_free()
 	return checks

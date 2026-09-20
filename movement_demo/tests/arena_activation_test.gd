@@ -7,7 +7,7 @@ func run(scene: Node) -> Dictionary:
 	var player = scene.get_node("Player")
 	var enemy = arena.get_node("Enemy")
 	var ai = enemy.get_node("AI")
-	var cover = enemy.get_node("Cover")
+	var cover = enemy.get_node("AI/Tactics/CoverAction")
 	var checks := {}
 	player.set_physics_process(false)
 	ai.set_physics_process(false)
@@ -33,8 +33,8 @@ func run(scene: Node) -> Dictionary:
 	enemy.reset_target()
 
 	# 在敌人旁边入场，关闭感知范围以单独检查巡逻是否解锁。
-	ai.sight_distance = 0.0
-	ai.close_awareness_radius = 0.0
+	ai.perception.sight_distance = 0.0
+	ai.perception.close_awareness_radius = 0.0
 	player.global_position = start
 	for frame in range(5):
 		await tree.physics_frame

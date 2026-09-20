@@ -4,12 +4,12 @@ extends RefCounted
 func run(scene: Node) -> Dictionary:
 	var enemy = scene.get_node("Arena/Enemy")
 	var ai = enemy.get_node("AI")
-	var cover = enemy.get_node("Cover")
+	var cover = enemy.get_node("AI/Tactics/CoverAction")
 	var arena = enemy.get_parent()
 	var tree = scene.get_tree()
 	scene.get_node("Player").set_physics_process(false)
 	ai.set_physics_process(false)
-	cover.debug_cover_selection = false
+	cover.selection.debug_cover_selection = false
 	var checks := {}
 	for retreat: bool in [false, true]:
 		enemy.global_position = arena.to_global(Vector3(-4.75126, 0, 3.100522))
@@ -39,16 +39,16 @@ func run(scene: Node) -> Dictionary:
 	cover.reset()
 	enemy.global_position = arena.to_global(Vector3(0, 0, 0))
 	ai.last_known_position = enemy.global_position
-	ai.search_seconds = 0.0
-	ai.search_hint_chance = 0.0
+	ai.search.search_seconds = 0.0
+	ai.search.search_hint_chance = 0.0
 	var first_targets: Array[Vector3] = []
 	for random_seed in [101, 202, 303, 404]:
 		seed(random_seed)
-		ai.search_direction = Vector3.FORWARD
+		ai.search.search_direction = Vector3.FORWARD
 		ai.last_seen_direction = Vector3.ZERO
-		ai._begin_search()
-		ai._advance_systematic_search_target()
-		first_targets.append(ai.search_current_target)
+		ai.search.begin_search()
+		ai.search._advance_systematic_search_target()
+		first_targets.append(ai.search.search_current_target)
 	var varied := false
 	for point in first_targets:
 		varied = varied or not point.is_equal_approx(first_targets[0])
@@ -64,7 +64,7 @@ func _check_search(scene: Node, enemy: Node) -> Dictionary:
 	var arena = enemy.get_parent()
 	var player = scene.get_node("Player")
 	var tree = scene.get_tree()
-	enemy.get_node("Cover").reset()
+	enemy.get_node("AI/Tactics/CoverAction").reset()
 	enemy.global_position = arena.to_global(Vector3(0, 0, 0))
 	player.global_position = arena.to_global(Vector3(2, 0, 0))
 	for frame in range(4):
@@ -73,19 +73,19 @@ func _check_search(scene: Node, enemy: Node) -> Dictionary:
 	ai._physics_process(0.0)
 	var seen: Vector3 = ai.last_seen_position
 	ai._investigate_attack(player.global_position + Vector3(0, 0, 2))
-	ai._begin_search()
-	checks["search_center_uses_true_sighting"] = ai.search_origin.is_equal_approx(seen)
-	ai._advance_systematic_search_target()
-	var before: float = ai.get_search_coverage()
-	ai._skip_current_search_point()
-	checks["failed_goal_does_not_count_as_coverage"] = is_equal_approx(before, ai.get_search_coverage())
+	ai.search.begin_search()
+	checks["search_center_uses_true_sighting"] = ai.search.search_origin.is_equal_approx(seen)
+	ai.search._advance_systematic_search_target()
+	var before: float = ai.search.get_search_coverage()
+	ai.search._skip_current_search_point()
+	checks["failed_goal_does_not_count_as_coverage"] = is_equal_approx(before, ai.search.get_search_coverage())
 
 	player.global_position = Vector3.ZERO
 	for frame in range(4):
 		await tree.physics_frame
 	ai.set_physics_process(false)
-	ai.search_seconds = 0.0
-	ai.search_hint_chance = 0.0
+	ai.search.search_seconds = 0.0
+	ai.search.search_hint_chance = 0.0
 	var old_scale: float = Engine.time_scale
 	Engine.time_scale = 8.0
 	for random_seed in [101, 202, 303]:
@@ -93,8 +93,8 @@ func _check_search(scene: Node, enemy: Node) -> Dictionary:
 		enemy.reset_target()
 		enemy.global_position = arena.to_global(Vector3(0, 0, 0))
 		ai.last_known_position = enemy.global_position
-		ai._begin_search()
-		var origin: Vector3 = ai.search_origin
+		ai.search.begin_search()
+		var origin: Vector3 = ai.search.search_origin
 		var visited: Array[Vector3] = []
 		var maximum_coverage: float = 0.0
 		var inside := true
@@ -102,23 +102,23 @@ func _check_search(scene: Node, enemy: Node) -> Dictionary:
 		var path_does_not_count := true
 		for frame in range(1600):
 			await tree.physics_frame
-			var active: bool = ai.search_current_target_active
-			var target: Vector3 = ai.search_current_target
-			before = ai.get_search_coverage()
+			var active: bool = ai.search.search_current_target_active
+			var target: Vector3 = ai.search.search_current_target
+			before = ai.search.get_search_coverage()
 			var delta: float = enemy.get_physics_process_delta_time()
-			var direction: Vector3 = ai._process_search(delta)
-			enemy.move_character(direction, delta, ai.search_move_speed_multiplier)
+			var direction: Vector3 = ai.search._process_search(delta)
+			enemy.move_character(direction, delta, ai.search.search_move_speed_multiplier)
 			if ai.state != ai.State.SEARCH:
 				break
-			if active and not ai.search_current_target_active and ai.get_search_coverage() > before:
+			if active and not ai.search.search_current_target_active and ai.search.get_search_coverage() > before:
 				visited.append(target)
-			if ai.search_current_target_active:
-				inside = inside and ai._horizontal_distance_between(ai.search_current_target, origin) <= ai.search_radius + 0.001
-				free = free and ai._ranged_point_is_free(ai.search_current_target)
-				path_does_not_count = path_does_not_count and is_equal_approx(before, ai.get_search_coverage())
-			maximum_coverage = maxf(maximum_coverage, ai.get_search_coverage())
+			if ai.search.search_current_target_active:
+				inside = inside and ai._horizontal_distance_between(ai.search.search_current_target, origin) <= ai.search.search_radius + 0.001
+				free = free and ai.is_position_free(ai.search.search_current_target)
+				path_does_not_count = path_does_not_count and is_equal_approx(before, ai.search.get_search_coverage())
+			maximum_coverage = maxf(maximum_coverage, ai.search.get_search_coverage())
 		var suffix := "_" + str(random_seed)
-		checks["walk_finishes_coverage" + suffix] = maximum_coverage >= ai.search_coverage_goal
+		checks["walk_finishes_coverage" + suffix] = maximum_coverage >= ai.search.search_coverage_goal
 		checks["returns_to_idle" + suffix] = ai.state == ai.State.IDLE and not ai.is_alerted
 		checks["targets_inside_circle" + suffix] = inside
 		checks["targets_have_body_space" + suffix] = free
@@ -129,14 +129,14 @@ func _check_search(scene: Node, enemy: Node) -> Dictionary:
 		for x in range(-14, 15):
 			for z in range(-14, 15):
 				var point := origin + Vector3(x * 0.35, 0, z * 0.35)
-				if ai._horizontal_distance_between(point, origin) > ai.search_radius:
+				if ai._horizontal_distance_between(point, origin) > ai.search.search_radius:
 					continue
 				var nav_point: Vector3 = NavigationServer3D.region_get_closest_point(ai.navigation_region.get_rid(), point)
-				if ai._horizontal_distance_between(point, nav_point) > 0.1 or not ai._ranged_point_is_free(point):
+				if ai._horizontal_distance_between(point, nav_point) > 0.1 or not ai.is_position_free(point):
 					continue
 				valid_samples += 1
 				for goal in visited:
-					if ai._horizontal_distance_between(goal, point) <= ai.search_coverage_radius:
+					if ai._horizontal_distance_between(goal, point) <= ai.search.search_coverage_radius:
 						covered_samples += 1
 						break
 		var dense_coverage: float = float(covered_samples) / maxf(1.0, valid_samples)
@@ -144,9 +144,9 @@ func _check_search(scene: Node, enemy: Node) -> Dictionary:
 		print("[CoverageTest] seed=", random_seed, " goals=", visited.size(), " planner=", maximum_coverage, " dense=", dense_coverage)
 	Engine.time_scale = old_scale
 
-	ai._begin_search()
+	ai.search.begin_search()
 	enemy.receive_hit(100000.0)
-	checks["death_clears_search"] = ai.search_uncovered_points.is_empty() and not ai.search_current_target_active
+	checks["death_clears_search"] = ai.search.search_uncovered_points.is_empty() and not ai.search.search_current_target_active
 	enemy.reset_target()
-	checks["reset_clears_search_and_visual_memory"] = ai.search_uncovered_points.is_empty() and not ai.has_visual_memory
+	checks["reset_clears_search_and_visual_memory"] = ai.search.search_uncovered_points.is_empty() and not ai.has_visual_memory
 	return checks

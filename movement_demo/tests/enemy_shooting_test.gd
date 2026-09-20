@@ -13,25 +13,27 @@ func _run() -> void:
 	current_scene = scene
 	var enemy = scene.get_node("Arena/Enemy")
 	var ai = enemy.get_node("AI")
+	ai.tactics.fire_reaction_seconds = 0.5
+	ai.tactics.burst_pause_seconds = 1.0
 	ai.set_physics_process(false)
 	var player = scene.get_node("Player")
 	player.set_physics_process(false)
 	var health = player.get_node("Health")
-	var cover = enemy.get_node("Cover")
+	var cover = enemy.get_node("AI/Tactics/CoverAction")
 	_check("父节点提供瞄准更新和射击执行", enemy.has_method("update_weapon") and enemy.has_method("try_fire"))
 	if not checks.values().all(func(value): return value):
 		_finish()
 		return
-	_check("完成停稳验证后默认允许跑打", ai.fire_while_moving)
+	_check("完成停稳验证后默认允许跑打", ai.tactics.fire_while_moving)
 	health.debug_invincible = true
-	ai.debug_tracking_cheat = false
-	cover.debug_cover_selection = false
+	ai.search.debug_tracking_cheat = false
+	cover.selection.debug_cover_selection = false
 	player.global_position = enemy.global_position + Vector3(0, 0, 4.8)
 	enemy.look_at(player.global_position)
 	for frame in range(5):
 		await physics_frame
 	var target: Vector3 = player.global_position + Vector3.UP * 0.8
-	_check("射击场景有真实视线", ai.can_see_player())
+	_check("射击场景有真实视线", ai.perception.can_see_player())
 	enemy.standing_spread_degrees = 0.0
 	enemy.moving_spread_degrees = 0.0
 	enemy.aim_turn_speed_degrees = 90.0
@@ -110,7 +112,7 @@ func _run() -> void:
 	enemy.try_fire()
 	_check("墙是首个碰撞物且玩家不扣血", enemy.last_shot_collider == wall and health.health == hp)
 	count = enemy.shot_count
-	ai._update_shooting(1.0, ai.can_see_player(), false)
+	ai.tactics.update_shooting(1.0, ai.perception.can_see_player(), false)
 	_check("AI隔墙不请求开火", enemy.shot_count == count and not enemy.aim_acquired)
 	wall.free()
 	for frame in range(3):
@@ -120,47 +122,47 @@ func _run() -> void:
 	ai.state = ai.State.HOLD_POSITION
 	enemy.look_at(player.global_position)
 	enemy.shot_cooldown = 0.0
-	ai.fire_while_moving = false
+	ai.tactics.fire_while_moving = false
 	count = enemy.shot_count
-	ai._update_shooting(1.0, true, true)
+	ai.tactics.update_shooting(1.0, true, true)
 	_check("停稳模式拒绝移动射击", enemy.shot_count == count)
-	ai._update_shooting(1.0, true, false)
+	ai.tactics.update_shooting(1.0, true, false)
 	_check("停稳模式站定后射击", enemy.shot_count == count + 1)
 	count = enemy.shot_count
-	ai.fire_while_moving = true
-	ai._update_shooting(1.0, true, true)
+	ai.tactics.fire_while_moving = true
+	ai.tactics.update_shooting(1.0, true, true)
 	_check("打开跑打后移动也可射击", enemy.shot_count == count + 1)
 	count = enemy.shot_count
 	cover.phase = cover.Phase.RUN_TO_COVER
-	ai._update_shooting(1.0, true, false)
+	ai.tactics.update_shooting(1.0, true, false)
 	_check("跑向掩体时禁止射击", enemy.shot_count == count)
 	cover.phase = cover.Phase.HIDE
-	ai._update_shooting(1.0, true, false)
+	ai.tactics.update_shooting(1.0, true, false)
 	_check("躲藏时禁止射击", enemy.shot_count == count)
 	cover.phase = cover.Phase.PEEK_OUT
-	ai._update_shooting(1.0, true, false)
+	ai.tactics.update_shooting(1.0, true, false)
 	_check("有效探头动作期间不射击", enemy.shot_count == count)
 	cover.reset()
-	ai._update_shooting(1.0, false, false)
+	ai.tactics.update_shooting(1.0, false, false)
 	_check("丢失视野清掉瞄准且不射击", enemy.shot_count == count and not enemy.has_aim)
 	ai.combat_type = ai.CombatType.MELEE
-	ai._update_shooting(1.0, true, false)
+	ai.tactics.update_shooting(1.0, true, false)
 	_check("近战类型不会开枪", enemy.shot_count == count)
 	ai.combat_type = ai.CombatType.RANGED
 	ai.state = ai.State.SEARCH
-	ai._update_shooting(1.0, true, false)
+	ai.tactics.update_shooting(1.0, true, false)
 	_check("搜索记忆不授权射击", enemy.shot_count == count)
 	ai.state = ai.State.HOLD_POSITION
 	player.is_in_dialogue = true
-	ai._update_shooting(1.0, true, false)
+	ai.tactics.update_shooting(1.0, true, false)
 	_check("对话期间不射击", enemy.shot_count == count)
 	player.is_in_dialogue = false
 	enemy.shot_range = 1.0
-	ai._update_shooting(1.0, true, false)
+	ai.tactics.update_shooting(1.0, true, false)
 	_check("射程之外不射击", enemy.shot_count == count)
 	enemy.shot_range = 12.0
 	enemy.shooting_enabled = false
-	ai._update_shooting(1.0, true, false)
+	ai.tactics.update_shooting(1.0, true, false)
 	_check("检查器关闭射击有效", enemy.shot_count == count)
 	enemy.shooting_enabled = true
 	enemy.receive_hit(enemy.max_health)
@@ -172,7 +174,7 @@ func _run() -> void:
 	for frame in range(5):
 		await physics_frame
 	count = enemy.shot_count
-	ai._update_shooting(1.0, true, false)
+	ai.tactics.update_shooting(1.0, true, false)
 	_check("场外不射击", enemy.shot_count == count)
 	await _check_live_encounter()
 	_finish()
@@ -187,12 +189,14 @@ func _check_live_encounter() -> void:
 	current_scene = scene
 	var enemy = scene.get_node("Arena/Enemy")
 	var ai = enemy.get_node("AI")
+	ai.tactics.fire_reaction_seconds = 0.5
+	ai.tactics.burst_pause_seconds = 1.0
 	var p = scene.get_node("Player")
 	var health = p.get_node("Health")
 	p.set_physics_process(false)
 	health.debug_invincible = true
-	ai.debug_tracking_cheat = false
-	enemy.get_node("Cover").debug_cover_selection = false
+	ai.search.debug_tracking_cheat = false
+	enemy.get_node("AI/Tactics/CoverAction").selection.debug_cover_selection = false
 	enemy.standing_spread_degrees = 0.0
 	enemy.moving_spread_degrees = 0.0
 	enemy.aim_turn_speed_degrees = 720.0
@@ -210,7 +214,7 @@ func _check_live_encounter() -> void:
 		moving_shot = moving_shot or (movement > 0.005 and enemy.shot_count > count)
 	_check("真实接敌走位中可以开火", travelled > 0.5 and moving_shot)
 	# 关闭选项后继续真实AI：走位中停火，到位置后仍可射击。
-	ai.fire_while_moving = false
+	ai.tactics.fire_while_moving = false
 	enemy.reset_target()
 	p.global_position = enemy.global_position + Vector3(0, 0, 2.0)
 	enemy.look_at(p.global_position)
@@ -239,7 +243,7 @@ func _check_live_encounter() -> void:
 			break
 	_check("敌人弹道触发玩家死亡暂停", health.is_dead and paused)
 	var count: int = enemy.shot_count
-	ai._update_shooting(1.0, true, false)
+	ai.tactics.update_shooting(1.0, true, false)
 	_check("玩家死亡后不再请求开火", enemy.shot_count == count)
 	if not health.is_dead:
 		return

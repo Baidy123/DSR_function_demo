@@ -13,13 +13,15 @@ func _run() -> void:
 	current_scene = scene
 	var e = scene.get_node("Arena/Enemy")
 	var ai = e.get_node("AI")
+	ai.tactics.fire_reaction_seconds = 0.5
+	ai.tactics.burst_pause_seconds = 1.0
 	var p = scene.get_node("Player")
-	var cover = e.get_node("Cover")
+	var cover = e.get_node("AI/Tactics/CoverAction")
 	ai.set_physics_process(false)
 	p.set_physics_process(false)
 	p.get_node("Health").debug_invincible = true
-	ai.debug_tracking_cheat = false
-	cover.debug_cover_selection = false
+	ai.search.debug_tracking_cheat = false
+	cover.selection.debug_cover_selection = false
 	p.global_position = e.global_position + Vector3(0, 0, 4.8)
 	e.look_at(p.global_position)
 	e.standing_spread_degrees = 0.0
@@ -27,88 +29,88 @@ func _run() -> void:
 	for frame in range(5):
 		await physics_frame
 	ai.state = ai.State.HOLD_POSITION
-	_check("测试场景真正看见玩家", ai.can_see_player())
-	ai._update_shooting(0.01, true, false)
+	_check("测试场景真正看见玩家", ai.perception.can_see_player())
+	ai.tactics.update_shooting(0.01, true, false)
 	_check("已经朝向玩家也不能发现即开枪", e.shot_count == 0)
-	if ai.get("fire_reaction_seconds") == null:
+	if ai.tactics.get("fire_reaction_seconds") == null:
 		_finish()
 		return
-	_check("默认反应半秒三枪停一秒", ai.fire_reaction_seconds == 0.5 and ai.burst_shot_count == 3 and ai.burst_pause_seconds == 1.0)
-	ai._update_shooting(0.48, true, false)
+	_check("默认反应半秒三枪停一秒", ai.tactics.fire_reaction_seconds == 0.5 and ai.tactics.burst_shot_count == 3 and ai.tactics.burst_pause_seconds == 1.0)
+	ai.tactics.update_shooting(0.48, true, false)
 	_check("反应时间未满不射击", e.shot_count == 0)
 	_check("反应期间仍然跟枪", e.has_aim and e.aim_acquired)
-	ai._update_shooting(0.02, true, false)
+	ai.tactics.update_shooting(0.02, true, false)
 	_check("反应结束首枪正常命中", e.shot_count == 1 and e.last_shot_collider == p)
-	ai._update_shooting(0.79, true, false)
+	ai.tactics.update_shooting(0.79, true, false)
 	_check("连续射击仍受枪械射速限制", e.shot_count == 1)
-	ai._update_shooting(0.02, true, false)
+	ai.tactics.update_shooting(0.02, true, false)
 	_check("第二枪按原间隔开火", e.shot_count == 2)
-	ai._update_shooting(0.81, true, false)
-	_check("第三枪后进入停顿", e.shot_count == 3 and is_equal_approx(ai.fire_pause_remaining, 1.0))
-	ai._update_shooting(0.81, true, false)
+	ai.tactics.update_shooting(0.81, true, false)
+	_check("第三枪后进入停顿", e.shot_count == 3 and is_equal_approx(ai.tactics.fire_pause_remaining, 1.0))
+	ai.tactics.update_shooting(0.81, true, false)
 	_check("枪械已冷却但AI停顿未结束仍不射击", e.shot_cooldown == 0.0 and e.shot_count == 3)
 	_check("停顿期间继续跟枪", e.has_aim and e.aim_acquired)
-	ai._update_shooting(0.20, true, false)
+	ai.tactics.update_shooting(0.20, true, false)
 	_check("停顿结束开启下一轮", e.shot_count == 4)
 	# 丢失视野重做反应，但不清除本轮枪数，也不能偷清射击冷却。
-	ai._update_shooting(0.1, false, false)
-	_check("丢失视野清空反应进度", ai.fire_reaction_elapsed == 0.0 and not e.has_aim)
-	_check("丢失视野保留本轮枪数", ai.fire_burst_shots == 1)
-	ai._update_shooting(0.3, true, false)
+	ai.tactics.update_shooting(0.1, false, false)
+	_check("丢失视野清空反应进度", ai.tactics.fire_reaction_elapsed == 0.0 and not e.has_aim)
+	_check("丢失视野保留本轮枪数", ai.tactics.fire_burst_shots == 1)
+	ai.tactics.update_shooting(0.3, true, false)
 	_check("再次出现需要重新反应", e.shot_count == 4)
-	ai._update_shooting(0.21, true, false)
+	ai.tactics.update_shooting(0.21, true, false)
 	_check("再次反应结束也不能绕过枪械冷却", e.shot_count == 4)
-	ai._update_shooting(0.20, true, false)
+	ai.tactics.update_shooting(0.20, true, false)
 	_check("反应与冷却都结束后恢复射击", e.shot_count == 5)
-	ai._update_shooting(0.81, true, false)
-	_check("遮挡没有重置第三枪停顿", e.shot_count == 6 and ai.fire_pause_remaining > 0.99)
-	ai._update_shooting(0.3, false, false)
-	ai._update_shooting(0.51, true, false)
+	ai.tactics.update_shooting(0.81, true, false)
+	_check("遮挡没有重置第三枪停顿", e.shot_count == 6 and ai.tactics.fire_pause_remaining > 0.99)
+	ai.tactics.update_shooting(0.3, false, false)
+	ai.tactics.update_shooting(0.51, true, false)
 	_check("消失再出现不绕过剩余停顿", e.shot_count == 6)
-	ai._update_shooting(0.20, true, false)
+	ai.tactics.update_shooting(0.20, true, false)
 	_check("重现反应和停顿可并行结束", e.shot_count == 7)
 	# 即使请求被身体朝向拒绝，也不能虚增枪数。
 	var count: int = e.shot_count
-	var burst_before: int = ai.fire_burst_shots
+	var burst_before: int = ai.tactics.fire_burst_shots
 	e.rotation.y += deg_to_rad(45.0)
-	ai._update_shooting(1.0, true, false)
-	_check("拒绝射击场景仍可见且已经瞄准", ai.can_see_player() and e.has_aim and e.aim_acquired and e.shot_cooldown == 0.0)
-	_check("执行失败不计入已发射枪数", e.shot_count == count and ai.fire_burst_shots == burst_before)
+	ai.tactics.update_shooting(1.0, true, false)
+	_check("拒绝射击场景仍可见且已经瞄准", ai.perception.can_see_player() and e.has_aim and e.aim_acquired and e.shot_cooldown == 0.0)
+	_check("执行失败不计入已发射枪数", e.shot_count == count and ai.tactics.fire_burst_shots == burst_before)
 	e.look_at(p.global_position)
 	# 掩体切换不能清掉未完成的一组，原禁射规则继续生效。
 	cover.phase = cover.Phase.RUN_TO_COVER
-	ai._update_shooting(1.0, true, true)
-	_check("跑掩体仍然停火且保留计数", e.shot_count == count and ai.fire_burst_shots == burst_before)
+	ai.tactics.update_shooting(1.0, true, true)
+	_check("跑掩体仍然停火且保留计数", e.shot_count == count and ai.tactics.fire_burst_shots == burst_before)
 	cover.reset()
 	# 修改参数做低速枪验证：AI停顿结束不能缩短枪械自己的冷却。
 	e.reset_target()
 	e.look_at(p.global_position)
 	ai.state = ai.State.HOLD_POSITION
-	ai.fire_reaction_seconds = 0.0
-	ai.burst_shot_count = 1
-	ai.burst_pause_seconds = 0.2
+	ai.tactics.fire_reaction_seconds = 0.0
+	ai.tactics.burst_shot_count = 1
+	ai.tactics.burst_pause_seconds = 0.2
 	e.shot_interval = 2.0
-	ai._update_shooting(0.0, true, false)
-	ai._update_shooting(0.3, true, false)
+	ai.tactics.update_shooting(0.0, true, false)
+	ai.tactics.update_shooting(0.3, true, false)
 	_check("停顿结束不会缩短慢枪冷却", e.shot_count == 1)
-	ai._update_shooting(1.71, true, false)
+	ai.tactics.update_shooting(1.71, true, false)
 	_check("慢枪实际冷却结束才能继续", e.shot_count == 2)
 	# 可分别关闭两项新增时序；一次大delta也只补发一枪。
 	e.reset_target()
 	e.look_at(p.global_position)
 	ai.state = ai.State.HOLD_POSITION
-	ai.burst_pause_seconds = 0.0
+	ai.tactics.burst_pause_seconds = 0.0
 	e.shot_interval = 0.8
-	ai._update_shooting(0.0, true, false)
+	ai.tactics.update_shooting(0.0, true, false)
 	_check("零反应可恢复立即开枪", e.shot_count == 1)
-	ai._update_shooting(0.81, true, false)
+	ai.tactics.update_shooting(0.81, true, false)
 	_check("零停顿仍遵循原枪械间隔", e.shot_count == 2)
-	ai._update_shooting(10.0, true, false)
+	ai.tactics.update_shooting(10.0, true, false)
 	_check("长帧不补发多枪", e.shot_count == 3)
 	e.receive_hit(e.max_health)
-	_check("敌人死亡清除射击决策时序", ai.fire_reaction_elapsed == 0.0 and ai.fire_burst_shots == 0 and ai.fire_pause_remaining == 0.0)
+	_check("敌人死亡清除射击决策时序", ai.tactics.fire_reaction_elapsed == 0.0 and ai.tactics.fire_burst_shots == 0 and ai.tactics.fire_pause_remaining == 0.0)
 	e.reset_target()
-	_check("复位清除反应计数停顿及身体状态", ai.fire_reaction_elapsed == 0.0 and ai.fire_burst_shots == 0 and ai.fire_pause_remaining == 0.0 and e.shot_count == 0)
+	_check("复位清除反应计数停顿及身体状态", ai.tactics.fire_reaction_elapsed == 0.0 and ai.tactics.fire_burst_shots == 0 and ai.tactics.fire_pause_remaining == 0.0 and e.shot_count == 0)
 	await _check_real_frames()
 	_finish()
 
@@ -120,11 +122,13 @@ func _check_real_frames() -> void:
 	current_scene = scene
 	var e = scene.get_node("Arena/Enemy")
 	var ai = e.get_node("AI")
+	ai.tactics.fire_reaction_seconds = 0.5
+	ai.tactics.burst_pause_seconds = 1.0
 	var p = scene.get_node("Player")
 	p.set_physics_process(false)
 	p.get_node("Health").debug_invincible = true
-	ai.debug_tracking_cheat = false
-	e.get_node("Cover").debug_cover_selection = false
+	ai.search.debug_tracking_cheat = false
+	e.get_node("AI/Tactics/CoverAction").selection.debug_cover_selection = false
 	p.global_position = e.global_position + Vector3(0, 0, 4.8)
 	e.look_at(p.global_position)
 	# 留在有效射击位，真实AI每个物理帧仍处理感知、移动、跟枪和开火。
@@ -134,7 +138,7 @@ func _check_real_frames() -> void:
 	for frame in range(350):
 		var count: int = e.shot_count
 		await physics_frame
-		if first_seen_frame < 0 and ai.can_see_player():
+		if first_seen_frame < 0 and ai.perception.can_see_player():
 			first_seen_frame = frame
 		if e.shot_count > count:
 			shot_frames.append(frame)
@@ -149,7 +153,7 @@ func _check_real_frames() -> void:
 	p.global_position = Vector3.ZERO
 	for frame in range(5):
 		await physics_frame
-	_check("离场实际清除枪数及所有射击时序", e.shot_count == 0 and ai.fire_reaction_elapsed == 0.0 and ai.fire_burst_shots == 0 and ai.fire_pause_remaining == 0.0)
+	_check("离场实际清除枪数及所有射击时序", e.shot_count == 0 and ai.tactics.fire_reaction_elapsed == 0.0 and ai.tactics.fire_burst_shots == 0 and ai.tactics.fire_pause_remaining == 0.0)
 	p.global_position = e.global_position + Vector3(0, 0, 4.8)
 	e.look_at(p.global_position)
 	ai.state = ai.State.HOLD_POSITION

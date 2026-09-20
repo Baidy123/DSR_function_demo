@@ -300,3 +300,12 @@
 - 反应、计枪停顿、真实视线、射程、跟枪、冷却与Fire While Moving开关全部保留。
 - 新撤退13项、原射击41项、时序36项、掩体搜索157项通过，共247项；测试中撤退2.64米开2枪，实际运行也确认移动射击，日志正常，游戏停止，手感待试玩。
 - 用户当前arena.tscn调参：shot_range30.1、moving_spread_degrees23.9、sight_distance8.0。本轮保留其文件修改，不改写地图或调参。说明同步ARENA/ENEMY_SHOOTING/TODO。
+
+### 敌人行为板块与训练能力（2026-09-20，最新）
+
+- 用户确认两条独立分类方向：兵种（近战、手枪兵、霰弹枪兵、步枪兵）主要影响战术逻辑；训练水平（小混混、雇佣兵、公司特工）调整各板块参数，并限制高级动作。只有具备能力才进入动作选择，不能靠概率让未掌握者偶尔使用。具体兵种行为、训练预设与能力分配未确定，不自行设定。
+- 已拆分 Enemy/AI 下 Perception（enemy_perception.gd）、Tactics（enemy_tactics.gd）、Search（enemy_search.gd）、Cover（enemy_cover_selection.gd）；原掩体动作移到 Tactics/CoverAction（enemy_cover_action.gd）。Cover只选择和评估位置，转移/躲藏/探头属于战术动作。AI统一物理调用、维护共享目击记忆与状态；Enemy基础身体和实际枪械执行不变。
+- Tactics新增 can_covering_retreat，默认true以保留已有行为。关闭后100%概率也不能选择掩护撤退，射击授权同样检查；普通移动射击不受此能力开关影响。当前按实例检查器配置，尚未新增训练Resource或兵种预设，也未接入WeaponData。
+- 全部旧导出默认值及场景覆盖值迁移保留，包括用户新调反应1.4秒、停顿2.1秒、视距8、射程30.1、移动散布23.9。main.tscn/test_pistol.tres的用户修改保持。旧v8/v9脚本仍为历史参考。
+- 拆分前247项基线通过；新增板块/能力17项、原AI157项、结构20项、射击41项、时序36项、撤退13项、玩家生命27项通过，共311项。独立审查无阻碍，编辑器参数已核对；实机撤退1.97米开1枪，关闭能力时100%概率也不使用。最终正常权限验证及当前实机日志无脚本错误/警告，游戏停止，手感待试玩。
+- 最新说明见movement_demo/ENEMY_MODULES.md，TODO/ARENA/ENEMY_REFACTOR/ENEMY_SHOOTING已同步。CoverB暂缓诊断仅更新节点/API引用，未继续排查。

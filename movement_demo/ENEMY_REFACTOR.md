@@ -1,5 +1,7 @@
 # 敌人执行与决策分离：第一步
 
+> 后续已完成行为板块拆分：AI 下设 Perception、Tactics、Search、Cover，掩体动作归 Tactics/CoverAction；最新结构与能力开关见 [ENEMY_MODULES.md](ENEMY_MODULES.md)。以下保留第一步的历史记录。
+
 用户已确认：Enemy 父节点负责基础动作；感知、接敌、追踪、搜索和掩体属于上层。采用独立 AI 控制来统筹行为，本步只分开执行与决策两部分。
 
 ## 本步实现

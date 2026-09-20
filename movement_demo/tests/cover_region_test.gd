@@ -5,7 +5,7 @@ func run_cycle(scene: Node) -> Dictionary:
 	var enemy = arena.get_node("Enemy")
 	var ai = enemy.get_node("AI")
 	var player = scene.get_node("Player")
-	var cover = enemy.get_node("Cover")
+	var cover = enemy.get_node("AI/Tactics/CoverAction")
 	var checks := {}
 	var tree = scene.get_tree()
 	ai.set_physics_process(false)
@@ -14,7 +14,7 @@ func run_cycle(scene: Node) -> Dictionary:
 	player.global_position = arena.to_global(Vector3(7, 0, 2))
 	cover.threat_origin = player.global_position + Vector3.UP * 0.8
 	cover.look_position = player.global_position
-	cover.debug_cover_selection = false
+	cover.selection.debug_cover_selection = false
 	cover.hide_seconds = 0.2
 	for frame in range(4):
 		await tree.physics_frame
@@ -49,7 +49,7 @@ func run_walk(scene: Node) -> Dictionary:
 	var enemy = scene.get_node("Arena/Enemy")
 	var ai = enemy.get_node("AI")
 	var arena = scene.get_node("Arena")
-	var cover = enemy.get_node("Cover")
+	var cover = enemy.get_node("AI/Tactics/CoverAction")
 	var player = scene.get_node("Player")
 	var wall = arena.get_node("NavigationRegion3D/Environment/CoverA")
 	var collision = wall.get_node("CollisionShape3D")
@@ -57,7 +57,7 @@ func run_walk(scene: Node) -> Dictionary:
 	var checks := {}
 	ai.set_physics_process(false)
 	player.set_physics_process(false)
-	cover.debug_cover_selection = false
+	cover.selection.debug_cover_selection = false
 	for side in [-1.0, 1.0]:
 		cover.reset()
 		player.global_position = collision.to_global(Vector3(side * 3.0, -1.1, 0))
@@ -65,11 +65,11 @@ func run_walk(scene: Node) -> Dictionary:
 		cover.look_position = player.global_position
 		var chosen := false
 		for candidate in wall.get_candidates(cover.threat_origin, enemy.global_position):
-			if not ai._ranged_point_is_free(candidate.hide):
+			if not ai.is_position_free(candidate.hide):
 				continue
-			if not cover._center_hidden_by_cover(candidate.hide, cover.threat_origin, wall):
+			if not cover.selection._center_hidden_by_cover(candidate.hide, cover.threat_origin, wall):
 				continue
-			var peek: Vector3 = cover._choose_peek(candidate.hide, candidate.peeks)
+			var peek: Vector3 = cover.selection._choose_peek(candidate.hide, candidate.peeks, cover.look_position)
 			if not peek.is_finite():
 				continue
 			enemy.global_position = candidate.hide
@@ -109,7 +109,7 @@ func run(scene: Node) -> Dictionary:
 	var enemy = scene.get_node("Arena/Enemy")
 	var ai = enemy.get_node("AI")
 	var arena = scene.get_node("Arena")
-	var cover = enemy.get_node("Cover")
+	var cover = enemy.get_node("AI/Tactics/CoverAction")
 	var player = scene.get_node("Player")
 	player.set_physics_process(false)
 	ai.set_physics_process(false)
@@ -117,7 +117,7 @@ func run(scene: Node) -> Dictionary:
 	for frame in range(5):
 		await scene.get_tree().physics_frame
 	enemy.global_position = arena.to_global(Vector3(-4.75126, 0, 3.100522))
-	cover.debug_cover_selection = false
+	cover.selection.debug_cover_selection = false
 	cover.threat_origin = player.global_position + Vector3.UP * 0.8
 	cover.look_position = player.global_position
 	var checks := {}

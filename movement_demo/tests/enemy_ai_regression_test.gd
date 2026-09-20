@@ -38,4 +38,5 @@ func _run() -> void:
 		failures += failed.size()
 		print("AI REGRESSION ", suite[0], "/", suite[1], ": ", checks.size() - failed.size(), "/", checks.size(), " failed=", failed)
 	print("AI REGRESSION TOTAL: ", total - failures, "/", total)
-	quit(0 if failures == 0 else 1)
+	# 子检查脚本错误可能提前返回空结果；不能把少运行的检查当作全部通过。
+	quit(0 if failures == 0 and total == 157 else 1)

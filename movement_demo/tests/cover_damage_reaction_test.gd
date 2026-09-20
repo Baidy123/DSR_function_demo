@@ -5,7 +5,7 @@ func run(scene: Node) -> Dictionary:
 	var enemy = arena.get_node("Enemy")
 	var ai = enemy.get_node("AI")
 	var player = scene.get_node("Player")
-	var cover = enemy.get_node("Cover")
+	var cover = enemy.get_node("AI/Tactics/CoverAction")
 	var wall = arena.get_node("NavigationRegion3D/Environment/CoverA")
 	var collision = wall.get_node("CollisionShape3D")
 	player.set_physics_process(false)
@@ -16,7 +16,7 @@ func run(scene: Node) -> Dictionary:
 	for frame in range(5):
 		await scene.get_tree().physics_frame
 	var checks := {}
-	cover.debug_cover_selection = false
+	cover.selection.debug_cover_selection = false
 	cover.take_cover_chance = 1.0
 	ai.attack_position_uncertainty = 0.0
 	cover.look_position = player.global_position
@@ -30,7 +30,7 @@ func run(scene: Node) -> Dictionary:
 	cover.active_cover_body = wall
 	cover.timer = 2.0
 	var health_before: float = enemy.health
-	checks["hidden_from_vision_before_hit"] = not ai.can_see_player()
+	checks["hidden_from_vision_before_hit"] = not ai.perception.can_see_player()
 	enemy.receive_hit(1.0, player.global_position)
 	checks["actual_damage_applied"] = is_equal_approx(enemy.health, health_before - 1.0)
 	checks["hit_exits_hide_immediately"] = not cover.is_active()
