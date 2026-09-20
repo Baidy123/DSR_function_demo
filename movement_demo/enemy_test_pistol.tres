@@ -1,6 +1,6 @@
-[gd_resource type="Resource" script_class="WeaponData" load_steps=2 format=3]
+[gd_resource type="Resource" script_class="WeaponData" format=3 uid="uid://kayehxxh8jes"]
 
-[ext_resource type="Script" path="res://weapon_data.gd" id="1_weapon"]
+[ext_resource type="Script" uid="uid://b7iqg2tyib57x" path="res://weapon_data.gd" id="1_weapon"]
 
 [resource]
 script = ExtResource("1_weapon")
@@ -9,6 +9,5 @@ damage = 10.0
 fire_range = 30.1
 shot_interval = 0.8
 min_spread_angle_degrees = 4.0
-max_spread_angle_degrees = 23.9
-initial_spread_angle_degrees = 4.0
-moving_spread_angle_degrees = 23.9
+initial_spread_angle_degrees = 8.0
+moving_spread_angle_degrees = 12.0

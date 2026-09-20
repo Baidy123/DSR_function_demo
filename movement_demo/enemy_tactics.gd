@@ -9,7 +9,10 @@ extends Node
 ## 接敌侧移/后退和掩护撤退时允许开火；关闭后只在停稳时射击，转身冲刺仍停火。
 @export var fire_while_moving: bool = true
 ## 首次发现或重新取得有效视线后，至少观察多久才允许射击（秒）；0可关闭。
-@export_range(0.0, 5.0, 0.05) var fire_reaction_seconds: float = 0.5
+@export_range(0.0, 5.0, 0.05) var fire_reaction_seconds: float = 0.3
+## 普通交火（含接敌跑打）期望的稳定度；0.7表示70%，不是命中率。
+## 低于目标继续跟枪等待；掩护撤退不受此限制。0表示关闭稳枪限制。
+@export_range(0.0, 1.0, 0.05) var fire_stability_target: float = 0.7
 ## 每轮实际打出几枪后暂停；只统计执行成功的射击，不按命中次数计数。
 @export_range(1, 20, 1) var burst_shot_count: int = 3
 ## 每轮最后一枪后的停火时间（秒）；与枪械冷却并行，必须都结束才能再开火。
@@ -77,6 +80,8 @@ func update_shooting(delta: float, sees_player: bool, movement_requested: bool) 
 	# Cover接管期间主状态可能仍是TRACK/SEARCH，按当前掩体动作授权即可。
 	elif ai.state != ai.State.REPOSITION and ai.state != ai.State.HOLD_POSITION:
 		return
+	elif not _is_weapon_stable_enough():
+		return
 	var moving: bool = movement_requested or Vector2(actor.velocity.x, actor.velocity.z).length() > 0.05
 	if moving and not fire_while_moving:
 		return
@@ -85,6 +90,14 @@ func update_shooting(delta: float, sees_player: bool, movement_requested: bool) 
 		if fire_burst_shots >= maxi(1, burst_shot_count):
 			fire_burst_shots = 0
 			fire_pause_remaining = maxf(0.0, burst_pause_seconds)
+
+
+func _is_weapon_stable_enough() -> bool:
+	# 将稳定度目标换成这把武器的实际半角；最小=最大时无需稳枪，直接达标。
+	var minimum: float = clampf(actor.weapon.min_spread_angle_degrees, 0.0, 45.0)
+	var maximum: float = clampf(actor.weapon.max_spread_angle_degrees, minimum, 45.0)
+	var target_spread: float = lerpf(maximum, minimum, clampf(fire_stability_target, 0.0, 1.0))
+	return actor.get_spread_degrees() <= target_spread + 0.00001
 
 
 func reset_fire_timing() -> void:

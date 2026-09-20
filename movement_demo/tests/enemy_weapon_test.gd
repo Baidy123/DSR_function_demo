@@ -17,7 +17,7 @@ func _run() -> void:
 	if not checks.values().all(func(value): return value):
 		_finish()
 		return
-	_check("场景挂载独立敌人武器且保留原参数", enemy.weapon is WeaponData and is_equal_approx(enemy.weapon.damage, 10.0) and is_equal_approx(enemy.weapon.fire_range, 30.1) and is_equal_approx(enemy.weapon.shot_interval, 0.8) and is_equal_approx(enemy.weapon.min_spread_angle_degrees, 4.0) and is_equal_approx(enemy.weapon.max_spread_angle_degrees, 23.9))
+	_check("场景挂载独立敌人武器并保留伤害射程射速", enemy.weapon is WeaponData and enemy.weapon.resource_path == "res://enemy_test_pistol.tres" and is_equal_approx(enemy.weapon.damage, 10.0) and is_equal_approx(enemy.weapon.fire_range, 30.1) and is_equal_approx(enemy.weapon.shot_interval, 0.8))
 	var weapon := WeaponData.new()
 	weapon.min_spread_angle_degrees = 0.0
 	weapon.max_spread_angle_degrees = 20.0
