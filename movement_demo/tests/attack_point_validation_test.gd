@@ -60,7 +60,7 @@ func _run() -> void:
 					threat = target
 					wall = region
 					break
-	_check("真实地图存在可达可射击且部分遮身的候选", not valid.is_empty())
+	_check("真实地图存在可达且有散布射界的候选", not valid.is_empty())
 	if valid.is_empty():
 		print("可达且有空间的点=", available_points, "，空间=", free_points, "，可达=", reachable_points, "，方向评估=", reasons, "，起点=", enemy.global_position)
 		print("导航最近点=", NavigationServer3D.region_get_closest_point(ai.navigation_region.get_rid(), enemy.global_position), "，区域迭代=", NavigationServer3D.region_get_iteration_id(ai.navigation_region.get_rid()))
@@ -71,17 +71,15 @@ func _run() -> void:
 		scene.free()
 		_finish()
 		return
-	_check("合格点只有部分采样被遮挡", valid.protection > 0.0 and valid.protection < 1.0)
+	_check("遮身仅作信息保留，允许完全暴露", valid.protection >= 0.0 and valid.protection < 1.0)
 	_check("合格点有路径与通畅射界", valid.reachable and valid.space_free and valid.clear_shot)
 	var point: Vector3 = valid.position
 	var other_side := point + Vector3.UP * 0.8 + (point + Vector3.UP * 0.8 - threat).normalized() * 5.0
-	var changed_side: Dictionary = selection.assess_attack_point(point, wall, other_side, other_side)
-	_check("同一个点会随已知玩家方向变化而失去掩护", not changed_side.usable and changed_side.protection < valid.protection)
 	var arena = scene.get_node("Arena")
 	var open_point: Vector3 = arena.to_global(Vector3(12, 0, 8))
 	var open_target := open_point + Vector3.LEFT + Vector3.UP * 0.8
 	var exposed: Dictionary = selection.assess_attack_point(open_point, wall, open_target, open_target)
-	_check("其他条件通过时完全无遮身仍淘汰", exposed.reachable and exposed.space_free and exposed.clear_shot and exposed.in_range and not exposed.usable and exposed.protection == 0.0 and exposed.reason == "无遮挡")
+	_check("其他条件通过时完全无遮身也允许架枪", exposed.reachable and exposed.space_free and exposed.clear_shot and exposed.in_range and exposed.usable and exposed.protection == 0.0)
 	var outside: Dictionary = selection.assess_attack_point(arena.to_global(Vector3(13.2, 0, 8)), wall, threat, threat)
 	_check("导航边界外淘汰", not outside.usable and not outside.reachable)
 	var high: Dictionary = selection.assess_attack_point(point + Vector3.UP * 3, wall, threat, threat)

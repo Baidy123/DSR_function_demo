@@ -71,14 +71,52 @@ func assess_attack_point(point: Vector3, region: StaticBody3D, threat_origin: Ve
 		result.reason = "射界受阻"
 	elif result.protection < 0.0:
 		result.reason = "身体形状不支持"
-	elif is_zero_approx(result.protection):
-		result.reason = "无遮挡"
 	elif result.protection >= 1.0:
 		result.reason = "完全遮挡"
+	elif not has_clear_shot_cone(shot_origin, shot_origin.direction_to(target_point), maxf(enemy.weapon.min_spread_angle_degrees, enemy.weapon.max_spread_angle_degrees), shot_origin.distance_to(target_point), region):
+		result.reason = "散布射界贴墙"
 	else:
 		result.usable = true
 		result.reason = "可用"
 	return result
+
+
+## 架枪按最大散布预留完整锥体空间；身体部分遮挡不再是硬性条件。
+## 在当前平地场景检查散布锥的水平投影，避免只测边缘射线漏掉锥内墙角。
+## 只检查所属掩体；远处地面或目标后的墙不应让所有站位失效。
+func has_clear_shot_cone(origin: Vector3, direction: Vector3, spread_degrees: float, distance: float, region: StaticBody3D) -> bool:
+	if not is_instance_valid(region) or direction.is_zero_approx():
+		return false
+	var axis := direction.normalized()
+	if not has_clear_line(origin, origin + axis * distance):
+		return false
+	if spread_degrees <= 0.0:
+		return true
+	var reference := Vector3.UP if absf(axis.y) < 0.999 else Vector3.RIGHT
+	var right := axis.cross(reference).normalized()
+	var up := right.cross(axis).normalized()
+	var radius := distance * tan(deg_to_rad(clampf(spread_degrees, 0.0, 45.0))) / cos(PI / 16.0)
+	# 显式留8厘米余量；向外挪到能绕开墙角，不要求身体一定被遮住。
+	var clearance := 0.08
+	var points := PackedVector2Array()
+	for index in range(16):
+		var phi := TAU * float(index) / 16.0
+		var radial := right * cos(phi) + up * sin(phi)
+		var near_point := origin + radial * clearance
+		var far_point := origin + axis * distance + radial * (radius + clearance)
+		points.append(Vector2(near_point.x, near_point.z))
+		points.append(Vector2(far_point.x, far_point.z))
+	var collision := region.get_node_or_null("CollisionShape3D") as CollisionShape3D
+	if collision == null or not collision.shape is BoxShape3D:
+		return false
+	var half: Vector3 = collision.shape.size * 0.5
+	var footprint := PackedVector2Array()
+	for x in [-half.x, half.x]:
+		for y in [-half.y, half.y]:
+			for z in [-half.z, half.z]:
+				var corner := collision.to_global(Vector3(x, y, z))
+				footprint.append(Vector2(corner.x, corner.z))
+	return Geometry2D.intersect_polygons(Geometry2D.convex_hull(points), Geometry2D.convex_hull(footprint)).is_empty()
 
 
 # 用现有胶囊身体中部的上/中/下 × 左/中/右共9个采样点估算，不把比例当精确面积。

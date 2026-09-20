@@ -2,11 +2,15 @@ extends "res://enemy_suppression_action.gd"
 
 ## 最后目击位置离掩体实体表面的最大水平距离；只推测邻近掩体，不追踪墙后玩家。
 @export_range(0.1, 4.0, 0.05) var cover_inference_distance: float = 1.75
+## 每侧随机连续打出的枪数范围；仅实际开火才计数，冷却和连射停顿不换边。
+@export_range(1, 20, 1) var shots_per_exit_min: int = 2
+@export_range(1, 20, 1) var shots_per_exit_max: int = 5
 
 var target_cover: StaticBody3D
 var first_exit: Array[Vector3] = []
 var second_exit: Array[Vector3] = []
 var _next_exit: int = 0
+var _shots_remaining: int = 0
 
 
 func reset() -> void:
@@ -15,6 +19,7 @@ func reset() -> void:
 	first_exit.clear()
 	second_exit.clear()
 	_next_exit = 0
+	_shots_remaining = 0
 
 
 func _prepare_targets(center: Vector3) -> bool:
@@ -67,9 +72,19 @@ func _targets_available() -> bool:
 
 
 func _select_aim_point() -> void:
+	if _shots_remaining <= 0:
+		var minimum := maxi(1, mini(shots_per_exit_min, shots_per_exit_max))
+		var maximum := maxi(minimum, maxi(shots_per_exit_min, shots_per_exit_max))
+		_shots_remaining = randi_range(minimum, maximum)
 	var points: Array[Vector3] = first_exit if _next_exit == 0 else second_exit
 	aim_point = points[randi_range(0, points.size() - 1)]
-	_next_exit = 1 - _next_exit
+
+
+func on_shot_fired() -> void:
+	_shots_remaining -= 1
+	if _shots_remaining <= 0:
+		_next_exit = 1 - _next_exit
+	_select_aim_point()
 
 
 func state_label() -> String:

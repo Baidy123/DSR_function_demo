@@ -349,3 +349,6 @@ billboard = 1
 text = "竞技场
 视野 / 寻路测试"
 font_size = 42
+
+[editable path="NavigationRegion3D/Environment/CoverA"]
+[editable path="NavigationRegion3D/Environment/CoverC"]

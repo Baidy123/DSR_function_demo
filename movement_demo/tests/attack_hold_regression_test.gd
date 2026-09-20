@@ -23,6 +23,10 @@ func _run() -> void:
 	ai.set_physics_process(false)
 	player.set_physics_process(false)
 	enemy.shooting_enabled = false
+	# 本用例只隔离实际落脚点与旧目的地的中心射线差异；散布余量另有回归。
+	enemy.weapon = enemy.weapon.duplicate()
+	enemy.weapon.min_spread_angle_degrees = 0.0
+	enemy.weapon.max_spread_angle_degrees = 0.0
 	ai.cover_selection.debug_attack_points = false
 	# 用户实机日志中已经到位的CoverA站姿及原采样目的地。
 	enemy.global_position = Vector3(17.68982, 0, -1.900597)

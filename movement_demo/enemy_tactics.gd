@@ -5,7 +5,7 @@ extends Node
 ## 是否掌握面向威胁的撤退射击；关闭时概率再高也不会使用。
 ## 后续由训练配置决定；当前默认开启，保留现有敌人的表现。
 @export var can_covering_retreat: bool = true
-## 是否掌握主动选择部分遮身攻击位置；关闭时不会进行这项专项选位。
+## 是否掌握主动选择墙角攻击位置；优先保证散布射界，不强制身体被遮挡。
 ## 默认开启供试玩，后续可由训练配置赋值；不影响普通换位或躲藏能力。
 @export var can_use_attack_positions: bool = true
 ## 是否掌握失视后朝最后目击区域压制的能力；具体持续时间和范围在SuppressionAction。
@@ -123,6 +123,10 @@ func update_shooting(delta: float, sees_player: bool, movement_requested: bool) 
 		fire_decision.reset()
 		return
 	if not actor.can_fire():
+		fire_decision.reset()
+		return
+	# 墙角站位按目标方向选出后，实际枪口仍可能在跟转；等它转出墙面再开火。
+	if attack_position.phase == attack_position.Phase.HOLD and not ai.cover_selection.has_clear_shot_cone(actor.get_shot_origin(), actor.aim_direction, actor.get_spread_degrees(), actor.get_shot_origin().distance_to(point), attack_position.active_cover):
 		fire_decision.reset()
 		return
 	if cover != null and cover.is_active():

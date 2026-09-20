@@ -31,7 +31,9 @@ func _run() -> void:
 		_finish()
 		return
 	_check("出口压制继承基础压制实现", action.get_script().get_base_script() == ai.tactics.area_suppression.get_script())
-	_check("高训练能力接口默认关闭", not ai.tactics.can_suppress_exits)
+	var default_tactics = load("res://enemy_tactics.gd").new()
+	_check("高训练能力接口默认关闭", not default_tactics.can_suppress_exits)
+	default_tactics.free()
 	ai.cover_selection.debug_attack_points = false
 	ai.cover_selection.debug_cover_selection = false
 	player.get_node("Health").debug_invincible = true
@@ -71,14 +73,28 @@ func _run() -> void:
 				break
 		points_valid = points_valid and is_sample and ai.cover_selection.has_clear_line(enemy.get_shot_origin(), target) and enemy.get_shot_origin().distance_to(target) <= enemy.weapon.fire_range
 	_check("出口瞄准点复用墙角区域且射界射程合格", points_valid)
-	var previous: Vector3 = action.aim_point
-	var opposite := true
-	for sample_index in range(10):
-		var was_first: bool = action.first_exit.has(previous)
+	seed(624)
+	var was_first: bool = action.first_exit.has(action.aim_point)
+	var run_length := 0
+	var lengths: Array[int] = []
+	for sample_index in range(200):
+		run_length += 1
 		action.on_shot_fired()
-		opposite = opposite and (action.second_exit.has(action.aim_point) if was_first else action.first_exit.has(action.aim_point))
-		previous = action.aim_point
-	_check("每枪之后交替瞄准两个出口", opposite)
+		var is_first: bool = action.first_exit.has(action.aim_point)
+		if was_first != is_first:
+			# 进入测试前真实AI可能已开了一枪，第一段不是完整的换边周期。
+			if sample_index > 5:
+				lengths.append(run_length)
+			run_length = 0
+			was_first = is_first
+	_check("每侧实际射击2到5枪才换边", lengths.size() > 20 and lengths.all(func(n): return n >= 2 and n <= 5))
+	_check("每侧枪数随机变化并可出现2、3、5枪", lengths.has(2) and lengths.has(3) and lengths.has(5))
+	var remaining_shots: int = action._shots_remaining
+	var unchanged_aim: Vector3 = action.aim_point
+	enemy.shot_cooldown = 10.0
+	ai.tactics.update_shooting(0.01, false, false)
+	_check("冷却中的开火尝试不消耗本侧枪数或换边", action._shots_remaining == remaining_shots and action.aim_point == unchanged_aim)
+	enemy.shot_cooldown = 0.0
 	var center: Vector3 = action.target_center
 	player.global_position = Vector3(21, 0, -2.5)
 	var shots: int = enemy.shot_count
