@@ -16,9 +16,93 @@ extends Node
 @export_range(0.0, 10.0, 0.1) var cover_quality_weight: float = 3.0
 ## 调试时打印区域候选数量、合格数量及最终选择的掩体和位置。
 @export var debug_cover_selection: bool = true
+## Debug运行时显示攻击候选评估：绿=可用，红=淘汰；只按最后目击位置查询，不控制AI动作。
+@export var debug_attack_points: bool = true
 
 @onready var ai = get_parent()
 @onready var enemy = get_parent().get_parent()
+
+
+func _ready() -> void:
+	if OS.is_debug_build():
+		var preview := preload("res://attack_point_preview.gd").new()
+		preview.name = "AttackPreview"
+		add_child(preview)
+
+
+## 保留所有候选的评估结果，供查看淘汰原因；不改变状态、导航目的地或射击请求。
+## threat_origin / target_point 均为调用者已有的信息，不在此读取玩家实时位置。
+func get_attack_assessments(threat_origin: Vector3, target_point: Vector3) -> Array[Dictionary]:
+	var results: Array[Dictionary] = []
+	for region in get_tree().get_nodes_in_group("cover_region"):
+		if not ai.navigation_region.is_ancestor_of(region):
+			continue
+		for point: Vector3 in region.get_attack_candidates():
+			results.append(assess_attack_point(point, region, threat_origin, target_point))
+	return results
+
+
+func assess_attack_point(point: Vector3, region: StaticBody3D, threat_origin: Vector3, target_point: Vector3) -> Dictionary:
+	var result := {"position": point, "cover": region, "space_free": false,
+		"reachable": false, "clear_shot": false, "in_range": false,
+		"protection": 0.0, "usable": false, "reason": "导航未就绪"}
+	if not is_instance_valid(region) or not point.is_finite() or not threat_origin.is_finite() or not target_point.is_finite():
+		result.reason = "无效位置"
+		return result
+	if NavigationServer3D.map_get_iteration_id(enemy.agent.get_navigation_map()) == 0:
+		return result
+	result.space_free = ai.is_position_free(point)
+	var path := _path_to(enemy.global_position, point)
+	# 不能把截止在另一侧导航边缘的部分路径当成到达。
+	result.reachable = not path.is_empty() and ai._horizontal_distance_between(path[path.size() - 1], point) <= 0.05
+	var shot_origin: Vector3 = point + (enemy.get_shot_origin() - enemy.global_position)
+	result.clear_shot = shot_origin.distance_squared_to(target_point) > 0.000001 and has_clear_line(shot_origin, target_point)
+	result.in_range = enemy.weapon != null and shot_origin.distance_to(target_point) <= enemy.weapon.fire_range
+	result.protection = _attack_body_protection(point, threat_origin, region)
+	if not result.space_free:
+		result.reason = "空间被占"
+	elif not result.reachable:
+		result.reason = "不可达"
+	elif enemy.weapon == null:
+		result.reason = "无武器"
+	elif not result.in_range:
+		result.reason = "超射程"
+	elif not result.clear_shot:
+		result.reason = "射界受阻"
+	elif result.protection < 0.0:
+		result.reason = "身体形状不支持"
+	elif is_zero_approx(result.protection):
+		result.reason = "无遮挡"
+	elif result.protection >= 1.0:
+		result.reason = "完全遮挡"
+	else:
+		result.usable = true
+		result.reason = "可用"
+	return result
+
+
+# 用现有胶囊身体中部的上/中/下 × 左/中/右共9个采样点估算，不把比例当精确面积。
+# 只计所属掩体的遮挡，旁边不相关的墙不能让这个点冒充“有掩护”。
+func _attack_body_protection(point: Vector3, threat_origin: Vector3, region: StaticBody3D) -> float:
+	var collision: CollisionShape3D = enemy.get_node("CollisionShape3D")
+	if not collision.shape is CapsuleShape3D:
+		return -1.0
+	var center: Vector3 = point + collision.global_position - enemy.global_position
+	var direction := center - threat_origin
+	direction.y = 0.0
+	if direction.is_zero_approx():
+		return 0.0
+	var side := direction.normalized().cross(Vector3.UP)
+	var radius: float = collision.shape.radius * minf(collision.global_basis.x.length(), collision.global_basis.z.length())
+	var vertical: float = maxf(0.0, collision.shape.height * 0.5 - collision.shape.radius) * 0.7 * collision.global_basis.y.length()
+	var protected := 0
+	for height in [-vertical, 0.0, vertical]:
+		for width in [-radius * 0.8, 0.0, radius * 0.8]:
+			var sample: Vector3 = center + Vector3.UP * height + side * width
+			var hit: Dictionary = enemy.get_world_3d().direct_space_state.intersect_ray(_ray_query(threat_origin, sample))
+			if not hit.is_empty() and hit.collider == region:
+				protected += 1
+	return float(protected) / 9.0
 
 
 func choose_cover(threat_origin: Vector3, look_position: Vector3) -> Dictionary:
