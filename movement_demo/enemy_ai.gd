@@ -16,7 +16,7 @@ enum SearchHintDecayMode {
 
 ## 近战沿用接近行为，尚无近战攻击；远程寻找射击位置并开火。
 @export var combat_type: CombatType = CombatType.MELEE
-## 接敌侧移/后退时允许开火；关闭后只在停稳时射击，跑掩体仍停火。
+## 接敌侧移/后退和掩护撤退时允许开火；关闭后只在停稳时射击，转身冲刺仍停火。
 @export var fire_while_moving: bool = true
 ## 首次发现或重新取得有效视线后，至少观察多久才允许射击（秒）；0可关闭。
 @export_range(0.0, 5.0, 0.05) var fire_reaction_seconds: float = 0.5
@@ -430,10 +430,12 @@ func _update_shooting(delta: float, sees_player: bool, movement_requested: bool)
 	fire_reaction_elapsed = minf(reaction_seconds, fire_reaction_elapsed + elapsed)
 	if fire_reaction_elapsed < reaction_seconds or fire_pause_remaining > 0.0:
 		return
-	# 跑掩体、躲藏、尚未完成探头时不射击；探头真实看见玩家后沿用原流程回接敌。
+	# 掩护撤退面向威胁，允许边退边打；转身冲刺、躲藏和有效探头仍停火。
 	if cover != null and cover.is_active():
-		return
-	if state != State.REPOSITION and state != State.HOLD_POSITION:
+		if cover.phase != cover.Phase.RUN_TO_COVER or not cover.covering_retreat:
+			return
+	# Cover接管期间主状态可能仍是TRACK/SEARCH，按当前掩体动作授权即可。
+	elif state != State.REPOSITION and state != State.HOLD_POSITION:
 		return
 	var moving: bool = movement_requested or Vector2(actor.velocity.x, actor.velocity.z).length() > 0.05
 	if moving and not fire_while_moving:
