@@ -22,7 +22,7 @@ extends Node
 @export var fire_while_moving: bool = true
 ## 首次发现或重新取得有效视线后，至少观察多久才允许射击（秒）；0可关闭。
 @export_range(0.0, 5.0, 0.05) var fire_reaction_seconds: float = 0.3
-## 普通交火（含接敌跑打）期望的稳定度；0.7表示70%，不是命中率。
+## 普通交火（含接敌跑打）希望达到的中心概率；0.7表示70%，不是最终命中率。
 ## 用作FireDecision评分的精度偏好，低于目标也可选择射击；掩护撤退不等待稳枪。
 @export_range(0.0, 1.0, 0.05) var fire_stability_target: float = 0.7
 ## 每轮实际打出几枪后暂停；只统计执行成功的射击，不按命中次数计数。
@@ -126,7 +126,7 @@ func update_shooting(delta: float, sees_player: bool, movement_requested: bool) 
 		fire_decision.reset()
 		return
 	# 墙角站位按目标方向选出后，实际枪口仍可能在跟转；等它转出墙面再开火。
-	if attack_position.phase == attack_position.Phase.HOLD and not ai.cover_selection.has_clear_shot_cone(actor.get_shot_origin(), actor.aim_direction, actor.get_spread_degrees(), actor.get_shot_origin().distance_to(point), attack_position.active_cover):
+	if attack_position.phase == attack_position.Phase.HOLD and not ai.cover_selection.has_clear_shot_cone(actor.get_shot_origin(), actor.aim_direction, actor.get_max_shot_deviation_degrees(), actor.get_shot_origin().distance_to(point), attack_position.active_cover):
 		fire_decision.reset()
 		return
 	if cover != null and cover.is_active():
@@ -169,10 +169,7 @@ func _record_burst_shot() -> void:
 
 
 func _current_firing_stability() -> float:
-	# 固定散布没有可等待的收拢过程，评分按完全稳定处理。
-	var minimum: float = clampf(actor.weapon.min_spread_angle_degrees, 0.0, 45.0)
-	var maximum: float = clampf(actor.weapon.max_spread_angle_degrees, minimum, 45.0)
-	return 1.0 if maximum - minimum <= 0.00001 else clampf(actor.weapon_stability, 0.0, 1.0)
+	return actor.get_center_probability()
 
 
 func reset_fire_timing() -> void:

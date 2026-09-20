@@ -73,7 +73,7 @@ func assess_attack_point(point: Vector3, region: StaticBody3D, threat_origin: Ve
 		result.reason = "身体形状不支持"
 	elif result.protection >= 1.0:
 		result.reason = "完全遮挡"
-	elif not has_clear_shot_cone(shot_origin, shot_origin.direction_to(target_point), maxf(enemy.weapon.min_spread_angle_degrees, enemy.weapon.max_spread_angle_degrees), shot_origin.distance_to(target_point), region):
+	elif not has_clear_shot_cone(shot_origin, shot_origin.direction_to(target_point), enemy.get_max_shot_deviation_degrees(), shot_origin.distance_to(target_point), region):
 		result.reason = "散布射界贴墙"
 	else:
 		result.usable = true

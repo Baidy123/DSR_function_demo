@@ -14,7 +14,7 @@ signal reset_completed
 @export_group("Shooting")
 ## 是否允许执行射击；可暂时关闭以单独观察移动和掩体行为。
 @export var shooting_enabled: bool = true
-## 枪械伤害、射程、射速与散布参数；敌人使用散布锥参数，空资源表示没有枪。
+## 枪械伤害、射程、射速与中心概率参数；敌人使用玩家旧概率模式，空资源表示没有枪。
 ## 运行时换枪调用 equip_weapon；反应时间与连射节奏仍由 AI/Tactics 决定。
 @export var weapon: WeaponData
 ## 枪口瞄准方向的最大跟随角速度（度/秒），独立于身体转速。
@@ -32,7 +32,7 @@ var shot_cooldown: float = 0.0
 var shot_count: int = 0
 var last_shot_collider: Object
 var last_shot_direction: Vector3 = Vector3.ZERO
-# 武器资源只保存参数；每个持枪者分别保存稳定度、恢复等待与位移记录。
+# weapon_stability保留旧内部名称，当前含义为中心概率；每个持枪者独立保存。
 var weapon_stability: float = 1.0
 var weapon_recovery_timer: float = 0.0
 var _weapon_move_distance: float = 0.0
@@ -174,24 +174,24 @@ func clear_aim() -> void:
 	aim_acquired = false
 	_last_visible_point = Vector3.INF
 	if weapon != null:
-		weapon_stability = minf(weapon_stability, weapon.get_aim_settings(true).initial)
+		weapon_stability = minf(weapon_stability, weapon.get_aim_settings(false).initial)
 
 
 ## 不修改共享资源，也不通过换枪清掉尚未结束的开火冷却。
 func equip_weapon(data: WeaponData) -> void:
 	weapon = data
-	weapon_stability = weapon.get_aim_settings(true).initial if weapon != null else 0.0
+	weapon_stability = weapon.get_aim_settings(false).initial if weapon != null else 0.0
 	weapon_recovery_timer = 0.0
 	_weapon_move_distance = 0.0
 	clear_aim()
 
 
-func get_spread_degrees() -> float:
-	if weapon == null:
-		return 0.0
-	var minimum: float = clampf(weapon.min_spread_angle_degrees, 0.0, 45.0)
-	var maximum: float = clampf(weapon.max_spread_angle_degrees, minimum, 45.0)
-	return lerpf(maximum, minimum, clampf(weapon_stability, 0.0, 1.0))
+func get_center_probability() -> float:
+	return clampf(weapon_stability, 0.0, 1.0) if weapon != null else 0.0
+
+
+func get_max_shot_deviation_degrees() -> float:
+	return 20.0
 
 
 func _update_weapon_stability(delta: float, visible_point: Vector3) -> void:
@@ -199,7 +199,7 @@ func _update_weapon_stability(delta: float, visible_point: Vector3) -> void:
 	_weapon_move_distance = 0.0
 	if weapon == null or is_dead:
 		return
-	var settings: Dictionary = weapon.get_aim_settings(true)
+	var settings: Dictionary = weapon.get_aim_settings(false)
 	var target_moving := false
 	if visible_point.is_finite() and _last_visible_point.is_finite():
 		var target_distance: float = visible_point.distance_to(_last_visible_point)
@@ -240,8 +240,8 @@ func can_fire() -> bool:
 func try_fire() -> bool:
 	if not can_fire():
 		return false
-	var spread: float = get_spread_degrees()
-	last_shot_direction = _random_direction_in_spread_cone(aim_direction, spread)
+	var probability: float = get_center_probability()
+	last_shot_direction = _random_shot_direction(aim_direction, probability)
 	var origin: Vector3 = get_shot_origin()
 	var endpoint: Vector3 = origin + last_shot_direction * maxf(0.0, weapon.fire_range)
 	var query := PhysicsRayQueryParameters3D.create(origin, endpoint, 1, [get_rid()])
@@ -250,7 +250,7 @@ func try_fire() -> bool:
 	last_shot_collider = hit.get("collider")
 	shot_count += 1
 	shot_cooldown = maxf(0.05, weapon.shot_interval)
-	var settings: Dictionary = weapon.get_aim_settings(true)
+	var settings: Dictionary = weapon.get_aim_settings(false)
 	if weapon_stability > settings.shot_floor:
 		weapon_stability = maxf(settings.shot_floor, weapon_stability - settings.shot_penalty)
 	weapon_recovery_timer = settings.delay
@@ -261,27 +261,22 @@ func try_fire() -> bool:
 			hit.collider.receive_hit(weapon.damage)
 			hit_player = true
 	if debug_shooting:
-		print("[敌人][开火] ", "命中玩家" if hit_player else ("被物体挡住" if not hit.is_empty() else "未命中"), "；散布半角=", spread)
+		print("[敌人][开火] ", "命中玩家" if hit_player else ("被物体挡住" if not hit.is_empty() else "未命中"), "；中心概率=", roundi(probability * 100.0), "%")
 	_draw_shot(origin, endpoint, hit_player)
 	return true
 
 
-# 与玩家相同：在完整三维锥内按立体角均匀取样。
-func _random_direction_in_spread_cone(forward: Vector3, half_angle_degrees: float) -> Vector3:
-	var cone_axis: Vector3 = forward.normalized() if not forward.is_zero_approx() else Vector3.FORWARD
-	var angle: float = deg_to_rad(clampf(half_angle_degrees, 0.0, 45.0))
-	if is_zero_approx(angle):
-		return cone_axis
-	# 接近竖直方向时换参考轴，避免叉乘退化。
-	var reference_axis: Vector3 = Vector3.UP if absf(cone_axis.y) < 0.999 else Vector3.RIGHT
-	var cone_right: Vector3 = cone_axis.cross(reference_axis).normalized()
-	var cone_up: Vector3 = cone_right.cross(cone_axis).normalized()
-	var phi: float = _shot_rng.randf_range(0.0, TAU)
-	# 均匀取 cos(theta)，避免直接均匀取角度导致弹道过度集中在中心。
-	var cosine: float = lerpf(1.0, cos(angle), _shot_rng.randf())
-	var sine: float = sqrt(maxf(0.0, 1.0 - cosine * cosine))
-	var radial: Vector3 = cone_right * cos(phi) + cone_up * sin(phi)
-	return (cone_axis * cosine + radial * sine).normalized()
+# 与玩家旧模式相同：抽中时直射中心，否则在8～20度范围随机三维偏射。
+func _random_shot_direction(forward: Vector3, probability: float) -> Vector3:
+	var axis := forward.normalized() if not forward.is_zero_approx() else Vector3.FORWARD
+	if _shot_rng.randf() < clampf(probability, 0.0, 1.0):
+		return axis
+	var reference := Vector3.UP if absf(axis.y) < 0.999 else Vector3.RIGHT
+	var right := axis.cross(reference).normalized()
+	var up := right.cross(axis).normalized()
+	var phi := _shot_rng.randf_range(0.0, TAU)
+	var angle := deg_to_rad(_shot_rng.randf_range(8.0, get_max_shot_deviation_degrees()))
+	return (axis * cos(angle) + (right * cos(phi) + up * sin(phi)) * sin(angle)).normalized()
 
 
 func _draw_shot(origin: Vector3, endpoint: Vector3, hit_player: bool) -> void:

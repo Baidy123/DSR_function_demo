@@ -27,8 +27,12 @@ func _run() -> void:
 	p.global_position = e.global_position + Vector3(0, 0, 4.8)
 	e.look_at(p.global_position)
 	e.equip_weapon(e.weapon.duplicate())
-	e.weapon.min_spread_angle_degrees = 0.0
-	e.weapon.max_spread_angle_degrees = 0.0
+	e.weapon.initial_accuracy = 1.0
+	e.weapon.shot_accuracy_penalty = 0.0
+	e.weapon.player_move_accuracy_loss_per_meter = 0.0
+	e.weapon.target_move_accuracy_loss_per_meter_slow = 0.0
+	e.weapon.target_move_accuracy_loss_per_meter_fast = 0.0
+	e.weapon_stability = 1.0
 	for frame in range(5):
 		await physics_frame
 	ai.state = ai.State.HOLD_POSITION

@@ -17,6 +17,10 @@ func _run() -> void:
 	ai.set_physics_process(false)
 	p.set_physics_process(false)
 	p.get_node("Health").debug_invincible = true
+	# 固定本组时序，避免用户场景调参改变决策回归的前提。
+	t.fire_reaction_seconds = 0.3
+	t.burst_pause_seconds = 2.1
+	t.fire_stability_target = 0.7
 	_check("普通交火提供稳定度目标", t.get("fire_stability_target") != null)
 	if checks.values().has(false):
 		_finish()
@@ -34,13 +38,12 @@ func _run() -> void:
 	t.update_shooting(0.25, true, false)
 	_check("反应与稳枪并行而非串联等待", e.shot_count == 1)
 	var w = e.weapon.duplicate()
-	w.min_spread_angle_degrees = 0.0
-	w.max_spread_angle_degrees = 10.0
-	w.initial_spread_angle_degrees = 5.0
-	w.spread_recovery_degrees_per_second = 0.0
-	w.shot_spread_penalty_degrees = 2.0
-	w.shot_max_spread_angle_degrees = 10.0
+	w.initial_accuracy = 0.5
+	w.accuracy_recovery_delay = 10.0
+	w.shot_accuracy_penalty = 0.2
+	w.minimum_accuracy = 0.0
 	e.equip_weapon(w)
+	e.weapon_recovery_timer = 10.0
 	e.shot_cooldown = 0.0
 	t.reset_fire_timing()
 	e.weapon_stability = 0.5
@@ -92,12 +95,11 @@ func _run() -> void:
 	t.update_shooting(1.0, true, false)
 	_check("目标设为零可以关闭稳枪限制", e.shot_count == count + 5)
 	t.fire_stability_target = 0.7
-	w.min_spread_angle_degrees = 5.0
-	w.max_spread_angle_degrees = 5.0
+	w.initial_accuracy = 1.0
 	e.equip_weapon(w)
 	e.shot_cooldown = 0.0
 	t.update_shooting(1.0, true, false)
-	_check("固定散布武器按完全稳定处理", e.shot_count == count + 6)
+	_check("中心概率100%时无需继续等待稳枪", e.shot_count == count + 6)
 	e.reset_target()
 	_check("刷新清理反应与枪数并恢复初始精度", t.fire_reaction_elapsed == 0.0 and t.fire_burst_shots == 0 and e.shot_count == 0)
 	_finish()

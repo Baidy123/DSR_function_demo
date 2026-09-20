@@ -5,7 +5,7 @@ const PROBABILITY_FIELDS := {
 	"initial_accuracy": "初始中心概率",
 	"stabilize_seconds": "恢复到满概率用时",
 	"moving_accuracy_cap": "移动惩罚概率下限",
-	"player_move_accuracy_loss_per_meter": "玩家每米降低概率",
+	"player_move_accuracy_loss_per_meter": "持枪者每米降低概率",
 	"shot_accuracy_penalty": "每枪降低概率",
 	"minimum_accuracy": "连射概率下限",
 	"accuracy_recovery_delay": "恢复等待时间",
@@ -65,11 +65,12 @@ func _context_mode(weapon: Object) -> int:
 	var combat = EditorInterface.get_inspector().get_edited_object()
 	if combat == null or combat.get_script() == null:
 		return -1
-	if combat.get_script().resource_path != "res://player_combat_v3.gd":
+	var script_path: String = combat.get_script().resource_path
+	if script_path not in ["res://player_combat_v3.gd", "res://enemy_actor.gd"]:
 		return -1
 	if combat.get("weapon") != weapon:
 		return -1
-	return int(combat.get("aim_mode"))
+	return 0 if script_path == "res://enemy_actor.gd" else int(combat.get("aim_mode"))
 
 
 # 仍把修改交给原生资源 Inspector，因此撤销、资源脏标记和保存保持正常。

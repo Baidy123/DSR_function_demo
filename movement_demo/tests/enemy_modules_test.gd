@@ -26,8 +26,12 @@ func _run() -> void:
 	player.global_position = actor.global_position + Vector3(0, 0, 4.8)
 	actor.look_at(player.global_position)
 	actor.equip_weapon(actor.weapon.duplicate())
-	actor.weapon.min_spread_angle_degrees = 0.0
-	actor.weapon.max_spread_angle_degrees = 0.0
+	actor.weapon.initial_accuracy = 1.0
+	actor.weapon.shot_accuracy_penalty = 0.0
+	actor.weapon.target_move_accuracy_loss_per_meter_slow = 0.0
+	actor.weapon.target_move_accuracy_loss_per_meter_fast = 0.0
+	actor.weapon.player_move_accuracy_loss_per_meter = 0.0
+	actor.weapon_stability = 1.0
 	tactics.fire_reaction_seconds = 0.0
 	tactics.burst_pause_seconds = 0.0
 	action.covering_retreat_chance = 1.0

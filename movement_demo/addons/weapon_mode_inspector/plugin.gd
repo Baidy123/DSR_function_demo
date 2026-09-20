@@ -28,7 +28,7 @@ func _refresh_weapon() -> void:
 	var combat = EditorInterface.get_inspector().get_edited_object()
 	if combat == null or combat.get_script() == null:
 		return
-	if combat.get_script().resource_path != "res://player_combat_v3.gd":
+	if combat.get_script().resource_path not in ["res://player_combat_v3.gd", "res://enemy_actor.gd"]:
 		return
 	var weapon = combat.get("weapon")
 	if weapon is Resource:

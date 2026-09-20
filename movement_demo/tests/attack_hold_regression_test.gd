@@ -23,31 +23,40 @@ func _run() -> void:
 	ai.set_physics_process(false)
 	player.set_physics_process(false)
 	enemy.shooting_enabled = false
-	# 本用例只隔离实际落脚点与旧目的地的中心射线差异；散布余量另有回归。
-	enemy.weapon = enemy.weapon.duplicate()
-	enemy.weapon.min_spread_angle_degrees = 0.0
-	enemy.weapon.max_spread_angle_degrees = 0.0
 	ai.cover_selection.debug_attack_points = false
-	# 用户实机日志中已经到位的CoverA站姿及原采样目的地。
-	enemy.global_position = Vector3(17.68982, 0, -1.900597)
-	var destination := Vector3(17.63248, 0, -2.00449)
-	var wall = scene.get_node("Arena/NavigationRegion3D/Environment/CoverA")
-	# 固定复现时的碰撞几何；用户可继续在编辑器调整场景，测试不写回资源。
-	var collision = wall.get_node("CollisionShape3D")
-	collision.shape = collision.shape.duplicate()
-	collision.shape.size = Vector3(1.2, 2.2, 6.890625)
-	collision.position = Vector3(0, 0, 1.4453125)
 	player.global_position = Vector3(20, 0, -3)
 	for frame in range(60):
 		await physics_frame
 		if ai.is_arena_active() and not ai.cover_selection._path_to(enemy.global_position, enemy.global_position).is_empty():
 			break
-	# 固定复现：移动玩家后，两个相差约10厘米的位置有不同射界。
-	var chosen := Vector3(16.8408, 0, 5.551192)
+	# 在当前20度偏射边界下重建同类回归：实际脚下合格，旧目的地失效。
+	var chosen := Vector3(19.92596, 0, -4.2821)
 	var origin := chosen + Vector3.UP * 0.8
+	var destination := Vector3.INF
+	var wall: StaticBody3D
+	for region in get_nodes_in_group("cover_region"):
+		if destination.is_finite():
+			break
+		for point in region.get_attack_candidates():
+			if point.distance_to(chosen) > 7.5 or not ai.cover_selection.assess_attack_point(point, region, origin, origin).usable:
+				continue
+			for offset in [Vector3.LEFT, Vector3.RIGHT, Vector3.FORWARD, Vector3.BACK]:
+				var old_point: Vector3 = point + offset * 0.1
+				if not ai.cover_selection.assess_attack_point(old_point, region, origin, origin).usable:
+					enemy.global_position = point
+					destination = old_point
+					wall = region
+					break
+			if destination.is_finite():
+				break
+	_check(destination.is_finite(), "找到实际站位与旧目的地有效性不同的复现")
+	if not destination.is_finite():
+		scene.free()
+		quit(1)
+		return
 	var actual: Dictionary = ai.cover_selection.assess_attack_point(enemy.global_position, wall, origin, origin)
 	var planned: Dictionary = ai.cover_selection.assess_attack_point(destination, wall, origin, origin)
-	_check(actual.usable, "实际脚下仍能遮身并射击")
+	_check(actual.usable, "实际脚下仍能架枪射击")
 	_check(not planned.usable, "原采样目的地已经失效")
 	player.global_position = chosen
 	enemy.look_at(chosen)

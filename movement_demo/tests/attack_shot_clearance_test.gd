@@ -22,7 +22,7 @@ func _run() -> void:
 	ai.cover_selection.debug_attack_points = false
 	enemy.debug_shooting = false
 	enemy.weapon = enemy.weapon.duplicate()
-	# 固定复现武器；用户在编辑器中的武器调参不改变测试的12度抽样基准。
+	# 角度参数不再影响敌人；实际偏射沿用旧概率模式8～20度。
 	enemy.weapon.max_spread_angle_degrees = 12.0
 	enemy.global_position = Vector3(17.68982, 0, -1.900597)
 	var wall = scene.get_node("Arena/NavigationRegion3D/Environment/CoverA")
@@ -37,7 +37,7 @@ func _run() -> void:
 	enemy._shot_rng.seed = 632
 	var wall_hits := 0
 	for index in range(500):
-		var ray: Vector3 = enemy._random_direction_in_spread_cone(direction, 12.0)
+		var ray: Vector3 = enemy._random_shot_direction(direction, 0.0)
 		var hit: Dictionary = enemy.get_world_3d().direct_space_state.intersect_ray(selection._ray_query(origin, origin + ray * origin.distance_to(target)))
 		if hit.get("collider") == wall:
 			wall_hits += 1
@@ -62,10 +62,10 @@ func _run() -> void:
 			if firing_fixture.is_empty() and muzzle.distance_to(known) < 7.5:
 				for turn in [-25.0, 25.0]:
 					var lagged: Vector3 = muzzle.direction_to(known).rotated(Vector3.UP, deg_to_rad(turn))
-					if not selection.has_clear_shot_cone(muzzle, lagged, 12.0, muzzle.distance_to(known), region):
+					if not selection.has_clear_shot_cone(muzzle, lagged, enemy.get_max_shot_deviation_degrees(), muzzle.distance_to(known), region):
 						firing_fixture = {"point": point, "cover": region, "aim": lagged}
 			for shot in range(100):
-				var ray: Vector3 = enemy._random_direction_in_spread_cone(muzzle.direction_to(known), 12.0)
+				var ray: Vector3 = enemy._random_shot_direction(muzzle.direction_to(known), 0.0)
 				var hit: Dictionary = enemy.get_world_3d().direct_space_state.intersect_ray(selection._ray_query(muzzle, muzzle + ray * muzzle.distance_to(known)))
 				if hit.get("collider") == region:
 					unsafe += 1
@@ -77,7 +77,7 @@ func _run() -> void:
 	_check(exposed > 0, "安全射界允许身体无遮挡的墙角站位")
 	enemy.weapon.min_spread_angle_degrees = 12.0
 	enemy.weapon.max_spread_angle_degrees = 0.0
-	_check(not selection.assess_attack_point(enemy.global_position, wall, target, target).usable, "最小大于最大时选位沿用枪械实际散布范围")
+	_check(not selection.assess_attack_point(enemy.global_position, wall, target, target).usable, "旧角度参数不改变概率射击的避墙范围")
 	enemy.weapon.min_spread_angle_degrees = 4.0
 	enemy.weapon.max_spread_angle_degrees = 12.0
 	_check(not firing_fixture.is_empty(), "存在站位合格但枪口仍朝墙的跟枪复现")
