@@ -18,6 +18,12 @@ enum SearchHintDecayMode {
 @export var combat_type: CombatType = CombatType.MELEE
 ## 接敌侧移/后退时允许开火；关闭后只在停稳时射击，跑掩体仍停火。
 @export var fire_while_moving: bool = true
+## 首次发现或重新取得有效视线后，至少观察多久才允许射击（秒）；0可关闭。
+@export_range(0.0, 5.0, 0.05) var fire_reaction_seconds: float = 0.5
+## 每轮实际打出几枪后暂停；只统计执行成功的射击，不按命中次数计数。
+@export_range(1, 20, 1) var burst_shot_count: int = 3
+## 每轮最后一枪后的停火时间（秒）；与枪械冷却并行，必须都结束才能再开火。
+@export_range(0.0, 10.0, 0.05) var burst_pause_seconds: float = 1.0
 ## 远程敌人希望保持的距离区间，单位为米。
 @export_range(1.0, 20.0, 0.5) var ranged_min_distance: float = 4.0
 ## 远程期望距离上限（米）；与下限共同决定射击候选点的采样范围。
@@ -120,6 +126,10 @@ enum SearchHintDecayMode {
 ## 受击时只知道攻击者附近区域，不持续获取攻击者坐标。
 @export_range(0.0, 5.0, 0.1) var attack_position_uncertainty: float = 1.0
 
+var fire_reaction_elapsed: float = 0.0
+var fire_burst_shots: int = 0
+var fire_pause_remaining: float = 0.0
+
 var state: State = State.IDLE
 var last_known_position: Vector3
 ## 只由真实目击更新；来弹推测不能覆盖它。
@@ -186,6 +196,7 @@ func is_active() -> bool:
 
 
 func _reset_decisions() -> void:
+	_reset_fire_timing()
 	state = State.IDLE
 	is_alerted = false
 	last_known_position = actor.global_position
@@ -230,7 +241,7 @@ func is_arena_active() -> bool:
 
 func _physics_process(delta: float) -> void:
 	if actor.is_dead or not is_arena_active():
-		actor.update_weapon(delta)
+		_update_shooting(delta, false, false)
 		return
 
 	# 地图同步完成前不能请求路径。
@@ -394,21 +405,31 @@ func _physics_process(delta: float) -> void:
 
 ## 决策层只授权开火；瞄准跟随、冷却和真实弹道由 Enemy 执行。
 func _update_shooting(delta: float, sees_player: bool, movement_requested: bool) -> void:
+	# 停顿按经过的时间计算；短暂失去视野或进入掩体不清掉已打枪数/剩余停顿。
+	var elapsed: float = maxf(0.0, delta)
+	fire_pause_remaining = maxf(0.0, fire_pause_remaining - elapsed)
 	var visible_target: bool = (
-		not actor.is_dead and is_arena_active() and sees_player
+		not actor.is_dead and actor.shooting_enabled and is_arena_active() and sees_player
 		and combat_type == CombatType.RANGED
 		and not player.is_dead() and not player.is_in_dialogue
 	)
 	# 身体刚移动过，射击前再核实实际视线，避免用移动前的可见结果隔墙射击。
 	visible_target = visible_target and can_see_player()
 	if not visible_target:
+		fire_reaction_elapsed = 0.0
 		actor.update_weapon(delta)
 		return
 	var point: Vector3 = player.global_position + Vector3.UP * 0.8
 	if actor.get_shot_origin().distance_to(point) > actor.shot_range:
+		fire_reaction_elapsed = 0.0
 		actor.update_weapon(delta)
 		return
+	# 反应与停顿期间仍然跟枪；两者只阻止开火，不阻止移动、转身或瞄准。
 	actor.update_weapon(delta, point)
+	var reaction_seconds: float = maxf(0.0, fire_reaction_seconds)
+	fire_reaction_elapsed = minf(reaction_seconds, fire_reaction_elapsed + elapsed)
+	if fire_reaction_elapsed < reaction_seconds or fire_pause_remaining > 0.0:
+		return
 	# 跑掩体、躲藏、尚未完成探头时不射击；探头真实看见玩家后沿用原流程回接敌。
 	if cover != null and cover.is_active():
 		return
@@ -417,7 +438,17 @@ func _update_shooting(delta: float, sees_player: bool, movement_requested: bool)
 	var moving: bool = movement_requested or Vector2(actor.velocity.x, actor.velocity.z).length() > 0.05
 	if moving and not fire_while_moving:
 		return
-	actor.try_fire(moving)
+	if actor.try_fire(moving):
+		fire_burst_shots += 1
+		if fire_burst_shots >= maxi(1, burst_shot_count):
+			fire_burst_shots = 0
+			fire_pause_remaining = maxf(0.0, burst_pause_seconds)
+
+
+func _reset_fire_timing() -> void:
+	fire_reaction_elapsed = 0.0
+	fire_burst_shots = 0
+	fire_pause_remaining = 0.0
 
 func _process_ranged_position(delta: float, sees_player: bool) -> Vector3:
 	var band := _ranged_distance_band()
@@ -1348,6 +1379,7 @@ func _horizontal_distance_between(a: Vector3, b: Vector3) -> float:
 
 func _on_hit_received(damage: float, attacker_position: Vector3) -> void:
 	if actor.is_dead:
+		_reset_fire_timing()
 		if cover != null:
 			cover.reset()
 		is_alerted = false
