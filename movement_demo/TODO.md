@@ -4,7 +4,7 @@
 
 动作清单现已改为可拖拽资源：`res://enemy_actions/`内8个`.tres`，UnitType提供实现，Training按ID授权；移除Action Overrides，自定义动作复制资源替换脚本。资源与权限相关208项检查通过，保存重载及实际Main验证完成。
 
-现有敌人的完整动作库与节点迁移已完成：UnitType管动作有没有，Training只管权限与参数，AI统一决策及生命周期。动作成为普通对象，无需挂节点；相关499项检查通过，参数与地图保存核对通过。旧测试18项失败与迁移前一致，人工手感待试玩。详见[ENEMY_ACTION_LIBRARY.md](ENEMY_ACTION_LIBRARY.md)。
+现有敌人的完整动作库与节点迁移已完成：UnitType管动作有没有，Training只管权限与参数，AI统一决策及生命周期。动作成为普通对象，无需挂节点；相关499项检查通过，参数与地图保存核对通过。当时旧测试18项失败已在后续独立配置修正中消除，4组共87项通过；人工手感待试玩。详见[ENEMY_ACTION_LIBRARY.md](ENEMY_ACTION_LIBRARY.md)。
 
 以下计划中的结构迁移已完成；声音、弹匣、总体评分仍待用户指定。后续历史描述以本节职责为准。
 

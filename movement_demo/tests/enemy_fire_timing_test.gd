@@ -1,5 +1,6 @@
 extends SceneTree
 
+const Fixture = preload("res://tests/enemy_fire_fixture.gd")
 var checks: Dictionary = {}
 
 
@@ -13,10 +14,8 @@ func _run() -> void:
 	current_scene = scene
 	var e = scene.get_node("Arena/Enemy")
 	var ai = e.get_node("AI")
+	Fixture.configure_timing(e)
 	# 本测试验证固定交战位置的射击节奏；主动占位的移动与开火由独立行为测试覆盖。
-	ai.tactics.can_use_attack_positions = false
-	ai.tactics.fire_reaction_seconds = 0.5
-	ai.tactics.burst_pause_seconds = 1.0
 	var p = scene.get_node("Player")
 	var cover = e.get_node("AI").cover
 	ai.set_physics_process(false)
@@ -26,13 +25,6 @@ func _run() -> void:
 	cover.selection.debug_cover_selection = false
 	p.global_position = e.global_position + Vector3(0, 0, 4.8)
 	e.look_at(p.global_position)
-	e.equip_weapon(e.weapon.duplicate())
-	e.weapon.initial_accuracy = 1.0
-	e.weapon.shot_accuracy_penalty = 0.0
-	e.weapon.player_move_accuracy_loss_per_meter = 0.0
-	e.weapon.target_move_accuracy_loss_per_meter_slow = 0.0
-	e.weapon.target_move_accuracy_loss_per_meter_fast = 0.0
-	e.weapon_stability = 1.0
 	for frame in range(5):
 		await physics_frame
 	ai.state = ai.State.HOLD_POSITION
@@ -42,7 +34,7 @@ func _run() -> void:
 	if ai.tactics.get("fire_reaction_seconds") == null:
 		_finish()
 		return
-	_check("默认反应半秒三枪停一秒", ai.tactics.fire_reaction_seconds == 0.5 and ai.tactics.burst_shot_count == 3 and ai.tactics.burst_pause_seconds == 1.0)
+	_check("测试配置为半秒反应三枪停一秒", ai.tactics.fire_reaction_seconds == 0.5 and ai.tactics.burst_shot_count == 3 and ai.tactics.burst_pause_seconds == 1.0)
 	ai.tactics.update_shooting(0.48, true, false)
 	_check("反应时间未满不射击", e.shot_count == 0)
 	_check("反应期间仍然跟枪", e.has_aim and e.aim_acquired)
@@ -129,11 +121,8 @@ func _check_real_frames() -> void:
 	current_scene = scene
 	var e = scene.get_node("Arena/Enemy")
 	var ai = e.get_node("AI")
+	Fixture.configure_timing(e)
 	# 本组固定射击位验证节奏；专项选位与失视压制由各自的实走／射击测试覆盖。
-	ai.tactics.can_use_attack_positions = false
-	ai.tactics.can_suppress_fire = false
-	ai.tactics.fire_reaction_seconds = 0.5
-	ai.tactics.burst_pause_seconds = 1.0
 	var p = scene.get_node("Player")
 	p.set_physics_process(false)
 	p.get_node("Health").debug_invincible = true

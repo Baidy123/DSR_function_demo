@@ -1,5 +1,6 @@
 extends SceneTree
 
+const Fixture = preload("res://tests/enemy_fire_fixture.gd")
 var checks: Dictionary = {}
 
 func _initialize() -> void:
@@ -10,6 +11,7 @@ func _run() -> void:
 	root.add_child(scene)
 	current_scene = scene
 	var e = scene.get_node("Arena/Enemy")
+	Fixture.configure_decision(e)
 	var ai = e.get_node("AI")
 	var t = ai.tactics
 	var p = scene.get_node("Player")
@@ -80,7 +82,7 @@ func _run() -> void:
 	_check("丢失目标清理压力且不盲射", decision.wait_seconds == 0.0 and e.shot_count == 0)
 	e.weapon_stability = 1.0
 	var w = e.weapon.duplicate()
-	w.spread_recovery_degrees_per_second = 0.0
+	w.initial_accuracy = 1.0 # 敌人使用概率模式；初始100%使恢复速率为0。
 	e.equip_weapon(w)
 	e.shot_cooldown = 5.0
 	t.update_shooting(0.5, true, false)
@@ -111,6 +113,7 @@ func _check_live_moving_target() -> void:
 	root.add_child(scene)
 	current_scene = scene
 	var e = scene.get_node("Arena/Enemy")
+	Fixture.configure_decision(e)
 	var p = scene.get_node("Player")
 	p.set_physics_process(false)
 	p.get_node("Health").debug_invincible = true

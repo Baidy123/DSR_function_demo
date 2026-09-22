@@ -1,5 +1,6 @@
 extends SceneTree
 
+const Fixture = preload("res://tests/enemy_fire_fixture.gd")
 var checks: Dictionary = {}
 
 
@@ -13,8 +14,7 @@ func _run() -> void:
 	current_scene = scene
 	var e = scene.get_node("Arena/Enemy")
 	var ai = e.get_node("AI")
-	ai.tactics.fire_reaction_seconds = 0.5
-	ai.tactics.burst_pause_seconds = 1.0
+	Fixture.configure_timing(e)
 	var cover = e.get_node("AI").cover
 	var p = scene.get_node("Player")
 	ai.set_physics_process(false)
@@ -24,13 +24,6 @@ func _run() -> void:
 	ai.search.debug_tracking_cheat = false
 	p.global_position = e.global_position + Vector3(0, 0, 4.8)
 	e.look_at(p.global_position)
-	e.equip_weapon(e.weapon.duplicate())
-	e.weapon.initial_accuracy = 1.0
-	e.weapon.shot_accuracy_penalty = 0.0
-	e.weapon.player_move_accuracy_loss_per_meter = 0.0
-	e.weapon.target_move_accuracy_loss_per_meter_slow = 0.0
-	e.weapon.target_move_accuracy_loss_per_meter_fast = 0.0
-	e.weapon_stability = 1.0
 	for frame in range(5):
 		await physics_frame
 	# Cover优先控制移动时，主状态可能仍是其他状态，不能要求先回REPOSITION。

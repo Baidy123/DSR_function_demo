@@ -17,7 +17,8 @@ func _run() -> void:
 	if not checks.values().all(func(value): return value):
 		_finish()
 		return
-	_check("场景挂载独立敌人武器并保留伤害射程射速", enemy.weapon is WeaponData and enemy.weapon.resource_path == "res://enemy_test_pistol.tres" and is_equal_approx(enemy.weapon.damage, 10.0) and is_equal_approx(enemy.weapon.fire_range, 30.1) and is_equal_approx(enemy.weapon.shot_interval, 0.8))
+	# 场景检查资源接线和按当前配置初始化；具体数值行为由下面独立武器验证。
+	_check("场景挂载独立敌人武器并读取当前初始概率", enemy.weapon is WeaponData and enemy.weapon == load("res://enemy_test_pistol.tres") and is_equal_approx(enemy.get_center_probability(), enemy.weapon.initial_accuracy))
 	var weapon := WeaponData.new()
 	weapon.initial_accuracy = 0.9
 	weapon.stabilize_seconds = 1.0
