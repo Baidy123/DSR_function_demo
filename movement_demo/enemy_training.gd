@@ -1,10 +1,21 @@
 extends Node
 
+const ActionDefinition = preload("res://enemy_action_definition.gd")
+
 # 只保存权限和训练参数，不启动、更新或停止动作。
 enum SearchHintDecayMode { NONE, LINEAR_TIME, EXPONENTIAL_TIME, LINEAR_DISTANCE, TIME_AND_DISTANCE, CUSTOM }
 
-## 训练允许的动作，还必须由UnitType提供并满足现场条件。
-@export var allowed_actions: PackedStringArray = PackedStringArray(["patrol", "search", "engage", "cover", "attack_position", "suppression", "exit_suppression", "covering_retreat"])
+## 拖入训练允许使用的动作资源；按动作ID匹配，仍须兵种提供并满足现场条件。
+@export var allowed_actions: Array[ActionDefinition] = [
+	preload("res://enemy_actions/patrol.tres"),
+	preload("res://enemy_actions/search.tres"),
+	preload("res://enemy_actions/engage.tres"),
+	preload("res://enemy_actions/cover.tres"),
+	preload("res://enemy_actions/attack_position.tres"),
+	preload("res://enemy_actions/suppression.tres"),
+	preload("res://enemy_actions/exit_suppression.tres"),
+	preload("res://enemy_actions/covering_retreat.tres"),
+]
 
 @export_group("通用训练", "ai_")
 ## 每次巡逻抵达后停留的时间。
@@ -218,7 +229,12 @@ enum SearchHintDecayMode { NONE, LINEAR_TIME, EXPONENTIAL_TIME, LINEAR_DISTANCE,
 @export var selection_debug_attack_points: bool = true
 
 func allows_action(id: StringName) -> bool:
-	if not String(id) in allowed_actions:
+	var permitted := false
+	for definition in allowed_actions:
+		if definition != null and definition.action_id == id:
+			permitted = true
+			break
+	if not permitted:
 		return false
 	match id:
 		&"attack_position": return tactics_can_use_attack_positions

@@ -43,16 +43,16 @@ func _run() -> void:
 	_check("新训练配置出口压制默认关闭", not default_training.tactics_can_suppress_exits)
 	default_training.free()
 	training.tactics_can_suppress_exits = true
-	var available: PackedStringArray = unit.available_actions.duplicate()
-	var allowed: PackedStringArray = training.allowed_actions.duplicate()
+	var available: Array = unit.available_actions.duplicate()
+	var allowed: Array = training.allowed_actions.duplicate()
 	for id in ACTION_IDS:
-		unit.available_actions = PackedStringArray(ACTION_IDS)
-		training.allowed_actions = PackedStringArray(ACTION_IDS)
+		unit.available_actions = available.duplicate()
+		training.allowed_actions = allowed.duplicate()
 		_check("兵种与训练同时允许 " + id, unit.has_action(id) and training.allows_action(id) and ai.can_use_action(id))
-		unit.available_actions.remove_at(unit.available_actions.find(id))
+		_remove_action(unit.available_actions, id)
 		_check("兵种没有动作时训练不能赋予 " + id, not unit.has_action(id) and not ai.can_use_action(id))
-		unit.available_actions = PackedStringArray(ACTION_IDS)
-		training.allowed_actions.remove_at(training.allowed_actions.find(id))
+		unit.available_actions = available.duplicate()
+		_remove_action(training.allowed_actions, id)
 		_check("兵种拥有动作仍需训练授权 " + id, unit.has_action(id) and not training.allows_action(id) and not ai.can_use_action(id))
 	unit.available_actions = available.duplicate()
 	training.allowed_actions = allowed.duplicate()
@@ -68,11 +68,11 @@ func _run() -> void:
 	ai.last_known_position = player.global_position
 	ai.combat_type = ai.CombatType.RANGED
 	var attack = ai.tactics.attack_position
-	unit.available_actions.remove_at(unit.available_actions.find("attack_position"))
+	_remove_action(unit.available_actions, "attack_position")
 	ai.try_attack_position()
 	_check("架枪概率1不能绕过兵种权限", not attack.is_active() and not attack.can_start() and not attack.start(player.global_position))
 	unit.available_actions = available.duplicate()
-	training.allowed_actions.remove_at(training.allowed_actions.find("attack_position"))
+	_remove_action(training.allowed_actions, "attack_position")
 	ai.try_attack_position(true)
 	_check("受击架枪概率1不能绕过训练权限", not attack.is_active() and not attack.can_start() and not attack.start(player.global_position, true))
 	training.allowed_actions = allowed.duplicate()
@@ -82,12 +82,12 @@ func _run() -> void:
 	training.tactics_can_use_attack_positions = true
 	ai.try_attack_position()
 	_check("双权限满足时确实启动架枪", attack.is_active())
-	unit.available_actions.remove_at(unit.available_actions.find("attack_position"))
+	_remove_action(unit.available_actions, "attack_position")
 	attack.step(0.016, false)
 	_check("架枪运行中撤销兵种权限立即停止", not attack.is_active())
 	unit.available_actions = available.duplicate()
 	ai.try_attack_position()
-	training.allowed_actions.remove_at(training.allowed_actions.find("attack_position"))
+	_remove_action(training.allowed_actions, "attack_position")
 	attack.step(0.016, false)
 	_check("架枪运行中撤销训练权限立即停止", not attack.is_active())
 	training.allowed_actions = allowed.duplicate()
@@ -95,13 +95,13 @@ func _run() -> void:
 	ai.start_suppression()
 	var suppression = ai.tactics.area_suppression
 	_check("双权限允许时启动区域压制", suppression.is_active())
-	unit.available_actions.remove_at(unit.available_actions.find("suppression"))
+	_remove_action(unit.available_actions, "suppression")
 	suppression.step(0.016, false)
 	_check("压制运行中撤销兵种权限停止", not suppression.is_active())
 	ai.start_suppression()
 	_check("区域压制启动不能绕过兵种权限", not suppression.is_active())
 	unit.available_actions = available.duplicate()
-	training.allowed_actions.remove_at(training.allowed_actions.find("suppression"))
+	_remove_action(training.allowed_actions, "suppression")
 	ai.start_suppression()
 	_check("区域压制启动不能绕过训练权限", not suppression.is_active())
 	training.allowed_actions = allowed.duplicate()
@@ -109,7 +109,7 @@ func _run() -> void:
 	ai.is_alerted = true
 	ai.was_seeing_player = false
 	ai.state = ai.State.SEARCH
-	training.allowed_actions.remove_at(training.allowed_actions.find("search"))
+	_remove_action(training.allowed_actions, "search")
 	ai._enforce_action_permissions()
 	_check("撤销搜索权限停止搜索", ai.state == ai.State.IDLE)
 	training.allowed_actions = allowed.duplicate()
@@ -135,7 +135,7 @@ func _run() -> void:
 	_check("可替换动作脚本继承原接口", compile_result == OK)
 	var replacement_arena = load("res://arena.tscn").instantiate()
 	var replacement_unit = replacement_arena.get_node("Enemy/UnitType")
-	replacement_unit.action_overrides[&"attack_position"] = replacement
+	_replace_action(replacement_unit, &"attack_position", replacement)
 	root.add_child(replacement_arena)
 	var replacement_ai = replacement_arena.get_node("Enemy/AI")
 	replacement_ai.set_physics_process(false)
@@ -166,7 +166,7 @@ func _check_patrol_reset() -> void:
 	var arenas: Array[Node] = []
 	for index in range(2):
 		var arena = load("res://arena.tscn").instantiate()
-		arena.get_node("Enemy/UnitType").action_overrides[&"patrol"] = implementation
+		_replace_action(arena.get_node("Enemy/UnitType"), &"patrol", implementation)
 		root.add_child(arena)
 		arena.get_node("Enemy/AI").set_physics_process(false)
 		arenas.append(arena)
@@ -195,3 +195,17 @@ func _finish() -> void:
 	var failed: int = checks.values().count(false)
 	print("ENEMY ACTION LIBRARY: %d/%d passed" % [checks.size() - failed, checks.size()])
 	quit(0 if failed == 0 else 1)
+
+func _remove_action(entries: Array, id: StringName) -> void:
+	for index in range(entries.size()):
+		if entries[index] != null and entries[index].action_id == id:
+			entries.remove_at(index)
+			return
+
+func _replace_action(unit: Node, id: StringName, implementation: Script) -> void:
+	for index in range(unit.available_actions.size()):
+		if unit.available_actions[index].action_id == id:
+			var definition = unit.available_actions[index].duplicate()
+			definition.implementation = implementation
+			unit.available_actions[index] = definition
+			return

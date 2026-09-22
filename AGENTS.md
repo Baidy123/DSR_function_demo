@@ -475,3 +475,10 @@
 - 原训练参数集中迁到Training；近战/远程类型归UnitType，身体与武器归Enemy。保留当前场景调参，权限撤销、死亡、刷新及场外清理由AI处理；没有新增兵种等级或玩法。
 - 相关499项检查通过，保存后90项配置检查再次通过，地图/碰撞/导航快照比较138项通过；实际Main运行确认移动与10次开火，独立审查完成。4组旧测试共18项失败已与迁移前相同调参对照一致，不宣称旧全套通过。
 - 编辑器已刷新并选中Training，游戏停止，人工手感待用户试玩。入口与配置方法见movement_demo/ENEMY_ACTION_LIBRARY.md。下一步由用户决定，不自动推进声音、弹匣或总体评分。
+
+### 动作清单改为可拖拽资源（2026-09-22）
+
+- 用户授权将UnitType/Training的手填动作ID清单改为可拖拽资源。新增EnemyActionDefinition和enemy_actions/内8个.tres，包含ID、中文名和实现脚本；动作逻辑仍在.gd普通对象中，各敌人状态独立。
+- Available Actions提供动作资源及实现，Allowed Actions按ID授权；原Action Overrides移除，特殊实现通过复制资源、保留ID并替换Implementation配置。原能力开关与训练参数保留。掩护撤退是cover内能力，资源Implementation留空。
+- 资源41、原动作库77、配置迁移90共208项通过；实际编辑器保存重载确认两个列表各8个资源，Main中验证撤销和恢复权限，未改其他场景节点。命令行有原武器UID回退路径警告，实际Main无本次错误；游戏停止，手感待试玩。
+- 操作见movement_demo/ENEMY_ACTION_LIBRARY.md。Godot文件系统res://enemy_actions/里的.tres可以拖到两个列表的资源槽中。

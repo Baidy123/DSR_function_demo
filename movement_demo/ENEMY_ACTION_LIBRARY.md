@@ -27,15 +27,25 @@ Enemy                 移动、转向、瞄准、开火、生命与复位
 
 `covering_retreat`是cover内的掩护撤退能力，单独受权限控制。FireDecision也是AI持有的普通辅助对象。每个敌人创建自己的动作实例、计时器和进度；当前工厂创建全套实例，清单限制参与选择的动作，不用于减少实例分配。
 
-## 怎样配置和调用
+## 怎样拖入动作
 
-1. 打开`arena.tscn`，选Enemy/UnitType：`available_actions`决定兵种拥有哪些动作。`action_overrides`按动作ID替换实现，替换脚本须继承对应公共动作脚本；无效继承会警告并退回默认实现。
-2. 选Enemy/Training：`allowed_actions`决定训练允许哪些动作。原有Can类能力开关也继续生效；例如出口压制还须开启`tactics_can_suppress_exits`。新Training默认关闭它，现有测试场景保留用户已开启的值。
-3. 原AI、战术、搜索、掩体等训练参数集中在Training，保留中文说明和原值。身体和武器参数仍在Enemy。原动作属性转发到Training，不再保存第二套绑定配置。
-4. AI通过UnitType创建实例，绑定上下文，再以`can_use_action(id)`检查兵种与训练两层门槛；还须满足导航、视线等现场条件。AI调用动作，动作调用Enemy执行。Training不更新计时器、不启动或执行动作。
-5. 运行中撤销权限会取消相应活动动作；恢复搜索权限会按已有记忆继续。死亡、刷新、场外停用由AI统一清理。动作内部的既有流程保留，尚未改成新的总体评分系统。
+动作资源位于Godot文件系统的`res://enemy_actions/`。默认已在UnitType和Training各填好8项；保存重开仍能显示，不再手填动作ID。
 
-按F5运行Main，进入竞技场观察巡逻、接敌、架枪、掩体和射击；离场再进检查刷新。可在远程检查器关闭对应UnitType/Training权限观察取消。编辑器已刷新为新结构，当前选中Training，游戏已停止。人工手感仍待用户试玩。
+1. 打开`arena.tscn`，选Enemy/UnitType，展开Available Actions。
+2. 添加数组元素（或把Size增加1），将文件系统里的`.tres`拖到新增的空槽。删除某项表示兵种没有该动作。空槽不提供权限，同ID只放一项。
+3. 选Enemy/Training，展开Allowed Actions，同样拖入训练允许的动作资源。两个清单都含该动作才可使用，仍需满足原能力开关和现场条件。
+4. 例如`attack_position.tres`表示“寻找墙角并架枪”。从Training移除它表示未掌握；重新拖入且开启Can Use Attack Positions即可恢复资格。
+5. 按Ctrl+S保存，按F5运行Main进入竞技场测试。运行中撤销权限会取消对应活动动作。
+
+文件名与上表动作ID一致。资源显示中文名称，展开后可看Action Id、Display Name和Implementation。`.tres`描述动作，Implementation引用的`.gd`执行动作；计时器、执行阶段仍在每个敌人独立创建的普通对象中。
+
+## 怎样替换特殊兵种动作
+
+复制一份对应`.tres`，保留Action Id，修改名称，并把继承原动作脚本的自定义`.gd`拖入Implementation。用这份资源替换UnitType列表里的原条目。Training按ID匹配，可继续使用公共资源；Training中的Implementation不参与选择执行脚本。
+
+原Action Overrides字典已移除。资源实现脚本不符合继承要求时，警告并使用公共实现。`covering_retreat.tres`是掩护撤退权限条目，执行仍在cover动作内，Implementation留空；它不提供独立动作替换。
+
+训练参数仍集中在Training，身体和武器参数仍在Enemy。Training不启动或更新动作，AI通过UnitType创建实例并统一调度。清单权限运行中生效，替换Implementation需重启运行才能重建动作对象。公共`.tres`会被多个敌人引用，需要单独调整时先复制资源。
 
 ## 验证记录（2026-09-22）
 
@@ -45,3 +55,9 @@ Enemy                 移动、转向、瞄准、开火、生命与复位
 - 4组旧测试仍有18项失败：fire_timing 14、fire_decision 1、enemy_weapon 1、covering_retreat_fire 2。用迁移前脚本与同一份用户调参复测，失败一致；这些固定旧参数的断言不能代表本次迁移回归。未为通过旧断言改动用户调参，也未宣称旧全套测试通过。
 
 现有动作迁移、权限门槛、实例独立、替换实现、运行中撤权、死亡/刷新和配置保存均已验证。没有新增兵种等级、训练预设、声音或弹匣玩法。后续具体玩法仍由用户指定。
+
+## 可拖拽资源验证（2026-09-22）
+
+资源加载、同ID授权、空槽、实际脚本替换、独立实例及修改后的场景保存重载41项通过，原动作库77项及配置迁移90项通过，共208项。实际编辑器保存并重载后两个列表各有8个资源；Main启动成功，运行中移除与恢复训练资源的权限变化符合预期。游戏已停止，当前选中UnitType。
+
+本次未改动UnitType/Training以外的场景节点、训练数值或武器。命令行运行有既有武器资源UID失配后按文件路径加载的警告；实际Main运行无本次错误。没有重跑上一节全部旧行为测试。

@@ -15,7 +15,8 @@ const SCRIPTS = {
 static func create_actions(unit: Node) -> Dictionary:
 	var result: Dictionary = {}
 	for id in SCRIPTS:
-		var implementation: Script = unit.action_overrides.get(id, SCRIPTS[id])
+		var definition = unit.get_action_definition(id)
+		var implementation: Script = definition.implementation if definition != null else SCRIPTS[id]
 		var parent: Script = implementation
 		while parent != null and parent != SCRIPTS[id]:
 			parent = parent.get_base_script()
