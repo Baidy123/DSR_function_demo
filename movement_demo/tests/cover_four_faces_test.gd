@@ -5,7 +5,7 @@ func run_short_walk(scene: Node) -> Dictionary:
 	var enemy = scene.get_node("Arena/Enemy")
 	var ai = enemy.get_node("AI")
 	var player = scene.get_node("Player")
-	var cover = enemy.get_node("AI/Tactics/CoverAction")
+	var cover = enemy.get_node("AI").cover
 	var arena = scene.get_node("Arena")
 	ai.set_physics_process(false)
 	player.set_physics_process(false)
@@ -68,7 +68,7 @@ func run(scene: Node) -> Dictionary:
 	var enemy = arena.get_node("Enemy")
 	var ai = enemy.get_node("AI")
 	var player = scene.get_node("Player")
-	var cover = enemy.get_node("AI/Tactics/CoverAction")
+	var cover = enemy.get_node("AI").cover
 	ai.set_physics_process(false)
 	player.set_physics_process(false)
 	player.global_position = arena.to_global(Vector3(7, 0, 2))

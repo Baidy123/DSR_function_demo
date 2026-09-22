@@ -1,4 +1,4 @@
-extends Node
+extends "res://enemy_action.gd"
 
 # 主动交火占位，与躲藏／探头动作互斥；只使用已有目击或本次受击估计位置。
 signal phase_changed(current_phase: int)
@@ -19,10 +19,6 @@ var _waypoint: Vector3
 var _best_distance: float = INF
 var _stuck: float = 0.0
 
-@onready var tactics = get_parent()
-@onready var ai = get_parent().get_parent()
-@onready var actor = ai.get_parent()
-@onready var selection = ai.get_node("Cover")
 
 
 func is_active() -> bool:
@@ -45,6 +41,8 @@ func reset() -> void:
 
 # 只查询条件，不抽概率、不修改动作。权限暂读原配置，后续再迁入Training。
 func can_start() -> bool:
+	if not is_enabled():
+		return false
 	if is_active() or tactics.cover.is_active() or tactics.suppression.is_active() or not tactics.can_use_attack_positions:
 		return false
 	if actor.is_dead or not ai.is_arena_active() or actor.weapon == null or ai.combat_type != ai.CombatType.RANGED:
@@ -59,7 +57,7 @@ func start(known_position: Vector3, from_hit: bool = false) -> bool:
 	reset()
 	_using_hit_memory = from_hit
 	_query_target = known_position + Vector3.UP * 0.8
-	for region in get_tree().get_nodes_in_group("cover_region"):
+	for region in ai.get_tree().get_nodes_in_group("cover_region"):
 		if ai.navigation_region.is_ancestor_of(region):
 			for point in region.get_attack_candidates():
 				_candidates.append({"position": point, "cover": region})
@@ -75,7 +73,7 @@ func step(delta: float, sees_player: bool) -> Vector3:
 	if actor.is_dead or not ai.is_arena_active() or tactics.cover.is_active():
 		reset()
 		return Vector3.ZERO
-	if not tactics.can_use_attack_positions or actor.weapon == null or ai.combat_type != ai.CombatType.RANGED:
+	if not is_enabled() or not tactics.can_use_attack_positions or actor.weapon == null or ai.combat_type != ai.CombatType.RANGED:
 		_finish(sees_player, "能力关闭、无武器或非远程")
 		return Vector3.ZERO
 	# 主AI已在本帧更新真实目击；之后即使再失视，也沿用该目击记忆。

@@ -2,11 +2,17 @@ extends Node
 
 # 感知：只判断真实视线；不生成墙后目标位置。
 ## 普通视觉感知的最大距离（米）；仍受视角、墙壁和竞技场范围限制。
-@export var sight_distance: float = 10.0
+var sight_distance: float:
+	get: return _training_setting(&"sight_distance", 10.0)
+	set(value): _set_training_setting(&"sight_distance", value)
 ## 普通视野的水平总角度（度）；左右各占一半，近身警戒不受此角度限制。
-@export_range(10.0, 360.0, 5.0) var sight_angle_degrees: float = 120.0
+var sight_angle_degrees: float:
+	get: return _training_setting(&"sight_angle_degrees", 120.0)
+	set(value): _set_training_setting(&"sight_angle_degrees", value)
 ## 近身警戒不限制方向，但仍检测墙壁遮挡。
-@export_range(0.0, 5.0, 0.1) var close_awareness_radius: float = 2.0
+var close_awareness_radius: float:
+	get: return _training_setting(&"close_awareness_radius", 2.0)
+	set(value): _set_training_setting(&"close_awareness_radius", value)
 
 const Actor = preload("res://enemy_actor.gd")
 @onready var ai = get_parent()
@@ -44,3 +50,11 @@ func can_see_player() -> bool:
 	)
 	var hit: Dictionary = actor.get_world_3d().direct_space_state.intersect_ray(query)
 	return not hit.is_empty() and hit.collider == ai.player
+
+# 原属性名转发至Training，避免维护两份配置。
+func _training_setting(key: StringName, _fallback: Variant) -> Variant:
+	return get_node("../../Training").get("perception_" + String(key))
+
+
+func _set_training_setting(key: StringName, value: Variant) -> void:
+	get_node("../../Training").set("perception_" + String(key), value)

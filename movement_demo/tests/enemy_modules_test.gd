@@ -12,13 +12,17 @@ func _run() -> void:
 	var actor = scene.get_node("Arena/Enemy")
 	var ai = actor.get_node("AI")
 	ai.set_physics_process(false)
-	for path in ["Perception", "Tactics", "Search", "Cover", "Tactics/CoverAction"]:
-		_check("独立板块 " + path, ai.has_node(path))
+	for path in ["Perception", "Cover"]:
+		_check("独立服务 " + path, ai.has_node(path))
+	var modules := {"Tactics": ai.tactics, "Search": ai.search, "CoverAction": ai.cover}
+	for entry in modules:
+		var module = modules[entry]
+		_check("独立运行对象 " + entry, module is RefCounted and not module is Node)
 	if checks.values().has(false):
 		_finish()
 		return
-	var tactics = ai.get_node("Tactics")
-	var action = tactics.get_node("CoverAction")
+	var tactics = ai.tactics
+	var action = tactics.cover
 	var selector = ai.get_node("Cover")
 	var player = scene.get_node("Player")
 	player.set_physics_process(false)
@@ -66,11 +70,11 @@ func _run() -> void:
 	_check("关闭撤退能力不影响普通接敌移动射击", actor.shot_count == 1 and actor.last_shot_collider == player)
 	var other = load("res://arena.tscn").instantiate()
 	root.add_child(other)
-	var other_tactics = other.get_node("Enemy/AI/Tactics")
+	var other_tactics = other.get_node("Enemy/AI").tactics
 	_check("不同敌人的能力配置相互独立", other_tactics.can_covering_retreat and not tactics.can_covering_retreat)
 	other.free()
 	_check("掩体选择板块没有动作循环", not selector.has_method("step") and not selector.has_method("notice_shot"))
-	_check("搜寻状态归搜寻板块", ai.get("search_sweep_points") == null and ai.get_node("Search").get("search_sweep_points") != null)
+	_check("搜寻状态归搜寻板块", ai.get("search_sweep_points") == null and ai.search.get("search_sweep_points") != null)
 	_check("射击时序归战术板块", ai.get("fire_pause_remaining") == null and tactics.get("fire_pause_remaining") != null)
 	_finish()
 

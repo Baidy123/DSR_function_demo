@@ -3,7 +3,7 @@ extends RefCounted
 # 只读试玩记录：不改敌人状态、移动或地图；在 Main metadata 留下最近12秒与停滞快照。
 func watch(scene: Node) -> void:
 	var enemy = scene.get_node("Arena/Enemy")
-	var cover = enemy.get_node("AI/Tactics/CoverAction")
+	var cover = enemy.get_node("AI").cover
 	var arena = scene.get_node("Arena")
 	var trace: Array = []
 	var anchor: Vector3 = enemy.global_position
@@ -46,7 +46,7 @@ func run(scene: Node, path_distance: float = -1.0, focused: bool = false, damage
 	var arena = scene.get_node("Arena")
 	var enemy = arena.get_node("Enemy")
 	var player = scene.get_node("Player")
-	var cover = enemy.get_node("AI/Tactics/CoverAction")
+	var cover = enemy.get_node("AI").cover
 	var wall = arena.get_node("NavigationRegion3D/Environment/CoverB")
 	enemy.get_node("AI").set_physics_process(false)
 	player.set_physics_process(false)

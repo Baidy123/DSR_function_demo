@@ -34,7 +34,7 @@ func _run() -> void:
 		scene.free()
 		quit(1)
 		return
-	tactics.reset()
+	ai.reset_actions()
 	ai.combat_type = ai.CombatType.RANGED
 	tactics.can_use_attack_positions = true
 	tactics.attack_position_chance = 0.0

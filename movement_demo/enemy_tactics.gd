@@ -1,49 +1,80 @@
-extends Node
+extends "res://enemy_action.gd"
 
 # 战术：交战选位、射击节奏与可用动作。具体武器执行由 Enemy 负责。
-@export_group("Action Capabilities")
 ## 是否掌握面向威胁的撤退射击；关闭时概率再高也不会使用。
 ## 后续由训练配置决定；当前默认开启，保留现有敌人的表现。
-@export var can_covering_retreat: bool = true
+var can_covering_retreat: bool:
+	get: return _setting(&"can_covering_retreat", true)
+	set(value): _set_setting(&"can_covering_retreat", value)
 ## 是否掌握主动选择墙角攻击位置；优先保证散布射界，不强制身体被遮挡。
 ## 默认开启供试玩，后续可由训练配置赋值；不影响普通换位或躲藏能力。
-@export var can_use_attack_positions: bool = true
+var can_use_attack_positions: bool:
+	get: return _setting(&"can_use_attack_positions", true)
+	set(value): _set_setting(&"can_use_attack_positions", value)
 ## 是否掌握失视后朝最后目击区域压制的能力；具体持续时间和范围在SuppressionAction。
-@export var can_suppress_fire: bool = true
+var can_suppress_fire: bool:
+	get: return _setting(&"can_suppress_fire", true)
+	set(value): _set_setting(&"can_suppress_fire", value)
 ## 高训练专属动作的临时能力接口，默认关闭；还需最后目击邻近掩体且两端可射击。
 ## 分类挂载架构尚未实现，当前手动勾选以测试；开启不自动代表某个训练等级。
-@export var can_suppress_exits: bool = false
+var can_suppress_exits: bool:
+	get: return _setting(&"can_suppress_exits", false)
+	set(value): _set_setting(&"can_suppress_exits", value)
 ## 首次／重新真实目击玩家，或真正受伤且有攻击者位置时，尝试攻击占位的概率。
 ## 持续可见不重抽；攻击占位或掩体动作中不重选。0=不触发，1=每次满足条件都尝试。
 ## 两种触发共用此概率；0.5是可调试玩初值。
-@export_range(0.0, 1.0, 0.05) var attack_position_chance: float = 0.5
-@export_group("Fire Timing")
+var attack_position_chance: float:
+	get: return _setting(&"attack_position_chance", 0.5)
+	set(value): _set_setting(&"attack_position_chance", value)
 ## 接敌侧移/后退和掩护撤退时允许开火；关闭后只在停稳时射击，转身冲刺仍停火。
-@export var fire_while_moving: bool = true
+var fire_while_moving: bool:
+	get: return _setting(&"fire_while_moving", true)
+	set(value): _set_setting(&"fire_while_moving", value)
 ## 首次发现或重新取得有效视线后，至少观察多久才允许射击（秒）；0可关闭。
-@export_range(0.0, 5.0, 0.05) var fire_reaction_seconds: float = 0.3
+var fire_reaction_seconds: float:
+	get: return _setting(&"fire_reaction_seconds", 0.3)
+	set(value): _set_setting(&"fire_reaction_seconds", value)
 ## 普通交火（含接敌跑打）希望达到的中心概率；0.7表示70%，不是最终命中率。
 ## 用作FireDecision评分的精度偏好，低于目标也可选择射击；掩护撤退不等待稳枪。
-@export_range(0.0, 1.0, 0.05) var fire_stability_target: float = 0.7
+var fire_stability_target: float:
+	get: return _setting(&"fire_stability_target", 0.7)
+	set(value): _set_setting(&"fire_stability_target", value)
 ## 每轮实际打出几枪后暂停；只统计执行成功的射击，不按命中次数计数。
-@export_range(1, 20, 1) var burst_shot_count: int = 3
+var burst_shot_count: int:
+	get: return _setting(&"burst_shot_count", 3)
+	set(value): _set_setting(&"burst_shot_count", value)
 ## 每轮最后一枪后的停火时间（秒）；与枪械冷却并行，必须都结束才能再开火。
-@export_range(0.0, 10.0, 0.05) var burst_pause_seconds: float = 1.0
-@export_group("Positioning")
+var burst_pause_seconds: float:
+	get: return _setting(&"burst_pause_seconds", 1.0)
+	set(value): _set_setting(&"burst_pause_seconds", value)
 ## 远程敌人希望保持的距离区间，单位为米。
-@export_range(1.0, 20.0, 0.5) var ranged_min_distance: float = 4.0
+var ranged_min_distance: float:
+	get: return _setting(&"ranged_min_distance", 4.0)
+	set(value): _set_setting(&"ranged_min_distance", value)
 ## 远程期望距离上限（米）；与下限共同决定射击候选点的采样范围。
-@export_range(2.0, 25.0, 0.5) var ranged_max_distance: float = 6.0
+var ranged_max_distance: float:
+	get: return _setting(&"ranged_max_distance", 6.0)
+	set(value): _set_setting(&"ranged_max_distance", value)
 ## 选位有冷却，且有效目标会继续沿用，避免频繁左右换路。
-@export_range(0.1, 5.0, 0.05) var ranged_repath_seconds: float = 0.75
+var ranged_repath_seconds: float:
+	get: return _setting(&"ranged_repath_seconds", 0.75)
+	set(value): _set_setting(&"ranged_repath_seconds", value)
 ## 远程选位时更偏好侧向换位，而不是只沿玩家径向前后移动。
-@export_range(0.0, 10.0, 0.1) var ranged_flank_weight: float = 3.0
+var ranged_flank_weight: float:
+	get: return _setting(&"ranged_flank_weight", 3.0)
+	set(value): _set_setting(&"ranged_flank_weight", value)
 ## 候选射击位附近若有侧墙/后墙，可获得额外战术价值。
-@export_range(0.0, 10.0, 0.1) var ranged_wall_support_weight: float = 2.5
+var ranged_wall_support_weight: float:
+	get: return _setting(&"ranged_wall_support_weight", 2.5)
+	set(value): _set_setting(&"ranged_wall_support_weight", value)
 ## 探测候选射击位附近墙体的距离。
-@export_range(0.5, 4.0, 0.1) var ranged_wall_probe_distance: float = 1.5
+var ranged_wall_probe_distance: float:
+	get: return _setting(&"ranged_wall_probe_distance", 1.5)
+	set(value): _set_setting(&"ranged_wall_probe_distance", value)
 ## 近战接近时的停止距离（米）；远程保持距离由 Ranged Min/Max Distance 控制。
-@export var stopping_distance: float = 1.3
+var stopping_distance: float:
+	get: return _setting(&"stopping_distance", 1.3)
+	set(value): _set_setting(&"stopping_distance", value)
 var fire_reaction_elapsed: float = 0.0
 var fire_burst_shots: int = 0
 var fire_pause_remaining: float = 0.0
@@ -51,71 +82,40 @@ var ranged_repath_timer: float = 0.0
 var ranged_has_destination: bool = false
 
 const Actor = preload("res://enemy_actor.gd")
-@onready var ai = get_parent()
-@onready var actor: Actor = get_parent().get_parent()
-@onready var agent: NavigationAgent3D = actor.get_node("NavigationAgent3D")
 
 
-@onready var cover = $CoverAction
-@onready var fire_decision = $FireDecision
-@onready var attack_position = $AttackPositionAction
-@onready var area_suppression = $SuppressionAction
-@onready var exit_suppression = $ExitSuppressionAction
 # 只允许一个压制动作运行；AI和射击流程共用当前动作接口。
-@onready var suppression = $SuppressionAction
 
 
-func _ready() -> void:
-	attack_position.phase_changed.connect(_on_attack_position_phase_changed)
-	attack_position.finished.connect(_on_attack_position_finished)
+# 引用从AI取得，动作之间不形成RefCounted强引用环。
+var cover:
+	get: return ai.cover
+var fire_decision:
+	get: return ai.fire_decision
+var attack_position:
+	get: return ai.actions[&"attack_position"]
+var area_suppression:
+	get: return ai.actions[&"suppression"]
+var exit_suppression:
+	get: return ai.actions[&"exit_suppression"]
+var suppression:
+	get: return ai.current_suppression
+	set(value): ai.current_suppression = value
 
 
-# 新目击与实际受伤提供触发机会；概率选择属于决策，动作本身不再抽签。
+# 保留旧调用入口；决定和启动统一在AI。
 func try_attack_position(from_hit: bool = false) -> void:
-	if not from_hit and not ai.has_visual_memory:
-		return
-	if not attack_position.can_start():
-		return
-	var trigger := "中弹" if from_hit else "新目击"
-	if randf() >= clampf(attack_position_chance, 0.0, 1.0):
-		if ai.cover_selection.debug_cover_selection:
-			print("[AI][攻击占位] 本次", trigger, "未触发，chance=", attack_position_chance)
-		return
-	var known_position: Vector3 = ai.last_known_position if from_hit else ai.last_seen_position
-	if attack_position.start(known_position, from_hit) and ai.cover_selection.debug_cover_selection:
-		print("[AI][攻击占位] ", trigger, "触发，开始检查墙角区域")
-
-
-func _on_attack_position_phase_changed(current_phase: int) -> void:
-	ai.state = ai.State.HOLD_POSITION if current_phase == attack_position.Phase.HOLD else ai.State.REPOSITION
-
-
-# 动作只汇报结束与已知位置；接下来交战还是追踪，由决策层衔接。
-func _on_attack_position_finished(sees_player: bool, known_position: Vector3, reason: String) -> void:
-	ranged_has_destination = false
-	ranged_repath_timer = 0.0
-	agent.target_position = actor.global_position
-	if sees_player:
-		ai.state = ai.State.REPOSITION
-	else:
-		ai.last_known_position = known_position
-		ai.search.begin_tracking_or_search(true)
-	if ai.cover_selection.debug_cover_selection:
-		print("[AI][攻击占位] 结束：", reason, "；回到交战／追踪流程")
+	ai.try_attack_position(from_hit)
 
 
 func start_suppression() -> void:
-	if suppression.is_active():
-		return
-	exit_suppression.on_target_lost()
-	if exit_suppression.is_active():
-		suppression = exit_suppression
-	else:
-		suppression = area_suppression
-		suppression.on_target_lost()
+	ai.start_suppression()
 
 
 func update_shooting(delta: float, sees_player: bool, movement_requested: bool) -> void:
+	if not is_enabled() and not suppression.is_active() and not (cover.is_active() and cover.covering_retreat):
+		actor.update_weapon(delta)
+		return
 	# 停顿按经过的时间计算；短暂失去视野或进入掩体不清掉已打枪数/剩余停顿。
 	var elapsed: float = maxf(0.0, delta)
 	fire_pause_remaining = maxf(0.0, fire_pause_remaining - elapsed)
@@ -411,11 +411,6 @@ func reset() -> void:
 	reset_fire_timing()
 	ranged_repath_timer = 0.0
 	ranged_has_destination = false
-	cover.reset()
-	attack_position.reset()
-	area_suppression.reset()
-	exit_suppression.reset()
-	suppression = area_suppression
 
 
 func step(delta: float, sees_player: bool) -> Vector3:
@@ -423,6 +418,8 @@ func step(delta: float, sees_player: bool) -> Vector3:
 		return suppression.step(delta, sees_player)
 	if attack_position.is_active():
 		return attack_position.step(delta, sees_player)
+	if not is_enabled():
+		return Vector3.ZERO
 	if ai.state != ai.State.APPROACH:
 		return process_ranged_position(delta, sees_player)
 	var next_position: Vector3 = agent.get_next_path_position()

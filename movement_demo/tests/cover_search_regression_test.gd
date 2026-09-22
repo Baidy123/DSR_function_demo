@@ -4,7 +4,7 @@ extends RefCounted
 func run(scene: Node) -> Dictionary:
 	var enemy = scene.get_node("Arena/Enemy")
 	var ai = enemy.get_node("AI")
-	var cover = enemy.get_node("AI/Tactics/CoverAction")
+	var cover = enemy.get_node("AI").cover
 	var arena = enemy.get_parent()
 	var tree = scene.get_tree()
 	scene.get_node("Player").set_physics_process(false)
@@ -64,7 +64,7 @@ func _check_search(scene: Node, enemy: Node) -> Dictionary:
 	var arena = enemy.get_parent()
 	var player = scene.get_node("Player")
 	var tree = scene.get_tree()
-	enemy.get_node("AI/Tactics/CoverAction").reset()
+	enemy.get_node("AI").cover.reset()
 	enemy.global_position = arena.to_global(Vector3(0, 0, 0))
 	player.global_position = arena.to_global(Vector3(2, 0, 0))
 	for frame in range(4):

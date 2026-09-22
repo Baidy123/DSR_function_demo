@@ -5,16 +5,11 @@
 [ext_resource type="Script" uid="uid://dcc2vkow4q8cl" path="res://shooting_range.gd" id="3_reset"]
 [ext_resource type="PackedScene" path="res://cover.tscn" id="5_cover"]
 [ext_resource type="Script" uid="uid://ct4eye1xj03ld" path="res://enemy_ai.gd" id="6_ai"]
-[ext_resource type="Script" uid="uid://r1l2xiwmswn5" path="res://enemy_tactics.gd" id="7_tactics"]
-[ext_resource type="Script" uid="uid://b2p3kv7u52vpc" path="res://enemy_search.gd" id="8_search"]
 [ext_resource type="Script" uid="uid://dr2hmm4n46nsx" path="res://enemy_perception.gd" id="9_perception"]
 [ext_resource type="Script" uid="uid://b788q02bigppe" path="res://enemy_cover_selection.gd" id="10_selection"]
-[ext_resource type="Script" uid="uid://dudlxf36bl7ew" path="res://enemy_cover_action.gd" id="11_action"]
 [ext_resource type="Resource" uid="uid://kayehxxh8jes" path="res://enemy_test_pistol.tres" id="12_weapon"]
-[ext_resource type="Script" path="res://enemy_fire_decision.gd" id="13_fire_decision"]
-[ext_resource type="Script" uid="uid://b88jwtctnk1ab" path="res://enemy_attack_position_action.gd" id="14_attack_position"]
-[ext_resource type="Script" path="res://enemy_suppression_action.gd" id="15_suppression"]
-[ext_resource type="Script" path="res://enemy_exit_suppression_action.gd" id="16_exit_suppression"]
+[ext_resource type="Script" uid="uid://bnmfescbn8pk6" path="res://enemy_unit_type.gd" id="17_unit_type"]
+[ext_resource type="Script" uid="uid://daiu2qlnmqmsi" path="res://enemy_training.gd" id="18_training"]
 
 [sub_resource type="StandardMaterial3D" id="FloorMaterial"]
 albedo_color = Color(0.26, 0.24, 0.3, 1)
@@ -260,56 +255,42 @@ script = ExtResource("3_fu4bq")
 max_health = 10000.0
 weapon = ExtResource("12_weapon")
 
+[node name="UnitType" type="Node" parent="Enemy" unique_id=1065345618]
+script = ExtResource("17_unit_type")
+combat_type = 1
+
+[node name="Training" type="Node" parent="Enemy" unique_id=740728946]
+script = ExtResource("18_training")
+tactics_can_suppress_exits = true
+tactics_fire_stability_target = 0.9
+tactics_burst_shot_count = 10
+tactics_burst_pause_seconds = 1.5
+tactics_ranged_flank_weight = 5.0
+tactics_ranged_wall_support_weight = 4.0
+search_lost_target_hint_chance = 1.0
+search_search_hint_decay_mode = 3
+search_search_hint_min_multiplier = 0.1
+search_search_hint_distance_falloff = 10.0
+search_debug_tracking_cheat = true
+search_track_seconds = 10.0
+search_search_pause_seconds = 0.6
+search_search_stuck_repath_seconds = 0.8
+cover_take_cover_chance = 0.4
+cover_hide_seconds = 2.0
+cover_watch_seconds = 1.0
+cover_damage_force_sprint_chance = 0.7
+perception_sight_distance = 8.0
+selection_cover_lateral_test_distance = 0.3
+selection_minimum_cover_quality = 0.1
+
 [node name="AI" type="Node" parent="Enemy" unique_id=1624589162]
 script = ExtResource("6_ai")
-combat_type = 1
 
 [node name="Perception" type="Node" parent="Enemy/AI" unique_id=1530092005]
 script = ExtResource("9_perception")
-sight_distance = 8.0
-
-[node name="Tactics" type="Node" parent="Enemy/AI" unique_id=18678787]
-script = ExtResource("7_tactics")
-fire_reaction_seconds = 0.3
-burst_pause_seconds = 2.1
-ranged_flank_weight = 5.0
-ranged_wall_support_weight = 4.0
-
-[node name="FireDecision" type="Node" parent="Enemy/AI/Tactics"]
-script = ExtResource("13_fire_decision")
-
-[node name="AttackPositionAction" type="Node" parent="Enemy/AI/Tactics"]
-script = ExtResource("14_attack_position")
-
-[node name="SuppressionAction" type="Node" parent="Enemy/AI/Tactics"]
-script = ExtResource("15_suppression")
-
-[node name="ExitSuppressionAction" type="Node" parent="Enemy/AI/Tactics"]
-script = ExtResource("16_exit_suppression")
-
-[node name="CoverAction" type="Node" parent="Enemy/AI/Tactics" unique_id=1122228340]
-script = ExtResource("11_action")
-take_cover_chance = 0.4
-hide_seconds = 2.0
-watch_seconds = 1.0
-damage_force_sprint_chance = 0.7
-
-[node name="Search" type="Node" parent="Enemy/AI" unique_id=338346004]
-script = ExtResource("8_search")
-lost_target_hint_chance = 0.8
-search_hint_chance = 0.5
-search_hint_decay_mode = 3
-search_hint_min_multiplier = 0.1
-search_hint_distance_falloff = 10.0
-debug_tracking_cheat = true
-track_seconds = 10.0
-search_pause_seconds = 0.6
-search_stuck_repath_seconds = 0.8
 
 [node name="Cover" type="Node" parent="Enemy/AI" unique_id=258005831]
 script = ExtResource("10_selection")
-cover_lateral_test_distance = 0.3
-minimum_cover_quality = 0.1
 
 [node name="Body" type="MeshInstance3D" parent="Enemy" unique_id=1631920254]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.8, 0)

@@ -18,7 +18,7 @@ func _run() -> void:
 	ai.tactics.fire_reaction_seconds = 0.5
 	ai.tactics.burst_pause_seconds = 1.0
 	var p = scene.get_node("Player")
-	var cover = e.get_node("AI/Tactics/CoverAction")
+	var cover = e.get_node("AI").cover
 	ai.set_physics_process(false)
 	p.set_physics_process(false)
 	p.get_node("Health").debug_invincible = true
@@ -138,7 +138,7 @@ func _check_real_frames() -> void:
 	p.set_physics_process(false)
 	p.get_node("Health").debug_invincible = true
 	ai.search.debug_tracking_cheat = false
-	e.get_node("AI/Tactics/CoverAction").selection.debug_cover_selection = false
+	e.get_node("AI").cover.selection.debug_cover_selection = false
 	p.global_position = e.global_position + Vector3(0, 0, 4.8)
 	e.look_at(p.global_position)
 	# 留在有效射击位，真实AI每个物理帧仍处理感知、移动、跟枪和开火。

@@ -1,42 +1,71 @@
-extends Node
+extends "res://enemy_action.gd"
 
 enum Phase { NONE, RUN_TO_COVER, HIDE, PEEK_OUT, WATCH }
 
 ## 敌人胸部到实际弹道线段的警戒半径（米）；墙挡住来弹时不会隔墙触发。
-@export_range(0.1, 5.0, 0.1) var shot_radius: float = 1.5
+var shot_radius: float:
+	get: return _setting(&"shot_radius", 1.5)
+	set(value): _set_setting(&"shot_radius", value)
 ## 每次新的有效近身来弹触发“寻找掩体”的概率。0=从不找掩体，1=每次都找。
 ## 已经处于跑向掩体/躲藏/探头流程时不会重新掷骰子，避免连续来弹让行为反复取消。
-@export_range(0.0, 1.0, 0.05) var take_cover_chance: float = 1.0
+var take_cover_chance: float:
+	get: return _setting(&"take_cover_chance", 1.0)
+	set(value): _set_setting(&"take_cover_chance", value)
 ## 到达有效躲藏位置后等待探头的秒数；新来弹可重新计时，真正看见玩家则立即结束躲藏。
-@export_range(0.1, 10.0, 0.1) var hide_seconds: float = 3.0
+var hide_seconds: float:
+	get: return _setting(&"hide_seconds", 3.0)
+	set(value): _set_setting(&"hide_seconds", value)
 ## 抵达 Peek 后最多观察多少秒；看见玩家会提前结束，否则转入追踪或搜索。
-@export_range(0.1, 10.0, 0.1) var watch_seconds: float = 2.0
+var watch_seconds: float:
+	get: return _setting(&"watch_seconds", 2.0)
+	set(value): _set_setting(&"watch_seconds", value)
 ## 转身跑向掩体时相对于敌人 Move Speed 的速度倍率。
-@export_range(1.0, 3.0, 0.1) var run_speed_multiplier: float = 2.0
+var run_speed_multiplier: float:
+	get: return _setting(&"run_speed_multiplier", 2.0)
+	set(value): _set_setting(&"run_speed_multiplier", value)
 ## 从躲藏位置移向 Peek 点时相对于敌人 Move Speed 的速度倍率。
-@export_range(0.1, 1.0, 0.1) var peek_speed_multiplier: float = 0.5
+var peek_speed_multiplier: float:
+	get: return _setting(&"peek_speed_multiplier", 0.5)
+	set(value): _set_setting(&"peek_speed_multiplier", value)
 ## 跑向掩体时改为“面向威胁撤退”的概率。0=永远转身跑，1=每次都掩护撤退。
-@export_range(0.0, 1.0, 0.05) var covering_retreat_chance: float = 0.4
+var covering_retreat_chance: float:
+	get: return _setting(&"covering_retreat_chance", 0.4)
+	set(value): _set_setting(&"covering_retreat_chance", value)
 ## 掩护撤退时的移动速度倍率；通常比直接冲向掩体慢。
-@export_range(0.1, 1.5, 0.1) var covering_retreat_speed_multiplier: float = 0.8
+var covering_retreat_speed_multiplier: float:
+	get: return _setting(&"covering_retreat_speed_multiplier", 0.8)
+	set(value): _set_setting(&"covering_retreat_speed_multiplier", value)
 ## RUN_TO_COVER 期间每次真正受到伤害时，放弃掩护撤退并改为全速冲刺的概率。
 ## 每次受伤都会重新判定；0=中弹也继续掩护撤退，1=一中弹就立刻冲刺。
-@export_range(0.0, 1.0, 0.05) var damage_force_sprint_chance: float = 0.5
+var damage_force_sprint_chance: float:
+	get: return _setting(&"damage_force_sprint_chance", 0.5)
+	set(value): _set_setting(&"damage_force_sprint_chance", value)
 
-@export_group("Cover Transfer Recovery")
 ## 跑向掩体时，连续这么多秒未朝下一个寻路拐点有效推进，就尝试临时绕行。
-@export_range(0.2, 3.0, 0.1) var cover_stuck_repath_seconds: float = 0.8
+var cover_stuck_repath_seconds: float:
+	get: return _setting(&"cover_stuck_repath_seconds", 0.8)
+	set(value): _set_setting(&"cover_stuck_repath_seconds", value)
 ## 在上面的时间窗口内，至少要朝 NavigationAgent 当前的下一个路径点靠近这么远，才算确实有进展。
 ## 贴墙左右抖动、原地滑动不会再误判成正常前进。
-@export_range(0.02, 0.5, 0.01) var cover_stuck_min_progress_distance: float = 0.08
+var cover_stuck_min_progress_distance: float:
+	get: return _setting(&"cover_stuck_min_progress_distance", 0.08)
+	set(value): _set_setting(&"cover_stuck_min_progress_distance", value)
 ## 同一次跑向掩体最多尝试多少次临时绕行；全部失败后退出本次掩体行为，避免永久卡住。
-@export_range(1, 8, 1) var cover_max_detour_retries: int = 4
+var cover_max_detour_retries: int:
+	get: return _setting(&"cover_max_detour_retries", 4)
+	set(value): _set_setting(&"cover_max_detour_retries", value)
 ## 卡住时，临时绕行点离当前位置的大致距离。
-@export_range(0.5, 4.0, 0.25) var cover_detour_distance: float = 1.5
+var cover_detour_distance: float:
+	get: return _setting(&"cover_detour_distance", 1.5)
+	set(value): _set_setting(&"cover_detour_distance", value)
 ## 卡住时优先向当前“去掩体方向”的左右多少度寻找临时绕行点。
-@export_range(20.0, 120.0, 5.0) var cover_detour_angle_degrees: float = 65.0
+var cover_detour_angle_degrees: float:
+	get: return _setting(&"cover_detour_angle_degrees", 65.0)
+	set(value): _set_setting(&"cover_detour_angle_degrees", value)
 ## 距离临时绕行点小于这个值时，认为绕行完成并重新追原 Hide。
-@export_range(0.1, 1.0, 0.05) var cover_detour_arrival_distance: float = 0.45
+var cover_detour_arrival_distance: float:
+	get: return _setting(&"cover_detour_arrival_distance", 0.45)
+	set(value): _set_setting(&"cover_detour_arrival_distance", value)
 
 
 # 命中通知先于同一枪的近身来弹通知；本帧退出躲藏后不再被后者重新送回掩体。
@@ -61,14 +90,6 @@ var cover_detour_position: Vector3 = Vector3.ZERO
 var cover_detour_side: float = 1.0
 var cover_detour_retries: int = 0
 
-@onready var tactics = get_parent()
-@onready var ai = get_parent().get_parent()
-@onready var enemy = get_parent().get_parent().get_parent()
-@onready var selection = ai.get_node("Cover")
-
-
-func _ready() -> void:
-	add_to_group("shot_listener")
 
 
 func reset() -> void:
@@ -124,6 +145,8 @@ func take_cover_after_suppression_hit() -> void:
 
 
 func _try_take_cover(origin: Vector3, force_attempt: bool = false) -> void:
+	if not is_enabled():
+		return
 	look_position = ai.last_known_position
 	threat_origin = origin
 
@@ -149,8 +172,8 @@ func _try_take_cover(origin: Vector3, force_attempt: bool = false) -> void:
 		reset()
 		return
 	# 成功进入躲藏流程才抢占主动攻击占位；概率失败或无有效掩体不打断。
-	tactics.attack_position.reset()
-	tactics.suppression.reset()
+	ai.cancel_action(&"attack_position")
+	ai.cancel_action(tactics.suppression.action_id)
 	if phase == Phase.RUN_TO_COVER and can_reuse:
 		# 连续来弹保持原绕行目标和计时，不能每枪重启转移。
 		enemy.agent.target_position = cover_detour_position if cover_detour_active else hide_position
@@ -163,6 +186,9 @@ func _try_take_cover(origin: Vector3, force_attempt: bool = false) -> void:
 
 
 func step(delta: float, sees_player: bool) -> Vector3:
+	if not is_enabled():
+		reset()
+		return Vector3.ZERO
 	if ai.combat_type != ai.CombatType.RANGED:
 		reset()
 		return Vector3.ZERO
@@ -326,7 +352,7 @@ func _start_move(next_phase: Phase, destination: Vector3) -> void:
 
 	if phase == Phase.RUN_TO_COVER:
 		if not was_running_to_cover:
-			covering_retreat = tactics.can_covering_retreat and randf() < covering_retreat_chance
+			covering_retreat = ai.can_use_action(&"covering_retreat") and randf() < covering_retreat_chance
 			_reset_cover_progress_monitor()
 			cover_detour_active = false
 			cover_detour_position = enemy.global_position

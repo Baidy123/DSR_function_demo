@@ -7,7 +7,7 @@ func run(scene: Node) -> Dictionary:
 	var player = scene.get_node("Player")
 	var enemy = arena.get_node("Enemy")
 	var ai = enemy.get_node("AI")
-	var cover = enemy.get_node("AI/Tactics/CoverAction")
+	var cover = enemy.get_node("AI").cover
 	var checks := {}
 	player.set_physics_process(false)
 	ai.set_physics_process(false)

@@ -6,13 +6,19 @@ const Actor = preload("res://enemy_actor.gd")
 enum State { IDLE, APPROACH, INVESTIGATE, SEARCH, DEAD, PATROL, REPOSITION, HOLD_POSITION, TRACK }
 enum CombatType { MELEE, RANGED }
 ## 近战沿用接近行为，尚无近战攻击；远程寻找射击位置并开火。
-@export var combat_type: CombatType = CombatType.MELEE
+var combat_type: CombatType:
+	get: return get_node("../UnitType").combat_type
+	set(value): get_node("../UnitType").combat_type = value
 
 
 ## 每次巡逻抵达后停留的时间。
-@export_range(0.0, 10.0, 0.1) var patrol_pause_seconds: float = 1.5
+var patrol_pause_seconds: float:
+	get: return _training_setting(&"patrol_pause_seconds", 1.5)
+	set(value): _set_training_setting(&"patrol_pause_seconds", value)
 ## 受击时只知道攻击者附近区域，不持续获取攻击者坐标。
-@export_range(0.0, 5.0, 0.1) var attack_position_uncertainty: float = 1.0
+var attack_position_uncertainty: float:
+	get: return _training_setting(&"attack_position_uncertainty", 1.0)
+	set(value): _set_training_setting(&"attack_position_uncertainty", value)
 
 
 var state: State = State.IDLE
@@ -37,14 +43,34 @@ var patrol_pause_timer: float = 0.0
 @onready var agent: NavigationAgent3D = actor.get_node("NavigationAgent3D")
 @onready var arena_zone: Area3D = actor.get_node("../CombatZone")
 @onready var navigation_region: NavigationRegion3D = actor.get_node("../NavigationRegion3D")
-@onready var tactics = $Tactics
-@onready var search = $Search
+var tactics
+var search
+var actions: Dictionary = {}
+var fire_decision
+var current_suppression
+var unit_type: Node
+var training: Node
+var _search_was_allowed: bool = true
 @onready var perception = $Perception
 @onready var cover_selection = $Cover
-@onready var cover = $Tactics/CoverAction
+var cover
 
 
 func _ready() -> void:
+	unit_type = get_node("../UnitType")
+	training = get_node("../Training")
+	actions = unit_type.create_actions()
+	tactics = actions[&"engage"]
+	search = actions[&"search"]
+	cover = actions[&"cover"]
+	current_suppression = actions[&"suppression"]
+	fire_decision = preload("res://enemy_fire_decision.gd").new()
+	fire_decision.setup(self, &"fire_decision")
+	for action in actions.values():
+		action.setup(self)
+	tactics.attack_position.phase_changed.connect(_on_attack_position_phase_changed)
+	tactics.attack_position.finished.connect(_on_attack_position_finished)
+	add_to_group("shot_listener")
 	player = get_tree().get_first_node_in_group("player")
 	actor.hit_received.connect(_on_hit_received)
 	actor.reset_completed.connect(_reset_decisions)
@@ -55,8 +81,7 @@ func is_active() -> bool:
 
 
 func _reset_decisions() -> void:
-	tactics.reset()
-	search.reset()
+	reset_actions()
 	state = State.IDLE
 	is_alerted = false
 	last_known_position = actor.global_position
@@ -75,9 +100,9 @@ func is_arena_active() -> bool:
 
 
 func _physics_process(delta: float) -> void:
+	_enforce_action_permissions()
 	if actor.is_dead or not is_arena_active():
-		tactics.attack_position.reset()
-		tactics.suppression.reset()
+		reset_actions()
 		tactics.update_shooting(delta, false, false)
 		return
 
@@ -116,7 +141,7 @@ func _physics_process(delta: float) -> void:
 		var cover_direction: Vector3 = cover.step(delta, sees_player)
 		# 躲藏／探头因重新目击结束时，这一次接敌也可以触发攻击占位。
 		if not cover.is_active() and saw_player_this_frame:
-			tactics.try_attack_position()
+			try_attack_position()
 		if cover.phase == cover.Phase.RUN_TO_COVER and not cover.covering_retreat and not cover_direction.is_zero_approx():
 			# 普通跑掩体：直接朝移动方向转身冲过去。
 			actor.face_direction(cover_direction, delta)
@@ -154,7 +179,7 @@ func _physics_process(delta: float) -> void:
 
 	# 真实失视先尝试压制；没有接管的攻击动作时才转入原追踪／搜索。
 	elif lost_player_this_frame:
-		tactics.start_suppression()
+		start_suppression()
 		if not tactics.attack_position.is_active() and not tactics.suppression.is_active():
 			search.begin_tracking_or_search(true)
 
@@ -164,7 +189,7 @@ func _physics_process(delta: float) -> void:
 		agent.target_position = last_known_position
 
 	if saw_player_this_frame:
-		tactics.try_attack_position()
+		try_attack_position()
 	var direction = Vector3.ZERO
 
 	if state == State.IDLE:
@@ -173,14 +198,7 @@ func _physics_process(delta: float) -> void:
 			_start_random_patrol()
 
 	elif state == State.PATROL:
-		var next_position: Vector3 = agent.get_next_path_position()
-		if not agent.is_navigation_finished():
-			direction = next_position - actor.global_position
-			direction.y = 0.0
-			direction = direction.normalized()
-		else:
-			state = State.IDLE
-			patrol_pause_timer = patrol_pause_seconds
+		direction = actions[&"patrol"].step(delta)
 	elif state in [State.INVESTIGATE, State.TRACK, State.SEARCH]:
 		direction = search.step(delta)
 	elif state in [State.APPROACH, State.REPOSITION, State.HOLD_POSITION]:
@@ -218,40 +236,7 @@ func is_position_free(point: Vector3) -> bool:
 
 
 func _start_random_patrol() -> void:
-	# 激活期间不允许随机巡逻。正常情况下 SEARCH 结束时才会解除警戒。
-	if is_alerted:
-		return
-
-	# 只从本竞技场的导航区域选点，避免走进连接通道或其他场地。
-	for attempt in range(12):
-		var destination = NavigationServer3D.region_get_random_point(
-			navigation_region.get_rid(),
-			agent.navigation_layers,
-			true
-		)
-
-		if _horizontal_distance(destination) < 2.0:
-			continue
-
-		var path = NavigationServer3D.map_get_path(
-			agent.get_navigation_map(),
-			actor.global_position,
-			destination,
-			true,
-			agent.navigation_layers
-		)
-
-		if path.is_empty() or path[path.size() - 1].distance_to(destination) > 0.5:
-			continue
-
-		# 烘焙网格高于脚底；目标也需换成角色脚底高度才能正确判定抵达。
-		destination.y -= agent.path_height_offset
-		agent.target_position = destination
-		state = State.PATROL
-		return
-
-	# 没有合适的点时稍后重试，避免每一帧重复查找。
-	patrol_pause_timer = maxf(patrol_pause_seconds, 0.5)
+	actions[&"patrol"].start()
 
 
 func _horizontal_distance(point: Vector3) -> float:
@@ -264,11 +249,7 @@ func _horizontal_distance_between(a: Vector3, b: Vector3) -> float:
 
 func _on_hit_received(damage: float, attacker_position: Vector3) -> void:
 	if actor.is_dead:
-		tactics.attack_position.reset()
-		tactics.suppression.reset()
-		tactics.reset_fire_timing()
-		if cover != null:
-			cover.reset()
+		reset_actions()
 		is_alerted = false
 		state = State.DEAD
 		search.search_sweep_points.clear()
@@ -288,7 +269,7 @@ func _on_hit_received(damage: float, attacker_position: Vector3) -> void:
 			if cover != null:
 				cover.on_damage_received()
 			if attacker_position.is_finite():
-				tactics.try_attack_position(true)
+				try_attack_position(true)
 	_update_label()
 
 
@@ -335,3 +316,105 @@ func _update_label() -> void:
 		ceili(actor.max_health),
 		knowledge_text
 	])
+
+# 原属性名转发至Training，避免维护两份配置。
+func _training_setting(key: StringName, _fallback: Variant) -> Variant:
+	return get_node("../Training").get("ai_" + String(key))
+
+
+func _set_training_setting(key: StringName, value: Variant) -> void:
+	get_node("../Training").set("ai_" + String(key), value)
+
+
+func try_attack_position(from_hit: bool = false) -> void:
+	if not from_hit and not has_visual_memory:
+		return
+	if not tactics.attack_position.can_start():
+		return
+	var trigger := "中弹" if from_hit else "新目击"
+	if randf() >= clampf(tactics.attack_position_chance, 0.0, 1.0):
+		if cover_selection.debug_cover_selection:
+			print("[AI][攻击占位] 本次", trigger, "未触发，chance=", tactics.attack_position_chance)
+		return
+	var known_position: Vector3 = last_known_position if from_hit else last_seen_position
+	if tactics.attack_position.start(known_position, from_hit) and cover_selection.debug_cover_selection:
+		print("[AI][攻击占位] ", trigger, "触发，开始检查墙角区域")
+
+
+func _on_attack_position_phase_changed(current_phase: int) -> void:
+	state = State.HOLD_POSITION if current_phase == tactics.attack_position.Phase.HOLD else State.REPOSITION
+
+
+# 动作只汇报结束与已知位置；接下来交战还是追踪，由决策层衔接。
+func _on_attack_position_finished(sees_player: bool, known_position: Vector3, reason: String) -> void:
+	tactics.ranged_has_destination = false
+	tactics.ranged_repath_timer = 0.0
+	agent.target_position = actor.global_position
+	if sees_player:
+		state = State.REPOSITION
+	else:
+		last_known_position = known_position
+		search.begin_tracking_or_search(true)
+	if cover_selection.debug_cover_selection:
+		print("[AI][攻击占位] 结束：", reason, "；回到交战／追踪流程")
+
+
+func start_suppression() -> void:
+	if tactics.suppression.is_active():
+		return
+	tactics.exit_suppression.on_target_lost()
+	if tactics.exit_suppression.is_active():
+		tactics.suppression = tactics.exit_suppression
+	else:
+		tactics.suppression = tactics.area_suppression
+		tactics.suppression.on_target_lost()
+
+
+func can_use_action(id: StringName) -> bool:
+	return is_instance_valid(unit_type) and is_instance_valid(training) and unit_type.has_action(id) and training.allows_action(id)
+
+
+func notice_shot(origin: Vector3, endpoint: Vector3) -> void:
+	cover.notice_shot(origin, endpoint)
+
+
+func _enforce_action_permissions() -> void:
+	var search_allowed := can_use_action(&"search")
+	var search_reenabled := search_allowed and not _search_was_allowed
+	_search_was_allowed = search_allowed
+	var interrupted := false
+	for id in [&"cover", &"attack_position", &"suppression", &"exit_suppression"]:
+		var action = actions[id]
+		if action.is_active() and not can_use_action(id):
+			action.reset()
+			interrupted = true
+	if cover.covering_retreat and not can_use_action(&"covering_retreat"):
+		cover.covering_retreat = false
+	if state == State.PATROL and not can_use_action(&"patrol"):
+		interrupted = true
+	if state in [State.TRACK, State.SEARCH, State.INVESTIGATE] and not can_use_action(&"search"):
+		search.reset()
+		interrupted = true
+	if interrupted or (search_reenabled and state == State.IDLE and is_alerted):
+		state = State.IDLE
+		agent.target_position = actor.global_position
+		tactics.ranged_has_destination = false
+		tactics.ranged_repath_timer = 0.0
+		# 恢复权限后用原记忆继续，不等待新的目击/受击，也不借机生成隐藏位置提示。
+		if is_alerted and not actor.is_dead and is_arena_active():
+			if was_seeing_player and can_use_action(&"engage"):
+				state = State.REPOSITION if combat_type == CombatType.RANGED else State.APPROACH
+			elif search_allowed:
+				search.begin_tracking_or_search(false)
+
+
+func reset_actions() -> void:
+	for action in actions.values():
+		action.reset()
+	fire_decision.reset()
+	current_suppression = actions[&"suppression"]
+
+
+func cancel_action(id: StringName) -> void:
+	if actions.has(id):
+		actions[id].reset()

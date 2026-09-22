@@ -1,14 +1,20 @@
-extends Node
+extends "res://enemy_action.gd"
 
 ## 当前小步只比较稳枪和开火；可见性、反应、冷却、动作权限由调用方先过滤。
 enum Action { NONE, STEADY, FIRE }
 
 ## 稳定度正在提高时，继续稳枪可获得多少额外分数。
-@export_range(0.0, 2.0, 0.05) var recovery_gain_weight: float = 0.35
+var recovery_gain_weight: float:
+	get: return _setting(&"recovery_gain_weight", 0.35)
+	set(value): _set_setting(&"recovery_gain_weight", value)
 ## 敌人被逼近到最小交战距离以内时，增加多少开火分数。
-@export_range(0.0, 2.0, 0.05) var close_range_weight: float = 0.35
+var close_range_weight: float:
+	get: return _setting(&"close_range_weight", 0.35)
+	set(value): _set_setting(&"close_range_weight", value)
 ## 已具备射击条件却选择等待时，每秒增加多少开火分数；避免永远等不到目标精度。
-@export_range(0.05, 2.0, 0.05) var wait_pressure_per_second: float = 0.45
+var wait_pressure_per_second: float:
+	get: return _setting(&"wait_pressure_per_second", 0.45)
+	set(value): _set_setting(&"wait_pressure_per_second", value)
 
 var selected_action: Action = Action.NONE
 var fire_score: float = 0.0

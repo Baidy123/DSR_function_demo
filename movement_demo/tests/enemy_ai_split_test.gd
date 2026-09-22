@@ -56,7 +56,7 @@ func _run() -> void:
 	_check("所有导出参数默认值和场景调参保持", migrated)
 	legacy.free()
 	_check("场景生命一万未被默认值覆盖", actor.max_health == 10000.0 and actor.health == 10000.0)
-	_check("掩体读取对应AI和实体", actor.get_node("AI/Tactics/CoverAction").ai == ai and actor.get_node("AI/Tactics/CoverAction").enemy == actor)
+	_check("掩体读取对应AI和实体", actor.get_node("AI").cover.ai == ai and actor.get_node("AI").cover.enemy == actor)
 	var p = scene.get_node("Player")
 	p.set_physics_process(false)
 	ai.set_physics_process(false)
@@ -73,13 +73,13 @@ func _run() -> void:
 	_check("实体结算伤害", actor.health == actor.max_health - 25.0)
 	_check("伤害信号驱动AI调查", ai.is_alerted and ai.last_known_position.is_equal_approx(Vector3(p.global_position.x, actor.global_position.y, p.global_position.z)))
 	actor.receive_hit(actor.health)
-	_check("死亡同步AI与掩体", actor.is_dead and ai.state == ai.State.DEAD and not actor.get_node("AI/Tactics/CoverAction").is_active())
+	_check("死亡同步AI与掩体", actor.is_dead and ai.state == ai.State.DEAD and not actor.get_node("AI").cover.is_active())
 	actor.reset_target()
 	_check("复位同步生命与AI记忆", not actor.is_dead and actor.health == actor.max_health and ai.state == ai.State.IDLE and not ai.is_alerted and not ai.has_visual_memory)
 	# 走真实 Combat 射线入口，确认命中物仍是 Enemy 身体，AI 接到受击信号。
 	p.global_position = actor.global_position + Vector3(0.0, 0.0, 2.0)
 	p.rotation = Vector3.ZERO
-	actor.get_node("AI/Tactics/CoverAction").take_cover_chance = 0.0
+	actor.get_node("AI").cover.take_cover_chance = 0.0
 	var combat = p.get_node("Combat")
 	var weapon = combat.weapon.duplicate()
 	weapon.min_spread_angle_degrees = 0.0

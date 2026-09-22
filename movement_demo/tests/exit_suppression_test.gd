@@ -25,7 +25,7 @@ func _run() -> void:
 	player = scene.get_node("Player")
 	ai.set_physics_process(false)
 	player.set_physics_process(false)
-	action = ai.tactics.get_node_or_null("ExitSuppressionAction")
+	action = ai.tactics.exit_suppression
 	_check("出口压制具有独立动作节点", action != null)
 	if action == null:
 		_finish()
@@ -33,7 +33,7 @@ func _run() -> void:
 	_check("出口压制继承基础压制实现", action.get_script().get_base_script() == ai.tactics.area_suppression.get_script())
 	var default_tactics = load("res://enemy_tactics.gd").new()
 	_check("高训练能力接口默认关闭", not default_tactics.can_suppress_exits)
-	default_tactics.free()
+	default_tactics = null
 	ai.cover_selection.debug_attack_points = false
 	ai.cover_selection.debug_cover_selection = false
 	player.get_node("Health").debug_invincible = true
@@ -173,13 +173,13 @@ func _run() -> void:
 	await physics_frame
 	ai._physics_process(0.02)
 	_check("所属掩体移除后安全结束出口压制", not action.is_active())
-	ai.tactics.reset()
+	ai.reset_actions()
 	_check("刷新统一清理两种压制并恢复默认接口", not action.is_active() and not ai.tactics.area_suppression.is_active() and ai.tactics.suppression == ai.tactics.area_suppression)
 	_finish()
 
 
 func _prepare_visible() -> void:
-	ai.tactics.reset()
+	ai.reset_actions()
 	ai.search.reset()
 	ai.tactics.can_suppress_fire = true
 	ai.tactics.can_suppress_exits = true

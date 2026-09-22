@@ -1,10 +1,16 @@
 extends "res://enemy_suppression_action.gd"
 
 ## 最后目击位置离掩体实体表面的最大水平距离；只推测邻近掩体，不追踪墙后玩家。
-@export_range(0.1, 4.0, 0.05) var cover_inference_distance: float = 1.75
+var cover_inference_distance: float:
+	get: return _setting(&"cover_inference_distance", 1.75)
+	set(value): _set_setting(&"cover_inference_distance", value)
 ## 每侧随机连续打出的枪数范围；仅实际开火才计数，冷却和连射停顿不换边。
-@export_range(1, 20, 1) var shots_per_exit_min: int = 2
-@export_range(1, 20, 1) var shots_per_exit_max: int = 5
+var shots_per_exit_min: int:
+	get: return _setting(&"shots_per_exit_min", 2)
+	set(value): _set_setting(&"shots_per_exit_min", value)
+var shots_per_exit_max: int:
+	get: return _setting(&"shots_per_exit_max", 5)
+	set(value): _set_setting(&"shots_per_exit_max", value)
 
 var target_cover: StaticBody3D
 var first_exit: Array[Vector3] = []
@@ -29,7 +35,7 @@ func _prepare_targets(center: Vector3) -> bool:
 	var nearest := INF
 	var ground := center - Vector3.UP * 0.8
 	# 距离按碰撞盒表面计算，适配现有掩体的旋转与缩放。
-	for region in get_tree().get_nodes_in_group("cover_region"):
+	for region in ai.get_tree().get_nodes_in_group("cover_region"):
 		if not ai.navigation_region.is_ancestor_of(region):
 			continue
 		var collision: CollisionShape3D = region.get_node_or_null("CollisionShape3D")

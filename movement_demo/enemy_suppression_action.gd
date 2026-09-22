@@ -1,20 +1,23 @@
-extends Node
+extends "res://enemy_action.gd"
 
 ## 朝最后目击位置附近压制的最短秒数；当前未接弹匣。
-@export_range(0.1, 10.0, 0.1) var duration_min: float = 3.0
+var duration_min: float:
+	get: return _setting(&"duration_min", 3.0)
+	set(value): _set_setting(&"duration_min", value)
 ## 最长秒数，每次在最短与最长之间抽取；至少等于最短值。
-@export_range(0.1, 10.0, 0.1) var duration_max: float = 5.0
+var duration_max: float:
+	get: return _setting(&"duration_max", 5.0)
+	set(value): _set_setting(&"duration_max", value)
 ## 瞄准点在最后目击位置周围的水平采样半径；实际子弹继续使用枪械散布。
-@export_range(0.0, 3.0, 0.05) var target_radius: float = 0.75
+var target_radius: float:
+	get: return _setting(&"target_radius", 0.75)
+	set(value): _set_setting(&"target_radius", value)
 
 var active: bool = false
 var remaining: float = 0.0
 var target_center: Vector3
 var aim_point: Vector3
 
-@onready var tactics = get_parent()
-@onready var ai = get_parent().get_parent()
-@onready var actor = ai.get_parent()
 
 
 func is_active() -> bool:
@@ -28,6 +31,8 @@ func reset() -> void:
 
 # 只在真实目击从有到无时调用；持续看不见不会每帧重启。
 func on_target_lost() -> void:
+	if not is_enabled():
+		return
 	if active or not tactics.can_suppress_fire or tactics.cover.is_active():
 		return
 	if actor.is_dead or not actor.shooting_enabled or actor.weapon == null or not ai.is_arena_active():
@@ -39,7 +44,7 @@ func on_target_lost() -> void:
 		return
 	if not _prepare_targets(center):
 		return
-	tactics.attack_position.reset()
+	ai.cancel_action(&"attack_position")
 	tactics.ranged_has_destination = false
 	target_center = center
 	remaining = randf_range(maxf(0.1, duration_min), maxf(maxf(0.1, duration_min), duration_max))
@@ -57,7 +62,7 @@ func step(delta: float, sees_player: bool) -> Vector3:
 	if sees_player:
 		finish(true)
 		return Vector3.ZERO
-	if not tactics.can_suppress_fire or actor.weapon == null or not actor.shooting_enabled or ai.combat_type != ai.CombatType.RANGED or not _targets_available():
+	if not is_enabled() or not tactics.can_suppress_fire or actor.weapon == null or not actor.shooting_enabled or ai.combat_type != ai.CombatType.RANGED or not _targets_available():
 		finish(false)
 		return Vector3.ZERO
 	remaining = maxf(0.0, remaining - maxf(delta, 0.0))

@@ -27,7 +27,7 @@ func _run() -> void:
 	enemy.shooting_enabled = false
 	ai.cover_selection.debug_attack_points = false
 	ai.cover_selection.debug_cover_selection = false
-	action = tactics.get_node_or_null("AttackPositionAction")
+	action = tactics.attack_position
 	_check("Tactics包含独立攻击位置动作", action != null)
 	if action == null:
 		_finish()
@@ -151,7 +151,7 @@ func _run() -> void:
 
 
 func _prepare() -> void:
-	tactics.reset()
+	ai.reset_actions()
 	ai.combat_type = ai.CombatType.RANGED
 	tactics.can_use_attack_positions = true
 	tactics.attack_position_chance = 1.0

@@ -43,11 +43,11 @@ func _run() -> void:
 			low_stability_fire = low_stability_fire or stability < 0.7
 	_check("玩家持续实际移动时敌人仍会重复开火", travelled > 10.0 and moving_fire and e.shot_count >= 2)
 	_check("低于70%也能选择开火", low_stability_fire)
-	_check("战术挂载独立射击动作评分", t.has_node("FireDecision"))
-	if not t.has_node("FireDecision"):
+	_check("战术挂载独立射击动作评分", t.fire_decision != null)
+	if t.fire_decision == null:
 		_finish()
 		return
-	var decision = t.get_node("FireDecision")
+	var decision = t.fire_decision
 	decision.reset()
 	var chosen = decision.choose_action(0.0, 0.5, 0.7, 0.5, 0.0)
 	_check("刚接敌且精度可恢复时优先稳枪", chosen == decision.Action.STEADY and decision.steady_score > decision.fire_score)

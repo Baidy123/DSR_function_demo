@@ -19,7 +19,7 @@ func _run() -> void:
 	var player = scene.get_node("Player")
 	player.set_physics_process(false)
 	var health = player.get_node("Health")
-	var cover = enemy.get_node("AI/Tactics/CoverAction")
+	var cover = enemy.get_node("AI").cover
 	_check("父节点提供瞄准更新和射击执行", enemy.has_method("update_weapon") and enemy.has_method("try_fire"))
 	if not checks.values().all(func(value): return value):
 		_finish()
@@ -207,7 +207,7 @@ func _check_live_encounter() -> void:
 	p.set_physics_process(false)
 	health.debug_invincible = true
 	ai.search.debug_tracking_cheat = false
-	enemy.get_node("AI/Tactics/CoverAction").selection.debug_cover_selection = false
+	enemy.get_node("AI").cover.selection.debug_cover_selection = false
 	enemy.equip_weapon(enemy.weapon.duplicate())
 	enemy.weapon.initial_accuracy = 1.0
 	enemy.weapon.shot_accuracy_penalty = 0.0

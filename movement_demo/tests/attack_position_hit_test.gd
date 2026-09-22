@@ -122,7 +122,7 @@ func _run() -> void:
 
 
 func _prepare() -> void:
-	ai.tactics.reset()
+	ai.reset_actions()
 	ai.combat_type = ai.CombatType.RANGED
 	ai.tactics.can_use_attack_positions = true
 	ai.tactics.attack_position_chance = 1.0

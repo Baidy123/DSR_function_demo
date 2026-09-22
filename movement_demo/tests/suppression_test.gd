@@ -24,7 +24,7 @@ func _run() -> void:
 	player = scene.get_node("Player")
 	ai.set_physics_process(false)
 	player.set_physics_process(false)
-	action = ai.tactics.get_node_or_null("SuppressionAction")
+	action = ai.tactics.area_suppression
 	_check("Tactics具有独立火力压制动作", action != null)
 	if action == null:
 		_finish()
@@ -190,7 +190,7 @@ func _run() -> void:
 
 
 func _prepare_visible() -> void:
-	ai.tactics.reset()
+	ai.reset_actions()
 	ai.search.reset()
 	ai.tactics.can_suppress_fire = true
 	ai.tactics.can_use_attack_positions = false

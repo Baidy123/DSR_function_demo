@@ -15,7 +15,7 @@ func _run() -> void:
 	var ai = e.get_node("AI")
 	ai.tactics.fire_reaction_seconds = 0.5
 	ai.tactics.burst_pause_seconds = 1.0
-	var cover = e.get_node("AI/Tactics/CoverAction")
+	var cover = e.get_node("AI").cover
 	var p = scene.get_node("Player")
 	ai.set_physics_process(false)
 	p.set_physics_process(false)

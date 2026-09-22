@@ -5,7 +5,7 @@ func run_cycle(scene: Node) -> Dictionary:
 	var enemy = arena.get_node("Enemy")
 	var ai = enemy.get_node("AI")
 	var player = scene.get_node("Player")
-	var cover = enemy.get_node("AI/Tactics/CoverAction")
+	var cover = enemy.get_node("AI").cover
 	var checks := {}
 	var tree = scene.get_tree()
 	ai.set_physics_process(false)
@@ -49,7 +49,7 @@ func run_walk(scene: Node) -> Dictionary:
 	var enemy = scene.get_node("Arena/Enemy")
 	var ai = enemy.get_node("AI")
 	var arena = scene.get_node("Arena")
-	var cover = enemy.get_node("AI/Tactics/CoverAction")
+	var cover = enemy.get_node("AI").cover
 	var player = scene.get_node("Player")
 	var wall = arena.get_node("NavigationRegion3D/Environment/CoverA")
 	var collision = wall.get_node("CollisionShape3D")
@@ -109,7 +109,7 @@ func run(scene: Node) -> Dictionary:
 	var enemy = scene.get_node("Arena/Enemy")
 	var ai = enemy.get_node("AI")
 	var arena = scene.get_node("Arena")
-	var cover = enemy.get_node("AI/Tactics/CoverAction")
+	var cover = enemy.get_node("AI").cover
 	var player = scene.get_node("Player")
 	player.set_physics_process(false)
 	ai.set_physics_process(false)
