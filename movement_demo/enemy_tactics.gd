@@ -65,6 +65,45 @@ const Actor = preload("res://enemy_actor.gd")
 @onready var suppression = $SuppressionAction
 
 
+func _ready() -> void:
+	attack_position.phase_changed.connect(_on_attack_position_phase_changed)
+	attack_position.finished.connect(_on_attack_position_finished)
+
+
+# 新目击与实际受伤提供触发机会；概率选择属于决策，动作本身不再抽签。
+func try_attack_position(from_hit: bool = false) -> void:
+	if not from_hit and not ai.has_visual_memory:
+		return
+	if not attack_position.can_start():
+		return
+	var trigger := "中弹" if from_hit else "新目击"
+	if randf() >= clampf(attack_position_chance, 0.0, 1.0):
+		if ai.cover_selection.debug_cover_selection:
+			print("[AI][攻击占位] 本次", trigger, "未触发，chance=", attack_position_chance)
+		return
+	var known_position: Vector3 = ai.last_known_position if from_hit else ai.last_seen_position
+	if attack_position.start(known_position, from_hit) and ai.cover_selection.debug_cover_selection:
+		print("[AI][攻击占位] ", trigger, "触发，开始检查墙角区域")
+
+
+func _on_attack_position_phase_changed(current_phase: int) -> void:
+	ai.state = ai.State.HOLD_POSITION if current_phase == attack_position.Phase.HOLD else ai.State.REPOSITION
+
+
+# 动作只汇报结束与已知位置；接下来交战还是追踪，由决策层衔接。
+func _on_attack_position_finished(sees_player: bool, known_position: Vector3, reason: String) -> void:
+	ranged_has_destination = false
+	ranged_repath_timer = 0.0
+	agent.target_position = actor.global_position
+	if sees_player:
+		ai.state = ai.State.REPOSITION
+	else:
+		ai.last_known_position = known_position
+		ai.search.begin_tracking_or_search(true)
+	if ai.cover_selection.debug_cover_selection:
+		print("[AI][攻击占位] 结束：", reason, "；回到交战／追踪流程")
+
+
 func start_suppression() -> void:
 	if suppression.is_active():
 		return

@@ -116,7 +116,7 @@ func _physics_process(delta: float) -> void:
 		var cover_direction: Vector3 = cover.step(delta, sees_player)
 		# 躲藏／探头因重新目击结束时，这一次接敌也可以触发攻击占位。
 		if not cover.is_active() and saw_player_this_frame:
-			tactics.attack_position.on_player_seen()
+			tactics.try_attack_position()
 		if cover.phase == cover.Phase.RUN_TO_COVER and not cover.covering_retreat and not cover_direction.is_zero_approx():
 			# 普通跑掩体：直接朝移动方向转身冲过去。
 			actor.face_direction(cover_direction, delta)
@@ -164,7 +164,7 @@ func _physics_process(delta: float) -> void:
 		agent.target_position = last_known_position
 
 	if saw_player_this_frame:
-		tactics.attack_position.on_player_seen()
+		tactics.try_attack_position()
 	var direction = Vector3.ZERO
 
 	if state == State.IDLE:
@@ -288,7 +288,7 @@ func _on_hit_received(damage: float, attacker_position: Vector3) -> void:
 			if cover != null:
 				cover.on_damage_received()
 			if attacker_position.is_finite():
-				tactics.attack_position.on_damage_received()
+				tactics.try_attack_position(true)
 	_update_label()
 
 

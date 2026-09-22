@@ -1,6 +1,9 @@
 extends Node
 
 # 主动交火占位，与躲藏／探头动作互斥；只使用已有目击或本次受击估计位置。
+signal phase_changed(current_phase: int)
+signal finished(sees_player: bool, known_position: Vector3, reason: String)
+
 enum Phase { NONE, FIND, MOVE, HOLD }
 var phase: Phase = Phase.NONE
 var destination: Vector3
@@ -26,6 +29,7 @@ func is_active() -> bool:
 	return phase != Phase.NONE
 
 
+# 取消／复位只清理本动作，不覆盖接管方的导航与决策。
 func reset() -> void:
 	phase = Phase.NONE
 	active_cover = null
@@ -39,38 +43,30 @@ func reset() -> void:
 	_using_hit_memory = false
 
 
-# 持续可见不重复抽概率；真正中弹是另外一次触发机会。
-func on_player_seen() -> void:
-	if ai.has_visual_memory:
-		_try_start("新目击", false)
-
-
-# AI先完成受击位置估计和原掩体反应，再通知这里；不读取隐藏玩家实时坐标。
-func on_damage_received() -> void:
-	_try_start("中弹", true)
-
-
-func _try_start(trigger: String, from_hit: bool) -> void:
+# 只查询条件，不抽概率、不修改动作。权限暂读原配置，后续再迁入Training。
+func can_start() -> bool:
 	if is_active() or tactics.cover.is_active() or tactics.suppression.is_active() or not tactics.can_use_attack_positions:
-		return
+		return false
 	if actor.is_dead or not ai.is_arena_active() or actor.weapon == null or ai.combat_type != ai.CombatType.RANGED:
-		return
-	if randf() >= clampf(tactics.attack_position_chance, 0.0, 1.0):
-		if selection.debug_cover_selection:
-			print("[AI][攻击占位] 本次", trigger, "未触发，chance=", tactics.attack_position_chance)
-		return
+		return false
+	return true
+
+
+# 调用方提供已有记忆的脚底位置；受击快照直到重新目击前不会追踪隐藏玩家。
+func start(known_position: Vector3, from_hit: bool = false) -> bool:
+	if not can_start():
+		return false
 	reset()
 	_using_hit_memory = from_hit
-	_query_target = (ai.last_known_position if from_hit else ai.last_seen_position) + Vector3.UP * 0.8
+	_query_target = known_position + Vector3.UP * 0.8
 	for region in get_tree().get_nodes_in_group("cover_region"):
 		if ai.navigation_region.is_ancestor_of(region):
 			for point in region.get_attack_candidates():
 				_candidates.append({"position": point, "cover": region})
 	phase = Phase.FIND
-	ai.state = ai.State.REPOSITION
+	phase_changed.emit(phase)
 	actor.agent.target_position = actor.global_position
-	if selection.debug_cover_selection:
-		print("[AI][攻击占位] ", trigger, "触发，开始检查墙角区域")
+	return true
 
 
 func step(delta: float, sees_player: bool) -> Vector3:
@@ -116,7 +112,7 @@ func step(delta: float, sees_player: bool) -> Vector3:
 				_finish(false, "到点仍未看见玩家")
 				return Vector3.ZERO
 			phase = Phase.HOLD
-			ai.state = ai.State.HOLD_POSITION
+			phase_changed.emit(phase)
 			actor.agent.target_position = actor.global_position
 			if selection.debug_cover_selection:
 				print("[AI][攻击占位] 到位，保持射击位置 ", actor.global_position)
@@ -181,7 +177,7 @@ func _find_position(sees_player: bool) -> void:
 		_finish(sees_player, "查找期间目标变化，原选点失效：" + reason)
 		return
 	phase = Phase.MOVE
-	ai.state = ai.State.REPOSITION
+	phase_changed.emit(phase)
 	_remaining = _best_length / maxf(0.1, actor.move_speed) + 3.0
 	actor.agent.target_position = destination
 	if selection.debug_cover_selection:
@@ -222,16 +218,7 @@ func _final_segment_clear() -> bool:
 func _finish(sees_player: bool, reason: String = "结束行动") -> void:
 	var known_position := _known_position()
 	reset()
-	tactics.ranged_has_destination = false
-	tactics.ranged_repath_timer = 0.0
-	actor.agent.target_position = actor.global_position
-	if sees_player:
-		ai.state = ai.State.REPOSITION
-	else:
-		ai.last_known_position = known_position
-		ai.search.begin_tracking_or_search(true)
-	if selection.debug_cover_selection:
-		print("[AI][攻击占位] 结束：", reason, "；回到交战／追踪流程")
+	finished.emit(sees_player, known_position, reason)
 
 
 func state_label() -> String:

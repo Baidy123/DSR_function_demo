@@ -115,7 +115,7 @@ func _run() -> void:
 	_check("实际到位且合格后进入占位", action.phase == action.Phase.HOLD and ai.state == ai.State.HOLD_POSITION)
 	var stopped: Vector3 = action.step(0.1, true)
 	_check("占位期间保持不动", stopped.is_zero_approx() and action.is_active())
-	action.on_player_seen()
+	tactics.try_attack_position()
 	_check("正在占位时重新目击不重启查找", action.phase == action.Phase.HOLD and action.destination == destination)
 	ai.last_seen_position = destination + (destination - TARGET).normalized() * 5.0
 	action.step(0.3, true)
@@ -125,7 +125,7 @@ func _run() -> void:
 	tactics.cover.take_cover_chance = 1.0
 	tactics.cover.notice_shot(TARGET + Vector3.UP * 0.8, enemy.get_shot_origin())
 	_check("来弹成功躲藏时让出攻击占位", tactics.cover.is_active() and not action.is_active())
-	action.on_player_seen()
+	tactics.try_attack_position()
 	_check("躲藏期间攻击占位不会抢回控制", tactics.cover.is_active() and not action.is_active())
 	_prepare()
 	ai._physics_process(1.0 / 60.0)
