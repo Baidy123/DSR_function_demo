@@ -35,9 +35,9 @@ func on_target_lost() -> void:
 		return
 	if active or not tactics.can_suppress_fire or tactics.cover.is_active():
 		return
-	if actor.is_dead or not actor.shooting_enabled or actor.weapon == null or not ai.is_arena_active():
+	if not actor.can_use_firearms() or not ai.is_arena_active():
 		return
-	if ai.combat_type != ai.CombatType.RANGED or not ai.has_visual_memory or ai.player.is_dead() or ai.player.is_in_dialogue:
+	if not ai.has_visual_memory or ai.player.is_dead() or ai.player.is_in_dialogue:
 		return
 	var center: Vector3 = ai.last_seen_position + Vector3.UP * 0.8
 	if actor.get_shot_origin().distance_to(center) > actor.weapon.fire_range:
@@ -62,7 +62,7 @@ func step(delta: float, sees_player: bool) -> Vector3:
 	if sees_player:
 		finish(true)
 		return Vector3.ZERO
-	if not is_enabled() or not tactics.can_suppress_fire or actor.weapon == null or not actor.shooting_enabled or ai.combat_type != ai.CombatType.RANGED or not _targets_available():
+	if not is_enabled() or not tactics.can_suppress_fire or not actor.can_use_firearms() or not _targets_available():
 		finish(false)
 		return Vector3.ZERO
 	remaining = maxf(0.0, remaining - maxf(delta, 0.0))

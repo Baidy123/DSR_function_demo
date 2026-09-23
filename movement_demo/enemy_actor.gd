@@ -165,7 +165,7 @@ func _update_health_label() -> void:
 func update_weapon(delta: float, visible_point: Vector3 = Vector3.INF) -> void:
 	var elapsed: float = maxf(delta, 0.0)
 	shot_cooldown = maxf(0.0, shot_cooldown - elapsed)
-	var can_aim: bool = weapon != null and not is_dead and shooting_enabled and visible_point.is_finite()
+	var can_aim: bool = can_use_firearms() and visible_point.is_finite()
 	_update_weapon_stability(elapsed, visible_point if can_aim else Vector3.INF)
 	if not can_aim:
 		clear_aim()
@@ -247,9 +247,20 @@ func get_shot_origin() -> Vector3:
 	return global_position + Vector3.UP * 0.8
 
 
+## AI选择与基础执行共用枪械资格；不依赖AI、Training或战术动作清单。
+## 缺少兵种时不启用枪械，移动、转向等公共身体操作不受影响。
+func can_use_firearms() -> bool:
+	if is_dead or not shooting_enabled or weapon == null:
+		return false
+	var unit = get_node_or_null("UnitType")
+	return unit != null and unit.supports_firearms()
+
+
 ## 纯查询执行条件；让评分只在枪械确实能发射时积累主动等待时间。
 func can_fire() -> bool:
-	if weapon == null or is_dead or not shooting_enabled or not has_aim or not aim_acquired or shot_cooldown > 0.0:
+	if not can_use_firearms():
+		return false
+	if not has_aim or not aim_acquired or shot_cooldown > 0.0:
 		return false
 	# 不从身体背后开枪；只检查水平夹角，保留上下瞄准。
 	var horizontal_aim := Vector3(aim_direction.x, 0.0, aim_direction.z)

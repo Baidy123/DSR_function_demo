@@ -123,8 +123,7 @@ func update_shooting(delta: float, sees_player: bool, movement_requested: bool) 
 		_update_suppression_shooting(delta, movement_requested)
 		return
 	var visible_target: bool = (
-		not actor.is_dead and actor.shooting_enabled and actor.weapon != null and ai.is_arena_active() and sees_player
-		and ai.combat_type == ai.CombatType.RANGED
+		actor.can_use_firearms() and ai.is_arena_active() and sees_player
 		and not ai.player.is_dead() and not ai.player.is_in_dialogue
 	)
 	# 身体刚移动过，射击前再核实实际视线，避免用移动前的可见结果隔墙射击。
@@ -187,7 +186,7 @@ func _update_suppression_shooting(delta: float, movement_requested: bool) -> voi
 	# 压制不保留旧目击的反应进度；重新看到目标仍需遵守原反应时间。
 	fire_reaction_elapsed = 0.0
 	# 仅此动作允许未目击时按记忆开火；不读取墙后玩家的当前坐标。
-	if actor.is_dead or not actor.shooting_enabled or actor.weapon == null or not ai.is_arena_active() or ai.combat_type != ai.CombatType.RANGED or ai.player.is_dead() or ai.player.is_in_dialogue or cover.is_active():
+	if not actor.can_use_firearms() or not ai.is_arena_active() or ai.player.is_dead() or ai.player.is_in_dialogue or cover.is_active():
 		actor.update_weapon(delta)
 		return
 	var point: Vector3 = suppression.aim_point
