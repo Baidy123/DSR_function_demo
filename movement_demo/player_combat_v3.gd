@@ -1,5 +1,9 @@
 extends Node
 
+const Ammo = preload("res://weapon_ammo.gd")
+## 奔跑时每帧换弹进度的倍率；0.5表示全程奔跑耗时翻倍。
+@export_range(0.1, 1.0, 0.05) var sprint_reload_speed_multiplier: float = 0.5
+var ammo = Ammo.new()
 enum AimMode { PROBABILITY, SPREAD_CONE }
 ## 选择本节点的射击算法；两种模式共用锁定、碰撞和伤害结算。
 @export_enum("旧概率模式:0", "新散布锥模式:1") var aim_mode: int = AimMode.SPREAD_CONE
@@ -35,8 +39,10 @@ func _ready() -> void:
 
 ## 装备组件调用此接口；切槽传 true 保留上一枪冷却，避免快速切枪绕过射速。
 ## Resource 只保存配置，不保存运行中的稳定度。
-func equip_weapon(data: WeaponData, preserve_cooldown: bool = false) -> void:
+func equip_weapon(data: WeaponData, preserve_cooldown: bool = false, ammo_state = null) -> void:
+	cancel_reload()
 	weapon = data
+	ammo = ammo_state if ammo_state != null else Ammo.new(data)
 	accuracy = weapon.get_aim_settings(is_using_spread_cone()).initial if weapon != null else 0.0
 	accuracy_recovery_timer = 0.0
 	cancel_aim()
@@ -47,8 +53,16 @@ func equip_weapon(data: WeaponData, preserve_cooldown: bool = false) -> void:
 
 
 func _unhandled_input(event: InputEvent) -> void:
+	if event.is_echo():
+		return
 	if event.is_action_released("fire"):
 		fire_held = false
+		return
+	if event.is_action_pressed("reload"):
+		request_reload()
+		get_viewport().set_input_as_handled()
+		return
+	if ammo.is_reloading:
 		return
 	if player.is_in_dialogue or weapon == null or not can_combat():
 		return
@@ -56,6 +70,21 @@ func _unhandled_input(event: InputEvent) -> void:
 		shot_requested = true
 		fire_held = true
 		get_viewport().set_input_as_handled()
+
+
+## R主动请求，不要求瞄准或进入战斗区；枪械状态自己检查弹量和备弹。
+func request_reload() -> bool:
+	if weapon == null or player.is_dead() or player.is_in_dialogue or get_tree().paused:
+		return false
+	if not ammo.start_reload():
+		return false
+	shot_requested = false
+	fire_held = false
+	return true
+
+
+func cancel_reload() -> void:
+	ammo.cancel_reload()
 
 
 func cancel_aim() -> void:
@@ -108,6 +137,11 @@ func begin_frame(delta: float, aim_pressed: bool) -> void:
 
 # Player 移动后调用，以实际位移判断移动惩罚，射击使用本帧的视线。
 func end_frame(delta: float, moving: bool) -> void:
+	if player.is_dead() or player.is_in_dialogue:
+		cancel_reload()
+	elif not get_tree().paused:
+		var reload_speed: float = sprint_reload_speed_multiplier if player.is_sprinting else 1.0
+		ammo.advance_reload(delta, reload_speed)
 	if not can_combat() or player.is_in_dialogue:
 		cancel_aim()
 	if is_instance_valid(locked_target) and not _target_visible(locked_target):
@@ -242,6 +276,8 @@ func _ray_to(endpoint: Vector3) -> Dictionary:
 
 func shoot() -> void:
 	if not is_aiming or player.is_in_dialogue or weapon == null or shot_cooldown > 0.0 or not can_combat():
+		return
+	if get_tree().paused or not ammo.consume_round():
 		return
 	# 再检查一次，防止输入与物理更新之间出现遮挡。
 	if is_instance_valid(locked_target) and not _target_visible(locked_target):

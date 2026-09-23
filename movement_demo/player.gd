@@ -163,6 +163,7 @@ func set_dialogue_active(active: bool) -> void:
 	if active:
 		if combat != null:
 			combat.cancel_aim()
+			combat.cancel_reload()
 		current_speed = 0.0
 		velocity.x = 0.0
 		velocity.z = 0.0

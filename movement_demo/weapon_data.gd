@@ -2,6 +2,15 @@ class_name WeaponData
 extends Resource
 
 enum FireMode { SEMI_AUTO, AUTOMATIC }
+enum AmmoType { RIFLE, PISTOL, SMG, SHOTGUN }
+
+@export_group("弹匣与换弹")
+## 玩家使用对应类型的共享备弹池；敌人仍使用有限弹匣、无限备弹。
+@export_enum("步枪弹药:0", "手枪弹药:1", "冲锋枪弹药:2", "霰弹枪弹药:3") var ammo_type: int = AmmoType.PISTOL
+## 每把枪独立保存弹匣余量；12发为可调试玩初值。
+@export_range(1, 300, 1) var magazine_capacity: int = 12
+## 正常换弹耗时（秒）。玩家奔跑倍率在Combat调整；敌人不受移动影响。
+@export_range(0.1, 20.0, 0.1) var reload_seconds: float = 2.0
 
 @export_group("共用参数")
 ## 武器显示名称。

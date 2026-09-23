@@ -5,6 +5,8 @@ func run(scene: Node) -> Dictionary:
 	var combat = player.get_node("Combat")
 	var reticle = combat.get_node("HUD/Reticle")
 	var weapon = combat.weapon.duplicate()
+	# 连续取样弹道；弹匣边界由独立换弹测试覆盖。
+	weapon.magazine_capacity = 1000
 	var checks := {}
 	var fields: Array[String] = []
 	for property in weapon.get_property_list():

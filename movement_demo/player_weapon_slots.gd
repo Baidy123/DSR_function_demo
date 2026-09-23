@@ -1,11 +1,24 @@
 extends CanvasLayer
 
+const Ammo = preload("res://weapon_ammo.gd")
 ## 主武器槽，按数字1选择；在这里拖入 WeaponData，空槽不会被切换选中。
 @export var primary_weapon: WeaponData
 ## 副武器槽，按数字2选择；武器种类暂不限制，后续商人系统再接入装备操作。
 @export var secondary_weapon: WeaponData
 ## 出生时使用哪个槽；该槽为空时自动选择另一个非空槽。
 @export_enum("主武器:0", "副武器:1") var starting_slot: int = 0
+
+@export_group("初始共享备弹")
+## 同弹药类型的主副武器共用此备弹；初始满弹匣不从备弹扣除。
+@export_range(0, 9999, 1) var starting_rifle_ammo: int = 36
+## 手枪备弹初值，重新开始恢复；运行余量在reserve_ammo中。
+@export_range(0, 9999, 1) var starting_pistol_ammo: int = 36
+## 冲锋枪备弹初值。
+@export_range(0, 9999, 1) var starting_smg_ammo: int = 36
+## 霰弹枪备弹初值。
+@export_range(0, 9999, 1) var starting_shotgun_ammo: int = 36
+var reserve_ammo: Dictionary = {}
+var _ammo_states: Array = [null, null]
 
 var active_slot: int = -1
 # 两把枪分别保留精度；收起期间不自动恢复，防止反复切枪刷新惩罚。
@@ -17,6 +30,12 @@ var _aim_states: Array[Dictionary] = [{}, {}]
 @onready var secondary_label: Label = $Panel/Content/Slots/Secondary/Name
 
 func _ready() -> void:
+	reserve_ammo = {
+		WeaponData.AmmoType.RIFLE: starting_rifle_ammo,
+		WeaponData.AmmoType.PISTOL: starting_pistol_ammo,
+		WeaponData.AmmoType.SMG: starting_smg_ammo,
+		WeaponData.AmmoType.SHOTGUN: starting_shotgun_ammo,
+	}
 	# 与出生节点就绪顺序无关；此时 Player 自己的 onready 可能尚未执行。
 	var initial: int = clampi(starting_slot, 0, 1)
 	if _weapon_at(initial) == null:
@@ -29,6 +48,7 @@ func _ready() -> void:
 
 func _process(_delta: float) -> void:
 	$Panel.visible = not player.is_in_dialogue and not player.is_dead()
+	_update_display()
 
 func _unhandled_input(event: InputEvent) -> void:
 	if event.is_echo():
@@ -67,7 +87,9 @@ func _equip_slot(slot: int) -> void:
 		}
 	active_slot = slot
 	var data: WeaponData = _weapon_at(slot)
-	combat.equip_weapon(data, true)
+	if _ammo_states[slot] == null or _ammo_states[slot].weapon != data:
+		_ammo_states[slot] = Ammo.new(data, reserve_ammo)
+	combat.equip_weapon(data, true, _ammo_states[slot])
 	var saved: Dictionary = _aim_states[slot]
 	if saved.get("weapon") == data:
 		# 拔枪至多回到初始精度；已有更差的精度和恢复等待继续保留。
@@ -83,4 +105,11 @@ func _update_display() -> void:
 		var data: WeaponData = _weapon_at(slot)
 		var title: String = "主武器" if slot == 0 else "副武器"
 		labels[slot].text = "%s%d  %s\n%s" % ["▶ " if slot == active_slot else "", slot + 1, title, data.display_name if data != null else "空"]
+		if data != null:
+			var state = _ammo_states[slot]
+			var rounds: int = state.magazine_rounds if state != null and state.weapon == data else data.magazine_capacity
+			labels[slot].text += "\n%d/%d · 备弹%d" % [rounds, data.magazine_capacity, reserve_ammo.get(data.ammo_type, 0)]
 		labels[slot].modulate = Color(1.0, 0.82, 0.35) if slot == active_slot else Color(0.7, 0.73, 0.78)
+	$Panel/Content/Hint.text = "1 / 2 或滚轮切枪 · R换弹"
+	if combat.ammo.is_reloading:
+		$Panel/Content/Hint.text = "换弹中 %d%%" % floori(combat.ammo.reload_progress * 100.0)

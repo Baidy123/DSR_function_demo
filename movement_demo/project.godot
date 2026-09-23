@@ -74,6 +74,11 @@ fire={
 ]
 }
 
+reload={
+"deadzone": 0.5,
+"events": [Object(InputEventKey,"physical_keycode":82)
+]
+}
 weapon_primary={
 "deadzone": 0.5,
 "events": [Object(InputEventKey,"physical_keycode":49)]

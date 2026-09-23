@@ -1,5 +1,7 @@
 extends CharacterBody3D
 
+const Ammo = preload("res://weapon_ammo.gd")
+var ammo = Ammo.new()
 ## 身体执行层不读取玩家位置，也不决定追踪、搜索或掩体策略。
 signal hit_received(damage: float, attacker_position: Vector3)
 signal reset_completed
@@ -114,6 +116,7 @@ func receive_hit(damage: float, attacker_position: Vector3 = Vector3.INF) -> voi
 	health = maxf(0.0, health - maxf(damage, 0.0))
 	if health <= 0.0:
 		is_dead = true
+		cancel_reload()
 		clear_aim()
 		velocity = Vector3.ZERO
 		remove_from_group("combat_target")
@@ -165,6 +168,9 @@ func _update_health_label() -> void:
 func update_weapon(delta: float, visible_point: Vector3 = Vector3.INF) -> void:
 	var elapsed: float = maxf(delta, 0.0)
 	shot_cooldown = maxf(0.0, shot_cooldown - elapsed)
+	if not can_use_firearms():
+		cancel_reload()
+	ammo.advance_reload(elapsed)
 	var can_aim: bool = can_use_firearms() and visible_point.is_finite()
 	_update_weapon_stability(elapsed, visible_point if can_aim else Vector3.INF)
 	if not can_aim:
@@ -202,11 +208,24 @@ func clear_aim() -> void:
 
 ## 不修改共享资源，也不通过换枪清掉尚未结束的开火冷却。
 func equip_weapon(data: WeaponData) -> void:
+	cancel_reload()
 	weapon = data
+	ammo = Ammo.new(data, {}, true)
 	weapon_stability = weapon.get_aim_settings(false).initial if weapon != null else 0.0
 	weapon_recovery_timer = 0.0
 	_weapon_move_distance = 0.0
 	clear_aim()
+
+
+## 只执行请求；打空后是否开始换弹由AI决定。敌人备弹无限、弹匣有限。
+func request_reload() -> bool:
+	if not can_use_firearms() or get_tree().paused:
+		return false
+	return ammo.start_reload()
+
+
+func cancel_reload() -> void:
+	ammo.cancel_reload()
 
 
 func get_center_probability() -> float:
@@ -258,7 +277,7 @@ func can_use_firearms() -> bool:
 
 ## 纯查询执行条件；让评分只在枪械确实能发射时积累主动等待时间。
 func can_fire() -> bool:
-	if not can_use_firearms():
+	if not can_use_firearms() or not ammo.can_fire():
 		return false
 	if not has_aim or not aim_acquired or shot_cooldown > 0.0:
 		return false
@@ -274,6 +293,7 @@ func can_fire() -> bool:
 func try_fire() -> bool:
 	if not can_fire():
 		return false
+	ammo.consume_round()
 	var probability: float = get_center_probability()
 	last_shot_direction = _random_shot_direction(aim_direction, probability)
 	var origin: Vector3 = get_shot_origin()

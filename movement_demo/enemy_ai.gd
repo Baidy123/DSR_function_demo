@@ -102,6 +102,7 @@ func is_arena_active() -> bool:
 
 func _physics_process(delta: float) -> void:
 	_enforce_action_permissions()
+	_update_reload_request()
 	if actor.is_dead or not is_arena_active():
 		reset_actions()
 		tactics.update_shooting(delta, false, false)
@@ -222,6 +223,15 @@ func _physics_process(delta: float) -> void:
 	_update_label()
 
 
+## 普通换弹是基础操作，不需要登记战术动作；沿用当前移动/转向行为。
+func _update_reload_request() -> void:
+	if not is_arena_active() or actor.is_dead or player.is_dead() or player.is_in_dialogue:
+		actor.cancel_reload()
+		return
+	if actor.ammo.magazine_rounds == 0:
+		actor.request_reload()
+
+
 ## 各板块共用身体空间查询；排除玩家，避免借查询感知隐藏位置。
 func is_position_free(point: Vector3) -> bool:
 	var collision: CollisionShape3D = actor.get_node("CollisionShape3D")
@@ -319,6 +329,8 @@ func _update_label() -> void:
 		elif state == State.SEARCH:
 			state_text = "声源附近搜索"
 	var type_text = "近战" if combat_type == CombatType.MELEE else "远程"
+	if actor.ammo.is_reloading:
+		state_text += " · 换弹中 %d%%" % floori(actor.ammo.reload_progress * 100.0)
 	actor.set_status_text("%s敌人：%s\n生命 %d / %d\n%s" % [
 		type_text,
 		state_text,

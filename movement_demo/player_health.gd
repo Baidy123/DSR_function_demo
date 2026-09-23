@@ -67,6 +67,7 @@ func receive_hit(damage: float) -> void:
 		player.is_facing_npc = false
 		if player.combat != null:
 			player.combat.cancel_aim()
+			player.combat.cancel_reload()
 		# 暂停敌人和对话输入；本节点及重开按钮使用 Always，暂停时仍可点击。
 		get_tree().paused = true
 		death_screen.show()

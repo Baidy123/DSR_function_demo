@@ -34,7 +34,10 @@ func _run() -> void:
 		await physics_frame
 	var target: Vector3 = player.global_position + Vector3.UP * 0.8
 	_check("射击场景有真实视线", ai.perception.can_see_player())
-	enemy.equip_weapon(enemy.weapon.duplicate())
+	# 本组连续取样160枪验证弹道，弹量边界另由enemy_reload_test覆盖。
+	var sampling_weapon: WeaponData = enemy.weapon.duplicate()
+	sampling_weapon.magazine_capacity = 1000
+	enemy.equip_weapon(sampling_weapon)
 	enemy.weapon.initial_accuracy = 1.0
 	enemy.weapon.shot_accuracy_penalty = 0.0
 	enemy.weapon.player_move_accuracy_loss_per_meter = 0.0
@@ -208,7 +211,10 @@ func _check_live_encounter() -> void:
 	health.debug_invincible = true
 	ai.search.debug_tracking_cheat = false
 	enemy.get_node("AI").cover.selection.debug_cover_selection = false
-	enemy.equip_weapon(enemy.weapon.duplicate())
+	# 本组验证走位射击/死亡时序；避免弹匣换弹改变原观察窗口。
+	var encounter_weapon: WeaponData = enemy.weapon.duplicate()
+	encounter_weapon.magazine_capacity = 1000
+	enemy.equip_weapon(encounter_weapon)
 	enemy.weapon.initial_accuracy = 1.0
 	enemy.weapon.shot_accuracy_penalty = 0.0
 	enemy.weapon.player_move_accuracy_loss_per_meter = 0.0
