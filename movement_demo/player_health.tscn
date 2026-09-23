@@ -1,6 +1,7 @@
 [gd_scene format=3]
 
 [ext_resource type="Script" path="res://player_health.gd" id="1"]
+[ext_resource type="Script" path="res://noise_debug.gd" id="2_noise"]
 
 [sub_resource type="StyleBoxFlat" id="StatusPanel"]
 content_margin_left = 12.0
@@ -38,6 +39,9 @@ corner_radius_bottom_right = 3
 process_mode = 3
 layer = 10
 script = ExtResource("1")
+
+[node name="NoiseRanges" type="Node3D" parent="."]
+script = ExtResource("2_noise")
 
 [node name="Status" type="PanelContainer" parent="."]
 anchors_preset = 2
@@ -95,7 +99,7 @@ show_percentage = false
 anchors_preset = 1
 anchor_left = 1.0
 anchor_right = 1.0
-offset_left = -300.0
+offset_left = -430.0
 offset_top = 16.0
 offset_right = -16.0
 offset_bottom = 67.0
@@ -119,6 +123,12 @@ layout_mode = 2
 focus_mode = 0
 tooltip_text = "模拟受到 25 点伤害，用于测试生命、无敌与死亡重开。"
 text = "测试受伤 -25"
+
+[node name="NoiseRanges" type="CheckBox" parent="Debug/Controls"]
+layout_mode = 2
+focus_mode = 0
+tooltip_text = "实际发声时短暂显示：玩家蓝色、敌人橙色。外圈为无遮挡半径，内虚线圈为隔墙半径；不代表按墙裁切的精确形状。"
+text = "声音范围"
 
 [node name="DeathScreen" type="ColorRect" parent="."]
 visible = false

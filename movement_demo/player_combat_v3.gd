@@ -248,6 +248,8 @@ func shoot() -> void:
 		locked_target = null
 		_reset_target_movement_tracking()
 	shot_count += 1
+	if weapon.shot_noise != null:
+		weapon.shot_noise.emit_from(player, weapon.shot_noise_radius)
 	shot_cooldown = weapon.shot_interval
 	var stability: float = accuracy
 	var origin: Vector3 = player.global_position + Vector3.UP * 0.8

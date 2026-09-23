@@ -6,6 +6,10 @@ enum FireMode { SEMI_AUTO, AUTOMATIC }
 @export_group("共用参数")
 ## 武器显示名称。
 @export var display_name: String = "测试手枪"
+## 玩家或敌人实际开枪产生的逻辑声源；留空关闭。Audio Stream仅预留，不播放音频。
+@export var shot_noise: NoiseData = preload("res://gunshot_noise.tres")
+## 成功开火产生的声音半径（米），玩家和敌人都读取各自武器；0关闭枪声事件。
+@export_range(0.0, 100.0, 0.5) var shot_noise_radius: float = 14.0
 ## 实际射线命中后的单发伤害。
 @export_range(1.0, 1000.0, 1.0) var damage: float = 25.0
 ## 玩家锁定目标的最大距离（米）；敌人视野仍由 Perception 决定。

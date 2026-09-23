@@ -1,5 +1,8 @@
 extends "res://enemy_action.gd"
 
+# 只用于本次听觉调查；不覆盖最后真实目击记录。
+var noise_search_origin: Vector3 = Vector3.INF
+
 # 搜寻：丢失目标后的预测追踪、调查和区域搜索。由 AI 统一调用。
 enum SearchHintDecayMode {
 	NONE,
@@ -265,6 +268,8 @@ func _custom_search_hint_decay_multiplier(
 
 
 func _try_tracking_cheat_hint(chance: float) -> bool:
+	if noise_search_origin.is_finite():
+		return false
 	if debug_tracking_cheat:
 		print("[AI][追踪提示] 尝试提示 chance=", snappedf(chance, 0.001))
 
@@ -544,14 +549,15 @@ func begin_search(center: Vector3 = Vector3.INF) -> void:
 	ai.state = ai.State.SEARCH
 	ai.is_alerted = true
 
-	# 真正见过玩家时固定使用最后目击位置；来弹推测和 TRACK 预测不挪动圆心。
-	# 从未见过玩家而仅被枪声激活时，才使用传入位置或最后已知位置。
+	# 普通搜索沿用最后目击圆心；本次由声音触发时，以新的声源位置为圆心。
 	search_origin = ai.last_seen_position if ai.has_visual_memory else (center if center.is_finite() else ai.last_known_position)
+	if noise_search_origin.is_finite():
+		search_origin = noise_search_origin
 	search_origin.y = actor.global_position.y
 
 	# SEARCH 主方向优先使用玩家最后真实移动方向。
 	# 没有移动方向时，再使用已有的怀疑方向；还没有就从 NPC 朝搜索中心；最后才使用当前朝向。
-	var forward: Vector3 = ai.last_seen_direction
+	var forward: Vector3 = Vector3.ZERO if noise_search_origin.is_finite() else ai.last_seen_direction
 	forward.y = 0.0
 
 	if forward.is_zero_approx():
@@ -613,7 +619,7 @@ func _process_search(delta: float) -> Vector3:
 			return Vector3.ZERO
 
 	# 保留现有追踪提示；真正重新发现玩家时仍由主状态机打断搜索。
-	if search_hint_timer <= 0.0:
+	if not noise_search_origin.is_finite() and search_hint_timer <= 0.0:
 		search_hint_timer = maxf(0.25, search_hint_interval_seconds)
 		if _try_tracking_cheat_hint(get_current_search_hint_chance()):
 			_start_track_to_suspected()
@@ -821,6 +827,7 @@ func _skip_current_search_point() -> void:
 
 
 func _end_search() -> void:
+	noise_search_origin = Vector3.INF
 	# 搜索完整结束后，才退出“知道玩家”状态并恢复正常巡逻。
 	ai.is_alerted = false
 	search_timer = 0.0
@@ -850,6 +857,7 @@ func _end_search() -> void:
 
 
 func reset() -> void:
+	noise_search_origin = Vector3.INF
 	has_suspected_position = false
 	suspected_position = actor.global_position
 	suspected_look_position = actor.global_position
@@ -910,3 +918,22 @@ func facing_direction(direction: Vector3) -> Vector3:
 	if ai.state == ai.State.SEARCH and direction.is_zero_approx():
 		return search_direction
 	return direction
+
+
+func investigate_noise(position: Vector3) -> void:
+	if not is_enabled():
+		return
+	# 同位置连发不无限刷新计时；移动后的新声源才更新调查目的地。
+	if noise_search_origin.is_finite() and noise_search_origin.distance_to(position) < 0.35 and ai.state in [ai.State.TRACK, ai.State.SEARCH]:
+		return
+	reset()
+	noise_search_origin = position
+	ai.last_known_position = position
+	ai.is_alerted = true
+	tactics.ranged_has_destination = false
+	tactics.ranged_repath_timer = 0.0
+	if _set_suspected_position_from_raw(position, 1.0) or _set_suspected_position_relaxed(position):
+		_start_track_to_suspected()
+	else:
+		# 精确声源不可达时，在附近可达区域搜索，不穿过碰撞墙。
+		begin_search(position)

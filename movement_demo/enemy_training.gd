@@ -202,6 +202,8 @@ enum SearchHintDecayMode { NONE, LINEAR_TIME, EXPONENTIAL_TIME, LINEAR_DISTANCE,
 @export_range(0.05, 2.0, 0.05) var fire_decision_wait_pressure_per_second: float = 0.45
 
 @export_group("感知", "perception_")
+## 是否接收玩家移动和开枪的声源；调查仍受UnitType/Training的search权限限制。
+@export var perception_hearing_enabled: bool = true
 ## 普通视觉感知的最大距离（米）；仍受视角、墙壁和竞技场范围限制。
 @export var perception_sight_distance: float = 10.0
 ## 普通视野的水平总角度（度）；左右各占一半，近身警戒不受此角度限制。

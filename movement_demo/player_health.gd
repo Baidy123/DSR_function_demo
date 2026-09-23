@@ -29,6 +29,7 @@ func _ready() -> void:
 	death_screen.hide()
 	$Debug.visible = OS.is_debug_build()
 	invincible_toggle.toggled.connect(_set_debug_invincible)
+	$Debug/Controls/NoiseRanges.toggled.connect($NoiseRanges.set_enabled)
 	damage_button.pressed.connect(_debug_damage)
 	restart_button.pressed.connect(_request_restart)
 	_update_display()

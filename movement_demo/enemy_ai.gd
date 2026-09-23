@@ -70,6 +70,7 @@ func _ready() -> void:
 		action.setup(self)
 	tactics.attack_position.phase_changed.connect(_on_attack_position_phase_changed)
 	tactics.attack_position.finished.connect(_on_attack_position_finished)
+	perception.noise_heard.connect(_on_noise_heard)
 	add_to_group("shot_listener")
 	player = get_tree().get_first_node_in_group("player")
 	actor.hit_received.connect(_on_hit_received)
@@ -117,6 +118,7 @@ func _physics_process(delta: float) -> void:
 	# 只用“连续两帧都真正看见玩家”来估计移动方向。
 	# 这样不需要额外的“是否曾目击玩家”状态，也不会把第一次看见时的长距离差误当成移动。
 	if sees_player:
+		search.noise_search_origin = Vector3.INF
 		var new_seen_position = player.global_position
 		if was_seeing_player:
 			var seen_motion = new_seen_position - last_seen_position
@@ -277,6 +279,7 @@ func _investigate_attack(attacker_position: Vector3) -> void:
 	# 区外来弹不提前启动调查；伤害结算仍由 receive_hit() 处理。
 	if not is_arena_active():
 		return
+	search.noise_search_origin = Vector3.INF
 	# 受击或近身来弹直接进入唯一的“知道玩家”状态。
 	# attacker_position 仍可带误差，但不再区分“只警觉、尚未目击”这种记忆状态。
 	is_alerted = true
@@ -302,12 +305,19 @@ func _update_label() -> void:
 	if state == State.REPOSITION and _horizontal_distance(last_known_position) < tactics._ranged_distance_band().x:
 		names[State.REPOSITION] = "寻找后退路线"
 	var knowledge_text = "知道玩家" if is_alerted else "未激活"
+	if search.noise_search_origin.is_finite():
+		knowledge_text = "听到声音"
 
 	var state_text: String = cover.state_label() if cover != null and cover.is_active() else names[state]
 	if tactics.attack_position.is_active():
 		state_text = tactics.attack_position.state_label()
 	if tactics.suppression.is_active():
 		state_text = tactics.suppression.state_label()
+	if search.noise_search_origin.is_finite() and not cover.is_active():
+		if state == State.TRACK:
+			state_text = "调查声源"
+		elif state == State.SEARCH:
+			state_text = "声源附近搜索"
 	var type_text = "近战" if combat_type == CombatType.MELEE else "远程"
 	actor.set_status_text("%s敌人：%s\n生命 %d / %d\n%s" % [
 		type_text,
@@ -418,3 +428,15 @@ func reset_actions() -> void:
 func cancel_action(id: StringName) -> void:
 	if actions.has(id):
 		actions[id].reset()
+
+
+func _on_noise_heard(position: Vector3) -> void:
+	if not can_use_action(&"search") or actor.is_dead or not is_arena_active():
+		return
+	# 真实目击与正在执行的战斗动作优先；声音不会每次都打断它们。
+	if perception.can_see_player() or cover.is_active() or tactics.attack_position.is_active() or tactics.suppression.is_active():
+		return
+	if NavigationServer3D.map_get_iteration_id(agent.get_navigation_map()) == 0:
+		return
+	search.investigate_noise(position)
+	_update_label()

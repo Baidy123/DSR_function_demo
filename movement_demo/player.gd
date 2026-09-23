@@ -17,6 +17,15 @@ extends CharacterBody3D
 ## 从走路速度减速到停止需要的时间。
 @export_range(0.01, 2.0, 0.01) var deceleration_time: float = 0.2
 
+@export_group("移动声音")
+## 移动声无遮挡半径（米）；0关闭。走路和奔跑暂时共用。
+@export_range(0.0, 100.0, 0.5) var movement_noise_radius: float = 5.0
+## 逻辑声源配置；留空关闭移动声。第一版走路与奔跑共用此资源。
+@export var movement_noise: NoiseData = preload("res://movement_noise.tres")
+## 实际水平移动时每隔多少秒产生一次声源；刚开始移动立即产生。
+@export_range(0.05, 2.0, 0.05) var movement_noise_interval: float = 0.4
+var _movement_noise_timer: float = 0.0
+
 const MAX_STAMINA: float = 100.0
 var stamina: float = MAX_STAMINA
 var stamina_exhausted: bool = false
@@ -98,7 +107,9 @@ func _physics_process(delta: float) -> void:
 		velocity += get_gravity() * delta
 	else:
 		velocity.y = 0.0
+	var before_move: Vector3 = global_position
 	move_and_slide()
+	_update_movement_noise(delta, before_move)
 	if combat != null:
 		combat.end_frame(delta, Vector2(get_real_velocity().x, get_real_velocity().z).length() > 0.01)
 
@@ -120,7 +131,9 @@ func _move_while_locked(delta: float, direction: Vector3) -> void:
 		velocity += get_gravity() * delta
 	else:
 		velocity.y = 0.0
+	var before_move: Vector3 = global_position
 	move_and_slide()
+	_update_movement_noise(delta, before_move)
 	combat.end_frame(delta, Vector2(get_real_velocity().x, get_real_velocity().z).length() > 0.01)
 
 
@@ -171,3 +184,15 @@ func receive_hit(damage: float = 25.0, _attacker_position: Vector3 = Vector3.ZER
 
 func is_dead() -> bool:
 	return health != null and health.is_dead
+
+
+func _update_movement_noise(delta: float, before_move: Vector3) -> void:
+	var distance := Vector2(global_position.x - before_move.x, global_position.z - before_move.z).length()
+	if is_dead() or is_in_dialogue or distance <= 0.0001:
+		_movement_noise_timer = 0.0
+		return
+	_movement_noise_timer = maxf(0.0, _movement_noise_timer - delta)
+	if _movement_noise_timer <= 0.0:
+		if movement_noise != null:
+			movement_noise.emit_from(self, movement_noise_radius)
+		_movement_noise_timer = maxf(0.05, movement_noise_interval)

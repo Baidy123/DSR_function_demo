@@ -11,6 +11,15 @@ signal reset_completed
 ## 出生、离场刷新和重新开始时恢复的生命值。
 @export var max_health: float = 100.0
 
+@export_group("移动声音")
+## 实际水平移动时发声，0关闭；敌人听觉会忽略自己及队友的声音。
+@export_range(0.0, 100.0, 0.5) var movement_noise_radius: float = 5.0
+## 隔墙衰减与预留音频，留空关闭移动声。
+@export var movement_noise: NoiseData = preload("res://movement_noise.tres")
+## 持续移动时的发声间隔（秒）；刚开始移动立即发声。
+@export_range(0.05, 2.0, 0.05) var movement_noise_interval: float = 0.4
+var _movement_noise_timer: float = 0.0
+
 @export_group("Shooting")
 ## 是否允许执行射击；可暂时关闭以单独观察移动和掩体行为。
 @export var shooting_enabled: bool = true
@@ -69,6 +78,19 @@ func move_character(direction: Vector3, delta: float, speed_multiplier: float = 
 	var before: Vector3 = global_position
 	move_and_slide()
 	_weapon_move_distance += Vector2(global_position.x - before.x, global_position.z - before.z).length()
+	_update_movement_noise(delta, before)
+
+
+func _update_movement_noise(delta: float, before_move: Vector3) -> void:
+	var distance := Vector2(global_position.x - before_move.x, global_position.z - before_move.z).length()
+	if is_dead or distance <= 0.0001:
+		_movement_noise_timer = 0.0
+		return
+	_movement_noise_timer = maxf(0.0, _movement_noise_timer - delta)
+	if _movement_noise_timer <= 0.0:
+		if movement_noise != null:
+			movement_noise.emit_from(self, movement_noise_radius)
+		_movement_noise_timer = maxf(0.05, movement_noise_interval)
 
 
 
@@ -105,6 +127,7 @@ func receive_hit(damage: float, attacker_position: Vector3 = Vector3.INF) -> voi
 
 
 func reset_target() -> void:
+	_movement_noise_timer = 0.0
 	if death_tween != null and death_tween.is_valid():
 		death_tween.kill()
 	transform = initial_transform
@@ -249,6 +272,8 @@ func try_fire() -> bool:
 	var hit: Dictionary = get_world_3d().direct_space_state.intersect_ray(query)
 	last_shot_collider = hit.get("collider")
 	shot_count += 1
+	if weapon.shot_noise != null:
+		weapon.shot_noise.emit_from(self, weapon.shot_noise_radius)
 	shot_cooldown = maxf(0.05, weapon.shot_interval)
 	var settings: Dictionary = weapon.get_aim_settings(false)
 	if weapon_stability > settings.shot_floor:
