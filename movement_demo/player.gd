@@ -18,8 +18,10 @@ extends CharacterBody3D
 @export_range(0.01, 2.0, 0.01) var deceleration_time: float = 0.2
 
 @export_group("移动声音")
-## 移动声无遮挡半径（米）；0关闭。走路和奔跑暂时共用。
-@export_range(0.0, 100.0, 0.5) var movement_noise_radius: float = 5.0
+## 普通移动声无遮挡半径（米）；0关闭。奔跑使用下面的独立半径。
+@export_range(0.0, 100.0, 0.5) var movement_noise_radius: float = 3.0
+## 当帧处于奔跑状态时的移动声音半径，仍需实际发生位移。
+@export_range(0.0, 100.0, 0.5) var sprint_noise_radius: float = 6.0
 ## 逻辑声源配置；留空关闭移动声。第一版走路与奔跑共用此资源。
 @export var movement_noise: NoiseData = preload("res://movement_noise.tres")
 ## 实际水平移动时每隔多少秒产生一次声源；刚开始移动立即产生。
@@ -195,5 +197,5 @@ func _update_movement_noise(delta: float, before_move: Vector3) -> void:
 	_movement_noise_timer = maxf(0.0, _movement_noise_timer - delta)
 	if _movement_noise_timer <= 0.0:
 		if movement_noise != null:
-			movement_noise.emit_from(self, movement_noise_radius)
+			movement_noise.emit_from(self, sprint_noise_radius if is_sprinting else movement_noise_radius)
 		_movement_noise_timer = maxf(0.05, movement_noise_interval)

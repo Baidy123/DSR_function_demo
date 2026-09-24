@@ -29,7 +29,7 @@ func _run() -> void:
 	var ai = enemy.get_node("AI")
 	ai.perception.sight_distance = 0.0
 	ai.perception.close_awareness_radius = 0.0
-	player.get_node("Health").debug_invincible = true
+	player.get_node("Health").debug_mode = false
 	player.global_position = enemy.global_position + Vector3(0, 0, 4.8)
 	var peer = enemy.duplicate()
 	enemy.get_parent().add_child(peer)
@@ -48,6 +48,7 @@ func _run() -> void:
 	check(recorder.events.size() == 1 and ai.is_alerted, "调试开关不影响玩家声源感知")
 	enemy.reset_target()
 	peer.reset_target()
+	player.get_node("Health").debug_mode = true
 	toggle.button_pressed = true
 	debug.set_process(false) # 手动推进寿命，使图形断言不依赖机器速度。
 	enemy.movement_noise.emit_from(enemy, 6.5)

@@ -1,13 +1,22 @@
 extends CanvasLayer
 
+@onready var debug_settings = get_node("/root/DebugSettings")
+
 ## 出生和重新开始时的最大生命；100 是当前试玩初值。
 @export_range(1.0, 10000.0, 1.0) var max_health: float = 100.0
-## 调试版无敌：阻止扣血，不回血或复活；release 导出中不生效。
-@export var debug_invincible: bool = false:
+## 调试总开关：显示调试视图并开启无敌；不回血或复活，release 中不生效。
+@export var debug_mode: bool = false:
 	set(value):
-		debug_invincible = value
+		debug_mode = value
 		if is_node_ready():
-			_update_display()
+			debug_settings.set_enabled(value)
+
+# 保留旧的代码入口，现与总开关同步；检查器使用上面的 Debug Mode。
+var debug_invincible: bool:
+	get:
+		return debug_mode
+	set(value):
+		debug_mode = value
 
 var health: float = 0.0
 var is_dead: bool = false
@@ -30,6 +39,9 @@ func _ready() -> void:
 	$Debug.visible = OS.is_debug_build()
 	invincible_toggle.toggled.connect(_set_debug_invincible)
 	$Debug/Controls/NoiseRanges.toggled.connect($NoiseRanges.set_enabled)
+	debug_settings.changed.connect(_apply_debug_mode)
+	debug_settings.set_enabled(debug_mode)
+	_apply_debug_mode(debug_settings.enabled)
 	damage_button.pressed.connect(_debug_damage)
 	restart_button.pressed.connect(_request_restart)
 	_update_display()
@@ -76,11 +88,17 @@ func receive_hit(damage: float) -> void:
 
 
 func is_invincible() -> bool:
-	return OS.is_debug_build() and debug_invincible
+	return debug_settings.enabled
 
 
 func _set_debug_invincible(enabled: bool) -> void:
-	debug_invincible = enabled
+	debug_mode = enabled
+
+
+func _apply_debug_mode(enabled: bool) -> void:
+	debug_mode = enabled
+	$Debug/Controls/NoiseRanges.disabled = not enabled
+	_update_display()
 
 
 func _debug_damage() -> void:

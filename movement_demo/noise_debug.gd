@@ -1,5 +1,7 @@
 extends Node3D
 
+@onready var debug_settings = get_node("/root/DebugSettings")
+
 ## 只显示实际发生的声音事件；外圈无遮挡，内圈隔墙衰减后。
 ## 圆环不是绕墙后的精确轮廓，真实听觉仍逐个敌人检测墙壁。
 const PLAYER_COLOR := Color(0.2, 0.75, 1.0)
@@ -7,16 +9,23 @@ const ENEMY_COLOR := Color(1.0, 0.5, 0.15)
 const LIFETIME := 0.4
 const SEGMENTS := 96
 var enabled: bool = false
+var _requested: bool = true
 
 
 func _ready() -> void:
 	top_level = true
 	add_to_group("hearing_listener")
-	set_process(false)
+	debug_settings.changed.connect(_apply_debug_mode)
+	_apply_debug_mode(debug_settings.enabled)
 
 
 func set_enabled(value: bool) -> void:
-	enabled = value and OS.is_debug_build()
+	_requested = value
+	_apply_debug_mode(debug_settings.enabled)
+
+
+func _apply_debug_mode(debug_enabled: bool) -> void:
+	enabled = _requested and debug_enabled
 	if not enabled:
 		for pulse in get_children():
 			pulse.free()

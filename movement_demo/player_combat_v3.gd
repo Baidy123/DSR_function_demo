@@ -1,5 +1,7 @@
 extends Node
 
+@onready var debug_settings = get_node("/root/DebugSettings")
+
 const Ammo = preload("res://weapon_ammo.gd")
 ## 奔跑时每帧换弹进度的倍率；0.5表示全程奔跑耗时翻倍。
 @export_range(0.1, 1.0, 0.05) var sprint_reload_speed_multiplier: float = 0.5
@@ -34,7 +36,13 @@ var player_position_before_move: Vector3 = Vector3.ZERO
 
 
 func _ready() -> void:
+	debug_settings.changed.connect(_apply_debug_mode)
 	equip_weapon(weapon)
+	_apply_debug_mode(debug_settings.enabled)
+
+
+func _apply_debug_mode(enabled: bool) -> void:
+	$HUD/Panel.visible = enabled and not player.is_in_dialogue
 
 
 ## 装备组件调用此接口；切槽传 true 保留上一枪冷却，避免快速切枪绕过射速。
@@ -399,7 +407,7 @@ func _draw_shot(origin: Vector3, endpoint: Vector3, hit: bool) -> void:
 
 
 func _update_status() -> void:
-	$HUD/Panel.visible = not player.is_in_dialogue
+	_apply_debug_mode(debug_settings.enabled)
 	var title: String = weapon.display_name if weapon != null else "未装备"
 	var target_name: String = str(locked_target.name) if is_instance_valid(locked_target) else "无"
 	var precision: String = "%d%%" % roundi(accuracy * 100.0)

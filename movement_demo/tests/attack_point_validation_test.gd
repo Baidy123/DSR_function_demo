@@ -129,6 +129,8 @@ func _run() -> void:
 	for frame in range(3):
 		await physics_frame
 	var preview = selection.get_node("AttackPreview")
+	var debug_settings = root.get_node("DebugSettings")
+	debug_settings.enabled = true
 	selection.debug_attack_points = true
 	ai.is_alerted = true
 	ai.has_visual_memory = true
@@ -151,6 +153,15 @@ func _run() -> void:
 	preview.refresh()
 	_check("运行显示为所有候选给出评估", preview.assessments.size() == expected_count)
 	_check("大量样本共用网格且每个掩体只有一个标签", preview.get_children().size() == 7)
+	debug_settings.enabled = false
+	_check("总开关关闭立即清空攻击点并停止查询", not preview.is_physics_processing() and preview.assessments.is_empty() and preview.get_children().all(func(node): return not node.visible))
+	preview.refresh()
+	preview._physics_process(0.1)
+	_check("手动刷新和细项开关不能绕过总开关", preview.assessments.is_empty() and preview._pending.is_empty())
+	debug_settings.enabled = true
+	preview.set_physics_process(false)
+	preview.refresh()
+	_check("重新开启总开关恢复攻击点评估", preview.assessments.size() == expected_count)
 	var remembered: Array = preview.assessments.duplicate(true)
 	ai.last_seen_position = other_side - Vector3.UP * 0.8
 	preview.refresh()

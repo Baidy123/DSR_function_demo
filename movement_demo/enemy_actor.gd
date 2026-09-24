@@ -1,5 +1,7 @@
 extends CharacterBody3D
 
+@onready var debug_settings = get_node("/root/DebugSettings")
+
 const Ammo = preload("res://weapon_ammo.gd")
 var ammo = Ammo.new()
 ## 身体执行层不读取玩家位置，也不决定追踪、搜索或掩体策略。
@@ -15,7 +17,9 @@ signal reset_completed
 
 @export_group("移动声音")
 ## 实际水平移动时发声，0关闭；敌人听觉会忽略自己及队友的声音。
-@export_range(0.0, 100.0, 0.5) var movement_noise_radius: float = 5.0
+@export_range(0.0, 100.0, 0.5) var movement_noise_radius: float = 3.0
+## 执行移动的速度倍率大于 1 时使用，普通移动和慢走使用普通半径。
+@export_range(0.0, 100.0, 0.5) var fast_movement_noise_radius: float = 6.0
 ## 隔墙衰减与预留音频，留空关闭移动声。
 @export var movement_noise: NoiseData = preload("res://movement_noise.tres")
 ## 持续移动时的发声间隔（秒）；刚开始移动立即发声。
@@ -61,6 +65,8 @@ var death_tween: Tween
 
 
 func _ready() -> void:
+	debug_settings.changed.connect(_apply_debug_mode)
+	_apply_debug_mode(debug_settings.enabled)
 	_shot_rng.randomize()
 	initial_transform = transform
 	initial_body_transform = $Body.transform
@@ -80,10 +86,10 @@ func move_character(direction: Vector3, delta: float, speed_multiplier: float = 
 	var before: Vector3 = global_position
 	move_and_slide()
 	_weapon_move_distance += Vector2(global_position.x - before.x, global_position.z - before.z).length()
-	_update_movement_noise(delta, before)
+	_update_movement_noise(delta, before, speed_multiplier > 1.0)
 
 
-func _update_movement_noise(delta: float, before_move: Vector3) -> void:
+func _update_movement_noise(delta: float, before_move: Vector3, fast_movement: bool = false) -> void:
 	var distance := Vector2(global_position.x - before_move.x, global_position.z - before_move.z).length()
 	if is_dead or distance <= 0.0001:
 		_movement_noise_timer = 0.0
@@ -91,7 +97,7 @@ func _update_movement_noise(delta: float, before_move: Vector3) -> void:
 	_movement_noise_timer = maxf(0.0, _movement_noise_timer - delta)
 	if _movement_noise_timer <= 0.0:
 		if movement_noise != null:
-			movement_noise.emit_from(self, movement_noise_radius)
+			movement_noise.emit_from(self, fast_movement_noise_radius if fast_movement else movement_noise_radius)
 		_movement_noise_timer = maxf(0.05, movement_noise_interval)
 
 
@@ -152,7 +158,11 @@ func reset_target() -> void:
 	reset_completed.emit()
 
 
-## AI 可以补充状态文字；没有 AI 时仍显示生命。
+func _apply_debug_mode(enabled: bool) -> void:
+	$Label.visible = enabled
+
+
+## AI 可以补充状态文字；仅 Debug 模式显示，没有 AI 时显示生命。
 func set_status_text(text: String) -> void:
 	$Label.text = text
 

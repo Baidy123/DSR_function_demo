@@ -1,5 +1,7 @@
 extends Node3D
 
+@onready var debug_settings = get_node("/root/DebugSettings")
+
 const SHORT_REASONS := {"空间被占": "占位", "不可达": "无路", "射界受阻": "挡枪",
 	"散布射界贴墙": "贴墙", "超射程": "超距", "无武器": "无枪", "完全遮挡": "全遮"}
 
@@ -20,12 +22,19 @@ func _ready() -> void:
 	global_transform = Transform3D.IDENTITY
 	_markers = MeshInstance3D.new()
 	add_child(_markers)
-	set_physics_process(OS.is_debug_build())
+	debug_settings.changed.connect(_apply_debug_mode)
+	_apply_debug_mode(debug_settings.enabled)
+
+
+func _apply_debug_mode(enabled: bool) -> void:
+	set_physics_process(enabled)
+	if not enabled:
+		clear()
 
 
 func _physics_process(delta: float) -> void:
 	var ai = selection.ai
-	if not selection.debug_attack_points or selection.enemy.is_dead or not ai.is_arena_active() or not ai.is_alerted or not ai.has_visual_memory:
+	if not debug_settings.enabled or not selection.debug_attack_points or selection.enemy.is_dead or not ai.is_arena_active() or not ai.is_alerted or not ai.has_visual_memory:
 		clear()
 		return
 	_elapsed -= delta
@@ -68,7 +77,7 @@ func refresh() -> void:
 	_pending.clear()
 	_results.clear()
 	var ai = selection.ai
-	if not OS.is_debug_build() or not selection.debug_attack_points or selection.enemy.is_dead or not ai.is_arena_active() or not ai.is_alerted or not ai.has_visual_memory:
+	if not debug_settings.enabled or not selection.debug_attack_points or selection.enemy.is_dead or not ai.is_arena_active() or not ai.is_alerted or not ai.has_visual_memory:
 		clear()
 		return
 	# 身体中心高度与现有玩家瞄准点一致；失去视野后冻结在最后目击位置。

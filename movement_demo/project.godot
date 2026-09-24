@@ -20,6 +20,12 @@ _mcp_game_helper="*res://addons/godot_ai/runtime/game_helper.gd"
 PhantomCameraManager="*uid://duq6jhf6unyis"
 DialogueManager="*uid://c3rodes2l3gxb"
 GameState="*res://game_state.gd"
+DebugSettings="*res://debug_settings.gd"
+
+[debug]
+
+file_logging/enable_file_logging=true
+file_logging/log_path="logs/game.log"
 
 [display]
 

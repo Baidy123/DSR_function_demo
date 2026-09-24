@@ -115,8 +115,8 @@ alignment = 1
 [node name="Invincible" type="CheckBox" parent="Debug/Controls"]
 layout_mode = 2
 focus_mode = 0
-tooltip_text = "仅调试版：阻止扣血，不回血或复活。"
-text = "Debug 无敌"
+tooltip_text = "统一开启调试视图与玩家无敌；关闭后恢复正常受伤，不回血或复活。"
+text = "Debug 总开关"
 
 [node name="Damage" type="Button" parent="Debug/Controls"]
 layout_mode = 2
@@ -127,6 +127,7 @@ text = "测试受伤 -25"
 [node name="NoiseRanges" type="CheckBox" parent="Debug/Controls"]
 layout_mode = 2
 focus_mode = 0
+button_pressed = true
 tooltip_text = "实际发声时短暂显示：玩家蓝色、敌人橙色。外圈为无遮挡半径，内虚线圈为隔墙半径；不代表按墙裁切的精确形状。"
 text = "声音范围"
 

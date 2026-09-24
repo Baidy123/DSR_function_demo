@@ -7,6 +7,8 @@
 .godot_ai_update/
 *.tmp
 *.log
+/movement_demo/logs/*
+!/movement_demo/logs/.gdignore
 export_credentials.cfg
 
 # 本机凭据配置
