@@ -67,6 +67,7 @@ func _physics_process(delta: float) -> void:
 
 	# 松键或尚未转好时，目标速度为零，逐渐减速。
 	var target_speed: float = 0.0
+	var sprint_blocked: bool = combat != null and combat.is_sprint_blocked()
 	is_sprinting = false
 
 	if not direction.is_zero_approx():
@@ -80,11 +81,14 @@ func _physics_process(delta: float) -> void:
 			if facing_npc_this_frame:
 				is_facing_npc = false
 			else:
-				is_sprinting = Input.is_action_pressed("sprint") and not stamina_exhausted
+				is_sprinting = Input.is_action_pressed("sprint") and not stamina_exhausted and not sprint_blocked
 				target_speed = move_speed
 				if is_sprinting:
 					target_speed *= sprint_speed_multiplier
 
+	# 快速换弹不仅禁止新奔跑，也不能带着原来的高速惯性移动。
+	if sprint_blocked:
+		current_speed = minf(current_speed, move_speed)
 	if facing_npc_this_frame or is_in_dialogue:
 		# 对话期间清掉移动惯性。
 		current_speed = 0.0

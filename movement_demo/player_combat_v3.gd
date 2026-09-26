@@ -3,9 +3,10 @@ extends Node
 @onready var debug_settings = get_node("/root/DebugSettings")
 
 const Ammo = preload("res://weapon_ammo.gd")
-## 奔跑时每帧换弹进度的倍率；0.5表示全程奔跑耗时翻倍。
+## 奔跑中开始的慢速换弹进度倍率；整次固定，0.5表示耗时翻倍。
 @export_range(0.1, 1.0, 0.05) var sprint_reload_speed_multiplier: float = 0.5
 var ammo = Ammo.new()
+var _reload_started_sprinting: bool = false
 enum AimMode { PROBABILITY, SPREAD_CONE }
 ## 选择本节点的射击算法；两种模式共用锁定、碰撞和伤害结算。
 @export_enum("旧概率模式:0", "新散布锥模式:1") var aim_mode: int = AimMode.SPREAD_CONE
@@ -86,6 +87,7 @@ func request_reload() -> bool:
 		return false
 	if not ammo.start_reload():
 		return false
+	_reload_started_sprinting = player.is_sprinting
 	shot_requested = false
 	fire_held = false
 	return true
@@ -93,6 +95,11 @@ func request_reload() -> bool:
 
 func cancel_reload() -> void:
 	ammo.cancel_reload()
+	_reload_started_sprinting = false
+
+
+func is_sprint_blocked() -> bool:
+	return ammo.is_reloading and not _reload_started_sprinting
 
 
 func cancel_aim() -> void:
@@ -148,7 +155,7 @@ func end_frame(delta: float, moving: bool) -> void:
 	if player.is_dead() or player.is_in_dialogue:
 		cancel_reload()
 	elif not get_tree().paused:
-		var reload_speed: float = sprint_reload_speed_multiplier if player.is_sprinting else 1.0
+		var reload_speed: float = sprint_reload_speed_multiplier if _reload_started_sprinting else 1.0
 		ammo.advance_reload(delta, reload_speed)
 	if not can_combat() or player.is_in_dialogue:
 		cancel_aim()

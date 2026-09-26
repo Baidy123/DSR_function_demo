@@ -60,10 +60,10 @@ func _run() -> void:
 	check(is_equal_approx(combat.ammo.reload_progress, 0.25), "非奔跑按正常速度换弹")
 	player.is_sprinting = true
 	combat.end_frame(1.0, false)
-	check(is_equal_approx(combat.ammo.reload_progress, 0.5), "当帧奔跑状态即时减速即使实际没位移")
+	check(is_equal_approx(combat.ammo.reload_progress, 0.75), "快速换弹开始后不因奔跑标志改变进度速度")
 	player.is_sprinting = false
-	combat.end_frame(1.0, true)
-	check(not combat.ammo.is_reloading and combat.ammo.magazine_rounds == 12, "退出奔跑恢复正常速率且保留旧进度")
+	combat.end_frame(0.5, true)
+	check(not combat.ammo.is_reloading and combat.ammo.magazine_rounds == 12, "快速换弹固定两秒完成")
 	check(slots.reserve_ammo[WeaponData.AmmoType.PISTOL] == 24, "完成换弹从对应共享池扣弹")
 	combat.ammo.magazine_rounds = 3
 	combat.request_reload()
@@ -128,7 +128,7 @@ func _run() -> void:
 	player.set_physics_process(false)
 	check(not paused and combat.ammo.magazine_rounds == combat.weapon.magazine_capacity and not combat.ammo.is_reloading, "实际重开恢复初始武器满弹及换弹状态")
 	check(slots.reserve_ammo[0] == slots.starting_rifle_ammo and slots.reserve_ammo[1] == slots.starting_pistol_ammo and slots.reserve_ammo[2] == slots.starting_smg_ammo and slots.reserve_ammo[3] == slots.starting_shotgun_ammo, "重开恢复四类备弹初值")
-	# 驱动真实Player物理流程，确认end_frame读的是本帧更新后的奔跑状态。
+	# 驱动真实Player物理流程，验证按R时锁定方式以及快速换弹禁跑。
 	var movement_weapon := WeaponData.new()
 	slots.primary_weapon = movement_weapon
 	slots.select_slot(0)
@@ -138,10 +138,42 @@ func _run() -> void:
 	Input.action_press("move_up")
 	Input.action_press("sprint")
 	player._physics_process(0.1)
-	check(player.is_sprinting and is_equal_approx(combat.ammo.reload_progress, 0.025), "真实移动流程使用本帧奔跑状态减慢换弹")
+	check(not player.is_sprinting and is_equal_approx(combat.ammo.reload_progress, 0.05), "快速换弹期间按Shift仍按走路状态和快速进度执行")
+	check(player.current_speed <= player.move_speed and player.stamina == player.MAX_STAMINA, "快速换弹限步行速度且不消耗奔跑耐力")
+	await process_frame
+	await process_frame
+	check(slots.get_node("Panel/Content/Hint").text.contains("快速换弹") and slots.get_node("Panel/Content/Hint").text.contains("禁跑"), "快速换弹界面明确提示禁跑")
+	player.current_speed = player.move_speed * player.sprint_speed_multiplier
+	player._physics_process(0.01)
+	check(player.current_speed <= player.move_speed, "快速换弹不能保留先前奔跑的高速惯性")
+	combat.cancel_reload()
+	player._physics_process(0.1)
+	check(player.is_sprinting, "取消快速换弹后按住Shift恢复奔跑")
+	_key_r()
+	combat.end_frame(0.5, false)
+	check(is_equal_approx(combat.ammo.reload_progress, 0.125), "奔跑中按R以慢速开始换弹")
 	Input.action_release("sprint")
 	player._physics_process(0.1)
-	check(not player.is_sprinting and is_equal_approx(combat.ammo.reload_progress, 0.075), "松开奔跑当帧即恢复正常换弹速度")
+	check(not player.is_sprinting and is_equal_approx(combat.ammo.reload_progress, 0.15), "慢速换弹中松开Shift仍保持慢速进度")
+	await process_frame
+	await process_frame
+	check(slots.get_node("Panel/Content/Hint").text.contains("慢速换弹") and slots.get_node("Panel/Content/Hint").text.contains("可跑"), "停跑后界面仍显示慢速换弹可跑")
+	Input.action_press("sprint")
+	player._physics_process(0.1)
+	check(player.is_sprinting and is_equal_approx(combat.ammo.reload_progress, 0.175), "慢速换弹允许重新奔跑且不重置进度")
+	Input.action_release("sprint")
+	combat.end_frame(3.3, false)
+	check(not combat.ammo.is_reloading and combat.ammo.magazine_rounds == 12, "慢速换弹累计四秒完成")
+	player._physics_process(0.1)
+	combat.ammo.magazine_rounds = 1
+	_key_r()
+	Input.action_press("sprint")
+	player._physics_process(0.1)
+	check(not player.is_sprinting, "下一次非奔跑开始重新选择快速换弹")
+	combat.end_frame(1.9, false)
+	player._physics_process(0.1)
+	check(player.is_sprinting, "快速换弹完成后按住Shift恢复奔跑")
+	Input.action_release("sprint")
 	Input.action_release("move_up")
 	finish()
 

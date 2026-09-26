@@ -112,4 +112,5 @@ func _update_display() -> void:
 		labels[slot].modulate = Color(1.0, 0.82, 0.35) if slot == active_slot else Color(0.7, 0.73, 0.78)
 	$Panel/Content/Hint.text = "1 / 2 或滚轮切枪 · R换弹"
 	if combat.ammo.is_reloading:
-		$Panel/Content/Hint.text = "换弹中 %d%%" % floori(combat.ammo.reload_progress * 100.0)
+		var progress: int = floori(combat.ammo.reload_progress * 100.0)
+		$Panel/Content/Hint.text = ("快速换弹中 %d%% · 禁跑" if combat.is_sprint_blocked() else "慢速换弹中 %d%% · 可跑") % progress
