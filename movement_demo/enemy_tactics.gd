@@ -413,10 +413,6 @@ func reset() -> void:
 
 
 func step(delta: float, sees_player: bool) -> Vector3:
-	if suppression.is_active():
-		return suppression.step(delta, sees_player)
-	if attack_position.is_active():
-		return attack_position.step(delta, sees_player)
 	if not is_enabled():
 		return Vector3.ZERO
 	if ai.state != ai.State.APPROACH:

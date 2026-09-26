@@ -46,6 +46,7 @@ var patrol_pause_timer: float = 0.0
 var tactics
 var search
 var actions: Dictionary = {}
+var action_selector = preload("res://enemy_action_selector.gd").new()
 var fire_decision
 var current_suppression
 var unit_type: Node
@@ -70,6 +71,9 @@ func _ready() -> void:
 		action.setup(self)
 	tactics.attack_position.phase_changed.connect(_on_attack_position_phase_changed)
 	tactics.attack_position.finished.connect(_on_attack_position_finished)
+	cover.finished.connect(resume_after_action)
+	actions[&"suppression"].finished.connect(resume_after_action)
+	actions[&"exit_suppression"].finished.connect(resume_after_action)
 	perception.noise_heard.connect(_on_noise_heard)
 	add_to_group("shot_listener")
 	player = get_tree().get_first_node_in_group("player")
@@ -132,16 +136,15 @@ func _physics_process(delta: float) -> void:
 			tactics.suppression.finish(true)
 
 	# 躲藏循环优先处理。躲在墙后时“看不见玩家”是主动行为，不在这里触发丢失目标判定；
-	# 如果探头后仍未重新发现玩家，由 Cover 自己进入 TRACK/SEARCH。
-	if cover != null and cover.is_active():
-		tactics.attack_position.reset()
-		tactics.suppression.reset()
+	# 如果探头后仍未重新发现玩家，Cover 汇报结束，由 AI 衔接 TRACK/SEARCH。
+	if action_selector.select_action(self) == &"cover":
+		on_tactical_action_started(&"cover")
 		if sees_player:
 			is_alerted = true
 			last_known_position = last_seen_position
 			search.has_suspected_position = false
 			search.search_hint_timer = 0.0
-		var cover_direction: Vector3 = cover.step(delta, sees_player)
+		var cover_direction: Vector3 = step_selected_action(delta, sees_player)
 		# 躲藏／探头因重新目击结束时，这一次接敌也可以触发攻击占位。
 		if not cover.is_active() and saw_player_this_frame:
 			try_attack_position()
@@ -200,12 +203,8 @@ func _physics_process(delta: float) -> void:
 		if patrol_pause_timer <= 0.0:
 			_start_random_patrol()
 
-	elif state == State.PATROL:
-		direction = actions[&"patrol"].step(delta)
-	elif state in [State.INVESTIGATE, State.TRACK, State.SEARCH]:
-		direction = search.step(delta)
-	elif state in [State.APPROACH, State.REPOSITION, State.HOLD_POSITION]:
-		direction = tactics.step(delta, sees_player)
+	else:
+		direction = step_selected_action(delta, sees_player)
 
 	# 远程走位和 TRACK 允许侧移/后退，同时把武器方向保持在威胁方向。
 	if state == State.REPOSITION or state == State.HOLD_POSITION:
@@ -221,6 +220,16 @@ func _physics_process(delta: float) -> void:
 	actor.move_character(direction, delta, search.movement_multiplier())
 	tactics.update_shooting(delta, sees_player, not direction.is_zero_approx())
 	_update_label()
+
+
+## 选择器只返回 ID，AI 负责调用兵种提供的实际实现，且一次只更新一个动作。
+func step_selected_action(delta: float, sees_player: bool) -> Vector3:
+	var id: StringName = action_selector.select_action(self)
+	if id.is_empty():
+		return Vector3.ZERO
+	if id in [&"patrol", &"search"]:
+		return actions[id].step(delta)
+	return actions[id].step(delta, sees_player)
 
 
 ## 普通换弹是基础操作，不需要登记战术动作；沿用当前移动/转向行为。
@@ -369,6 +378,13 @@ func _on_attack_position_phase_changed(current_phase: int) -> void:
 
 # 动作只汇报结束与已知位置；接下来交战还是追踪，由决策层衔接。
 func _on_attack_position_finished(sees_player: bool, known_position: Vector3, reason: String) -> void:
+	resume_after_action(sees_player, known_position)
+	if cover_selection.debug_cover_selection:
+		print("[AI][攻击占位] 结束：", reason, "；回到交战／追踪流程")
+
+
+## 动作只汇报结果；跨动作衔接统一留在 AI，取消动作不触发此流程。
+func resume_after_action(sees_player: bool, known_position: Vector3) -> void:
 	tactics.ranged_has_destination = false
 	tactics.ranged_repath_timer = 0.0
 	agent.target_position = actor.global_position
@@ -377,8 +393,23 @@ func _on_attack_position_finished(sees_player: bool, known_position: Vector3, re
 	else:
 		last_known_position = known_position
 		search.begin_tracking_or_search(true)
-	if cover_selection.debug_cover_selection:
-		print("[AI][攻击占位] 结束：", reason, "；回到交战／追踪流程")
+
+
+## 躲藏中受击保持原规则：回到接敌，并以已有受击记忆作为导航目标。
+func resume_engagement_after_cover_hit() -> void:
+	state = State.REPOSITION
+	tactics.ranged_has_destination = false
+	tactics.ranged_repath_timer = 0.0
+	agent.target_position = last_known_position
+
+
+## 成功取得战术控制权后才取消互斥动作，候选失败不能抢占。
+func on_tactical_action_started(id: StringName) -> void:
+	if id == &"cover":
+		cancel_action(&"attack_position")
+		cancel_action(current_suppression.action_id)
+	elif id in [&"suppression", &"exit_suppression"]:
+		cancel_action(&"attack_position")
 
 
 func start_suppression() -> void:

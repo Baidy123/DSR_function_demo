@@ -1,5 +1,7 @@
 extends "res://enemy_action.gd"
 
+signal finished(sees_player: bool, known_position: Vector3)
+
 enum Phase { NONE, RUN_TO_COVER, HIDE, PEEK_OUT, WATCH }
 
 ## 敌人胸部到实际弹道线段的警戒半径（米）；墙挡住来弹时不会隔墙触发。
@@ -172,8 +174,7 @@ func _try_take_cover(origin: Vector3, force_attempt: bool = false) -> void:
 		reset()
 		return
 	# 成功进入躲藏流程才抢占主动攻击占位；概率失败或无有效掩体不打断。
-	ai.cancel_action(&"attack_position")
-	ai.cancel_action(tactics.suppression.action_id)
+	ai.on_tactical_action_started(&"cover")
 	if phase == Phase.RUN_TO_COVER and can_reuse:
 		# 连续来弹保持原绕行目标和计时，不能每枪重启转移。
 		enemy.agent.target_position = cover_detour_position if cover_detour_active else hide_position
@@ -375,10 +376,7 @@ func on_damage_received() -> void:
 	if phase == Phase.HIDE:
 		reset()
 		_hide_damage_frame = Engine.get_physics_frames()
-		ai.state = ai.State.REPOSITION
-		ai.tactics.ranged_has_destination = false
-		ai.tactics.ranged_repath_timer = 0.0
-		enemy.agent.target_position = ai.last_known_position
+		ai.resume_engagement_after_cover_hit()
 		if selection.debug_cover_selection:
 			print("[AI][掩体] 躲藏中受伤 -> 退出躲藏，回到接敌流程")
 		return
@@ -605,15 +603,7 @@ func _refresh_move_timer(destination: Vector3) -> void:
 func _finish(sees_player: bool) -> void:
 	var remembered: Vector3 = look_position
 	reset()
-	ai.tactics.ranged_has_destination = false
-	ai.tactics.ranged_repath_timer = 0.0
-	enemy.agent.target_position = enemy.global_position
-	if sees_player:
-		ai.state = ai.State.REPOSITION
-	else:
-		ai.last_known_position = remembered
-		# 探头没重新发现玩家时，不立刻机械搜索；先尝试一次模糊方向追踪。
-		ai.search.begin_tracking_or_search(true)
+	finished.emit(sees_player, remembered)
 
 
 func _choose_cover() -> bool:

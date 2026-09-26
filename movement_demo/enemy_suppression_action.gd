@@ -1,6 +1,8 @@
 extends "res://enemy_action.gd"
 
-## 朝最后目击位置附近压制的最短秒数；当前未接弹匣。
+signal finished(sees_player: bool, known_position: Vector3)
+
+## 朝最后目击位置附近压制的最短秒数；换弹不会延长本次压制时长。
 var duration_min: float:
 	get: return _setting(&"duration_min", 3.0)
 	set(value): _set_setting(&"duration_min", value)
@@ -44,7 +46,7 @@ func on_target_lost() -> void:
 		return
 	if not _prepare_targets(center):
 		return
-	ai.cancel_action(&"attack_position")
+	ai.on_tactical_action_started(action_id)
 	tactics.ranged_has_destination = false
 	target_center = center
 	remaining = randf_range(maxf(0.1, duration_min), maxf(maxf(0.1, duration_min), duration_max))
@@ -100,12 +102,6 @@ func _select_aim_point() -> void:
 
 func finish(sees_player: bool) -> void:
 	reset()
-	tactics.ranged_has_destination = false
-	tactics.ranged_repath_timer = 0.0
-	actor.agent.target_position = actor.global_position
-	if sees_player:
-		ai.state = ai.State.REPOSITION
-	else:
-		ai.search.begin_tracking_or_search(true)
+	finished.emit(sees_player, ai.last_known_position)
 	if ai.cover_selection.debug_cover_selection:
 		print("[AI][压制] 结束，", "重新目击并恢复交战" if sees_player else "回到追踪／搜索")
