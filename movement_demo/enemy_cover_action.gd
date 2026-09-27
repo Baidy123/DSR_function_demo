@@ -134,7 +134,9 @@ func notice_shot(origin: Vector3, endpoint: Vector3) -> void:
 	if not selection.has_clear_line(chest, closest):
 		return
 	ai._investigate_attack(origin - Vector3.UP * 0.8)
-	_try_take_cover(origin)
+	ai.nearby_shot_pressure = minf(1.0, ai.nearby_shot_pressure + 0.15)
+	if ai.reload_plan.is_empty():
+		_try_take_cover(origin)
 
 
 # 压制中真正受伤时必定尝试找掩体，但仍须有合法可达的躲藏位置。
@@ -196,7 +198,14 @@ func step(delta: float, sees_player: bool) -> Vector3:
 	if sees_player:
 		look_position = ai.last_known_position
 
-	timer = maxf(0.0, timer - delta)
+	var timer_delta: float = delta
+	# 转移时限按动作请求速度估算；换弹临时限速时同步放慢扣时，兼容途中开始/结束。
+	# 只调整总行程时限，下面的卡住检测仍按真实时间运行。
+	if phase == Phase.RUN_TO_COVER or phase == Phase.PEEK_OUT:
+		var requested: float = movement_multiplier()
+		if requested > 0.0:
+			timer_delta *= enemy.get_effective_movement_multiplier(requested) / requested
+	timer = maxf(0.0, timer - timer_delta)
 
 	if phase == Phase.HIDE:
 		# 躲在掩体后时，只要重新真实看到玩家，就立刻结束 Cover 流程回到主 AI 交战。
@@ -343,6 +352,18 @@ func state_label() -> String:
 	if phase == Phase.RUN_TO_COVER and covering_retreat:
 		return "掩护撤退"
 	return ["", "跑向掩体", "掩体后躲藏", "慢慢探出", "观察最后目击位置"][phase]
+
+
+## AI已比较好目的地；复用原转移和卡住处理，换弹结束由AI交接。
+func start_reload_transfer(destination: Dictionary, known_position: Vector3) -> void:
+	reset()
+	hide_position = destination.hide
+	active_cover_body = destination.body
+	look_position = known_position
+	threat_origin = known_position + Vector3.UP * 0.8
+	_start_move(Phase.RUN_TO_COVER, hide_position)
+	covering_retreat = false
+	_refresh_move_timer(hide_position)
 
 
 func _start_move(next_phase: Phase, destination: Vector3) -> void:

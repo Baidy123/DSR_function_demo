@@ -159,6 +159,27 @@ func _attack_body_protection(point: Vector3, threat_origin: Vector3, region: Sta
 	return float(protected) / 9.0
 
 
+## 换弹只需要可达且有遮挡的躲藏点，不要求同时找到可射击的Peek。
+func get_reload_cover_candidates(threat_origin: Vector3) -> Array[Dictionary]:
+	var results: Array[Dictionary] = []
+	for region in get_tree().get_nodes_in_group("cover_region"):
+		if not ai.navigation_region.is_ancestor_of(region):
+			continue
+		for candidate: Dictionary in region.get_candidates(threat_origin, enemy.global_position):
+			var point: Vector3 = candidate.hide
+			if not ai.is_position_free(point) or not _center_hidden_by_cover(point, threat_origin, region):
+				continue
+			if require_assigned_cover:
+				if _cover_quality(point, threat_origin, region) < minimum_cover_quality:
+					continue
+			elif not is_hidden_at(point, threat_origin):
+				continue
+			var path: PackedVector3Array = _path_to(enemy.global_position, point)
+			if not path.is_empty():
+				results.append({"hide": point, "body": region, "path": path})
+	return results
+
+
 func choose_cover(threat_origin: Vector3, look_position: Vector3) -> Dictionary:
 	var hide_position := Vector3.ZERO
 	var peek_position := Vector3.ZERO

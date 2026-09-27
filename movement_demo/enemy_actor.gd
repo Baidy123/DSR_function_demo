@@ -77,6 +77,7 @@ func _ready() -> void:
 func move_character(direction: Vector3, delta: float, speed_multiplier: float = 1.0) -> void:
 	if is_dead:
 		return
+	speed_multiplier = get_effective_movement_multiplier(speed_multiplier)
 	velocity.x = direction.x * move_speed * speed_multiplier
 	velocity.z = direction.z * move_speed * speed_multiplier
 	if not is_on_floor():
@@ -87,6 +88,12 @@ func move_character(direction: Vector3, delta: float, speed_multiplier: float = 
 	move_and_slide()
 	_weapon_move_distance += Vector2(global_position.x - before.x, global_position.z - before.z).length()
 	_update_movement_noise(delta, before, speed_multiplier > 1.0)
+
+
+## 换弹可走可转，但快速移动最多按普通速度执行；慢走保持原倍率。
+## 行动层估算移动时限时也使用同一限制。
+func get_effective_movement_multiplier(requested: float) -> float:
+	return minf(requested, 1.0) if ammo.is_reloading else requested
 
 
 func _update_movement_noise(delta: float, before_move: Vector3, fast_movement: bool = false) -> void:

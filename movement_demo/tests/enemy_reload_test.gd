@@ -5,6 +5,13 @@ var checks := 0
 var failed := 0
 
 
+class NoiseRecorder extends Node:
+	var radii: Array[float] = []
+	func receive_noise(source: Node3D, _position: Vector3, radius: float, _multiplier: float) -> void:
+		if source.name == "Enemy":
+			radii.append(radius)
+
+
 func _initialize() -> void:
 	_run.call_deferred()
 
@@ -17,6 +24,9 @@ func _run() -> void:
 	var ai = enemy.get_node("AI")
 	var unit = enemy.get_node("UnitType")
 	var player = scene.get_node("Player")
+	var recorder := NoiseRecorder.new()
+	root.add_child(recorder)
+	recorder.add_to_group("hearing_listener")
 	ai.set_physics_process(false)
 	player.set_physics_process(false)
 	Fixture.configure_timing(enemy)
@@ -51,14 +61,37 @@ func _run() -> void:
 	check(not enemy.try_fire() and enemy.shot_count == count, "敌人换弹期间不射击")
 	check(is_equal_approx(enemy.ammo.reload_progress, 0.25), "敌人固定速度推进换弹")
 	var position_before: Vector3 = enemy.global_position
+	var rotation_before: float = enemy.rotation.y
+	recorder.radii.clear()
+	enemy._movement_noise_timer = 0.0
 	enemy.move_character(Vector3.RIGHT, 1.0 / 60.0, 2.0)
 	enemy.face_direction(Vector3.RIGHT, 0.01)
+	check(is_equal_approx(enemy.velocity.x, enemy.move_speed), "换弹期间快速移动请求被限制为普通速度")
+	check(not is_equal_approx(enemy.rotation.y, rotation_before), "换弹期间身体仍可转向")
+	await process_frame
+	check(recorder.radii == [enemy.movement_noise_radius], "换弹限速后的脚步使用普通声音半径")
 	enemy.update_weapon(0.5, target)
 	check(enemy.global_position.x > position_before.x and is_equal_approx(enemy.ammo.reload_progress, 0.5), "敌人可移动转向且换弹进度不减速")
+	for multiplier in [0.5, 0.8, 1.0]:
+		enemy.move_character(Vector3.RIGHT, 1.0 / 60.0, multiplier)
+		check(is_equal_approx(enemy.velocity.x, enemy.move_speed * multiplier), "换弹保留原慢速或普通移动倍率%s" % multiplier)
+	recorder.radii.clear()
+	enemy.move_character(Vector3.ZERO, 1.0 / 60.0, 2.0)
+	await process_frame
+	check(enemy.velocity.x == 0.0 and enemy.velocity.z == 0.0 and recorder.radii.is_empty(), "换弹中无方向时停步且不发声")
 	enemy.receive_hit(1.0)
 	check(enemy.ammo.is_reloading and is_equal_approx(enemy.ammo.reload_progress, 0.5), "敌人普通受击不取消基础换弹")
 	enemy.update_weapon(1.0, target)
 	check(enemy.ammo.magazine_rounds == 2 and not enemy.ammo.is_reloading, "无限备弹完成补满")
+	await check_fast_movement(enemy, recorder, "完成换弹")
+	enemy.ammo.magazine_rounds = 1
+	enemy.look_at(player.global_position)
+	enemy.update_weapon(1.0, target)
+	check(enemy.can_fire(), "非空匣换弹禁射检查前身体已可射击")
+	enemy.request_reload()
+	check(not enemy.try_fire(), "弹匣仍有子弹时换弹也禁止射击")
+	enemy.cancel_reload()
+	await check_fast_movement(enemy, recorder, "取消换弹")
 	enemy.ammo.magazine_rounds = 0
 	enemy.request_reload()
 	unit.combat_type = unit.CombatType.MELEE
@@ -76,7 +109,9 @@ func _run() -> void:
 	enemy.equip_weapon(null)
 	check(not enemy.ammo.is_reloading and not enemy.request_reload(), "卸下武器取消换弹")
 
-	# 真实AI由空弹匣触发，不通过测试直接请求。
+	# 本文件验证基础弹药循环：关闭测试实例的掩体权限，固定为无可用掩体回退。
+	# 环境选案与先到掩体的时机由enemy_reload_decision_test覆盖。
+	ai.training.allowed_actions = ai.training.allowed_actions.filter(func(action): return action.action_id != &"cover")
 	enemy.equip_weapon(weapon)
 	enemy.look_at(player.global_position)
 	player.global_position = enemy.global_position + Vector3(0, 0, 4.8)
@@ -85,7 +120,7 @@ func _run() -> void:
 		await physics_frame
 	enemy.ammo.magazine_rounds = 0
 	ai._physics_process(0.1)
-	check(enemy.ammo.is_reloading and enemy.ammo.reload_progress > 0.0, "激活AI发现空匣自动开始并推进换弹")
+	check(enemy.ammo.is_reloading and enemy.ammo.reload_progress > 0.0, "无掩体权限时AI发现空匣开始并推进基础换弹")
 	ai._update_label()
 	check(enemy.get_node("Label").text.contains("换弹中"), "敌人状态文字显示换弹")
 	player.is_in_dialogue = true
@@ -114,6 +149,15 @@ func _run() -> void:
 		saw_reload = saw_reload or enemy.ammo.is_reloading
 	check(saw_reload and enemy.shot_count >= count + 4, "真实AI持续交战完成打空换弹再开火循环")
 	finish()
+
+
+func check_fast_movement(enemy: Node3D, recorder: NoiseRecorder, label: String) -> void:
+	recorder.radii.clear()
+	enemy._movement_noise_timer = 0.0
+	enemy.move_character(Vector3.RIGHT, 1.0 / 60.0, 2.0)
+	check(is_equal_approx(enemy.velocity.x, enemy.move_speed * 2.0), label + "后恢复快速移动请求")
+	await process_frame
+	check(recorder.radii == [enemy.fast_movement_noise_radius], label + "后恢复快速脚步声音")
 
 
 func check(ok: bool, label: String) -> void:

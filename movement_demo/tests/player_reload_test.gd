@@ -128,6 +128,8 @@ func _run() -> void:
 	player.set_physics_process(false)
 	check(not paused and combat.ammo.magazine_rounds == combat.weapon.magazine_capacity and not combat.ammo.is_reloading, "实际重开恢复初始武器满弹及换弹状态")
 	check(slots.reserve_ammo[0] == slots.starting_rifle_ammo and slots.reserve_ammo[1] == slots.starting_pistol_ammo and slots.reserve_ammo[2] == slots.starting_smg_ammo and slots.reserve_ammo[3] == slots.starting_shotgun_ammo, "重开恢复四类备弹初值")
+	# 下面断言按0.5进度倍率验证固定方式，只配置测试实例；用户场景可用其他倍率。
+	combat.sprint_reload_speed_multiplier = 0.5
 	# 驱动真实Player物理流程，验证按R时锁定方式以及快速换弹禁跑。
 	var movement_weapon := WeaponData.new()
 	slots.primary_weapon = movement_weapon
