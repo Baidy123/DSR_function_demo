@@ -8,16 +8,17 @@
 
 1. 使用本工程已验证的 Godot 4.7.2 标准版。
 2. 在 Godot 项目管理器中导入 `movement_demo/project.godot`。
-3. 等待资源和插件首次导入完成，按 F6 运行 Main，或按 F5 运行主场景。
+3. 等待资源和插件首次导入完成，打开 `scenes/main.tscn` 按 F6 运行，或直接按 F5 运行主场景。
 
 所需的 Dialogue Manager、Phantom Camera 和 Godot AI 插件源码及各自许可证随工程保存。Godot 可执行程序、导入缓存和临时文件不纳入仓库。
 
 ## 项目说明
 
-- [后续总待办](movement_demo/TODO.md)
-- [操作与移动说明](movement_demo/README.md)
-- [战斗说明](movement_demo/COMBAT.md)
-- [竞技场说明](movement_demo/ARENA.md)
-- [协作规则与进度](AGENTS.md)
+- [后续总待办](docs/TODO.md)
+- [操作与移动说明](docs/gameplay/MOVEMENT.md)
+- [战斗说明](docs/gameplay/COMBAT.md)
+- [竞技场说明](docs/gameplay/ARENA.md)
+- [敌人 AI 结构、维护与使用部署](docs/enemy-ai.md)
+- [项目目录结构](docs/project-layout.md)
 
-部分带版本号的脚本保留为迭代记录；当前场景所用入口见总待办中的“当前代码入口”。
+运行脚本按职责位于 `movement_demo/scripts/`，敌人测试集中在 `movement_demo/tests/enemy/`。旧敌人实现和未引用的玩家射击原型已清理。

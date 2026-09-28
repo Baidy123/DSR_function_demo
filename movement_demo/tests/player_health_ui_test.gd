@@ -16,7 +16,7 @@ func run(scene: Node) -> Dictionary:
 		return checks
 	state.help_choice = ""
 	state.talked_to_a = false
-	await ui.open_dialogue(p, load("res://tests/npc_b.dialogue"), "start")
+	await ui.open_dialogue(p, load("res://resources/dialogue/npc_b.dialogue"), "start")
 	for frame in range(2):
 		await tree.process_frame
 	checks["对话时状态条不遮挡正文"] = not h.get_node("Status").visible
@@ -30,7 +30,7 @@ func run(scene: Node) -> Dictionary:
 	checks["生命条同步实际扣血"] = h.get_node("Status/Content/HealthBar").value == 75.0
 	await _click(tree, ui.dialogue_text)
 	checks["点击普通对话仍可推进"] = ui.dialogue_player == null
-	await ui.open_dialogue(p, load("res://tests/npc_b.dialogue"), "start")
+	await ui.open_dialogue(p, load("res://resources/dialogue/npc_b.dialogue"), "start")
 	var key := InputEventAction.new()
 	key.action = "interact"
 	key.pressed = true
@@ -39,7 +39,7 @@ func run(scene: Node) -> Dictionary:
 	key.pressed = false
 	Input.parse_input_event(key)
 	checks["E仍可推进对话"] = ui.dialogue_player == null
-	await ui.open_dialogue(p, load("res://tests/npc_a.dialogue"), "start")
+	await ui.open_dialogue(p, load("res://resources/dialogue/npc_a.dialogue"), "start")
 	for frame in range(3):
 		await tree.process_frame
 	await _click(tree, ui.choices.get_child(0))

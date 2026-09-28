@@ -14,7 +14,7 @@ func check(ok: bool, label: String) -> void:
 	print("PASS " if ok else "FAIL ", label)
 
 func _run() -> void:
-	scene = load("res://main.tscn").instantiate()
+	scene = load("res://scenes/main.tscn").instantiate()
 	root.add_child(scene)
 	current_scene = scene
 	player = scene.get_node("Player")

@@ -1,0 +1,15 @@
+[gd_resource type="Resource" script_class="EnemyUnitProfile" format=3]
+
+[ext_resource type="Script" path="res://scripts/enemy/config/enemy_unit_profile.gd" id="profile"]
+[ext_resource type="Script" path="res://scripts/enemy/config/enemy_action_definition.gd" id="definition"]
+[ext_resource type="Resource" path="res://resources/enemy/actions/patrol.tres" id="patrol"]
+[ext_resource type="Resource" path="res://resources/enemy/actions/search.tres" id="search"]
+[ext_resource type="Resource" path="res://resources/enemy/actions/melee_engage.tres" id="melee_engage"]
+
+[resource]
+script = ExtResource("profile")
+unit_id = &"melee"
+display_name = "近战兵"
+capabilities = Array[StringName]([&"locomotion"])
+default_behaviors = Array[ExtResource("definition")]([ExtResource("patrol"), ExtResource("search"), ExtResource("melee_engage")])
+tactical_actions = Array[ExtResource("definition")]([])

@@ -1,0 +1,313 @@
+extends Node
+
+## 通用生命周期协调：不依赖任何可选动作 ID，不保存其执行进度。
+const Library = preload("res://scripts/enemy/enemy_action_library.gd")
+const State = preload("res://scripts/enemy/services/enemy_memory.gd").State
+const CombatType = preload("res://scripts/enemy/services/enemy_memory.gd").CombatType
+var context = preload("res://scripts/enemy/services/enemy_context.gd").new()
+var action_selector = preload("res://scripts/enemy/enemy_action_selector.gd").new()
+var actions: Dictionary = {}
+var current_action
+var utility_options: Array[Dictionary] = []
+var _utility_timer := 0.0
+var _utility_elapsed := 0.0
+var _configuration := 0
+var _implementations: Dictionary = {}
+var _enabled_last_frame := false
+var frame_costs: Dictionary = {}
+@onready var actor: CharacterBody3D = get_parent()
+@onready var unit_type: Node = get_node("../UnitType")
+@onready var training: Node = get_node("../Training")
+@onready var perception: Node = $Perception
+@onready var cover_selection: Node = $Cover
+var player: Node3D:
+	get: return context.player
+var agent: NavigationAgent3D:
+	get: return context.agent
+var arena_zone: Area3D:
+	get: return context.arena_zone
+var navigation_region: NavigationRegion3D:
+	get: return context.navigation_region
+var utility_current: Dictionary:
+	get: return context.utility_current
+	set(value): context.utility_current = value
+@export_group("Utility AI")
+@export_range(1.0, 12.0, 0.5) var utility_horizon_seconds: float = 4.0
+@export_range(0.0, 10.0, 0.1) var utility_fire_weight: float = 3.0
+@export_range(0.0, 10.0, 0.1) var utility_risk_weight: float = 3.0
+@export_range(0.0, 10.0, 0.1) var utility_information_weight: float = 1.0
+@export_range(0.1, 2.0, 0.1) var utility_recheck_seconds: float = 0.4
+@export_range(0.0, 3.0, 0.1) var utility_hold_seconds: float = 0.6
+@export_range(0.0, 5.0, 0.1) var utility_switch_advantage: float = 0.5
+## 没有目击、受伤或近弹的新证据时，旧威胁确定性每过这么多秒减半。
+## 只影响风险估计，不删除位置记忆、不强制离开掩体；4秒为试玩初值。
+@export_range(0.5, 30.0, 0.5) var utility_threat_half_life_seconds: float = 4.0
+## 仅Debug总开关开启时输出选中动作及分数构成。
+@export var debug_utility: bool = false
+
+func _ready() -> void:
+	context.setup(actor, perception, cover_selection)
+	context.spatial = preload("res://scripts/enemy/services/enemy_spatial_evaluator.gd").new()
+	context.spatial.context = context
+	context.fire = preload("res://scripts/enemy/services/enemy_fire_controller.gd").new()
+	context.fire.setup(context)
+	context.reevaluate.connect(invalidate_utility)
+	context.event_received.connect(_dispatch_event)
+	context.fire.shot_fired.connect(_on_shot_fired)
+	perception.noise_heard.connect(_on_noise_heard)
+	actor.hit_received.connect(_on_hit_received)
+	actor.reset_completed.connect(_reset_decisions)
+	add_to_group("shot_listener")
+	refresh_configuration(true)
+	_reset_decisions()
+
+func refresh_configuration(force: bool = false) -> void:
+	var unit: EnemyUnitProfile = unit_type.profile
+	var profile: EnemyTrainingProfile = training.profile
+	var fingerprint := hash([unit.fingerprint() if unit != null else 0, profile.fingerprint() if profile != null else 0])
+	if not force and fingerprint == _configuration: return
+	_configuration = fingerprint
+	context.unit = unit
+	context.training = profile
+	var resolved := Library.resolve(unit, profile)
+	context.permitted = resolved.definitions
+	for error in resolved.errors: push_warning(error)
+	for id in actions.keys():
+		var definition = resolved.definitions.get(id)
+		if definition == null or _implementations.get(id) != definition.implementation:
+			if current_action == actions[id]: _cancel_utility_execution(&"configuration")
+			else: actions[id].cancel(&"configuration")
+			actions.erase(id)
+			_implementations.erase(id)
+	for id in resolved.definitions.keys():
+		if actions.has(id):
+			actions[id].definition = resolved.definitions[id]
+			actions[id].configuration_changed()
+			continue
+		var action = Library.instantiate(resolved.definitions[id], context)
+		if action == null:
+			context.permitted.erase(id)
+			continue
+		actions[id] = action
+		_implementations[id] = action.get_script()
+		context.spatial.register(action)
+	context.spatial.reset_evaluation()
+	invalidate_utility()
+
+func _physics_process(delta: float) -> void:
+	var stamp := Time.get_ticks_usec()
+	refresh_configuration()
+	frame_costs.configuration = Time.get_ticks_usec() - stamp
+	stamp = Time.get_ticks_usec()
+	for key in [&"utility_horizon_seconds", &"utility_fire_weight", &"utility_risk_weight", &"utility_information_weight", &"utility_threat_half_life_seconds"]:
+		context.set(key, get(key))
+	var enabled: bool = not actor.is_dead and is_arena_active() and not player.is_dead() and not player.is_in_dialogue
+	if not enabled:
+		if _enabled_last_frame: reset_actions()
+		_enabled_last_frame = false
+		actor.cancel_reload()
+		actor.velocity = Vector3.ZERO
+		context.fire.update(delta, false, false, {})
+		return
+	_enabled_last_frame = true
+	if NavigationServer3D.map_get_iteration_id(agent.get_navigation_map()) == 0: return
+	var visible: bool = perception.can_see_player()
+	context.update_evidence(delta, visible)
+	frame_costs.perception = Time.get_ticks_usec() - stamp
+	stamp = Time.get_ticks_usec()
+	context.spatial.advance_evaluation()
+	frame_costs.spatial = Time.get_ticks_usec() - stamp
+	stamp = Time.get_ticks_usec()
+	_update_utility_decision(delta, visible)
+	frame_costs.decision = Time.get_ticks_usec() - stamp
+	stamp = Time.get_ticks_usec()
+	var output: Dictionary = {}
+	if current_action != null:
+		output = current_action.tick(delta, visible)
+	var direction: Vector3 = output.get("direction", Vector3.ZERO)
+	actor.face_direction(output.get("facing", Vector3.ZERO), delta)
+	actor.move_character(direction, delta, output.get("multiplier", 1.0))
+	context.fire.update(delta, visible, not direction.is_zero_approx(), output.get("fire", {}))
+	frame_costs.execution = Time.get_ticks_usec() - stamp
+	if current_action != null and not output.get("running", true):
+		context.investigation_hint_allowed = true
+		_cancel_utility_execution(&"finished")
+		invalidate_utility()
+	_update_label()
+
+func _update_utility_decision(delta: float, visible: bool) -> void:
+	_utility_elapsed += delta
+	_utility_timer -= delta
+	var valid: bool = current_action != null and current_action.valid(visible)
+	if _utility_timer > 0.0 and (valid or current_action == null): return
+	_utility_timer = utility_recheck_seconds
+	utility_options = action_selector.assess_options(self, visible)
+	var best: Dictionary = action_selector.choose_option(utility_options, utility_current)
+	var cost := INF
+	for candidate in utility_options:
+		if action_selector.same_option(candidate, utility_current):
+			cost = candidate.cost
+			utility_current = candidate
+			if current_action != null: current_action.plan = candidate
+	valid = valid and is_finite(cost)
+	if best.is_empty():
+		_cancel_utility_execution()
+		context.state = State.IDLE
+		return
+	if valid and action_selector.same_option(best, utility_current): return
+	if valid and not current_action.can_interrupt(best, visible): return
+	if valid and not current_action.hold_released() and (_utility_elapsed < utility_hold_seconds or best.cost + utility_switch_advantage >= cost): return
+	_start_utility_option(best, visible)
+
+func _start_utility_option(candidate: Dictionary, visible: bool) -> void:
+	var next = actions.get(candidate.get("id"))
+	if next == null or not next.validate(candidate, visible):
+		invalidate_utility()
+		return
+	_cancel_utility_execution()
+	current_action = next
+	utility_current = candidate
+	_utility_elapsed = 0.0
+	if not next.begin(candidate, visible):
+		_cancel_utility_execution(&"failed")
+		context.state = State.IDLE
+		invalidate_utility()
+		return
+	if debug_utility and actor.debug_settings.enabled:
+		print("[AI][Utility] ", candidate.id, " cost=", candidate.get("cost", 0.0), " ", candidate.get("breakdown", {}))
+
+func _cancel_utility_execution(reason: StringName = &"switch") -> void:
+	if current_action != null: current_action.cancel(reason)
+	current_action = null
+	utility_current = {}
+	context.fire.request = {}
+	agent.target_position = actor.global_position
+
+func invalidate_utility() -> void:
+	_utility_timer = 0.0
+
+func is_arena_active() -> bool:
+	return context.is_arena_active()
+
+func is_active() -> bool:
+	return context.is_alerted and not actor.is_dead
+
+func can_use_action(id: StringName) -> bool:
+	return context.can_use_action(id)
+
+func reset_actions() -> void:
+	_cancel_utility_execution(&"reset")
+	utility_options.clear()
+	for action in actions.values():
+		action._running = false
+		action.plan = {}
+		action.reset()
+	context.fire.request = {}
+	context.fire.reset_fire_timing()
+	context.spatial.reset_evaluation()
+	_utility_timer = 0.0
+	_utility_elapsed = 0.0
+
+func _reset_decisions() -> void:
+	reset_actions()
+	context.reset_memory()
+	agent.target_position = actor.global_position
+	_update_label()
+
+func _dispatch_event(event: StringName, data: Dictionary) -> void:
+	for action in actions.values(): action.on_event(event, data)
+
+func _on_hit_received(damage: float, attacker_position: Vector3) -> void:
+	if actor.is_dead:
+		reset_actions()
+		context.reset_memory()
+		context.state = State.DEAD
+	elif damage > 0.0:
+		context.utility_threat_age_seconds = 0.0
+		context.recent_damage_pressure = minf(2.0, context.recent_damage_pressure + 0.5 + damage / maxf(actor.max_health, 1.0))
+		_dispatch_event(&"damage", {"amount": damage})
+		if attacker_position.is_finite(): context._investigate_attack(attacker_position)
+		invalidate_utility()
+	_update_label()
+
+func notice_shot(origin: Vector3, endpoint: Vector3) -> void:
+	context.notice_shot(origin, endpoint)
+
+func _on_noise_heard(position: Vector3) -> void:
+	if actor.is_dead or not is_arena_active() or perception.can_see_player() or (current_action != null and not utility_current.get("accepts_noise", false)): return
+	if NavigationServer3D.map_get_iteration_id(agent.get_navigation_map()) == 0: return
+	if context.noise_search_origin.is_finite() and context.noise_search_origin.distance_to(position) < 0.35: return
+	context.noise_search_origin = position
+	context.last_known_position = position
+	context.is_alerted = true
+	_dispatch_event(&"noise", {"position": position})
+	invalidate_utility()
+
+func _on_shot_fired() -> void:
+	if current_action != null: current_action.on_shot_fired()
+
+func _update_label() -> void:
+	var label: String = current_action.state_label() if current_action != null else ("已死亡" if actor.is_dead else "待命")
+	var name: String = context.unit.display_name if context.unit != null else "未配置兵种"
+	actor.set_status_text("%s：%s\n生命 %d / %d" % [name, label, ceili(actor.health), ceili(actor.max_health)])
+
+func _exit_tree() -> void:
+	# 打破公共 RefCounted 服务之间的所有权环；运行中实例由 actions 唯一持有。
+	if context.fire != null:
+		context.fire.fire_decision.context = null
+		context.fire.context = null
+	if context.spatial != null: context.spatial.context = null
+	current_action = null
+	actions.clear()
+
+var state: int:
+	get: return context.state
+	set(value): context.state = value
+
+var last_known_position: Vector3:
+	get: return context.last_known_position
+	set(value): context.last_known_position = value
+
+var last_seen_position: Vector3:
+	get: return context.last_seen_position
+	set(value): context.last_seen_position = value
+
+var last_seen_direction: Vector3:
+	get: return context.last_seen_direction
+	set(value): context.last_seen_direction = value
+
+var has_visual_memory: bool:
+	get: return context.has_visual_memory
+	set(value): context.has_visual_memory = value
+
+var is_alerted: bool:
+	get: return context.is_alerted
+	set(value): context.is_alerted = value
+
+var was_seeing_player: bool:
+	get: return context.was_seeing_player
+	set(value): context.was_seeing_player = value
+
+var utility_unseen_seconds: float:
+	get: return context.utility_unseen_seconds
+	set(value): context.utility_unseen_seconds = value
+
+var utility_threat_age_seconds: float:
+	get: return context.utility_threat_age_seconds
+	set(value): context.utility_threat_age_seconds = value
+
+var utility_suppression_pending: bool:
+	get: return context.utility_suppression_pending
+	set(value): context.utility_suppression_pending = value
+
+var recent_damage_pressure: float:
+	get: return context.recent_damage_pressure
+	set(value): context.recent_damage_pressure = value
+
+var nearby_shot_pressure: float:
+	get: return context.nearby_shot_pressure
+	set(value): context.nearby_shot_pressure = value
+
+var patrol_pause_timer: float:
+	get: return context.patrol_pause_timer
+	set(value): context.patrol_pause_timer = value

@@ -1,0 +1,35 @@
+[gd_scene format=3 uid="uid://cu2oxep7ag6wm"]
+
+[ext_resource type="Script" uid="uid://doo4y67dq2weh" path="res://scripts/ui/dialogue_ui.gd" id="1_njptv"]
+
+[node name="DialogueUI" type="CanvasLayer" unique_id=36702053]
+script = ExtResource("1_njptv")
+
+[node name="DialoguePanel" type="PanelContainer" parent="." unique_id=601539736]
+anchors_preset = 12
+anchor_top = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 60.0
+offset_top = -310.0
+offset_right = -60.0
+offset_bottom = -30.0
+
+[node name="MarginContainer" type="MarginContainer" parent="DialoguePanel" unique_id=1333209130]
+layout_mode = 2
+theme_override_constants/margin_left = 24
+theme_override_constants/margin_top = 20
+theme_override_constants/margin_right = 24
+theme_override_constants/margin_bottom = 20
+
+[node name="Content" type="VBoxContainer" parent="DialoguePanel/MarginContainer" unique_id=1035170300]
+layout_mode = 2
+
+[node name="DialogueText" type="Label" parent="DialoguePanel/MarginContainer/Content" unique_id=1540565324]
+layout_mode = 2
+theme_override_font_sizes/font_size = 24
+text = "test text"
+autowrap_mode = 3
+
+[node name="Choices" type="VBoxContainer" parent="DialoguePanel/MarginContainer/Content" unique_id=80425648]
+layout_mode = 2

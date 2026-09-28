@@ -23,17 +23,17 @@
 
 ## 2. 当前结构的问题与保留价值
 
-当前实际入口为 `movement_demo/arena.tscn` 的 Enemy、UnitType、Training 和 AI。
+当前实际入口为 `movement_demo/scenes/arena.tscn` 的 Enemy、UnitType、Training 和 AI。
 
 已经可以保留的工作：身体执行、感知记忆、统一代价公式、导航及射界评估、空间分帧预算、搜索恢复、掩体内部阶段、压制目标生成、动作实例隔离。
 
 需要修正的边界：
 
-1. `enemy_action_library.gd` 按全局登记表创建全部动作，兵种没配置的动作仍会创建默认实例。
-2. `enemy_ai.gd` 通过固定 ID 获取对象，按具体动作分别启动、判断有效性、取消和重置。
-3. `enemy_action_selector.gd` 同时负责统一评分和所有具体动作的候选生成。
-4. `enemy_tactics.gd` 既是普通接敌动作，又承担其他动作的公共射击控制。
-5. `enemy_action.gd` 通过 AI 对象访问其他动作，通过拼接字符串读取中央 Training 字段。
+1. `scripts/enemy/enemy_action_library.gd` 按全局登记表创建全部动作，兵种没配置的动作仍会创建默认实例。
+2. `scripts/enemy/enemy_ai.gd` 通过固定 ID 获取对象，按具体动作分别启动、判断有效性、取消和重置。
+3. `scripts/enemy/enemy_action_selector.gd` 同时负责统一评分和所有具体动作的候选生成。
+4. `scripts/enemy/actions/enemy_tactics.gd` 既是普通接敌动作，又承担其他动作的公共射击控制。
+5. `scripts/enemy/actions/enemy_action.gd` 通过 AI 对象访问其他动作，通过拼接字符串读取中央 Training 字段。
 6. `covering_retreat.tres` 是无实现的权限标记，普通压制等资源则是有实现的动作，资源语义不统一。
 7. 基础行为和可选战术都要求训练授权，配置重复，也容易误关基础行为。
 
@@ -250,6 +250,6 @@
 
 ## 10. 审阅与执行状态
 
-本文件描述目标接口、权限语义、迁移边界和验收标准。代码尚未开始迁移，测试尚未重跑。
+本文件描述目标接口、权限语义、迁移边界和验收标准。用户已明确批准完整实施，2026-09-29 已按此设计迁移当前主场景的敌人资源、动作模块、运行服务、通用决策和检查器。
 
-书面设计审阅通过后，进入实施计划，列出实际文件边界、基线命令、迁移顺序和每步验证。实现阶段使用单代理推进；当前用户未要求并行代理。
+实际文件职责与配置方法见 `docs/enemy-ai.md`，实施和验证记录见 `docs/superpowers/plans/2026-09-29-enemy-modular-ai.md`。本轮采用单代理实施。重构完成后，按用户进一步要求清理了未被引用的旧敌人实现、已被替代的旧结构测试及临时日志，具体清单见实施记录。

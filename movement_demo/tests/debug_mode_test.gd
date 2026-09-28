@@ -12,7 +12,7 @@ func _run() -> void:
 	if settings == null:
 		finish()
 		return
-	var scene = load("res://main.tscn").instantiate()
+	var scene = load("res://scenes/main.tscn").instantiate()
 	root.add_child(scene)
 	current_scene = scene
 	var player = scene.get_node("Player")

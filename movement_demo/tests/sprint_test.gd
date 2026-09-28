@@ -94,7 +94,7 @@ func _reset() -> void:
 	_release_inputs()
 	if is_instance_valid(scene):
 		scene.free()
-	scene = load("res://main.tscn").instantiate()
+	scene = load("res://scenes/main.tscn").instantiate()
 	root.add_child(scene)
 	player = scene.get_node("Player")
 	visual = player.get("visual")

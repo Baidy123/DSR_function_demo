@@ -1,0 +1,101 @@
+[gd_scene format=3 uid="uid://drix8bnke6ml7"]
+
+[ext_resource type="PackedScene" path="res://scenes/world/cover.tscn" id="1_cover"]
+[ext_resource type="Script" path="res://tests/prototype_corner_region.gd" id="2_region"]
+
+[sub_resource type="StandardMaterial3D" id="FloorMaterial"]
+shading_mode = 0
+albedo_color = Color(0.18, 0.21, 0.26, 1)
+
+[sub_resource type="PlaneMesh" id="FloorMesh"]
+material = SubResource("FloorMaterial")
+size = Vector2(16, 9)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_3gmlc"]
+cull_mode = 2
+shading_mode = 0
+albedo_color = Color(0.12, 0.82, 0.62, 1)
+
+[sub_resource type="ImmediateMesh" id="ImmediateMesh_wnkrw"]
+
+[sub_resource type="StandardMaterial3D" id="CornerMaterial"]
+shading_mode = 0
+albedo_color = Color(1, 0.64, 0.1, 1)
+
+[sub_resource type="SphereMesh" id="CornerMesh"]
+material = SubResource("CornerMaterial")
+radius = 0.07
+height = 0.14
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_fraoy"]
+cull_mode = 2
+shading_mode = 0
+albedo_color = Color(0.12, 0.82, 0.62, 1)
+
+[sub_resource type="ImmediateMesh" id="ImmediateMesh_icsy7"]
+
+[node name="TempCornerComparison" type="Node3D" unique_id=480823279]
+
+[node name="Floor" type="MeshInstance3D" parent="." unique_id=1700920091]
+mesh = SubResource("FloorMesh")
+
+[node name="ContinuousCover" parent="." unique_id=602820830 instance=ExtResource("1_cover")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -3.5, 1.1, 0)
+show_regions_in_editor = false
+attack_inner_radius = null
+attack_outer_radius = null
+attack_sample_spacing = null
+show_attack_points_in_editor = false
+
+[node name="CandidateRegion" type="MeshInstance3D" parent="ContinuousCover" unique_id=580351535]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -1.5, -1.07, 0.5)
+material_override = SubResource("StandardMaterial3D_3gmlc")
+mesh = SubResource("ImmediateMesh_wnkrw")
+script = ExtResource("2_region")
+
+[node name="Corner" type="MeshInstance3D" parent="ContinuousCover" unique_id=369083740]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -1.5, -1.01, 0.5)
+mesh = SubResource("CornerMesh")
+
+[node name="SplitCover" parent="." unique_id=370203814 instance=ExtResource("1_cover")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 3.5, 1.1, 0)
+show_regions_in_editor = false
+attack_inner_radius = null
+attack_outer_radius = null
+attack_sample_spacing = null
+show_attack_points_in_editor = false
+
+[node name="CandidateRegion" type="MeshInstance3D" parent="SplitCover" unique_id=1005560980]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -1.5, -1.07, 0.5)
+material_override = SubResource("StandardMaterial3D_fraoy")
+mesh = SubResource("ImmediateMesh_icsy7")
+script = ExtResource("2_region")
+split_regions = true
+
+[node name="Corner" type="MeshInstance3D" parent="SplitCover" unique_id=1755746854]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -1.5, -1.01, 0.5)
+mesh = SubResource("CornerMesh")
+
+[node name="TitleA" type="Label3D" parent="." unique_id=1559582278]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -3.9, 0.15, 3)
+pixel_size = 0.012
+billboard = 1
+text = "A  连续一片
+中间斜角也参与选位"
+font_size = 48
+
+[node name="TitleB" type="Label3D" parent="." unique_id=263986937]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 3.1, 0.15, 3)
+pixel_size = 0.012
+billboard = 1
+text = "B  两块分开
+中间斜角不参与选位"
+font_size = 48
+
+[node name="Note" type="Label3D" parent="." unique_id=570547064]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.15, -3)
+pixel_size = 0.012
+billboard = 1
+text = "临时对比：只展示同一个墙角
+绿色＝候选范围，橙点＝墙角；还没按玩家方向筛选"
+font_size = 36

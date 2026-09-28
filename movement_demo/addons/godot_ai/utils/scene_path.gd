@@ -96,7 +96,7 @@ static func require_edited_scene(expected_scene_file: String) -> Dictionary:
 			"retryable": false,
 			"hint": (
 				"No scene is open. Call scene_open with a scene path "
-				+ "(e.g. \"res://main.tscn\") before issuing scene-mutating tools."
+				+ "(e.g. \"res://scenes/main.tscn\") before issuing scene-mutating tools."
 			),
 		}
 		return err

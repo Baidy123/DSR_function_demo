@@ -9,7 +9,7 @@ func _initialize() -> void:
 
 
 func _run() -> void:
-	var scene = load("res://main.tscn").instantiate()
+	var scene = load("res://scenes/main.tscn").instantiate()
 	root.add_child(scene)
 	current_scene = scene
 	# 本组只验证原行为；射击与玩家死亡联动由 enemy_shooting_test 覆盖。

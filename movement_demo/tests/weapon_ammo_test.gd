@@ -9,11 +9,11 @@ func _initialize() -> void:
 
 
 func _run() -> void:
-	check(ResourceLoader.exists("res://weapon_ammo.gd"), "共享弹药状态脚本存在")
+	check(ResourceLoader.exists("res://scripts/weapons/weapon_ammo.gd"), "共享弹药状态脚本存在")
 	if failed > 0:
 		finish()
 		return
-	var Ammo = load("res://weapon_ammo.gd")
+	var Ammo = load("res://scripts/weapons/weapon_ammo.gd")
 	var weapon := WeaponData.new()
 	weapon.set("magazine_capacity", 12)
 	weapon.set("reload_seconds", 2.0)

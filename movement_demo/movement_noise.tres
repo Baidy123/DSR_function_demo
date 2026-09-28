@@ -1,9 +1,0 @@
-[gd_resource type="Resource" script_class="NoiseData" format=3]
-
-[ext_resource type="Script" path="res://noise_data.gd" id="1"]
-
-[resource]
-resource_name = "移动声"
-script = ExtResource("1")
-display_name = "移动声"
-occluded_range_multiplier = 0.4

@@ -10,7 +10,7 @@ func _initialize() -> void:
 
 
 func _run() -> void:
-	var scene: Node = load("res://main.tscn").instantiate()
+	var scene: Node = load("res://scenes/main.tscn").instantiate()
 	root.add_child(scene)
 	player = scene.get_node("Player")
 	visual = player.get("visual")

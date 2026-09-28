@@ -11,16 +11,16 @@ config_version=5
 [application]
 
 config/name="角色移动练习"
-run/main_scene="res://main.tscn"
+run/main_scene="res://scenes/main.tscn"
 config/features=PackedStringArray("4.7", "GL Compatibility")
 
 [autoload]
 
-_mcp_game_helper="*res://addons/godot_ai/runtime/game_helper.gd"
 PhantomCameraManager="*uid://duq6jhf6unyis"
 DialogueManager="*uid://c3rodes2l3gxb"
-GameState="*res://game_state.gd"
-DebugSettings="*res://debug_settings.gd"
+GameState="*res://scripts/systems/game_state.gd"
+DebugSettings="*res://scripts/debug/debug_settings.gd"
+_mcp_game_helper="*res://addons/godot_ai/runtime/game_helper.gd"
 
 [debug]
 
@@ -35,7 +35,7 @@ window/stretch/mode="canvas_items"
 
 [editor_plugins]
 
-enabled=PackedStringArray("res://addons/dialogue_manager/plugin.cfg", "res://addons/godot_ai/plugin.cfg", "res://addons/phantom_camera/plugin.cfg", "res://addons/weapon_mode_inspector/plugin.cfg")
+enabled=PackedStringArray("res://addons/dialogue_manager/plugin.cfg", "res://addons/godot_ai/plugin.cfg", "res://addons/phantom_camera/plugin.cfg", "res://addons/weapon_mode_inspector/plugin.cfg", "res://addons/enemy_training_inspector/plugin.cfg")
 
 [input]
 
@@ -79,35 +79,35 @@ fire={
 "events": [Object(InputEventMouseButton,"resource_local_to_scene":false,"resource_name":"","device":-1,"window_id":0,"alt_pressed":false,"shift_pressed":false,"ctrl_pressed":false,"meta_pressed":false,"button_mask":0,"position":Vector2(0, 0),"global_position":Vector2(0, 0),"factor":1.0,"button_index":1,"canceled":false,"pressed":false,"double_click":false,"script":null)
 ]
 }
-
-reload={
-"deadzone": 0.5,
-"events": [Object(InputEventKey,"physical_keycode":82)
-]
-}
 weapon_primary={
 "deadzone": 0.5,
-"events": [Object(InputEventKey,"physical_keycode":49)]
+"events": [Object(InputEventKey,"resource_local_to_scene":false,"resource_name":"","device":16,"window_id":0,"alt_pressed":false,"shift_pressed":false,"ctrl_pressed":false,"meta_pressed":false,"pressed":false,"keycode":0,"physical_keycode":49,"key_label":0,"unicode":0,"location":0,"echo":false,"script":null)
+]
 }
-
 weapon_secondary={
 "deadzone": 0.5,
-"events": [Object(InputEventKey,"physical_keycode":50)]
+"events": [Object(InputEventKey,"resource_local_to_scene":false,"resource_name":"","device":16,"window_id":0,"alt_pressed":false,"shift_pressed":false,"ctrl_pressed":false,"meta_pressed":false,"pressed":false,"keycode":0,"physical_keycode":50,"key_label":0,"unicode":0,"location":0,"echo":false,"script":null)
+]
 }
-
 weapon_previous={
 "deadzone": 0.5,
-"events": [Object(InputEventMouseButton,"button_index":4)]
+"events": [Object(InputEventMouseButton,"resource_local_to_scene":false,"resource_name":"","device":32,"window_id":0,"alt_pressed":false,"shift_pressed":false,"ctrl_pressed":false,"meta_pressed":false,"button_mask":0,"position":Vector2(0, 0),"global_position":Vector2(0, 0),"factor":1.0,"button_index":4,"canceled":false,"pressed":false,"double_click":false,"script":null)
+]
 }
-
 weapon_next={
 "deadzone": 0.5,
-"events": [Object(InputEventMouseButton,"button_index":5)]
+"events": [Object(InputEventMouseButton,"resource_local_to_scene":false,"resource_name":"","device":32,"window_id":0,"alt_pressed":false,"shift_pressed":false,"ctrl_pressed":false,"meta_pressed":false,"button_mask":0,"position":Vector2(0, 0),"global_position":Vector2(0, 0),"factor":1.0,"button_index":5,"canceled":false,"pressed":false,"double_click":false,"script":null)
+]
+}
+reload={
+"deadzone": 0.5,
+"events": [Object(InputEventKey,"resource_local_to_scene":false,"resource_name":"","device":16,"window_id":0,"alt_pressed":false,"shift_pressed":false,"ctrl_pressed":false,"meta_pressed":false,"pressed":false,"keycode":0,"physical_keycode":82,"key_label":0,"unicode":0,"location":0,"echo":false,"script":null)
+]
 }
 
 [internationalization]
 
-locale/translations_pot_files=PackedStringArray("res://tests/test.dialogue", "res://tests/npc_a.dialogue", "res://tests/npc_b.dialogue")
+locale/translations_pot_files=PackedStringArray("res://resources/dialogue/test.dialogue", "res://resources/dialogue/npc_a.dialogue", "res://resources/dialogue/npc_b.dialogue")
 
 [rendering]
 

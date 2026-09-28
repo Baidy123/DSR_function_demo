@@ -1,0 +1,317 @@
+[gd_scene format=3 uid="uid://blgostylso8me"]
+
+[ext_resource type="NavigationMesh" uid="uid://doqxf2mdcxwui" path="res://resources/navigation/arena_navigation.tres" id="2"]
+[ext_resource type="Script" uid="uid://bhntfyti6ofag" path="res://scripts/enemy/enemy_actor.gd" id="3_fu4bq"]
+[ext_resource type="Script" uid="uid://dcc2vkow4q8cl" path="res://scripts/world/shooting_range.gd" id="3_reset"]
+[ext_resource type="PackedScene" path="res://scenes/world/cover.tscn" id="5_cover"]
+[ext_resource type="Script" uid="uid://ct4eye1xj03ld" path="res://scripts/enemy/enemy_ai.gd" id="6_ai"]
+[ext_resource type="Script" uid="uid://dr2hmm4n46nsx" path="res://scripts/enemy/services/enemy_perception.gd" id="9_perception"]
+[ext_resource type="Script" uid="uid://b788q02bigppe" path="res://scripts/enemy/services/enemy_cover_selection.gd" id="10_selection"]
+[ext_resource type="Resource" uid="uid://kayehxxh8jes" path="res://resources/weapons/enemy_test_pistol.tres" id="12_weapon"]
+[ext_resource type="Script" uid="uid://bnmfescbn8pk6" path="res://scripts/enemy/enemy_unit_type.gd" id="17_unit_type"]
+[ext_resource type="Script" uid="uid://daiu2qlnmqmsi" path="res://scripts/enemy/enemy_training.gd" id="18_training"]
+[ext_resource type="Resource" path="res://resources/enemy/training/arena.tres" id="training_profile"]
+[ext_resource type="Resource" path="res://resources/enemy/units/ranged.tres" id="unit_profile"]
+
+[sub_resource type="StandardMaterial3D" id="FloorMaterial"]
+albedo_color = Color(0.26, 0.24, 0.3, 1)
+
+[sub_resource type="BoxMesh" id="Mesh0Floor"]
+material = SubResource("FloorMaterial")
+size = Vector3(22.67102, 0.5, 15.744629)
+
+[sub_resource type="BoxShape3D" id="Shape0Floor"]
+size = Vector3(22.649536, 0.5, 15.817871)
+
+[sub_resource type="StandardMaterial3D" id="CoverMaterial"]
+albedo_color = Color(0.34, 0.39, 0.45, 1)
+
+[sub_resource type="BoxMesh" id="BoxMesh_w3v2p"]
+material = SubResource("CoverMaterial")
+size = Vector3(1.2, 2.2, 6.890625)
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_1s3fb"]
+size = Vector3(1.2, 2.2, 6.890625)
+
+[sub_resource type="BoxMesh" id="BoxMesh_1pekq"]
+material = SubResource("CoverMaterial")
+size = Vector3(2, 2.2, 1)
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_ffcej"]
+size = Vector3(2, 2.2, 1)
+
+[sub_resource type="StandardMaterial3D" id="WallMaterial"]
+albedo_color = Color(0.48, 0.46, 0.5, 1)
+
+[sub_resource type="BoxMesh" id="Mesh0North"]
+material = SubResource("WallMaterial")
+size = Vector3(22.916, 1.6, 0.25)
+
+[sub_resource type="BoxShape3D" id="Shape0North"]
+size = Vector3(22.916, 1.6, 0.25)
+
+[sub_resource type="BoxMesh" id="Mesh0East"]
+material = SubResource("WallMaterial")
+size = Vector3(0.25, 1.6, 15.743164)
+
+[sub_resource type="BoxShape3D" id="Shape0East"]
+size = Vector3(0.25, 1.6, 15.745239)
+
+[sub_resource type="BoxMesh" id="Mesh0WestNorth"]
+material = SubResource("WallMaterial")
+size = Vector3(0.25, 1.6, 4)
+
+[sub_resource type="BoxShape3D" id="Shape0WestNorth"]
+size = Vector3(0.25, 1.6, 4)
+
+[sub_resource type="BoxMesh" id="Mesh0WestSouth"]
+material = SubResource("WallMaterial")
+size = Vector3(0.25, 1.6, 9.786255)
+
+[sub_resource type="BoxShape3D" id="Shape0WestSouth"]
+size = Vector3(0.25, 1.6, 9.791992)
+
+[sub_resource type="BoxMesh" id="Mesh1Floor"]
+material = SubResource("FloorMaterial")
+size = Vector3(2.5, 0.5, 2)
+
+[sub_resource type="BoxShape3D" id="Shape1Floor"]
+size = Vector3(2.5, 0.5, 2)
+
+[sub_resource type="BoxMesh" id="Mesh1North"]
+material = SubResource("WallMaterial")
+size = Vector3(2.5, 0.6, 0.25)
+
+[sub_resource type="BoxShape3D" id="Shape1North"]
+size = Vector3(2.5, 0.6, 0.25)
+
+[sub_resource type="BoxMesh" id="Mesh1South"]
+material = SubResource("WallMaterial")
+size = Vector3(2.5, 0.6, 0.25)
+
+[sub_resource type="BoxShape3D" id="Shape1South"]
+size = Vector3(2.5, 0.6, 0.25)
+
+[sub_resource type="BoxShape3D" id="CombatZoneShape"]
+size = Vector3(22.44934, 3, 15.852051)
+
+[sub_resource type="StandardMaterial3D" id="EnemyMaterial"]
+albedo_color = Color(0.85, 0.16, 0.3, 1)
+
+[sub_resource type="CapsuleMesh" id="EnemyMesh"]
+material = SubResource("EnemyMaterial")
+radius = 0.35
+height = 1.6
+
+[sub_resource type="CapsuleShape3D" id="EnemyShape"]
+radius = 0.35
+height = 1.6
+
+[sub_resource type="StandardMaterial3D" id="FrontMaterial"]
+albedo_color = Color(1, 0.8, 0.1, 1)
+
+[sub_resource type="BoxMesh" id="FrontMesh"]
+material = SubResource("FrontMaterial")
+size = Vector3(0.2, 0.2, 0.55)
+
+[node name="Arena" type="Node3D" unique_id=1563628380]
+script = ExtResource("3_reset")
+
+[node name="NavigationRegion3D" type="NavigationRegion3D" parent="." unique_id=134180129]
+navigation_mesh = ExtResource("2")
+
+[node name="Environment" type="Node3D" parent="NavigationRegion3D" unique_id=1776415677]
+
+[node name="Floor" type="StaticBody3D" parent="NavigationRegion3D/Environment" unique_id=1999213641]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.25, 0)
+
+[node name="Mesh" type="MeshInstance3D" parent="NavigationRegion3D/Environment/Floor" unique_id=1694150874]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 2.3355103, 0, 2.8723145)
+mesh = SubResource("Mesh0Floor")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="NavigationRegion3D/Environment/Floor" unique_id=806593910]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 2.324768, 0, 2.9089355)
+shape = SubResource("Shape0Floor")
+
+[node name="CoverA" parent="NavigationRegion3D/Environment" unique_id=704352125 instance=ExtResource("5_cover")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -3.6225033, 1.1, -0.57203555)
+
+[node name="Mesh" parent="NavigationRegion3D/Environment/CoverA" index="0"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 1.4453125)
+mesh = SubResource("BoxMesh_w3v2p")
+
+[node name="CollisionShape3D" parent="NavigationRegion3D/Environment/CoverA" index="1"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 1.4453125)
+shape = SubResource("BoxShape3D_1s3fb")
+
+[node name="CoverB" parent="NavigationRegion3D/Environment" unique_id=913943400 instance=ExtResource("5_cover")]
+transform = Transform3D(-0.018502058, 0, -0.9998288, 0, 1, 0, 0.9998288, 0, -0.018502058, 7.1962805, 1.1, -2.8742487)
+
+[node name="CoverC" parent="NavigationRegion3D/Environment" unique_id=1545426448 instance=ExtResource("5_cover")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -7.979108, 1.1, 6.5940037)
+
+[node name="Mesh" parent="NavigationRegion3D/Environment/CoverC" index="0"]
+mesh = SubResource("BoxMesh_1pekq")
+
+[node name="CollisionShape3D" parent="NavigationRegion3D/Environment/CoverC" index="1"]
+shape = SubResource("BoxShape3D_ffcej")
+
+[node name="CoverD" parent="NavigationRegion3D/Environment" unique_id=998803542 instance=ExtResource("5_cover")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 12.146425, 1.1, 5.8851247)
+
+[node name="CoverE" parent="NavigationRegion3D/Environment" unique_id=1374712086 instance=ExtResource("5_cover")]
+transform = Transform3D(-0.012486058, 0, 0.99992204, 0, 1, 0, -0.99992204, 0, -0.012486058, 3, 1.1, 8.976278)
+
+[node name="CoverF" parent="NavigationRegion3D/Environment" unique_id=1955732264 instance=ExtResource("5_cover")]
+transform = Transform3D(-0.012486058, 0, 0.99992204, 0, 1, 0, -0.99992204, 0, -0.012486058, 5.4195333, 1.1, 3.679556)
+
+[node name="North" type="StaticBody3D" parent="NavigationRegion3D/Environment" unique_id=61551692]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 2.461725, 0.8, -5.125)
+
+[node name="Mesh" type="MeshInstance3D" parent="NavigationRegion3D/Environment/North" unique_id=1462651870]
+mesh = SubResource("Mesh0North")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="NavigationRegion3D/Environment/North" unique_id=378208882]
+shape = SubResource("Shape0North")
+
+[node name="South" type="StaticBody3D" parent="NavigationRegion3D/Environment" unique_id=1527827582]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 2.461725, 0.8, 10.877412)
+
+[node name="Mesh" type="MeshInstance3D" parent="NavigationRegion3D/Environment/South" unique_id=1516931507]
+mesh = SubResource("Mesh0North")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="NavigationRegion3D/Environment/South" unique_id=10888441]
+shape = SubResource("Shape0North")
+
+[node name="East" type="StaticBody3D" parent="NavigationRegion3D/Environment" unique_id=2112995892]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 9.125, 0.8, 0)
+
+[node name="Mesh" type="MeshInstance3D" parent="NavigationRegion3D/Environment/East" unique_id=479676382]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 4.670109, 0, 2.871582)
+mesh = SubResource("Mesh0East")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="NavigationRegion3D/Environment/East" unique_id=1983380365]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 4.66018, 0, 2.8726196)
+shape = SubResource("Shape0East")
+
+[node name="WestNorth" type="StaticBody3D" parent="NavigationRegion3D/Environment" unique_id=359003820]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -9.125, 0.8, -3.125)
+
+[node name="Mesh" type="MeshInstance3D" parent="NavigationRegion3D/Environment/WestNorth" unique_id=1953505233]
+mesh = SubResource("Mesh0WestNorth")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="NavigationRegion3D/Environment/WestNorth" unique_id=951864026]
+shape = SubResource("Shape0WestNorth")
+
+[node name="WestSouth" type="StaticBody3D" parent="NavigationRegion3D/Environment" unique_id=428645772]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -9.125, 0.8, 3.125)
+
+[node name="Mesh" type="MeshInstance3D" parent="NavigationRegion3D/Environment/WestSouth" unique_id=574217849]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 2.8931274)
+mesh = SubResource("Mesh0WestSouth")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="NavigationRegion3D/Environment/WestSouth" unique_id=1040772731]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 2.895996)
+shape = SubResource("Shape0WestSouth")
+
+[node name="Passage" type="Node3D" parent="." unique_id=1353826174]
+
+[node name="Floor" type="StaticBody3D" parent="Passage" unique_id=1493294682]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -10, -0.25, 0)
+
+[node name="Mesh" type="MeshInstance3D" parent="Passage/Floor" unique_id=1952091868]
+mesh = SubResource("Mesh1Floor")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="Passage/Floor" unique_id=208145104]
+shape = SubResource("Shape1Floor")
+
+[node name="North" type="StaticBody3D" parent="Passage" unique_id=1668306336]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -10, 0.3, -1.125)
+
+[node name="Mesh" type="MeshInstance3D" parent="Passage/North" unique_id=231396756]
+mesh = SubResource("Mesh1North")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="Passage/North" unique_id=216810742]
+shape = SubResource("Shape1North")
+
+[node name="South" type="StaticBody3D" parent="Passage" unique_id=860243930]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -10, 0.3, 1.125)
+
+[node name="Mesh" type="MeshInstance3D" parent="Passage/South" unique_id=758900528]
+mesh = SubResource("Mesh1South")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="Passage/South" unique_id=1993751597]
+shape = SubResource("Shape1South")
+
+[node name="CombatZone" type="Area3D" parent="." unique_id=712545492 groups=["combat_zone"]]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1, 0)
+collision_layer = 0
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="CombatZone" unique_id=647237062]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 2.2246704, 0, 2.9260254)
+shape = SubResource("CombatZoneShape")
+
+[node name="Enemy" type="CharacterBody3D" parent="." unique_id=171186539 groups=["combat_target"]]
+transform = Transform3D(-4.371139e-08, 0, 1, 0, 1, 0, -1, 0, -4.371139e-08, 4, 0, -2)
+script = ExtResource("3_fu4bq")
+max_health = 10000.0
+weapon = ExtResource("12_weapon")
+
+[node name="UnitType" type="Node" parent="Enemy" unique_id=1065345618]
+script = ExtResource("17_unit_type")
+profile = ExtResource("unit_profile")
+
+[node name="Training" type="Node" parent="Enemy" unique_id=740728946]
+script = ExtResource("18_training")
+profile = ExtResource("training_profile")
+
+[node name="AI" type="Node" parent="Enemy" unique_id=1624589162]
+script = ExtResource("6_ai")
+
+[node name="Perception" type="Node" parent="Enemy/AI" unique_id=1530092005]
+script = ExtResource("9_perception")
+
+[node name="Cover" type="Node" parent="Enemy/AI" unique_id=258005831]
+script = ExtResource("10_selection")
+
+[node name="Body" type="MeshInstance3D" parent="Enemy" unique_id=1631920254]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.8, 0)
+mesh = SubResource("EnemyMesh")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="Enemy" unique_id=765207616]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.8, 0)
+shape = SubResource("EnemyShape")
+
+[node name="FrontMarker" type="MeshInstance3D" parent="Enemy" unique_id=1729030179]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.35, -0.4)
+mesh = SubResource("FrontMesh")
+
+[node name="Label" type="Label3D" parent="Enemy" unique_id=591293484]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 2.2, 0)
+billboard = 1
+text = "敌人：待机"
+font_size = 36
+
+[node name="NavigationAgent3D" type="NavigationAgent3D" parent="Enemy" unique_id=951862842]
+path_desired_distance = 0.4
+target_desired_distance = 0.4
+path_height_offset = 0.5
+path_max_distance = 1.01
+height = 1.6
+radius = 0.35
+
+[node name="EntranceLabel" type="Label3D" parent="." unique_id=61251950]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -10, 0.4, 0)
+billboard = 1
+text = "竞技场 →"
+font_size = 40
+
+[node name="Title" type="Label3D" parent="." unique_id=2055271213]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -6, 0.3, -3.7)
+billboard = 1
+text = "竞技场
+视野 / 寻路测试"
+font_size = 42
+
+[editable path="NavigationRegion3D/Environment/CoverA"]
+[editable path="NavigationRegion3D/Environment/CoverC"]

@@ -6,7 +6,7 @@ func _initialize() -> void:
 	_run.call_deferred()
 
 func _run() -> void:
-	var scene = load("res://main.tscn").instantiate()
+	var scene = load("res://scenes/main.tscn").instantiate()
 	root.add_child(scene)
 	current_scene = scene
 	var player = scene.get_node("Player")
@@ -58,7 +58,7 @@ func _run() -> void:
 	_check("无效槽位请求被拒绝", not slots.select_slot(-1) and not slots.select_slot(2))
 	# 使用真实射线确认两槽的配置进入伤害、射程和冷却流程。
 	var primary = slots.primary_weapon.duplicate()
-	var secondary = load("res://test_sidearm.tres").duplicate()
+	var secondary = load("res://resources/weapons/test_sidearm.tres").duplicate()
 	primary.min_spread_angle_degrees = 0.0
 	primary.max_spread_angle_degrees = 0.0
 	secondary.min_spread_angle_degrees = 0.0
@@ -93,7 +93,7 @@ func _run() -> void:
 	combat.shoot()
 	_check("副武器实际射程生效", is_equal_approx(target.health, hp) and combat.last_shot_collider != target)
 	# 新实例验证初始配置，不修改运行中的用户资源。
-	var packed = load("res://main.tscn")
+	var packed = load("res://scenes/main.tscn")
 	var other = packed.instantiate()
 	var other_slots = other.get_node("Player/WeaponSlots")
 	other_slots.primary_weapon = null

@@ -1,0 +1,21 @@
+[gd_resource type="Resource" script_class="EnemyUnitProfile" format=3]
+
+[ext_resource type="Script" path="res://scripts/enemy/config/enemy_unit_profile.gd" id="profile"]
+[ext_resource type="Script" path="res://scripts/enemy/config/enemy_action_definition.gd" id="definition"]
+[ext_resource type="Resource" path="res://resources/enemy/actions/patrol.tres" id="patrol"]
+[ext_resource type="Resource" path="res://resources/enemy/actions/search.tres" id="search"]
+[ext_resource type="Resource" path="res://resources/enemy/actions/engage.tres" id="engage"]
+[ext_resource type="Resource" path="res://resources/enemy/actions/reload.tres" id="reload"]
+[ext_resource type="Resource" path="res://resources/enemy/actions/cover.tres" id="cover"]
+[ext_resource type="Resource" path="res://resources/enemy/actions/covering_retreat.tres" id="covering_retreat"]
+[ext_resource type="Resource" path="res://resources/enemy/actions/attack_position.tres" id="attack_position"]
+[ext_resource type="Resource" path="res://resources/enemy/actions/suppression.tres" id="suppression"]
+[ext_resource type="Resource" path="res://resources/enemy/actions/exit_suppression.tres" id="exit_suppression"]
+
+[resource]
+script = ExtResource("profile")
+unit_id = &"ranged"
+display_name = "远程兵"
+capabilities = Array[StringName]([&"locomotion", &"firearms"])
+default_behaviors = Array[ExtResource("definition")]([ExtResource("patrol"), ExtResource("search"), ExtResource("engage"), ExtResource("reload")])
+tactical_actions = Array[ExtResource("definition")]([ExtResource("cover"), ExtResource("covering_retreat"), ExtResource("attack_position"), ExtResource("suppression"), ExtResource("exit_suppression")])

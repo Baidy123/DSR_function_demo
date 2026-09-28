@@ -1,9 +1,0 @@
-[gd_resource type="Resource" script_class="EnemyActionDefinition" format=3]
-
-[ext_resource type="Script" path="res://enemy_action_definition.gd" id="1_definition"]
-
-[resource]
-resource_name = "掩护撤退"
-script = ExtResource("1_definition")
-action_id = &"covering_retreat"
-display_name = "掩护撤退"

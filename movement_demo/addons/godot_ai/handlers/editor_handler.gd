@@ -486,7 +486,7 @@ func _take_screenshot_impl(params: Dictionary) -> Dictionary:
 				return ErrorCodes.make_not_ready(
 					ErrorCodes.SUB_EDITOR_NO_SCENE,
 					"No scene open — open a scene first", false,
-					"Call scene_open with a scene path (e.g. \"res://main.tscn\") first.")
+					"Call scene_open with a scene path (e.g. \"res://scenes/main.tscn\") first.")
 			if not view_target.is_empty() or coverage or custom_elevation != null or custom_azimuth != null or custom_fov != null:
 				return ErrorCodes.make(
 					ErrorCodes.INVALID_PARAMS,
@@ -500,7 +500,7 @@ func _take_screenshot_impl(params: Dictionary) -> Dictionary:
 					"viewport_2d",
 					"Captured an empty image from the 2D viewport. The 2D viewport produced no output — typically headless mode or the 2D viewport has not drawn a frame yet."
 				)
-			return _finalize_image(image_2d, "viewport_2d", max_resolution)
+			return _finalize_image(image_2d, "viewport_2d", max_resolution, viewport.use_hdr_2d)
 		_:
 			return ErrorCodes.make(ErrorCodes.VALUE_OUT_OF_RANGE, "Invalid source '%s' — use 'viewport', 'viewport_2d', 'cinematic', or 'game'" % source)
 
@@ -848,9 +848,9 @@ func _find_current_camera_3d(root: Node) -> Camera3D:
 	return first
 
 
-func _finalize_image(image: Image, source: String, max_resolution: int) -> Dictionary:
+func _finalize_image(image: Image, source: String, max_resolution: int, use_hdr_2d := false) -> Dictionary:
 	## Shared with the game-process copy in runtime/game_helper.gd (#716).
-	var encoded := McpScreenshotEncode.downscale_and_encode(image, max_resolution)
+	var encoded := McpScreenshotEncode.downscale_and_encode(image, max_resolution, use_hdr_2d)
 	return {
 		"data": {
 			"source": source,

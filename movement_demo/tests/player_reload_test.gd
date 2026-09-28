@@ -13,7 +13,7 @@ func _initialize() -> void:
 
 
 func _run() -> void:
-	scene = load("res://main.tscn").instantiate()
+	scene = load("res://scenes/main.tscn").instantiate()
 	# 行为断言使用独立初值；用户在检查器调整备弹不影响测试。
 	var initial_slots = scene.get_node("Player/WeaponSlots")
 	for field in ["starting_rifle_ammo", "starting_pistol_ammo", "starting_smg_ammo", "starting_shotgun_ammo"]:

@@ -12,7 +12,7 @@ func _initialize() -> void:
 	_run.call_deferred()
 
 func _run() -> void:
-	scene = load("res://main.tscn").instantiate()
+	scene = load("res://scenes/main.tscn").instantiate()
 	root.add_child(scene)
 	current_scene = scene
 	player = scene.get_node("Player")

@@ -1,0 +1,22 @@
+[gd_resource type="Resource" script_class="WeaponData" format=3 uid="uid://l7t4snve8h85"]
+
+[ext_resource type="Script" uid="uid://b7iqg2tyib57x" path="res://scripts/weapons/weapon_data.gd" id="1_weapon"]
+[ext_resource type="Resource" path="res://resources/noise/gunshot_noise.tres" id="2_hitfs"]
+
+[resource]
+script = ExtResource("1_weapon")
+ammo_type = 2
+magazine_capacity = 30
+reload_seconds = 4.5
+display_name = "测试冲锋枪"
+damage = 10.0
+fire_mode = 1
+min_spread_angle_degrees = 0.5
+max_spread_angle_degrees = 7.0
+spread_recovery_degrees_per_second = 5.0
+moving_spread_angle_degrees = 6.5
+player_move_spread_degrees_per_meter = 0.5
+shot_spread_penalty_degrees = 0.25
+shot_max_spread_angle_degrees = 5.0
+spread_recovery_delay = 0.2
+target_move_max_spread_angle_degrees = 4.0

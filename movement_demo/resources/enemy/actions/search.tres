@@ -1,0 +1,14 @@
+[gd_resource type="Resource" script_class="EnemyActionDefinition" format=3]
+
+[ext_resource type="Script" path="res://scripts/enemy/config/enemy_action_definition.gd" id="1"]
+[ext_resource type="Script" path="res://scripts/enemy/actions/enemy_search.gd" id="2"]
+
+[resource]
+script = ExtResource("1")
+action_id = &"search"
+display_name = "调查与搜索"
+category = 0
+implementation = ExtResource("2")
+config_section = &"search"
+required_capabilities = Array[StringName]([])
+includes = Array[StringName]([])

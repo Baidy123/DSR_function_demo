@@ -37,7 +37,7 @@ func run(scene: Node) -> Dictionary:
 	for i in range(10): training.receive_hit(1000.0)
 	checks["training_counts_without_dying"] = training.hit_count == 10 and not training.is_dead and training.is_in_group("combat_target")
 	# 新实例模拟重新运行：死亡和命中计数不写回资源。
-	var fresh = load("res://combat_test.tscn").instantiate()
+	var fresh = load("res://scenes/world/combat_test.tscn").instantiate()
 	scene.add_child(fresh)
 	checks["fresh_test_target_full_health"] = fresh.get_node("TargetB").health == fresh.get_node("TargetB").max_health and not fresh.get_node("TargetB").is_dead
 	checks["fresh_training_count_zero"] = fresh.get_node("TargetA").hit_count == 0

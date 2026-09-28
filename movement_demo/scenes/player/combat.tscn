@@ -1,0 +1,27 @@
+[gd_scene format=3 uid="uid://bo1umuc15khr4"]
+
+[ext_resource type="Script" uid="uid://d2lnycebyk6px" path="res://scripts/player/player_combat_v3.gd" id="1_kx3u1"]
+[ext_resource type="Script" uid="uid://druibtssmbihn" path="res://scripts/ui/lock_reticle.gd" id="3"]
+
+[node name="Combat" type="Node" unique_id=1292262048]
+script = ExtResource("1_kx3u1")
+
+[node name="HUD" type="CanvasLayer" parent="." unique_id=1620599981]
+
+[node name="Panel" type="PanelContainer" parent="HUD" unique_id=330668023]
+offset_left = 16.0
+offset_top = 16.0
+offset_right = 480.0
+offset_bottom = 115.0
+mouse_filter = 2
+
+[node name="Status" type="Label" parent="HUD/Panel" unique_id=1121196697]
+layout_mode = 2
+theme_override_font_sizes/font_size = 22
+
+[node name="Reticle" type="Control" parent="HUD" unique_id=1907689758]
+visible = false
+layout_mode = 3
+anchors_preset = 0
+mouse_filter = 2
+script = ExtResource("3")

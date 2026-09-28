@@ -2,7 +2,7 @@
 extends "res://addons/godot_ai/testing/test_suite.gd"
 
 func test_cover_instance_save() -> void:
-	var root: Node = load("res://arena.tscn").instantiate(PackedScene.GEN_EDIT_STATE_MAIN)
+	var root: Node = load("res://scenes/arena.tscn").instantiate(PackedScene.GEN_EDIT_STATE_MAIN)
 	for name in ["CoverA", "CoverC"]:
 		var cover := root.get_node("NavigationRegion3D/Environment/" + name)
 		var collision := cover.get_node("CollisionShape3D") as CollisionShape3D
