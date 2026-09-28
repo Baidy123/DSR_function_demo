@@ -146,6 +146,29 @@ func step(delta: float, sees_player: bool) -> Vector3:
 	return direction.normalized() * minf(1.0, distance / maxf(0.001, actor.move_speed * delta))
 
 
+## Utility已经比较了具体点与路线；执行该点，不能再按另一套最近距离重选。
+func start_evaluated(candidate: Dictionary, known_position: Vector3) -> bool:
+	if not can_start() or not is_instance_valid(candidate.get("body")):
+		return false
+	reset()
+	destination = candidate.position
+	active_cover = candidate.body
+	_query_target = known_position + Vector3.UP * 0.8
+	_using_hit_memory = true
+	if not _usable(destination):
+		reset()
+		return false
+	var length: float = selection._path_length(actor.global_position, destination)
+	if not is_finite(length):
+		reset()
+		return false
+	_remaining = length / maxf(0.1, actor.move_speed) + 3.0
+	phase = Phase.MOVE
+	phase_changed.emit(phase)
+	actor.agent.target_position = destination
+	return true
+
+
 func _find_position(sees_player: bool) -> void:
 	# 与调试显示独立。每帧最多64点／约2.5毫秒；整轮基于触发时已知的位置。
 	var started := Time.get_ticks_usec()
@@ -192,6 +215,9 @@ func _unusable_reason(point: Vector3) -> String:
 	if not _within_sight_range(point, _known_position()):
 		return "超过感知距离"
 	var target: Vector3 = _known_position() + Vector3.UP * 0.8
+	var origin: Vector3 = point + actor.get_shot_origin() - actor.global_position
+	if not tactics.has_clear_firing_lane(origin, target - origin, origin.distance_to(target)):
+		return "完整射界被掩体遮挡"
 	var result: Dictionary = selection.assess_attack_point(point, active_cover, target, target)
 	return "" if result.usable else result.reason
 

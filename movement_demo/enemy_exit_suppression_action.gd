@@ -77,6 +77,11 @@ func _targets_available() -> bool:
 	return tactics.can_suppress_exits and is_instance_valid(target_cover) and ai.cover_selection.has_clear_line(actor.get_shot_origin(), aim_point)
 
 
+func utility_fire_fraction() -> float:
+	# 入选前已确认两端都有可射样本，射击只从这些可见点中取样。
+	return 1.0
+
+
 func _select_aim_point() -> void:
 	if _shots_remaining <= 0:
 		var minimum := maxi(1, mini(shots_per_exit_min, shots_per_exit_max))

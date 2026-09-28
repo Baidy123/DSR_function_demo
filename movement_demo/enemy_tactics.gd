@@ -164,8 +164,9 @@ func update_shooting(delta: float, sees_player: bool, movement_requested: bool) 
 		fire_decision.reset()
 		return
 	# 墙角站位按目标方向选出后，实际枪口仍可能在跟转；等它转出墙面再开火。
-	if attack_position.phase == attack_position.Phase.HOLD and not ai.cover_selection.has_clear_shot_cone(actor.get_shot_origin(), actor.aim_direction, actor.get_max_shot_deviation_degrees(), actor.get_shot_origin().distance_to(point), attack_position.active_cover):
+	if not has_clear_firing_lane(actor.get_shot_origin(), actor.aim_direction, actor.get_shot_origin().distance_to(point)):
 		fire_decision.reset()
+		ai.invalidate_utility()
 		return
 	if cover != null and cover.is_active():
 		fire_decision.reset()
@@ -194,6 +195,9 @@ func _update_suppression_shooting(delta: float, movement_requested: bool) -> voi
 	var moving: bool = movement_requested or Vector2(actor.velocity.x, actor.velocity.z).length() > 0.05
 	if actor.get_shot_origin().distance_to(point) > actor.weapon.fire_range or fire_pause_remaining > 0.0 or (moving and not fire_while_moving):
 		return
+	if not has_clear_firing_lane(actor.get_shot_origin(), actor.aim_direction, actor.get_shot_origin().distance_to(point)):
+		ai.invalidate_utility()
+		return
 	if actor.try_fire():
 		_record_burst_shot()
 		suppression.on_shot_fired()
@@ -217,6 +221,164 @@ func reset_fire_timing() -> void:
 	fire_pause_remaining = 0.0
 
 
+## 只给统一评分器提供合法落脚点；不打分、不抽随机数、不修改导航或状态。
+## 普通接敌和墙角攻击占位一样，先比较完整路线，再执行选中的准确位置。
+func get_engagement_candidates() -> Array[Dictionary]:
+	var candidates: Array[Dictionary] = []
+	for point: Vector3 in get_engagement_candidate_points():
+		var candidate: Dictionary = assess_engagement_point(point, ai.last_known_position)
+		if not candidate.is_empty():
+			candidates.append(candidate)
+	return candidates
+
+
+## 先生成少量原始点，供统一评分器分帧完成空间、射界及路径查询。
+func get_engagement_candidate_points() -> Array[Vector3]:
+	var points: Array[Vector3] = []
+	if not is_enabled() or ai.combat_type != ai.CombatType.RANGED or not actor.can_use_firearms():
+		return points
+	if not ai.last_known_position.is_finite() or NavigationServer3D.map_get_iteration_id(agent.get_navigation_map()) == 0:
+		return points
+	var band: Vector2 = _ranged_distance_band()
+	points.append(actor.global_position)
+	# 保留已经评分的目标，避免角色移动后环形采样变化导致目的地无故消失。
+	if not agent.target_position.is_equal_approx(actor.global_position):
+		points.append(agent.target_position)
+	var radial: Vector3 = actor.global_position - ai.last_known_position
+	radial.y = 0.0
+	if radial.is_zero_approx():
+		radial = Vector3.BACK
+	var start_angle: float = atan2(radial.z, radial.x)
+	for radius: float in [(band.x + band.y) * 0.5, band.y - 0.25]:
+		for index in range(16):
+			var angle: float = start_angle + TAU * float(index) / 16.0
+			var sample: Vector3 = ai.last_known_position + Vector3(cos(angle), 0.0, sin(angle)) * radius
+			var nav_point: Vector3 = NavigationServer3D.region_get_closest_point(ai.navigation_region.get_rid(), sample)
+			if ai._horizontal_distance_between(sample, nav_point) > 0.75:
+				continue
+			# 导航网格比地面高，动作目的地始终保存身体脚底高度。
+			var point := Vector3(nav_point.x, actor.global_position.y, nav_point.z)
+			if not points.has(point):
+				points.append(point)
+	return points
+
+
+func assess_engagement_point(point: Vector3, threat: Vector3) -> Dictionary:
+	if not is_enabled() or ai.combat_type != ai.CombatType.RANGED or not actor.can_use_firearms() or not threat.is_finite():
+		return {}
+	var band: Vector2 = _ranged_distance_band()
+	if not _engagement_point_valid(point, band, threat):
+		return {}
+	var path: PackedVector3Array = ai.cover_selection._path_to(actor.global_position, point)
+	if path.is_empty():
+		return {}
+	var current_distance: float = ai._horizontal_distance(threat)
+	if current_distance < band.x and not _retreat_path_is_safe(path, current_distance, threat):
+		return {}
+	return {"position": point, "path": path}
+
+
+func _engagement_point_valid(point: Vector3, band: Vector2, threat: Vector3 = Vector3.INF) -> bool:
+	if not threat.is_finite():
+		threat = ai.last_known_position
+	if not point.is_finite() or actor.weapon == null:
+		return false
+	var distance: float = ai._horizontal_distance_between(point, threat)
+	if distance < band.x or distance > band.y:
+		return false
+	if point.distance_to(threat) > maxf(ai.perception.sight_distance, ai.perception.close_awareness_radius):
+		return false
+	var shot_origin: Vector3 = point + actor.get_shot_origin() - actor.global_position
+	var target: Vector3 = threat + Vector3.UP * 0.8
+	return (shot_origin.distance_to(target) <= actor.weapon.fire_range
+		and ai.is_position_free(point)
+		and has_clear_firing_lane(shot_origin, target - shot_origin, shot_origin.distance_to(target)))
+
+
+## 候选评分与实际射击共用；中心视线通畅不代表整个散布已绕开墙角。
+func has_clear_firing_lane(origin: Vector3, direction: Vector3, distance: float) -> bool:
+	if direction.is_zero_approx() or distance <= 0.0:
+		return false
+	var axis := direction.normalized()
+	var endpoint := origin + axis * distance
+	if not ai.cover_selection.has_clear_line(origin, endpoint):
+		return false
+	var start := Vector2(origin.x, origin.z)
+	var end := Vector2(endpoint.x, endpoint.z)
+	var spread: float = actor.get_max_shot_deviation_degrees()
+	var radius: float = distance * tan(deg_to_rad(spread)) + 0.1
+	for body in ai.get_tree().get_nodes_in_group("cover_region"):
+		if not ai.navigation_region.is_ancestor_of(body):
+			continue
+		var collision: CollisionShape3D = body.get_node_or_null("CollisionShape3D")
+		if collision == null or not collision.shape is BoxShape3D:
+			continue
+		var center := Vector2(collision.global_position.x, collision.global_position.z)
+		var extent: float = (collision.shape.size * collision.global_basis.get_scale()).length() * 0.5
+		if center.distance_to(Geometry2D.get_closest_point_to_segment(center, start, end)) > radius + extent:
+			continue
+		if not ai.cover_selection.has_clear_shot_cone(origin, axis, spread, distance, body):
+			return false
+	return true
+
+
+## 统一决策可用同一条件复核固定目的地；路径失效直接触发重评。
+func is_engagement_destination_valid(destination: Dictionary, check_path: bool = true) -> bool:
+	if not destination.has("position") or not is_enabled() or ai.combat_type != ai.CombatType.RANGED or not actor.can_use_firearms():
+		return false
+	var band: Vector2 = _ranged_distance_band()
+	if not _engagement_point_valid(destination.position, band):
+		return false
+	if not check_path:
+		return true
+	var path: PackedVector3Array = ai.cover_selection._path_to(actor.global_position, destination.position)
+	if path.is_empty():
+		return false
+	var distance: float = ai._horizontal_distance(ai.last_known_position)
+	return distance >= band.x or _retreat_path_is_safe(path, distance)
+
+
+## 只执行评分器选定的位置；条件失效时停下并交还AI，禁止内部另选一个目标。
+func step_evaluated_engagement(destination: Dictionary, delta: float, sees_player: bool) -> Vector3:
+	ranged_repath_timer = maxf(0.0, ranged_repath_timer - delta)
+	var recheck_path: bool = not ranged_has_destination or ranged_repath_timer <= 0.0
+	if not sees_player or not is_engagement_destination_valid(destination, recheck_path):
+		ranged_has_destination = false
+		ai.invalidate_utility()
+		return Vector3.ZERO
+	if recheck_path:
+		ranged_repath_timer = maxf(0.1, ranged_repath_seconds)
+	var point: Vector3 = destination.position
+	if not agent.target_position.is_equal_approx(point):
+		agent.target_position = point
+	ranged_has_destination = true
+	var distance: float = ai._horizontal_distance(point)
+	if distance <= 0.12 and _engagement_point_valid(actor.global_position, _ranged_distance_band()):
+		ai.state = ai.State.HOLD_POSITION
+		return Vector3.ZERO
+	ai.state = ai.State.REPOSITION
+	var next: Vector3 = agent.get_next_path_position()
+	# 导航通常提前停在容差范围，末段仍走向选中的脚底位置。
+	if distance <= 0.7 and _engagement_final_segment_clear(point):
+		next = point
+	elif agent.is_navigation_finished():
+		ranged_has_destination = false
+		ai.invalidate_utility()
+		return Vector3.ZERO
+	var direction: Vector3 = next - actor.global_position
+	direction.y = 0.0
+	return direction.normalized() * minf(1.0, distance / maxf(0.001, actor.move_speed * delta))
+
+
+func _engagement_final_segment_clear(point: Vector3) -> bool:
+	var count: int = maxi(1, ceili(ai._horizontal_distance(point) / 0.1))
+	for index in range(1, count + 1):
+		if not ai.is_position_free(actor.global_position.lerp(point, float(index) / count)):
+			return false
+	return true
+
+
+# 旧测试入口保留；统一评分后的正常接敌使用 step_evaluated_engagement。
 func process_ranged_position(delta: float, sees_player: bool) -> Vector3:
 	var band = _ranged_distance_band()
 	var distance = ai._horizontal_distance(ai.last_known_position)
@@ -384,8 +546,10 @@ func _ranged_wall_support(point: Vector3) -> float:
 	return hits / 3.0
 
 
-func _retreat_path_is_safe(path: PackedVector3Array, current_distance: float) -> bool:
-	var threat = Vector2(ai.last_known_position.x, ai.last_known_position.z)
+func _retreat_path_is_safe(path: PackedVector3Array, current_distance: float, known_position: Vector3 = Vector3.INF) -> bool:
+	if not known_position.is_finite():
+		known_position = ai.last_known_position
+	var threat = Vector2(known_position.x, known_position.z)
 	var previous = Vector2(actor.global_position.x, actor.global_position.z)
 	for point in path:
 		var next = Vector2(point.x, point.z)

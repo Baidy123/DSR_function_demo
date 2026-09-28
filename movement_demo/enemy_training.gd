@@ -35,9 +35,7 @@ enum SearchHintDecayMode { NONE, LINEAR_TIME, EXPONENTIAL_TIME, LINEAR_DISTANCE,
 ## 高训练专属动作的临时能力接口，默认关闭；还需最后目击邻近掩体且两端可射击。
 ## 该开关控制当前训练权限；开启不自动代表某个正式训练等级。
 @export var tactics_can_suppress_exits: bool = false
-## 首次／重新真实目击玩家，或真正受伤且有攻击者位置时，尝试攻击占位的概率。
-## 持续可见不重抽；攻击占位或掩体动作中不重选。0=不触发，1=每次满足条件都尝试。
-## 两种触发共用此概率；0.5是可调试玩初值。
+## 旧版概率兼容字段；当前Utility AI不使用，攻击占位与其他动作统一评分。
 @export_range(0.0, 1.0, 0.05) var tactics_attack_position_chance: float = 0.5
 ## 接敌侧移/后退和掩护撤退时允许开火；关闭后只在停稳时射击，转身冲刺仍停火。
 @export var tactics_fire_while_moving: bool = true
@@ -139,10 +137,9 @@ enum SearchHintDecayMode { NONE, LINEAR_TIME, EXPONENTIAL_TIME, LINEAR_DISTANCE,
 @export_group("掩体动作", "cover_")
 ## 敌人胸部到实际弹道线段的警戒半径（米）；墙挡住来弹时不会隔墙触发。
 @export_range(0.1, 5.0, 0.1) var cover_shot_radius: float = 1.5
-## 每次新的有效近身来弹触发“寻找掩体”的概率。0=从不找掩体，1=每次都找。
-## 已经处于跑向掩体/躲藏/探头流程时不会重新掷骰子，避免连续来弹让行为反复取消。
+## 旧版概率兼容字段；当前来弹只增加压力，由Utility AI决定是否躲藏。
 @export_range(0.0, 1.0, 0.05) var cover_take_cover_chance: float = 1.0
-## 到达有效躲藏位置后等待探头的秒数；新来弹可重新计时，真正看见玩家则立即结束躲藏。
+## 旧版自动探头计时；当前Utility AI比较继续躲藏与探头，不按此计时强制切换。
 @export_range(0.1, 10.0, 0.1) var cover_hide_seconds: float = 3.0
 ## 抵达 Peek 后最多观察多少秒；看见玩家会提前结束，否则转入追踪或搜索。
 @export_range(0.1, 10.0, 0.1) var cover_watch_seconds: float = 2.0
@@ -150,12 +147,11 @@ enum SearchHintDecayMode { NONE, LINEAR_TIME, EXPONENTIAL_TIME, LINEAR_DISTANCE,
 @export_range(1.0, 3.0, 0.1) var cover_run_speed_multiplier: float = 2.0
 ## 从躲藏位置移向 Peek 点时相对于敌人 Move Speed 的速度倍率。
 @export_range(0.1, 1.0, 0.1) var cover_peek_speed_multiplier: float = 0.5
-## 跑向掩体时改为“面向威胁撤退”的概率。0=永远转身跑，1=每次都掩护撤退。
+## 旧版概率兼容字段；当前Utility AI根据火力与路线风险比较掩护撤退和冲刺。
 @export_range(0.0, 1.0, 0.05) var cover_covering_retreat_chance: float = 0.4
 ## 掩护撤退时的移动速度倍率；通常比直接冲向掩体慢。
 @export_range(0.1, 1.5, 0.1) var cover_covering_retreat_speed_multiplier: float = 0.8
-## RUN_TO_COVER 期间每次真正受到伤害时，放弃掩护撤退并改为全速冲刺的概率。
-## 每次受伤都会重新判定；0=中弹也继续掩护撤退，1=一中弹就立刻冲刺。
+## 旧版概率兼容字段；当前受伤增加压力并要求重新评分，不抽概率切换。
 @export_range(0.0, 1.0, 0.05) var cover_damage_force_sprint_chance: float = 0.5
 ## 跑向掩体时，连续这么多秒未朝下一个寻路拐点有效推进，就尝试临时绕行。
 @export_range(0.2, 3.0, 0.1) var cover_cover_stuck_repath_seconds: float = 0.8

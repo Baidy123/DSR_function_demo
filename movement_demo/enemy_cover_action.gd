@@ -82,6 +82,7 @@ var timer: float = 0.0
 var active_cover_body: StaticBody3D = null
 ## 本次 RUN_TO_COVER 是否采用面向威胁的掩护撤退。
 var covering_retreat: bool = false
+var utility_driven := false
 
 ## RUN_TO_COVER 的“朝当前路径点靠近”监测与临时绕行状态。
 var cover_progress_waypoint: Vector3 = Vector3.ZERO
@@ -95,6 +96,7 @@ var cover_detour_retries: int = 0
 
 
 func reset() -> void:
+	utility_driven = false
 	_hide_damage_frame = -1
 	phase = Phase.NONE
 	timer = 0.0
@@ -135,8 +137,8 @@ func notice_shot(origin: Vector3, endpoint: Vector3) -> void:
 		return
 	ai._investigate_attack(origin - Vector3.UP * 0.8)
 	ai.nearby_shot_pressure = minf(1.0, ai.nearby_shot_pressure + 0.15)
-	if ai.reload_plan.is_empty():
-		_try_take_cover(origin)
+	# 来弹只更新威胁和压力，由统一Utility决定是否转移，不抽概率直接抢占。
+	ai.invalidate_utility()
 
 
 # 压制中真正受伤时必定尝试找掩体，但仍须有合法可达的躲藏位置。
@@ -355,18 +357,29 @@ func state_label() -> String:
 
 
 ## AI已比较好目的地；复用原转移和卡住处理，换弹结束由AI交接。
-func start_reload_transfer(destination: Dictionary, known_position: Vector3) -> void:
+func start_reload_transfer(destination: Dictionary, known_position: Vector3, retreat: bool = false) -> void:
 	reset()
 	hide_position = destination.hide
 	active_cover_body = destination.body
 	look_position = known_position
 	threat_origin = known_position + Vector3.UP * 0.8
-	_start_move(Phase.RUN_TO_COVER, hide_position)
-	covering_retreat = false
+	_start_move(Phase.RUN_TO_COVER, hide_position, retreat)
+	utility_driven = true
 	_refresh_move_timer(hide_position)
 
 
-func _start_move(next_phase: Phase, destination: Vector3) -> void:
+func start_utility_peek(destination: Dictionary, known_position: Vector3) -> void:
+	reset()
+	hide_position = destination.hide
+	peek_position = destination.position
+	active_cover_body = destination.body
+	look_position = known_position
+	threat_origin = known_position + Vector3.UP * 0.8
+	_start_move(Phase.PEEK_OUT, peek_position)
+	utility_driven = true
+
+
+func _start_move(next_phase: Phase, destination: Vector3, evaluated_retreat: Variant = null) -> void:
 	# 初次开始一次 RUN_TO_COVER 时，用 covering_retreat_chance 决定是转身冲刺还是掩护撤退。
 	# 后续真正受伤时由 on_damage_during_transfer() 另外逐次判定是否改为冲刺。
 	var was_running_to_cover: bool = phase == Phase.RUN_TO_COVER
@@ -374,7 +387,7 @@ func _start_move(next_phase: Phase, destination: Vector3) -> void:
 
 	if phase == Phase.RUN_TO_COVER:
 		if not was_running_to_cover:
-			covering_retreat = ai.can_use_action(&"covering_retreat") and randf() < covering_retreat_chance
+			covering_retreat = bool(evaluated_retreat) if evaluated_retreat != null else (ai.can_use_action(&"covering_retreat") and randf() < covering_retreat_chance)
 			_reset_cover_progress_monitor()
 			cover_detour_active = false
 			cover_detour_position = enemy.global_position
@@ -411,6 +424,10 @@ func on_damage_during_transfer() -> void:
 	# receive_hit() 会先把 NavigationAgent 目标改成攻击者位置，Cover 必须立即把导航夺回来。
 	# 如果正在临时绕行，就继续走绕行点；否则继续追原 Hide。
 	enemy.agent.target_position = cover_detour_position if cover_detour_active else hide_position
+	if utility_driven:
+		# 实际伤害已增加AI压力，由共同评分决定是否改为冲刺。
+		ai.invalidate_utility()
+		return
 
 	# 每次真正受到伤害都重新判定。只要当前还在掩护撤退，成功就放弃慢速后撤并全速冲刺。
 	var force_sprint: bool = randf() < damage_force_sprint_chance

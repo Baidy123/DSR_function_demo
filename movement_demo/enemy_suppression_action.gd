@@ -26,6 +26,32 @@ func is_active() -> bool:
 	return active
 
 
+## 无副作用候选检查；出口压制在临时动作对象中查询目标，避免改动执行中的连射状态。
+func utility_available() -> bool:
+	if not is_enabled() or not tactics.can_suppress_fire or not actor.can_use_firearms():
+		return false
+	if not ai.has_visual_memory or actor.ammo.magazine_rounds <= 0 or actor.ammo.is_reloading:
+		return false
+	var center: Vector3 = ai.last_seen_position + Vector3.UP * 0.8
+	if actor.get_shot_origin().distance_to(center) > actor.weapon.fire_range:
+		return false
+	var preview = get_script().new()
+	preview.action_id = action_id
+	preview.setup(ai, config_section)
+	return preview._prepare_targets(center)
+
+
+## 可射到的目标区域比例，换算成有效火力时间；不把打向实体墙计为同等收益。
+func utility_fire_fraction() -> float:
+	var center: Vector3 = ai.last_seen_position + Vector3.UP * 0.8
+	var clear := 0.0
+	for offset: Vector3 in [Vector3.ZERO, Vector3.RIGHT, Vector3.LEFT, Vector3.FORWARD, Vector3.BACK]:
+		var target: Vector3 = center + offset * target_radius
+		if tactics.has_clear_firing_lane(actor.get_shot_origin(), target - actor.get_shot_origin(), actor.get_shot_origin().distance_to(target)):
+			clear += 0.2
+	return clear
+
+
 func reset() -> void:
 	active = false
 	remaining = 0.0

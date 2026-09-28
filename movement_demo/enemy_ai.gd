@@ -56,12 +56,38 @@ var _search_was_allowed: bool = true
 @onready var cover_selection = $Cover
 var cover
 
-# 首版试玩值。风险承受与位置遮挡分开，代价越低越优。
-@export_group("换弹决策")
-@export_range(0.0, 10.0, 0.1) var reload_risk_weight: float = 3.0
-@export_range(0.1, 2.0, 0.1) var reload_recheck_seconds: float = 0.4
-@export_range(0.0, 3.0, 0.1) var reload_hold_seconds: float = 0.6
-@export_range(0.0, 5.0, 0.1) var reload_switch_advantage: float = 0.5
+# 共用Utility标准，全部候选使用同一观察时长；以下为可调试玩值。
+@export_group("Utility AI")
+@export_range(1.0, 12.0, 0.5) var utility_horizon_seconds: float = 4.0
+@export_range(0.0, 10.0, 0.1) var utility_fire_weight: float = 3.0
+@export_range(0.0, 10.0, 0.1) var utility_risk_weight: float = 3.0
+@export_range(0.0, 10.0, 0.1) var utility_information_weight: float = 1.0
+@export_range(0.1, 2.0, 0.1) var utility_recheck_seconds: float = 0.4
+@export_range(0.0, 3.0, 0.1) var utility_hold_seconds: float = 0.6
+@export_range(0.0, 5.0, 0.1) var utility_switch_advantage: float = 0.5
+## 仅Debug总开关开启时输出选中动作及分数构成。
+@export var debug_utility: bool = false
+var utility_options: Array[Dictionary] = []
+var utility_current: Dictionary = {}
+var utility_unseen_seconds: float = 0.0
+var utility_suppression_pending: bool = false
+var utility_rejected_attack_points: Array[Vector3] = []
+var _utility_rejection_threat: Vector3 = Vector3.INF
+var _utility_elapsed: float = 0.0
+var _utility_timer: float = 0.0
+# 兼容旧换弹检查接口；实际决策只使用上面的共用参数。
+var reload_risk_weight: float:
+	get: return utility_risk_weight
+	set(value): utility_risk_weight = value
+var reload_recheck_seconds: float:
+	get: return utility_recheck_seconds
+	set(value): utility_recheck_seconds = value
+var reload_hold_seconds: float:
+	get: return utility_hold_seconds
+	set(value): utility_hold_seconds = value
+var reload_switch_advantage: float:
+	get: return utility_switch_advantage
+	set(value): utility_switch_advantage = value
 var reload_plan: StringName = &""
 var reload_destination: Dictionary = {}
 var reload_options: Array[Dictionary] = []
@@ -126,177 +152,212 @@ func _physics_process(delta: float) -> void:
 	_enforce_action_permissions()
 	recent_damage_pressure = maxf(0.0, recent_damage_pressure - delta * 0.5)
 	nearby_shot_pressure = maxf(0.0, nearby_shot_pressure - delta * 0.5)
-	if actor.is_dead or not is_arena_active():
+	if actor.is_dead or not is_arena_active() or player.is_dead() or player.is_in_dialogue:
 		actor.cancel_reload()
 		reset_actions()
+		actor.velocity = Vector3.ZERO
 		tactics.update_shooting(delta, false, false)
 		return
-
-	# 地图同步完成前不能请求路径。
 	if NavigationServer3D.map_get_iteration_id(agent.get_navigation_map()) == 0:
 		return
-
 	var sees_player: bool = perception.can_see_player()
-	var lost_player_this_frame: bool = was_seeing_player and not sees_player
-	var saw_player_this_frame: bool = sees_player and not was_seeing_player
-
-	# 只用“连续两帧都真正看见玩家”来估计移动方向。
-	# 这样不需要额外的“是否曾目击玩家”状态，也不会把第一次看见时的长距离差误当成移动。
 	if sees_player:
 		search.noise_search_origin = Vector3.INF
-		var new_seen_position = player.global_position
+		var new_seen_position: Vector3 = player.global_position
 		if was_seeing_player:
-			var seen_motion = new_seen_position - last_seen_position
+			var seen_motion := new_seen_position - last_seen_position
 			seen_motion.y = 0.0
 			if seen_motion.length() > 0.05:
 				last_seen_direction = seen_motion.normalized()
 		last_seen_position = new_seen_position
 		has_visual_memory = true
-		if tactics.suppression.is_active():
-			tactics.suppression.finish(true)
-
-	# 先更新真正目击到的记忆，再评估空匣，避免感知前就无条件开始换弹。
-	if sees_player:
 		is_alerted = true
-		last_known_position = last_seen_position
-	_update_reload_request(delta)
-	if step_reload_plan(delta, sees_player):
-		was_seeing_player = sees_player
-		_update_label()
-		return
-
-	# 躲藏循环优先处理。躲在墙后时“看不见玩家”是主动行为，不在这里触发丢失目标判定；
-	# 如果探头后仍未重新发现玩家，Cover 汇报结束，由 AI 衔接 TRACK/SEARCH。
-	if action_selector.select_action(self) == &"cover":
-		on_tactical_action_started(&"cover")
-		if sees_player:
-			is_alerted = true
-			last_known_position = last_seen_position
-			search.has_suspected_position = false
-			search.search_hint_timer = 0.0
-		var cover_direction: Vector3 = step_selected_action(delta, sees_player)
-		# 躲藏／探头因重新目击结束时，这一次接敌也可以触发攻击占位。
-		if not cover.is_active() and saw_player_this_frame:
-			try_attack_position()
-		if cover.phase == cover.Phase.RUN_TO_COVER and not cover.covering_retreat and not cover_direction.is_zero_approx():
-			# 普通跑掩体：直接朝移动方向转身冲过去。
-			actor.face_direction(cover_direction, delta)
-		else:
-			# 掩护撤退、躲藏和探头均面向最后已知威胁；脚下仍沿导航路径移动。
-			actor.face_direction(cover.look_position - actor.global_position, delta)
-		actor.move_character(cover_direction, delta, cover.movement_multiplier())
-		tactics.update_shooting(delta, sees_player, not cover_direction.is_zero_approx())
-		was_seeing_player = sees_player
-		_update_label()
-		return
-
-	was_seeing_player = sees_player
-
-	# 只要真正看到玩家，就进入唯一的“知道玩家”状态，并持续刷新最后已知位置。
-	if sees_player:
-		is_alerted = true
-		last_known_position = player.global_position
-		search.has_suspected_position = false
-		search.track_timer = 0.0
-		search.search_hint_timer = 0.0
-
-		if combat_type == CombatType.RANGED:
-			if state != State.REPOSITION and state != State.HOLD_POSITION:
-				state = State.REPOSITION
-				tactics.ranged_repath_timer = 0.0
-				tactics.ranged_has_destination = false
-		else:
-			if state != State.APPROACH or agent.target_position.distance_to(last_known_position) > 0.25:
-				agent.target_position = last_known_position
-			state = State.APPROACH
-		search.search_timer = 0.0
-		search.search_pause_timer = 0.0
-		search.search_is_pausing = false
-
-	# 真实失视先尝试压制；没有接管的攻击动作时才转入原追踪／搜索。
-	elif lost_player_this_frame:
-		start_suppression()
-		if not tactics.attack_position.is_active() and not tactics.suppression.is_active():
-			search.begin_tracking_or_search(true)
-
-	# 没有可用方向信息时，旧的近战调查仍可走到最后目击位置再搜索。
-	elif state == State.APPROACH:
-		state = State.INVESTIGATE
-		agent.target_position = last_known_position
-
-	if saw_player_this_frame:
-		try_attack_position()
-	var direction = Vector3.ZERO
-
+		last_known_position = new_seen_position
+		utility_unseen_seconds = 0.0
+		utility_suppression_pending = false
+	elif is_alerted:
+		utility_unseen_seconds += delta
+	if sees_player != was_seeing_player:
+		if not sees_player:
+			utility_suppression_pending = true
+		invalidate_utility()
 	if state == State.IDLE:
 		patrol_pause_timer = maxf(0.0, patrol_pause_timer - delta)
-		if patrol_pause_timer <= 0.0:
-			_start_random_patrol()
-
-	else:
-		direction = step_selected_action(delta, sees_player)
-
-	# 远程走位和 TRACK 允许侧移/后退，同时把武器方向保持在威胁方向。
-	if state == State.REPOSITION or state == State.HOLD_POSITION:
-		var facing_position: Vector3 = tactics.suppression.aim_point if tactics.suppression.is_active() else last_known_position
-		actor.face_direction(facing_position - actor.global_position, delta)
-	elif state == State.TRACK or state == State.SEARCH:
-		var facing: Vector3 = search.facing_direction(direction)
-		if not facing.is_zero_approx():
-			actor.face_direction(facing, delta)
+	if sees_player or (last_known_position.is_finite() and _utility_rejection_threat.is_finite() and last_known_position.distance_to(_utility_rejection_threat) > 0.5):
+		utility_rejected_attack_points.clear()
+	if action_selector.has_method("advance_evaluation"):
+		action_selector.advance_evaluation(self, sees_player)
+	_update_utility_decision(delta, sees_player)
+	was_seeing_player = sees_player
+	# 执行的是统一评估已选中的方案；空匣不会在此之前取得控制权。
+	if utility_current.get("id", &"") == &"reload" and step_reload_plan(delta, sees_player):
+		_update_label()
+		return
+	var direction := step_selected_action(delta, sees_player)
+	var multiplier: float = 1.0
+	var selected: StringName = utility_current.get("id", &"")
+	if selected == &"cover":
+		multiplier = cover.movement_multiplier()
+		actor.face_direction(last_known_position - actor.global_position if cover.covering_retreat or direction.is_zero_approx() else direction, delta)
+	elif selected == &"search":
+		multiplier = search.movement_multiplier()
+		actor.face_direction(search.facing_direction(direction), delta)
+	elif selected in [&"suppression", &"exit_suppression"]:
+		actor.face_direction(tactics.suppression.aim_point - actor.global_position, delta)
+	elif is_alerted:
+		actor.face_direction(last_known_position - actor.global_position, delta)
 	elif not direction.is_zero_approx():
 		actor.face_direction(direction, delta)
-
-	actor.move_character(direction, delta, search.movement_multiplier())
+	actor.move_character(direction, delta, multiplier)
 	tactics.update_shooting(delta, sees_player, not direction.is_zero_approx())
 	_update_label()
 
 
-## 选择器只返回 ID，AI 负责调用兵种提供的实际实现，且一次只更新一个动作。
 func step_selected_action(delta: float, sees_player: bool) -> Vector3:
-	var id: StringName = action_selector.select_action(self)
-	if id.is_empty():
+	var id: StringName = utility_current.get("id", &"")
+	if id.is_empty() or id == &"reload":
 		return Vector3.ZERO
+	if id == &"cover" and cover.phase == cover.Phase.HIDE:
+		# 是否继续躲藏由统一评估决定，不能另一个计时器抢先启动探头。
+		return Vector3.ZERO
+	if id == &"cover":
+		# 来弹只更新威胁；保持原方案时，导航仍须朝已评分的目的地前进。
+		if cover.phase == cover.Phase.RUN_TO_COVER:
+			agent.target_position = cover.cover_detour_position if cover.cover_detour_active else cover.hide_position
+		elif cover.phase == cover.Phase.PEEK_OUT:
+			agent.target_position = cover.peek_position
+	if id == &"engage" and combat_type == CombatType.RANGED:
+		if utility_current.get("destination", {}).is_empty():
+			state = State.HOLD_POSITION
+			return Vector3.ZERO
+		return tactics.step_evaluated_engagement(utility_current.destination, delta, sees_player)
+	if id == &"engage" and combat_type == CombatType.MELEE and sees_player:
+		if agent.target_position.distance_to(last_known_position) > 0.25:
+			agent.target_position = last_known_position
 	if id in [&"patrol", &"search"]:
 		return actions[id].step(delta)
 	return actions[id].step(delta, sees_player)
 
 
-## AI决定时机；身体只执行固定耗时的基础换弹。
-func _update_reload_request(delta: float = 0.0) -> void:
-	if not is_arena_active() or actor.is_dead or player.is_dead() or player.is_in_dialogue or not actor.can_use_firearms():
-		actor.cancel_reload()
-		_clear_reload_plan()
+func invalidate_utility() -> void:
+	_utility_timer = 0.0
+
+
+func _utility_current_valid(sees_player: bool) -> bool:
+	var id: StringName = utility_current.get("id", &"")
+	if id.is_empty():
+		return false
+	if id == &"reload":
+		return actor.can_use_firearms() and not reload_plan.is_empty() and (reload_destination.is_empty() or (can_use_action(&"cover") and cover.is_active()))
+	if not can_use_action(id):
+		return false
+	match id:
+		&"cover": return cover.is_active()
+		&"attack_position": return tactics.attack_position.is_active() and tactics.can_use_attack_positions and actor.can_use_firearms()
+		&"suppression", &"exit_suppression": return not sees_player and actions[id].is_active() and actor.can_use_firearms()
+		&"search": return (is_alerted or search.noise_search_origin.is_finite()) and not sees_player and state in [State.SEARCH, State.TRACK, State.INVESTIGATE]
+		&"patrol": return not is_alerted and state == State.PATROL
+		&"engage": return is_alerted and sees_player
+	return false
+
+
+func _update_utility_decision(delta: float, sees_player: bool) -> void:
+	_utility_elapsed += delta
+	_utility_timer -= delta
+	var valid := _utility_current_valid(sees_player)
+	if _utility_timer > 0.0 and (valid or utility_current.is_empty()):
 		return
-	if reload_plan.is_empty():
-		if actor.ammo.magazine_rounds > 0 and not actor.ammo.is_reloading:
-			return
-		reload_options = assess_reload_options()
-		start_reload_plan(choose_reload_option(reload_options))
-		return
-	_reload_plan_elapsed += delta
-	_reload_check_timer -= delta
-	# 已补满时继续原转移；到点后step交回正常接敌。
-	if actor.ammo.magazine_rounds > 0 and not actor.ammo.is_reloading:
-		return
-	var invalid: bool = not reload_destination.is_empty() and (not can_use_action(&"cover") or not cover.is_active())
-	if not invalid and _reload_check_timer > 0.0:
-		return
-	_reload_check_timer = reload_recheck_seconds
-	if not reload_destination.is_empty():
-		invalid = invalid or not _reload_destination_valid(reload_destination)
-	if not invalid and cover.phase == cover.Phase.HIDE:
-		return
-	reload_options = assess_reload_options()
-	var best: Dictionary = choose_reload_option(reload_options)
+	_utility_timer = utility_recheck_seconds
+	utility_options = action_selector.assess_options(self, sees_player)
+	var best: Dictionary = action_selector.choose_option(utility_options)
 	var current_cost: float = INF
-	for option: Dictionary in reload_options:
-		if _same_reload_option(option):
+	for option: Dictionary in utility_options:
+		if action_selector.same_option(option, utility_current):
 			current_cost = option.cost
-	# 路线/权限失效不受保持期限制；轻微分差不重启转移。
-	if invalid or (_reload_plan_elapsed >= reload_hold_seconds and best.cost + reload_switch_advantage < current_cost):
-		if not _same_reload_option(best):
-			start_reload_plan(best)
+	valid = valid and is_finite(current_cost)
+	if best.is_empty():
+		if not utility_current.is_empty():
+			_cancel_utility_execution()
+		state = State.IDLE
+		return
+	if valid and action_selector.same_option(best, utility_current):
+		utility_current = best
+		return
+	if valid and (_utility_elapsed < utility_hold_seconds or best.cost + utility_switch_advantage >= current_cost):
+		return
+	_start_utility_option(best, sees_player)
+
+
+func _cancel_utility_execution() -> void:
+	# 基础换弹可与移动并行：战术切换不清掉已有换弹进度。
+	_clear_reload_plan()
+	for id in [&"cover", &"attack_position", &"suppression", &"exit_suppression"]:
+		cancel_action(id)
+	utility_current = {}
+	agent.target_position = actor.global_position
+
+
+func _start_utility_option(option: Dictionary, sees_player: bool) -> void:
+	# 缓存候选在真正接管前复核，障碍/权限变化不能按旧高分穿墙。
+	if option.id == &"cover" and option.get("mode") == &"peek":
+		if not can_use_action(&"cover") or not is_position_free(option.destination.position) or cover_selection._path_to(actor.global_position, option.destination.position).is_empty():
+			invalidate_utility()
+			return
+	elif option.id == &"cover" or (option.id == &"reload" and not option.destination.is_empty()):
+		if not can_use_action(&"cover") or not _reload_destination_valid(option.destination):
+			_reload_avoid_position = option.destination.hide
+			invalidate_utility()
+			return
+	var preserve_search: bool = (option.id == &"search" and state in [State.SEARCH, State.TRACK, State.INVESTIGATE]
+		and not cover.is_active() and not tactics.attack_position.is_active() and not tactics.suppression.is_active())
+	var search_target: Vector3 = agent.target_position
+	var same_reload_destination: bool = (utility_current.get("id") == &"reload" and option.id == &"reload"
+		and not reload_destination.is_empty() and not option.destination.is_empty()
+		and reload_destination.body == option.destination.body and reload_destination.hide.is_equal_approx(option.destination.hide))
+	if not same_reload_destination:
+		_cancel_utility_execution()
+	utility_current = option
+	_utility_elapsed = 0.0
+	match option.id:
+		&"reload": start_reload_plan(option)
+		&"cover":
+			if option.get("mode") == &"peek":
+				cover.start_utility_peek(option.destination, _known_reload_threat())
+			else:
+				cover.start_reload_transfer(option.destination, _known_reload_threat(), option.get("mode") == &"covering_retreat")
+		&"attack_position":
+			if not tactics.attack_position.start_evaluated(option.destination, last_known_position):
+				utility_current = {}
+				invalidate_utility()
+		&"engage":
+			state = State.REPOSITION if combat_type == CombatType.RANGED else State.APPROACH
+			tactics.ranged_has_destination = false
+			tactics.ranged_repath_timer = 0.0
+			agent.target_position = option.destination.get("position", last_known_position)
+		&"search":
+			if preserve_search:
+				agent.target_position = search_target
+			else:
+				search.begin_tracking_or_search(false)
+		&"patrol": _start_random_patrol()
+		&"suppression", &"exit_suppression":
+			tactics.suppression = actions[option.id]
+			utility_suppression_pending = false
+			tactics.suppression.on_target_lost()
+			if not tactics.suppression.is_active():
+				utility_current = {}
+				invalidate_utility()
+	if debug_utility and actor.debug_settings.enabled:
+		print("[AI][Utility] ", option.id, " ", option.get("plan", ""), " cost=", snappedf(option.cost, 0.01), " ", option.get("breakdown", {}))
+
+
+## 旧测试/调用入口兼容；不再有只比较换弹并抢占其他动作的决策器。
+func _update_reload_request(delta: float = 0.0) -> void:
+	if not is_arena_active() or actor.is_dead or player.is_dead() or player.is_in_dialogue:
+		actor.cancel_reload()
+		reset_actions()
+		return
+	_update_utility_decision(delta, perception.can_see_player())
 
 
 func _known_reload_threat() -> Vector3:
@@ -308,30 +369,9 @@ func _known_reload_threat() -> Vector3:
 ## 查询不改变动作，也不读取隐藏玩家。候选使用身体遮挡及真实导航路径。
 func assess_reload_options() -> Array[Dictionary]:
 	var options: Array[Dictionary] = []
-	if not actor.can_use_firearms():
-		return options
-	var seconds: float = maxf(0.1, actor.weapon.reload_seconds) * (1.0 - actor.ammo.reload_progress)
-	var threat: Vector3 = _known_reload_threat()
-	var exposure: float = _reload_exposure(actor.global_position, threat) if threat.is_finite() else 0.0
-	options.append({"plan": &"here", "cost": seconds + _reload_risk_aversion() * exposure * (seconds + 2.0), "destination": {}})
-	if not threat.is_finite() or not can_use_action(&"cover") or actor.move_speed <= 0.0:
-		return options
-	var destinations: Array = cover_selection.get_reload_cover_candidates(threat + Vector3.UP * 0.8)
-	# 区域采样会随角色移动变化，必须把当前固定目的地放回比较，不能把它误当作失效。
-	if not reload_destination.is_empty() and _reload_destination_valid(reload_destination):
-		var current: Dictionary = reload_destination.duplicate()
-		current.path = cover_selection._path_to(actor.global_position, current.hide)
-		destinations.append(current)
-	for destination: Dictionary in destinations:
-		if _reload_avoid_position.is_finite() and _horizontal_distance_between(destination.hide, _reload_avoid_position) < 0.9:
-			continue
-		var at_cover: float = _reload_exposure(destination.hide, threat)
-		var fast: Dictionary = _reload_route_cost(destination.path, threat, 0.0)
-		var walking: Dictionary = _reload_route_cost(destination.path, threat, seconds)
-		var costs: Dictionary = reload_plan_costs(seconds, exposure, at_cover, fast, walking)
-		if not actor.ammo.is_reloading:
-			options.append({"plan": &"after_cover", "cost": costs.after_cover, "destination": destination})
-		options.append({"plan": &"on_way", "cost": costs.on_way, "destination": destination})
+	for option: Dictionary in action_selector.assess_options(self, perception.can_see_player()):
+		if option.id == &"reload":
+			options.append(option)
 	return options
 
 
@@ -340,14 +380,14 @@ func _reload_risk_aversion() -> float:
 	return reload_risk_weight * (1.0 + missing_health + recent_damage_pressure + nearby_shot_pressure)
 
 
-## 无火力时间 + 暴露时间代价；额外观察两秒，避免只看换完的一瞬间。
-## 转移期间沿用跑掩体禁射规则，所以恢复火力还要等到抵达。
+## 旧换弹评分接口复用共同窗口；转移期间恢复火力需等到抵达。
 func reload_plan_costs(seconds: float, current_exposure: float, destination_exposure: float, fast: Dictionary, walking: Dictionary) -> Dictionary:
-	var risk: float = _reload_risk_aversion()
+	# 兼容旧调用；评分公式与观察窗口都来自共同评估器。
+	var horizon: float = utility_horizon_seconds
 	return {
-		&"here": seconds + risk * current_exposure * (seconds + 2.0),
-		&"after_cover": fast.seconds + seconds + risk * (fast.exposure + destination_exposure * (seconds + 2.0)),
-		&"on_way": maxf(seconds, walking.seconds) + risk * (walking.exposure + destination_exposure * (maxf(0.0, seconds - walking.seconds) + 2.0))
+		&"here": action_selector.score_outcome(self, seconds, current_exposure * horizon).cost,
+		&"after_cover": action_selector.score_outcome(self, fast.seconds + seconds, fast.exposure + destination_exposure * maxf(0.0, horizon - fast.seconds)).cost,
+		&"on_way": action_selector.score_outcome(self, maxf(seconds, walking.seconds), walking.exposure + destination_exposure * maxf(0.0, horizon - walking.seconds)).cost
 	}
 
 
@@ -363,23 +403,7 @@ func _reload_exposure(point: Vector3, threat: Vector3) -> float:
 
 
 func _reload_route_cost(path: PackedVector3Array, threat: Vector3, reload_seconds: float) -> Dictionary:
-	var fast_speed: float = maxf(0.01, actor.move_speed * cover.run_speed_multiplier)
-	var walk_speed: float = minf(fast_speed, actor.move_speed)
-	var seconds: float = 0.0
-	var exposure: float = 0.0
-	var previous: Vector3 = actor.global_position
-	for point: Vector3 in path:
-		var length: float = _horizontal_distance_between(previous, point)
-		var samples: int = maxi(1, ceili(length))
-		for index in range(samples):
-			var distance: float = length / samples
-			var slow_distance: float = minf(distance, maxf(0.0, reload_seconds - seconds) * walk_speed)
-			var duration: float = slow_distance / walk_speed + (distance - slow_distance) / fast_speed
-			var sample: Vector3 = previous.lerp(point, (float(index) + 0.5) / samples)
-			exposure += _reload_exposure(sample, threat) * duration
-			seconds += duration
-		previous = point
-	return {"seconds": seconds, "exposure": exposure}
+	return action_selector.assess_route(self, path, threat, cover.run_speed_multiplier, reload_seconds)
 
 
 func choose_reload_option(options: Array) -> Dictionary:
@@ -429,7 +453,7 @@ func start_reload_plan(option: Dictionary) -> void:
 		print("[AI][换弹决策] ", reload_plan, "；代价=", snappedf(option.cost, 0.01))
 
 
-## 持有计划时独占调度；路线复用原Cover行动，不重写寻路。
+## 统一决策选中后执行换弹计划；路线复用Cover行动，不重写寻路。
 func step_reload_plan(delta: float, sees_player: bool) -> bool:
 	if reload_plan.is_empty():
 		return false
@@ -445,13 +469,15 @@ func step_reload_plan(delta: float, sees_player: bool) -> bool:
 	var direction: Vector3 = Vector3.ZERO
 	if not arrived:
 		if not can_use_action(&"cover") or not cover.is_active():
-			# 行动执行失败，停止等待这个目的地；保留剩余换弹进度。
-			start_reload_plan({"plan": &"here", "cost": 0.0, "destination": {}})
+			# 执行失败交回统一评估；不能私自选择原地换弹。
+			_fail_reload_transfer()
+			return false
 		else:
 			agent.target_position = cover.cover_detour_position if cover.cover_detour_active else reload_destination.hide
 			direction = cover.step(delta, sees_player)
 			if not cover.is_active():
-				start_reload_plan({"plan": &"here", "cost": 0.0, "destination": {}})
+				_fail_reload_transfer()
+				return false
 	if cover.phase == cover.Phase.HIDE and not actor.ammo.is_reloading and actor.ammo.magazine_rounds == 0:
 		actor.request_reload()
 	var threat: Vector3 = _known_reload_threat()
@@ -462,6 +488,14 @@ func step_reload_plan(delta: float, sees_player: bool) -> bool:
 	actor.move_character(direction, delta, cover.movement_multiplier() if not reload_destination.is_empty() else 1.0)
 	tactics.update_shooting(delta, sees_player, not direction.is_zero_approx())
 	return true
+
+
+func _fail_reload_transfer() -> void:
+	if not reload_destination.is_empty():
+		_reload_avoid_position = reload_destination.hide
+	_clear_reload_plan()
+	utility_current = {}
+	invalidate_utility()
 
 
 func _clear_reload_plan() -> void:
@@ -512,11 +546,12 @@ func _on_hit_received(damage: float, attacker_position: Vector3) -> void:
 		search.search_current_target_active = false
 	elif damage > 0.0:
 		recent_damage_pressure = minf(2.0, recent_damage_pressure + 0.5 + damage / maxf(actor.max_health, 1.0))
-		if not reload_plan.is_empty() and cover.phase == cover.Phase.HIDE:
+		if cover.phase == cover.Phase.HIDE:
 			_reload_avoid_position = actor.global_position
 			# 原HIDE受击规则先退出，下帧根据新威胁重评；不取消弹药计时。
 			reload_plan = &""
 			reload_destination = {}
+		invalidate_utility()
 		var was_suppressing: bool = tactics.suppression.is_active()
 		if attacker_position.is_finite():
 			_investigate_attack(attacker_position)
@@ -524,7 +559,7 @@ func _on_hit_received(damage: float, attacker_position: Vector3) -> void:
 		if was_suppressing:
 			tactics.suppression.reset()
 			state = State.REPOSITION
-			cover.take_cover_after_suppression_hit()
+			invalidate_utility()
 		else:
 			if cover != null:
 				cover.on_damage_received()
@@ -598,21 +633,9 @@ func _set_training_setting(key: StringName, value: Variant) -> void:
 	get_node("../Training").set("ai_" + String(key), value)
 
 
-func try_attack_position(from_hit: bool = false) -> void:
-	if not reload_plan.is_empty():
-		return
-	if not from_hit and not has_visual_memory:
-		return
-	if not tactics.attack_position.can_start():
-		return
-	var trigger := "中弹" if from_hit else "新目击"
-	if randf() >= clampf(tactics.attack_position_chance, 0.0, 1.0):
-		if cover_selection.debug_cover_selection:
-			print("[AI][攻击占位] 本次", trigger, "未触发，chance=", tactics.attack_position_chance)
-		return
-	var known_position: Vector3 = last_known_position if from_hit else last_seen_position
-	if tactics.attack_position.start(known_position, from_hit) and cover_selection.debug_cover_selection:
-		print("[AI][攻击占位] ", trigger, "触发，开始检查墙角区域")
+func try_attack_position(_from_hit: bool = false) -> void:
+	# 目击/受击仅要求重新评估；不能绕过Utility抽概率启动动作。
+	invalidate_utility()
 
 
 func _on_attack_position_phase_changed(current_phase: int) -> void:
@@ -621,6 +644,10 @@ func _on_attack_position_phase_changed(current_phase: int) -> void:
 
 # 动作只汇报结束与已知位置；接下来交战还是追踪，由决策层衔接。
 func _on_attack_position_finished(sees_player: bool, known_position: Vector3, reason: String) -> void:
+	if not sees_player and utility_current.get("id") == &"attack_position":
+		# 到过却没发现目标的观察点不再假设必有信息收益，直到获得新威胁信息。
+		utility_rejected_attack_points.append(utility_current.destination.position)
+		_utility_rejection_threat = known_position
 	resume_after_action(sees_player, known_position)
 	if cover_selection.debug_cover_selection:
 		print("[AI][攻击占位] 结束：", reason, "；回到交战／追踪流程")
@@ -628,6 +655,10 @@ func _on_attack_position_finished(sees_player: bool, known_position: Vector3, re
 
 ## 动作只汇报结果；跨动作衔接统一留在 AI，取消动作不触发此流程。
 func resume_after_action(sees_player: bool, known_position: Vector3) -> void:
+	if not sees_player and utility_current.get("mode") == &"peek":
+		utility_rejected_attack_points.append(utility_current.destination.position)
+		_utility_rejection_threat = known_position
+	invalidate_utility()
 	tactics.ranged_has_destination = false
 	tactics.ranged_repath_timer = 0.0
 	agent.target_position = actor.global_position
@@ -656,14 +687,8 @@ func on_tactical_action_started(id: StringName) -> void:
 
 
 func start_suppression() -> void:
-	if tactics.suppression.is_active():
-		return
-	tactics.exit_suppression.on_target_lost()
-	if tactics.exit_suppression.is_active():
-		tactics.suppression = tactics.exit_suppression
-	else:
-		tactics.suppression = tactics.area_suppression
-		tactics.suppression.on_target_lost()
+	utility_suppression_pending = true
+	invalidate_utility()
 
 
 func can_use_action(id: StringName) -> bool:
@@ -705,6 +730,16 @@ func _enforce_action_permissions() -> void:
 
 
 func reset_actions() -> void:
+	if action_selector.has_method("reset_evaluation"):
+		action_selector.reset_evaluation()
+	utility_current = {}
+	utility_options.clear()
+	_utility_timer = 0.0
+	_utility_elapsed = 0.0
+	utility_unseen_seconds = 0.0
+	utility_suppression_pending = false
+	utility_rejected_attack_points.clear()
+	_utility_rejection_threat = Vector3.INF
 	_clear_reload_plan()
 	for action in actions.values():
 		action.reset()
@@ -726,4 +761,5 @@ func _on_noise_heard(position: Vector3) -> void:
 	if NavigationServer3D.map_get_iteration_id(agent.get_navigation_map()) == 0:
 		return
 	search.investigate_noise(position)
+	invalidate_utility()
 	_update_label()
