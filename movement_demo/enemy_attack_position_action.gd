@@ -39,11 +39,11 @@ func reset() -> void:
 	_using_hit_memory = false
 
 
-# 只查询条件，不抽概率、不修改动作。权限暂读原配置，后续再迁入Training。
+# 只查询条件，不抽概率、不修改动作。权限统一读取兵种与Training的动作列表。
 func can_start() -> bool:
 	if not is_enabled():
 		return false
-	if is_active() or tactics.cover.is_active() or tactics.suppression.is_active() or not tactics.can_use_attack_positions:
+	if is_active() or tactics.cover.is_active() or tactics.suppression.is_active():
 		return false
 	if actor.is_dead or not ai.is_arena_active() or actor.weapon == null or ai.combat_type != ai.CombatType.RANGED:
 		return false
@@ -73,7 +73,7 @@ func step(delta: float, sees_player: bool) -> Vector3:
 	if actor.is_dead or not ai.is_arena_active() or tactics.cover.is_active():
 		reset()
 		return Vector3.ZERO
-	if not is_enabled() or not tactics.can_use_attack_positions or actor.weapon == null or ai.combat_type != ai.CombatType.RANGED:
+	if not is_enabled() or actor.weapon == null or ai.combat_type != ai.CombatType.RANGED:
 		_finish(sees_player, "能力关闭、无武器或非远程")
 		return Vector3.ZERO
 	# 主AI已在本帧更新真实目击；之后即使再失视，也沿用该目击记忆。

@@ -104,7 +104,7 @@ func _run() -> void:
 	var attack = load("res://enemy_actions/attack_position.tres")
 	ai.unit_type.available_actions.append(attack)
 	ai.training.allowed_actions.append(attack)
-	ai.tactics.can_use_attack_positions = true
+	preload("res://tests/enemy_fire_fixture.gd").set_training_action(ai, &"attack_position", true)
 	ai.last_known_position = Vector3(20, 0, 2.5)
 	for f in range(65):
 		await physics_frame

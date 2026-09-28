@@ -36,7 +36,7 @@ func _run() -> void:
 		return
 	ai.reset_actions()
 	ai.combat_type = ai.CombatType.RANGED
-	tactics.can_use_attack_positions = true
+	preload("res://tests/enemy_fire_fixture.gd").set_training_action(tactics.ai, &"attack_position", true)
 	tactics.attack_position_chance = 0.0
 	ai.has_visual_memory = true
 	ai.last_seen_position = player.global_position
@@ -50,9 +50,9 @@ func _run() -> void:
 	tactics.try_attack_position()
 	_check("概率0由决策层拒绝启动", not action.is_active())
 	tactics.attack_position_chance = 1.0
-	tactics.can_use_attack_positions = false
+	preload("res://tests/enemy_fire_fixture.gd").set_training_action(tactics.ai, &"attack_position", false)
 	_check("关闭权限连直接启动也被拒绝", not action.start(player.global_position, false))
-	tactics.can_use_attack_positions = true
+	preload("res://tests/enemy_fire_fixture.gd").set_training_action(tactics.ai, &"attack_position", true)
 	action.finished.connect(func(sees_player: bool, known_position: Vector3, reason: String):
 		outcomes.append({"visible": sees_player, "known": known_position, "reason": reason, "active": action.is_active()}))
 	var snapshot: Vector3 = player.global_position

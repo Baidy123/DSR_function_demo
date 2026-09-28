@@ -78,10 +78,10 @@ func _run() -> void:
 	_check("撤退仍需短反应时间", e.shot_count == count + 3)
 	t.update_shooting(0.2, true, true)
 	_check("短反应结束后可继续撤退射击", e.shot_count == count + 4)
-	t.can_covering_retreat = false
+	preload("res://tests/enemy_fire_fixture.gd").set_training_action(t.ai, &"covering_retreat", false)
 	t.update_shooting(1.0, true, true)
 	_check("低稳定度例外不绕过动作能力", e.shot_count == count + 4)
-	t.can_covering_retreat = true
+	preload("res://tests/enemy_fire_fixture.gd").set_training_action(t.ai, &"covering_retreat", true)
 	cover.phase = cover.Phase.HIDE
 	t.update_shooting(1.0, true, false)
 	_check("躲藏阶段仍不射击", e.shot_count == count + 4)

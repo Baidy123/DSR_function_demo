@@ -82,7 +82,7 @@ func _run() -> void:
 	player.global_position = TARGET
 	await physics_frame
 	_prepare()
-	tactics.can_use_attack_positions = false
+	preload("res://tests/enemy_fire_fixture.gd").set_training_action(tactics.ai, &"attack_position", false)
 	ai._physics_process(1.0 / 60.0)
 	_check("无能力时概率1也不启动", not action.is_active())
 	_prepare()
@@ -137,7 +137,7 @@ func _run() -> void:
 	_check("转移超时退出而不是永久卡住", not action.is_active())
 	_prepare()
 	ai._physics_process(1.0 / 60.0)
-	tactics.can_use_attack_positions = false
+	preload("res://tests/enemy_fire_fixture.gd").set_training_action(tactics.ai, &"attack_position", false)
 	action.step(0.1, true)
 	_check("运行中关闭能力会取消行动", not action.is_active())
 	_prepare()
@@ -153,7 +153,7 @@ func _run() -> void:
 func _prepare() -> void:
 	ai.reset_actions()
 	ai.combat_type = ai.CombatType.RANGED
-	tactics.can_use_attack_positions = true
+	preload("res://tests/enemy_fire_fixture.gd").set_training_action(tactics.ai, &"attack_position", true)
 	tactics.attack_position_chance = 1.0
 	enemy.global_position = Vector3(24, 0, -2)
 	enemy.velocity = Vector3.ZERO

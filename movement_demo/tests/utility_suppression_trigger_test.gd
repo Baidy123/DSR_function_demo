@@ -32,8 +32,8 @@ func _run() -> void:
 		var resource = load("res://enemy_actions/" + id + ".tres")
 		ai.unit_type.available_actions.append(resource)
 		ai.training.allowed_actions.append(resource)
-	ai.tactics.can_suppress_fire = true
-	ai.tactics.can_suppress_exits = true
+	preload("res://tests/enemy_fire_fixture.gd").set_training_action(ai, &"suppression", true)
+	preload("res://tests/enemy_fire_fixture.gd").set_training_action(ai, &"exit_suppression", true)
 	player.global_position = Vector3(18.585854, 0.001, 4.430427)
 	enemy.global_position = Vector3(24.327566, 0.001, 7.430623)
 	enemy.look_at(player.global_position)

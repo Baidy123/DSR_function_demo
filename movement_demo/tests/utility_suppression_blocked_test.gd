@@ -19,7 +19,7 @@ func _run() -> void:
 	var resource = load("res://enemy_actions/suppression.tres")
 	ai.unit_type.available_actions.append(resource)
 	ai.training.allowed_actions.append(resource)
-	ai.tactics.can_suppress_fire = true
+	preload("res://tests/enemy_fire_fixture.gd").set_training_action(ai, &"suppression", true)
 	ai.cover_selection.debug_cover_selection = false
 	player.get_node("Health").debug_invincible = true
 	enemy.global_position = Vector3(24, 0, -2)
@@ -90,7 +90,7 @@ func _run() -> void:
 	var exit_resource = load("res://enemy_actions/exit_suppression.tres")
 	ai.unit_type.available_actions.append(exit_resource)
 	ai.training.allowed_actions.append(exit_resource)
-	ai.tactics.can_suppress_exits = true
+	preload("res://tests/enemy_fire_fixture.gd").set_training_action(ai, &"exit_suppression", true)
 	var exits = ai.actions[&"exit_suppression"]
 	for frame in range(3): await physics_frame
 	exits.on_target_lost()

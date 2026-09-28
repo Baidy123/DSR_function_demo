@@ -30,8 +30,6 @@ func reset() -> void:
 
 func _prepare_targets(center: Vector3) -> bool:
 	reset()
-	if not tactics.can_suppress_exits:
-		return false
 	var nearest := INF
 	var ground := center - Vector3.UP * 0.8
 	# 距离按碰撞盒表面计算，适配现有掩体的旋转与缩放。
@@ -74,7 +72,7 @@ func _prepare_targets(center: Vector3) -> bool:
 
 
 func _targets_available() -> bool:
-	if not tactics.can_suppress_exits or not is_instance_valid(target_cover):
+	if not is_instance_valid(target_cover):
 		return false
 	if _can_reach_target(aim_point):
 		return true

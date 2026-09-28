@@ -112,7 +112,7 @@ func advance_evaluation(ai: Node, sees_player: bool) -> void:
 	_prune_cache(_cover_cache)
 	_prune_cache(_attack_cache)
 	var can_cover: bool = ai.can_use_action(&"cover") and ai.combat_type == ai.CombatType.RANGED and not _cover_points.is_empty()
-	var can_attack: bool = ai.can_use_action(&"attack_position") and ai.tactics.can_use_attack_positions and not _attack_points.is_empty()
+	var can_attack: bool = ai.can_use_action(&"attack_position") and not _attack_points.is_empty()
 	var can_engage: bool = sees_player and ai.can_use_action(&"engage") and not _engage_points.is_empty()
 	while last_evaluated_count < EVALUATION_POINTS_PER_FRAME and Time.get_ticks_usec() - started < EVALUATION_BUDGET_USEC and (can_cover or can_attack or can_engage):
 		# 攻击扇环比躲藏点密集得多，三次攻击采样穿插一次躲藏采样。
@@ -361,7 +361,7 @@ func _assess_cover(ai: Node, threat: Vector3, information: float, needs_reload: 
 		var moving: Dictionary = assess_route(ai, destination.path, threat, ai.cover.run_speed_multiplier, remaining_reload)
 		var cover_exposure: float = moving.exposure + at_cover * maxf(0.0, horizon - moving.seconds)
 		options.append(_option(ai, &"cover", destination, horizon, cover_exposure, information))
-		if ai.was_seeing_player and ai.can_use_action(&"covering_retreat") and ai.tactics.can_covering_retreat and ai.tactics.fire_while_moving and ai.actor.ammo.magazine_rounds > 0 and not ai.actor.ammo.is_reloading:
+		if ai.was_seeing_player and ai.can_use_action(&"covering_retreat") and ai.tactics.fire_while_moving and ai.actor.ammo.magazine_rounds > 0 and not ai.actor.ammo.is_reloading:
 			var retreat_route := assess_route(ai, destination.path, threat, ai.cover.covering_retreat_speed_multiplier, 0.0)
 			var retreat_exposure: float = retreat_route.exposure + at_cover * maxf(0.0, horizon - retreat_route.seconds)
 			# 撤退期间能射击；进入躲藏后停火。遮挡路段不能算有效火力。
@@ -417,7 +417,7 @@ func _append_cover_destination(ai: Node, destinations: Array, destination: Dicti
 
 
 func _assess_attack(ai: Node, threat: Vector3, information: float, options: Array[Dictionary]) -> void:
-	if not ai.can_use_action(&"attack_position") or not ai.actor.can_use_firearms() or not ai.tactics.can_use_attack_positions or ai.actor.move_speed <= 0.0:
+	if not ai.can_use_action(&"attack_position") or not ai.actor.can_use_firearms() or ai.actor.move_speed <= 0.0:
 		return
 	var target: Vector3 = threat + Vector3.UP * 0.8
 	var assessments: Array = []

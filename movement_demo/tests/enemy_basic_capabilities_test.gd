@@ -74,7 +74,7 @@ func _run() -> void:
 	ai.is_alerted = true
 	ai.has_visual_memory = true
 	ai.last_seen_position = player.global_position
-	ai.tactics.can_suppress_fire = true
+	preload("res://tests/enemy_fire_fixture.gd").set_training_action(ai, &"suppression", true)
 	unit.available_actions.append(load("res://enemy_actions/suppression.tres"))
 	training.allowed_actions = unit.available_actions.duplicate()
 	ai.tactics.area_suppression.on_target_lost()

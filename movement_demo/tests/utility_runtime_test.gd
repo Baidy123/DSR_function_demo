@@ -21,8 +21,8 @@ func _run() -> void:
 		var action = load("res://enemy_actions/" + name + ".tres")
 		ai.unit_type.available_actions.append(action)
 		ai.training.allowed_actions.append(action)
-	ai.tactics.can_use_attack_positions = true
-	ai.tactics.can_suppress_fire = true
+	preload("res://tests/enemy_fire_fixture.gd").set_training_action(ai, &"attack_position", true)
+	preload("res://tests/enemy_fire_fixture.gd").set_training_action(ai, &"suppression", true)
 	ai.cover_selection.debug_cover_selection = false
 	ai.search.debug_tracking_cheat = false
 	player.get_node("Health").debug_invincible = true

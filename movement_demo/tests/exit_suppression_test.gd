@@ -31,9 +31,9 @@ func _run() -> void:
 		_finish()
 		return
 	_check("出口压制继承基础压制实现", action.get_script().get_base_script() == ai.tactics.area_suppression.get_script())
-	var default_tactics = load("res://enemy_tactics.gd").new()
-	_check("高训练能力接口默认关闭", not default_tactics.can_suppress_exits)
-	default_tactics = null
+	var default_training = load("res://enemy_training.gd").new()
+	_check("出口压制默认未列入训练名单", not default_training.allows_action(&"exit_suppression"))
+	default_training.free()
 	ai.cover_selection.debug_attack_points = false
 	ai.cover_selection.debug_cover_selection = false
 	player.get_node("Health").debug_invincible = true
@@ -47,7 +47,7 @@ func _run() -> void:
 	mesh.mesh = mesh.mesh.duplicate()
 	mesh.mesh.size = collision.shape.size
 	await _prepare_visible()
-	ai.tactics.can_suppress_exits = false
+	preload("res://tests/enemy_fire_fixture.gd").set_training_action(ai, &"exit_suppression", false)
 	await _hide()
 	_check("未掌握出口压制时使用普通压制", ai.tactics.area_suppression.is_active() and not action.is_active())
 	await _prepare_visible()
@@ -107,7 +107,7 @@ func _run() -> void:
 	_check("出口目标不追踪墙后玩家", action.target_cover == cover and action.target_center == center and ai.last_seen_position == memory)
 	_check("出口压制也使用3到5秒计时", action.remaining >= 1.3 and action.remaining < 3.6)
 	# 能力撤回立即停止，而不是继续执行高训练动作。
-	ai.tactics.can_suppress_exits = false
+	preload("res://tests/enemy_fire_fixture.gd").set_training_action(ai, &"exit_suppression", false)
 	ai._physics_process(0.02)
 	_check("运行中关闭高级能力退出出口压制", not action.is_active())
 	await _prepare_visible()
@@ -116,9 +116,9 @@ func _run() -> void:
 	enemy.receive_hit(1.0, HIDDEN_POSITION)
 	_check("出口压制中弹同样停止并找掩体", not action.is_active() and ai.cover.is_active())
 	await _prepare_visible()
-	ai.tactics.can_suppress_fire = false
+	preload("res://tests/enemy_fire_fixture.gd").set_training_action(ai, &"suppression", false)
 	await _hide()
-	_check("基础压制能力关闭也禁止出口压制", not action.is_active() and not ai.tactics.area_suppression.is_active())
+	_check("普通压制关闭不禁用独立的出口压制", action.is_active() and not ai.tactics.area_suppression.is_active())
 	await _prepare_visible()
 	action.cover_inference_distance = 0.01
 	await _hide()
@@ -181,9 +181,9 @@ func _run() -> void:
 func _prepare_visible() -> void:
 	ai.reset_actions()
 	ai.search.reset()
-	ai.tactics.can_suppress_fire = true
-	ai.tactics.can_suppress_exits = true
-	ai.tactics.can_use_attack_positions = false
+	preload("res://tests/enemy_fire_fixture.gd").set_training_action(ai, &"suppression", true)
+	preload("res://tests/enemy_fire_fixture.gd").set_training_action(ai, &"exit_suppression", true)
+	preload("res://tests/enemy_fire_fixture.gd").set_training_action(ai, &"attack_position", false)
 	ai.tactics.fire_reaction_seconds = 0.0
 	ai.tactics.burst_pause_seconds = 0.2
 	action.cover_inference_distance = 1.75

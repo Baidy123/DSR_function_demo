@@ -13,7 +13,6 @@ enum SearchHintDecayMode { NONE, LINEAR_TIME, EXPONENTIAL_TIME, LINEAR_DISTANCE,
 	preload("res://enemy_actions/cover.tres"),
 	preload("res://enemy_actions/attack_position.tres"),
 	preload("res://enemy_actions/suppression.tres"),
-	preload("res://enemy_actions/exit_suppression.tres"),
 	preload("res://enemy_actions/covering_retreat.tres"),
 ]
 
@@ -24,17 +23,6 @@ enum SearchHintDecayMode { NONE, LINEAR_TIME, EXPONENTIAL_TIME, LINEAR_DISTANCE,
 @export_range(0.0, 5.0, 0.1) var ai_attack_position_uncertainty: float = 1.0
 
 @export_group("接敌与射击", "tactics_")
-## 是否掌握面向威胁的撤退射击；关闭时概率再高也不会使用。
-## 此处直接决定训练权限；默认开启，保留现有敌人的表现。
-@export var tactics_can_covering_retreat: bool = true
-## 是否掌握主动选择墙角攻击位置；优先保证散布射界，不强制身体被遮挡。
-## 默认开启供试玩；不影响普通换位或躲藏能力。
-@export var tactics_can_use_attack_positions: bool = true
-## 是否掌握失视后朝最后目击区域压制的能力；具体持续时间和范围在SuppressionAction。
-@export var tactics_can_suppress_fire: bool = true
-## 高训练专属动作的临时能力接口，默认关闭；还需最后目击邻近掩体且两端可射击。
-## 该开关控制当前训练权限；开启不自动代表某个正式训练等级。
-@export var tactics_can_suppress_exits: bool = false
 ## 旧版概率兼容字段；当前Utility AI不使用，攻击占位与其他动作统一评分。
 @export_range(0.0, 1.0, 0.05) var tactics_attack_position_chance: float = 0.5
 ## 接敌侧移/后退和掩护撤退时允许开火；关闭后只在停稳时射击，转身冲刺仍停火。
@@ -227,16 +215,7 @@ enum SearchHintDecayMode { NONE, LINEAR_TIME, EXPONENTIAL_TIME, LINEAR_DISTANCE,
 @export var selection_debug_attack_points: bool = true
 
 func allows_action(id: StringName) -> bool:
-	var permitted := false
 	for definition in allowed_actions:
 		if definition != null and definition.action_id == id:
-			permitted = true
-			break
-	if not permitted:
-		return false
-	match id:
-		&"attack_position": return tactics_can_use_attack_positions
-		&"suppression": return tactics_can_suppress_fire
-		&"exit_suppression": return tactics_can_suppress_fire and tactics_can_suppress_exits
-		&"covering_retreat": return tactics_can_covering_retreat
-	return true
+			return true
+	return false

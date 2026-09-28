@@ -40,9 +40,9 @@ func _run() -> void:
 		_check("动作显式绑定本敌人AI " + id, action != null and action.ai == ai)
 	_check("搜索与掩体引用库中同一实例", ai.search == ai.actions["search"] and ai.cover == ai.actions["cover"])
 	var default_training = load("res://enemy_training.gd").new()
-	_check("新训练配置出口压制默认关闭", not default_training.tactics_can_suppress_exits)
+	_check("新训练配置出口压制默认关闭", not default_training.allows_action(&"exit_suppression"))
 	default_training.free()
-	training.tactics_can_suppress_exits = true
+	preload("res://tests/enemy_fire_fixture.gd").set_training_action(ai, &"exit_suppression", true)
 	var available: Array = unit.available_actions.duplicate()
 	var allowed: Array = training.allowed_actions.duplicate()
 	for id in ACTION_IDS:
@@ -56,7 +56,7 @@ func _run() -> void:
 		_check("兵种拥有动作仍需训练授权 " + id, unit.has_action(id) and not training.allows_action(id) and not ai.can_use_action(id))
 	unit.available_actions = available.duplicate()
 	training.allowed_actions = allowed.duplicate()
-	training.tactics_can_suppress_exits = false
+	preload("res://tests/enemy_fire_fixture.gd").set_training_action(ai, &"exit_suppression", false)
 	training.tactics_attack_position_chance = 1.0
 	training.cover_hide_seconds = 2.75
 	training.search_track_seconds = 4.25
@@ -76,10 +76,10 @@ func _run() -> void:
 	ai.try_attack_position(true)
 	_check("受击架枪概率1不能绕过训练权限", not attack.is_active() and not attack.can_start() and not attack.start(player.global_position, true))
 	training.allowed_actions = allowed.duplicate()
-	training.tactics_can_use_attack_positions = false
+	preload("res://tests/enemy_fire_fixture.gd").set_training_action(ai, &"attack_position", false)
 	ai.try_attack_position()
-	_check("原布尔能力关闭不能被名单绕过", not ai.can_use_action("attack_position") and not attack.is_active())
-	training.tactics_can_use_attack_positions = true
+	_check("从训练名单移除即关闭攻击占位", not ai.can_use_action("attack_position") and not attack.is_active())
+	preload("res://tests/enemy_fire_fixture.gd").set_training_action(ai, &"attack_position", true)
 	ai.try_attack_position()
 	_check("架枪请求不绕过统一评分直接启动", not attack.is_active())
 	attack.start(player.global_position)

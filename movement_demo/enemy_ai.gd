@@ -266,7 +266,7 @@ func _utility_current_valid(sees_player: bool) -> bool:
 		return false
 	match id:
 		&"cover": return cover.is_active()
-		&"attack_position": return sees_player and tactics.attack_position.is_active() and tactics.can_use_attack_positions and actor.can_use_firearms()
+		&"attack_position": return sees_player and tactics.attack_position.is_active() and actor.can_use_firearms()
 		&"suppression", &"exit_suppression": return not sees_player and actions[id].is_active() and actor.can_use_firearms()
 		&"search": return (is_alerted or search.noise_search_origin.is_finite()) and not sees_player and state in [State.SEARCH, State.TRACK, State.INVESTIGATE]
 		&"patrol": return not is_alerted and state == State.PATROL
@@ -744,6 +744,8 @@ func _enforce_action_permissions() -> void:
 	var search_reenabled := search_allowed and not _search_was_allowed
 	_search_was_allowed = search_allowed
 	var interrupted := false
+	# 掩体接管后主状态可能还留在SEARCH/TRACK；只中断实际执行的动作。
+	var executing: StringName = utility_current.get("id", action_selector.select_action(self))
 	for id in [&"cover", &"attack_position", &"suppression", &"exit_suppression"]:
 		var action = actions[id]
 		if action.is_active() and not can_use_action(id):
@@ -751,11 +753,18 @@ func _enforce_action_permissions() -> void:
 			interrupted = true
 	if cover.covering_retreat and not can_use_action(&"covering_retreat"):
 		cover.covering_retreat = false
-	if state == State.PATROL and not can_use_action(&"patrol"):
+		utility_current.erase("mode")
+		invalidate_utility()
+	if executing == &"patrol" and not can_use_action(&"patrol"):
 		interrupted = true
-	if state in [State.TRACK, State.SEARCH, State.INVESTIGATE] and not can_use_action(&"search"):
+	if executing == &"search" and not search_allowed:
 		search.reset()
 		interrupted = true
+	if executing == &"engage" and not can_use_action(&"engage"):
+		interrupted = true
+	if interrupted:
+		utility_current = {}
+		invalidate_utility()
 	if interrupted or (search_reenabled and state == State.IDLE and is_alerted):
 		state = State.IDLE
 		agent.target_position = actor.global_position

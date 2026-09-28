@@ -5,10 +5,6 @@ const Training = preload("res://enemy_training.gd")
 const EXPECTED := {
 	"ai_patrol_pause_seconds": 1.5,
 	"ai_attack_position_uncertainty": 1.0,
-	"tactics_can_covering_retreat": true,
-	"tactics_can_use_attack_positions": true,
-	"tactics_can_suppress_fire": true,
-	"tactics_can_suppress_exits": true,
 	"tactics_attack_position_chance": 0.5,
 	"tactics_fire_while_moving": true,
 	"tactics_fire_reaction_seconds": 0.3,

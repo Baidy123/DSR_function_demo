@@ -1,25 +1,6 @@
 extends "res://enemy_action.gd"
 
 # 战术：交战选位、射击节奏与可用动作。具体武器执行由 Enemy 负责。
-## 是否掌握面向威胁的撤退射击；关闭时概率再高也不会使用。
-## 后续由训练配置决定；当前默认开启，保留现有敌人的表现。
-var can_covering_retreat: bool:
-	get: return _setting(&"can_covering_retreat", true)
-	set(value): _set_setting(&"can_covering_retreat", value)
-## 是否掌握主动选择墙角攻击位置；优先保证散布射界，不强制身体被遮挡。
-## 默认开启供试玩，后续可由训练配置赋值；不影响普通换位或躲藏能力。
-var can_use_attack_positions: bool:
-	get: return _setting(&"can_use_attack_positions", true)
-	set(value): _set_setting(&"can_use_attack_positions", value)
-## 是否掌握失视后朝最后目击区域压制的能力；具体持续时间和范围在SuppressionAction。
-var can_suppress_fire: bool:
-	get: return _setting(&"can_suppress_fire", true)
-	set(value): _set_setting(&"can_suppress_fire", value)
-## 高训练专属动作的临时能力接口，默认关闭；还需最后目击邻近掩体且两端可射击。
-## 分类挂载架构尚未实现，当前手动勾选以测试；开启不自动代表某个训练等级。
-var can_suppress_exits: bool:
-	get: return _setting(&"can_suppress_exits", false)
-	set(value): _set_setting(&"can_suppress_exits", value)
 ## 首次／重新真实目击玩家，或真正受伤且有攻击者位置时，尝试攻击占位的概率。
 ## 持续可见不重抽；攻击占位或掩体动作中不重选。0=不触发，1=每次满足条件都尝试。
 ## 两种触发共用此概率；0.5是可调试玩初值。
@@ -115,13 +96,26 @@ func start_suppression() -> void:
 	ai.start_suppression()
 
 
+# 共用射击按实际请求动作授权，不把普通接敌权限当成所有动作的总开关。
+func _has_authorized_fire_action() -> bool:
+	if suppression.is_active():
+		return suppression.is_enabled()
+	if cover.is_active():
+		return cover.is_enabled() and cover.covering_retreat and ai.can_use_action(&"covering_retreat")
+	if attack_position.is_active():
+		return attack_position.is_enabled()
+	return is_enabled() and ai.state in [ai.State.REPOSITION, ai.State.HOLD_POSITION]
+
+
 func update_shooting(delta: float, sees_player: bool, movement_requested: bool) -> void:
-	if not is_enabled() and not suppression.is_active() and not (cover.is_active() and cover.covering_retreat):
-		actor.update_weapon(delta)
-		return
-	# 停顿按经过的时间计算；短暂失去视野或进入掩体不清掉已打枪数/剩余停顿。
+	# 自然计时独立于动作授权；搜索、躲藏期间也会消耗已有连射停顿。
 	var elapsed: float = maxf(0.0, delta)
 	fire_pause_remaining = maxf(0.0, fire_pause_remaining - elapsed)
+	if not _has_authorized_fire_action():
+		fire_reaction_elapsed = 0.0
+		fire_decision.reset()
+		actor.update_weapon(delta)
+		return
 	if suppression.is_active():
 		_update_suppression_shooting(delta, movement_requested)
 		return
@@ -152,7 +146,7 @@ func update_shooting(delta: float, sees_player: bool, movement_requested: bool) 
 		return
 	# 掩护撤退面向威胁，允许边退边打；转身冲刺、躲藏和有效探头仍停火。
 	if cover != null and cover.is_active():
-		if not can_covering_retreat or cover.phase != cover.Phase.RUN_TO_COVER or not cover.covering_retreat:
+		if not ai.can_use_action(&"covering_retreat") or cover.phase != cover.Phase.RUN_TO_COVER or not cover.covering_retreat:
 			fire_decision.reset()
 			return
 	# Cover接管期间主状态可能仍是TRACK/SEARCH，按当前掩体动作授权即可。

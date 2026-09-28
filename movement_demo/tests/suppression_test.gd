@@ -114,7 +114,7 @@ func _run() -> void:
 	_check("零伤害不打断压制", action.is_active())
 	# 概率0也应尝试掩体，不能意外走回中弹攻击占位。
 	ai.cover.take_cover_chance = 0.0
-	ai.tactics.can_use_attack_positions = true
+	preload("res://tests/enemy_fire_fixture.gd").set_training_action(ai, &"attack_position", true)
 	ai.tactics.attack_position_chance = 1.0
 	enemy.receive_hit(1.0, VISIBLE_POSITION)
 	_check("中弹立即结束压制", not action.is_active())
@@ -134,7 +134,7 @@ func _run() -> void:
 	for region in regions:
 		region.add_to_group("cover_region")
 	await _prepare_visible()
-	ai.tactics.can_suppress_fire = false
+	preload("res://tests/enemy_fire_fixture.gd").set_training_action(ai, &"suppression", false)
 	await _hide()
 	_check("能力关闭时不压制", not action.is_active())
 	await _prepare_visible()
@@ -159,7 +159,7 @@ func _run() -> void:
 	ai.tactics.attack_position.phase = ai.tactics.attack_position.Phase.MOVE
 	await _hide()
 	_check("压制开始清理原攻击占位", action.is_active() and not ai.tactics.attack_position.is_active())
-	ai.tactics.can_suppress_fire = false
+	preload("res://tests/enemy_fire_fixture.gd").set_training_action(ai, &"suppression", false)
 	ai._physics_process(0.02)
 	_check("运行中关闭能力退出压制", not action.is_active())
 	await _prepare_visible()
@@ -192,8 +192,8 @@ func _run() -> void:
 func _prepare_visible() -> void:
 	ai.reset_actions()
 	ai.search.reset()
-	ai.tactics.can_suppress_fire = true
-	ai.tactics.can_use_attack_positions = false
+	preload("res://tests/enemy_fire_fixture.gd").set_training_action(ai, &"suppression", true)
+	preload("res://tests/enemy_fire_fixture.gd").set_training_action(ai, &"attack_position", false)
 	ai.tactics.fire_reaction_seconds = 0.0
 	ai.tactics.burst_shot_count = 3
 	ai.tactics.burst_pause_seconds = 0.2

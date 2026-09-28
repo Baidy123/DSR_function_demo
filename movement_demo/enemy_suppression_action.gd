@@ -29,7 +29,7 @@ func is_active() -> bool:
 
 ## 无副作用候选检查；出口压制在临时动作对象中查询目标，避免改动执行中的连射状态。
 func utility_available() -> bool:
-	if not is_enabled() or not tactics.can_suppress_fire or not actor.can_use_firearms():
+	if not is_enabled() or not actor.can_use_firearms():
 		return false
 	if not ai.has_visual_memory or actor.ammo.magazine_rounds <= 0 or actor.ammo.is_reloading:
 		return false
@@ -63,7 +63,7 @@ func reset() -> void:
 func on_target_lost() -> void:
 	if not is_enabled():
 		return
-	if active or not tactics.can_suppress_fire or tactics.cover.is_active():
+	if active or tactics.cover.is_active():
 		return
 	if not actor.can_use_firearms() or not ai.is_arena_active():
 		return
@@ -92,7 +92,7 @@ func step(delta: float, sees_player: bool) -> Vector3:
 	if sees_player:
 		finish(true)
 		return Vector3.ZERO
-	if not is_enabled() or not tactics.can_suppress_fire or not actor.can_use_firearms() or not _targets_available():
+	if not is_enabled() or not actor.can_use_firearms() or not _targets_available():
 		finish(false)
 		return Vector3.ZERO
 	remaining = maxf(0.0, remaining - maxf(delta, 0.0))

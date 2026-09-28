@@ -72,7 +72,7 @@ func _run() -> void:
 	enemy.receive_hit(1.0)
 	_check("没有攻击者位置不凭空选位", not action.is_active())
 	_prepare()
-	ai.tactics.can_use_attack_positions = false
+	preload("res://tests/enemy_fire_fixture.gd").set_training_action(ai, &"attack_position", false)
 	enemy.receive_hit(1.0, TARGET)
 	_check("能力关闭时中弹不启动", not action.is_active())
 	_prepare()
@@ -124,7 +124,7 @@ func _run() -> void:
 func _prepare() -> void:
 	ai.reset_actions()
 	ai.combat_type = ai.CombatType.RANGED
-	ai.tactics.can_use_attack_positions = true
+	preload("res://tests/enemy_fire_fixture.gd").set_training_action(ai, &"attack_position", true)
 	ai.tactics.attack_position_chance = 1.0
 	ai.attack_position_uncertainty = 0.0
 	ai.has_visual_memory = false

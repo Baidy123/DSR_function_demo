@@ -1,5 +1,14 @@
 extends RefCounted
 
+# 测试只修改本实例的训练名单；不会替兵种补能力或修改资源文件。
+static func set_training_action(ai: Node, id: StringName, enabled: bool) -> void:
+	var entries: Array = ai.training.allowed_actions
+	for index in range(entries.size() - 1, -1, -1):
+		if entries[index] != null and entries[index].action_id == id:
+			entries.remove_at(index)
+	if enabled:
+		entries.append(load("res://enemy_actions/%s.tres" % id))
+
 # 只在测试进程中配置实例。使用新武器，不读取或改写用户调参资源。
 # 时序测试固定：半秒反应、每组三枪、组间停一秒、枪械间隔0.8秒。
 static func configure_timing(enemy: Node) -> void:
@@ -53,9 +62,6 @@ static func _configure_common(enemy: Node) -> void:
 	])
 	training.allowed_actions = unit.available_actions.duplicate()
 	unit.combat_type = unit.CombatType.RANGED
-	training.tactics_can_use_attack_positions = false
-	training.tactics_can_suppress_fire = false
-	training.tactics_can_covering_retreat = true
 	training.tactics_fire_while_moving = true
 	training.tactics_fire_reaction_seconds = 0.5
 	training.tactics_burst_shot_count = 3

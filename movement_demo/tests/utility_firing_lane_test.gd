@@ -20,7 +20,7 @@ func _run() -> void:
 	var attack_resource = load("res://enemy_actions/attack_position.tres")
 	ai.unit_type.available_actions.append(attack_resource)
 	ai.training.allowed_actions.append(attack_resource)
-	ai.tactics.can_use_attack_positions = true
+	preload("res://tests/enemy_fire_fixture.gd").set_training_action(ai, &"attack_position", true)
 	ai.cover_selection.debug_cover_selection = false
 	player.get_node("Health").debug_invincible = true
 	player.global_position = arena.to_global(Vector3(0, 0, 2.5))
