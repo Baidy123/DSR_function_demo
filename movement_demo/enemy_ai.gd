@@ -366,6 +366,8 @@ func _start_utility_option(option: Dictionary, sees_player: bool) -> void:
 			tactics.ranged_repath_timer = 0.0
 			agent.target_position = option.destination.get("position", last_known_position)
 		&"search":
+			# 本次失视已经选择调查，不能到旧位置/取得模糊提示后才补触发过期压制。
+			utility_suppression_pending = false
 			if preserve_search:
 				if search.investigation_phase >= 0:
 					state = search.investigation_phase

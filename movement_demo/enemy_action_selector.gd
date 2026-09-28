@@ -479,7 +479,8 @@ func _assess_attack(ai: Node, threat: Vector3, information: float, options: Arra
 func _assess_suppression(ai: Node, sees_player: bool, exposure: float, information: float, options: Array[Dictionary]) -> void:
 	if sees_player or not ai.actor.can_use_firearms() or ai.is_executing_cover_plan():
 		return
-	for id: StringName in [&"suppression", &"exit_suppression"]:
+	# 同分时先选择能够封锁已推测掩体两端的方案；两端条件不满足仍由普通压制参选。
+	for id: StringName in [&"exit_suppression", &"suppression"]:
 		if not ai.can_use_action(id) or not ai.actions.has(id):
 			continue
 		var action = ai.actions[id]
@@ -491,7 +492,9 @@ func _assess_suppression(ai: Node, sees_player: bool, exposure: float, informati
 		var horizon: float = ai.utility_horizon_seconds
 		var available: float = maxf(0.0, minf(horizon, duration) - _ammo_wait(ai))
 		available *= action.utility_fire_fraction()
-		options.append(_option(ai, id, {}, horizon - available, exposure * horizon, information))
+		# 本轮结束会回到调查，信息损失只覆盖剩余压制时间，不能每次重评都扣整窗。
+		var information_delay: float = information * minf(1.0, duration / horizon)
+		options.append(_option(ai, id, {}, horizon - available, exposure * horizon, information_delay))
 
 
 ## 真实路径按半米积分；仅观察窗内的暴露计分，完整路程时间用于就绪预测。

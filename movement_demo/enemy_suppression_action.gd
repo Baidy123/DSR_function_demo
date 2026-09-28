@@ -42,15 +42,14 @@ func utility_available() -> bool:
 	return preview._prepare_targets(center)
 
 
-## 可射到的目标区域比例，换算成有效火力时间；不把打向实体墙计为同等收益。
+## 执行会把全部射击分配到可射样本，不能再按未被使用的遮挡样本扣除射击时间。
 func utility_fire_fraction() -> float:
 	var center: Vector3 = ai.last_seen_position + Vector3.UP * 0.8
-	var clear := 0.0
 	for offset: Vector3 in [Vector3.ZERO, Vector3.RIGHT, Vector3.LEFT, Vector3.FORWARD, Vector3.BACK]:
 		var target: Vector3 = center + offset * target_radius
 		if _can_reach_target(target):
-			clear += 0.2
-	return clear
+			return 1.0
+	return 0.0
 
 
 func reset() -> void:
