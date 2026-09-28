@@ -55,6 +55,11 @@ func _run() -> void:
 		ai.tactics.update_shooting(1.0 / 60.0, true, false)
 	check(enemy.shot_count == shots, "普通交战不能在射界被自身掩体遮挡时开火")
 	var options: Array = ai.action_selector.assess_options(ai, true)
+	var nearby_clear := false
+	for point: Vector3 in ai.tactics.get_engagement_candidate_points():
+		if point.distance_to(blocked) <= 1.01 and not ai.tactics.assess_engagement_point(point, ai.last_known_position).is_empty():
+			nearby_clear = true
+	check(nearby_clear, "半米侧移已有射界时，普通交战候选不能漏掉附近位置")
 	var standing: Array = options.filter(func(o): return o.id == &"engage" and o.destination.is_empty())
 	check(standing.size() == 1 and standing[0].breakdown.unavailable_seconds == ai.utility_horizon_seconds, "被遮挡站位不被评为可持续开火")
 	# 同一规则覆盖枪口尚未跟到真实目标、仍朝墙的情况。
@@ -65,6 +70,11 @@ func _run() -> void:
 		await physics_frame
 		var before: int = enemy.shot_count
 		ai._physics_process(1.0 / 60.0)
+		# 带画面复现时保存关键帧；默认自动回归不读写截图。
+		if "--capture" in OS.get_cmdline_user_args() and frame in [0, 180, 360, 599]:
+			await RenderingServer.frame_post_draw
+			root.get_texture().get_image().save_png("res://logs/recovery-visual-%d.png" % frame)
+			print("VISUAL frame=", frame, " position=", enemy.global_position, " action=", ai.utility_current.get("id"), " shots=", enemy.shot_count)
 		if enemy.shot_count > before and is_instance_valid(enemy.last_shot_collider) and enemy.last_shot_collider.is_in_group("cover_region"):
 			cover_hits += 1
 	check(enemy.global_position.distance_to(blocked) > 0.3, "统一决策会离开错误射击位，不仅原地禁射")

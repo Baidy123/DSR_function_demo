@@ -15,6 +15,8 @@ var _cover_points: Array[Dictionary] = []
 var _engage_points: Array[Vector3] = []
 var _engage_cache: Array[Dictionary] = []
 var _engage_cursor := 0
+var _engage_priority_remaining := 0
+var _engage_priority_cursor := 0
 var _attack_cursor := 0
 var _cover_cursor := 0
 var _evaluation_turn := 0
@@ -33,6 +35,8 @@ func reset_evaluation() -> void:
 	_engage_points.clear()
 	_engage_cache.clear()
 	_engage_cursor = 0
+	_engage_priority_remaining = 0
+	_engage_priority_cursor = 0
 	_attack_cache.clear()
 	_cover_cache.clear()
 	_attack_cursor = 0
@@ -84,12 +88,20 @@ func advance_evaluation(ai: Node, sees_player: bool) -> void:
 		or not _context_threat.is_finite() or _context_threat.distance_to(threat) > 0.25
 		or _context_weapon != ai.actor.weapon or _context_reloading != ai.actor.ammo.is_reloading)
 	if geometry_changed or context_changed:
+		var initial_scan: bool = not _context_position.is_finite() or geometry_changed
 		_attack_cache.clear()
 		_cover_cache.clear()
 		_engage_cache.clear()
 		_engage_points = ai.tactics.get_engagement_candidate_points()
 		if not _engage_points.is_empty():
 			_engage_cursor %= _engage_points.size()
+		# 初次评估先补齐脚边候选，避免只因先算出掩体就立刻后退失视。
+		# 仍受每帧点数/耗时预算约束，之后恢复原来的轮流评估。
+		# 玩家持续移动只刷新位置，不重启优先批次或清掉常规远点游标。
+		if initial_scan:
+			_engage_priority_remaining = mini(_engage_points.size(), 1 + ai.tactics.NEARBY_ENGAGEMENT_RADII.size() * ai.tactics.NEARBY_ENGAGEMENT_DIRECTIONS)
+			_engage_priority_cursor = 0
+			_engage_cursor = _engage_priority_remaining % maxi(1, _engage_points.size())
 		_context_position = ai.actor.global_position
 		_context_threat = threat
 		_context_weapon = ai.actor.weapon
@@ -116,9 +128,15 @@ func advance_evaluation(ai: Node, sees_player: bool) -> void:
 	var can_engage: bool = sees_player and ai.can_use_action(&"engage") and not _engage_points.is_empty()
 	while last_evaluated_count < EVALUATION_POINTS_PER_FRAME and Time.get_ticks_usec() - started < EVALUATION_BUDGET_USEC and (can_cover or can_attack or can_engage):
 		# 攻击扇环比躲藏点密集得多，三次攻击采样穿插一次躲藏采样。
-		if can_engage and (_evaluation_turn % 8 == 1 or not (can_cover or can_attack)):
-			var destination: Dictionary = ai.tactics.assess_engagement_point(_engage_points[_engage_cursor], threat)
-			_engage_cursor = (_engage_cursor + 1) % _engage_points.size()
+		if can_engage and (_engage_priority_remaining > 0 or _evaluation_turn % 8 == 1 or not (can_cover or can_attack)):
+			var index: int = _engage_cursor
+			if _engage_priority_remaining > 0:
+				index = _engage_priority_cursor % _engage_points.size()
+				_engage_priority_cursor += 1
+				_engage_priority_remaining -= 1
+			else:
+				_engage_cursor = (_engage_cursor + 1) % _engage_points.size()
+			var destination: Dictionary = ai.tactics.assess_engagement_point(_engage_points[index], threat)
 			if not destination.is_empty():
 				var route := assess_route(ai, destination.path, threat, 1.0, _reload_seconds(ai) if ai.actor.ammo.is_reloading else 0.0)
 				var exposure: float = route.exposure + _exposure(ai, destination.position, threat) * maxf(0.0, ai.utility_horizon_seconds - route.seconds)
@@ -130,7 +148,7 @@ func advance_evaluation(ai: Node, sees_player: bool) -> void:
 				_attack_cursor = 0
 				completed_attack_passes += 1
 		else:
-			_evaluate_cover(ai, _cover_points[_cover_cursor], threat)
+			_evaluate_cover(ai, _cover_points[_cover_cursor], threat, sees_player)
 			_cover_cursor = (_cover_cursor + 1) % _cover_points.size()
 		_evaluation_turn += 1
 		last_evaluated_count += 1
@@ -138,7 +156,7 @@ func advance_evaluation(ai: Node, sees_player: bool) -> void:
 	last_evaluation_usec = Time.get_ticks_usec() - started
 
 
-func _evaluate_cover(ai: Node, destination: Dictionary, threat: Vector3) -> void:
+func _evaluate_cover(ai: Node, destination: Dictionary, threat: Vector3, sees_player: bool) -> void:
 	if not is_instance_valid(destination.body):
 		return
 	var selection = ai.cover_selection
@@ -158,13 +176,15 @@ func _evaluate_cover(ai: Node, destination: Dictionary, threat: Vector3) -> void
 	var remaining := _reload_seconds(ai)
 	var route := assess_route(ai, path, threat, ai.cover.run_speed_multiplier, remaining if ai.actor.ammo.is_reloading else 0.0)
 	var exposure: float = route.exposure + _exposure(ai, current.hide, threat) * maxf(0.0, ai.utility_horizon_seconds - route.seconds)
-	var cost: float = score_outcome(ai, ai.utility_horizon_seconds, exposure).cost
+	var information: float = ai.utility_horizon_seconds if not sees_player else maxf(0.0, ai.utility_horizon_seconds - route.seconds)
+	var cost: float = score_outcome(ai, ai.utility_horizon_seconds, exposure, information).cost
 	if ai.actor.ammo.magazine_rounds == 0 or ai.actor.ammo.is_reloading or not ai.reload_plan.is_empty():
 		if not ai.actor.ammo.is_reloading:
-			cost = minf(cost, score_outcome(ai, route.seconds + remaining, exposure).cost)
+			cost = minf(cost, score_outcome(ai, route.seconds + remaining, exposure, information).cost)
 		var walking := assess_route(ai, path, threat, ai.cover.run_speed_multiplier, remaining)
 		var walking_exposure: float = walking.exposure + _exposure(ai, current.hide, threat) * maxf(0.0, ai.utility_horizon_seconds - walking.seconds)
-		cost = minf(cost, score_outcome(ai, maxf(walking.seconds, remaining), walking_exposure).cost)
+		var walking_information: float = ai.utility_horizon_seconds if not sees_player else maxf(0.0, ai.utility_horizon_seconds - walking.seconds)
+		cost = minf(cost, score_outcome(ai, maxf(walking.seconds, remaining), walking_exposure, walking_information).cost)
 	_store_candidate(_cover_cache, current, cost)
 
 
@@ -225,12 +245,14 @@ func assess_options(ai: Node, sees_player: bool) -> Array[Dictionary]:
 	var threat: Vector3 = ai._known_reload_threat()
 	var horizon: float = maxf(0.1, ai.utility_horizon_seconds)
 	var exposure: float = _exposure(ai, ai.actor.global_position, threat)
-	var information: float = 0.0 if sees_player or not threat.is_finite() else clampf(ai.utility_unseen_seconds, 0.0, horizon)
+	# 比较未来同一观察窗，不能把刚失视时的“过去零秒”当成继续躲藏没有信息损失。
+	var information: float = 0.0 if sees_player or not threat.is_finite() else horizon
 	var reload_seconds: float = _reload_seconds(ai)
 	var needs_reload: bool = ai.actor.can_use_firearms() and (ai.actor.ammo.magazine_rounds == 0 or ai.actor.ammo.is_reloading or not ai.reload_plan.is_empty())
 	# 原地换弹也是普通候选，不享有优先调度；未知威胁不凭空读取玩家。
 	if needs_reload:
-		options.append(_option(ai, &"reload", {}, reload_seconds, exposure * horizon, information, &"here"))
+		# 原地换弹仍面向记忆位置观察，不把它当作退进掩体后整窗丢失信息。
+		options.append(_option(ai, &"reload", {}, reload_seconds, exposure * horizon, 0.0, &"here"))
 	if sees_player and threat.is_finite() and ai.can_use_action(&"engage"):
 		var wait: float = _ammo_wait(ai)
 		var target: Vector3 = threat + Vector3.UP * 0.8
@@ -253,7 +275,7 @@ func assess_options(ai: Node, sees_player: bool) -> Array[Dictionary]:
 	if threat.is_finite():
 		# 声源快照用于调查，不把“听见”当作已确认敌人的战术威胁。
 		if not ai.search.noise_search_origin.is_finite():
-			_assess_cover(ai, threat, information, needs_reload, reload_seconds, options)
+			_assess_cover(ai, threat, information, needs_reload, reload_seconds, options, sees_player)
 			_assess_peek(ai, threat, information, sees_player, options)
 			# 怀疑位置只用于调查；未重新目击前，不预支抵达后的射击收益。
 			if sees_player:
@@ -262,8 +284,15 @@ func assess_options(ai: Node, sees_player: bool) -> Array[Dictionary]:
 		if not sees_player and ai.can_use_action(&"search"):
 			# 只能使用搜寻自己的目标，不能把掩体写入的脚下目标算成安全搜寻路线。
 			var point: Vector3 = ai.search.utility_destination()
-			var path: PackedVector3Array = ai.cover_selection._path_to(ai.actor.global_position, point)
-			if not path.is_empty():
+			var observing: bool = ai.search.is_observing()
+			var path: PackedVector3Array = PackedVector3Array() if observing else ai.cover_selection._path_to(ai.actor.global_position, point)
+			if observing or path.is_empty():
+				# 原地观察/重新规划不需要走到脚下；角色可能被碰撞挤出导航边缘。
+				# 只评估当前暴露，不捏造一条可以直接抵达失效目标的路线。
+				var recovery := _option(ai, &"search", {}, horizon, exposure * horizon, 0.0)
+				recovery.search_recovery = not observing
+				options.append(recovery)
+			else:
 				var route: Dictionary = assess_route(ai, path, threat, ai.search.movement_multiplier(), reload_seconds if ai.actor.ammo.is_reloading else 0.0)
 				options.append(_option(ai, &"search", {}, horizon, route.exposure + _exposure(ai, point, threat) * maxf(0.0, horizon - route.seconds), 0.0))
 	elif ai.can_use_action(&"patrol") and (ai.state == ai.State.PATROL or ai.patrol_pause_timer <= 0.0):
@@ -336,7 +365,7 @@ func _exposure(ai: Node, point: Vector3, threat: Vector3) -> float:
 	return ai._reload_exposure(point, threat) if threat.is_finite() else 0.0
 
 
-func _assess_cover(ai: Node, threat: Vector3, information: float, needs_reload: bool, reload_seconds: float, options: Array[Dictionary]) -> void:
+func _assess_cover(ai: Node, threat: Vector3, information: float, needs_reload: bool, reload_seconds: float, options: Array[Dictionary], sees_player: bool) -> void:
 	if not ai.can_use_action(&"cover") or ai.actor.move_speed <= 0.0 or ai.combat_type != ai.CombatType.RANGED:
 		return
 	var horizon: float = ai.utility_horizon_seconds
@@ -360,22 +389,23 @@ func _assess_cover(ai: Node, threat: Vector3, information: float, needs_reload: 
 		var remaining_reload: float = reload_seconds if ai.actor.ammo.is_reloading else 0.0
 		var moving: Dictionary = assess_route(ai, destination.path, threat, ai.cover.run_speed_multiplier, remaining_reload)
 		var cover_exposure: float = moving.exposure + at_cover * maxf(0.0, horizon - moving.seconds)
-		options.append(_option(ai, &"cover", destination, horizon, cover_exposure, information))
-		if ai.was_seeing_player and ai.can_use_action(&"covering_retreat") and ai.tactics.fire_while_moving and ai.actor.ammo.magazine_rounds > 0 and not ai.actor.ammo.is_reloading:
-			var retreat_route := assess_route(ai, destination.path, threat, ai.cover.covering_retreat_speed_multiplier, 0.0)
+		# 躲到目标背面后必然失去视线；即使此刻还看得见，也要计入抵达后的信息损失。
+		var hide_information: float = maxf(information, horizon - minf(horizon, moving.seconds))
+		options.append(_option(ai, &"cover", destination, horizon, cover_exposure, hide_information))
+		if sees_player and ai.can_use_action(&"covering_retreat") and ai.tactics.fire_while_moving and ai.actor.ammo.magazine_rounds > 0 and not ai.actor.ammo.is_reloading:
+			var retreat_route := assess_route(ai, destination.path, threat, ai.cover.covering_retreat_speed_multiplier, 0.0, true)
 			var retreat_exposure: float = retreat_route.exposure + at_cover * maxf(0.0, horizon - retreat_route.seconds)
-			# 撤退期间能射击；进入躲藏后停火。遮挡路段不能算有效火力。
-			var fire_seconds: float = minf(retreat_route.seconds, retreat_route.exposure)
-			var retreat := _option(ai, &"cover", destination, horizon - fire_seconds, retreat_exposure, information)
+			# 暴露是风险，不是射击能力；只能给实际射界通畅的路段计火力。
+			var retreat := _option(ai, &"cover", destination, horizon - retreat_route.fire_seconds, retreat_exposure, maxf(information, horizon - minf(horizon, retreat_route.seconds)))
 			retreat.mode = &"covering_retreat"
 			options.append(retreat)
 		if not needs_reload:
 			continue
 		if not ai.actor.ammo.is_reloading:
-			options.append(_option(ai, &"reload", destination, moving.seconds + reload_seconds, cover_exposure, information, &"after_cover"))
+			options.append(_option(ai, &"reload", destination, moving.seconds + reload_seconds, cover_exposure, hide_information, &"after_cover"))
 		var walking: Dictionary = assess_route(ai, destination.path, threat, ai.cover.run_speed_multiplier, reload_seconds)
 		var walking_exposure: float = walking.exposure + at_cover * maxf(0.0, horizon - walking.seconds)
-		options.append(_option(ai, &"reload", destination, maxf(walking.seconds, reload_seconds), walking_exposure, information, &"on_way"))
+		options.append(_option(ai, &"reload", destination, maxf(walking.seconds, reload_seconds), walking_exposure, maxf(information, horizon - minf(horizon, walking.seconds)), &"on_way"))
 
 
 func _assess_peek(ai: Node, threat: Vector3, information: float, sees_player: bool, options: Array[Dictionary]) -> void:
@@ -466,11 +496,15 @@ func _assess_suppression(ai: Node, sees_player: bool, exposure: float, informati
 
 ## 真实路径按半米积分；仅观察窗内的暴露计分，完整路程时间用于就绪预测。
 ## 换弹期间限普通速度，完成后恢复本动作速度；较慢动作不会被加速。
-func assess_route(ai: Node, path: PackedVector3Array, threat: Vector3, multiplier: float, reload_seconds: float) -> Dictionary:
+func assess_route(ai: Node, path: PackedVector3Array, threat: Vector3, multiplier: float, reload_seconds: float, evaluate_fire: bool = false) -> Dictionary:
 	var speed: float = maxf(0.01, ai.actor.move_speed * maxf(0.0, multiplier))
 	var walk_speed: float = minf(speed, maxf(0.01, ai.actor.move_speed))
 	var seconds: float = 0.0
 	var exposure: float = 0.0
+	var fire_seconds: float = 0.0
+	var keep_sight: bool = evaluate_fire and threat.is_finite() and ai.actor.can_use_firearms() and ai.tactics.fire_while_moving
+	var ready: float = maxf(ai.actor.shot_cooldown, maxf(ai.tactics.fire_pause_remaining, ai.tactics.fire_reaction_seconds - ai.tactics.fire_reaction_elapsed)) if evaluate_fire else 0.0
+	var target := threat + Vector3.UP * 0.8
 	var previous: Vector3 = ai.actor.global_position
 	for point: Vector3 in path:
 		var length: float = ai._horizontal_distance_between(previous, point)
@@ -483,9 +517,18 @@ func assess_route(ai: Node, path: PackedVector3Array, threat: Vector3, multiplie
 			if observed > 0.0:
 				var sample: Vector3 = previous.lerp(point, (float(index) + 0.5) / samples)
 				exposure += _exposure(ai, sample, threat) * observed
+				if keep_sight:
+					# 导航点悬在地面上方；射界必须按角色实际枪口高度检查。
+					sample.y = ai.actor.global_position.y
+					var origin: Vector3 = sample + ai.actor.get_shot_origin() - ai.actor.global_position
+					keep_sight = (sample.distance_to(threat) <= maxf(ai.perception.sight_distance, ai.perception.close_awareness_radius)
+						and ai.cover_selection.has_clear_line(origin, target))
+					# 主动退入墙后即失视，不能预支之后绕出墙另一端的火力。
+					if keep_sight and origin.distance_to(target) <= ai.actor.weapon.fire_range and ai.tactics.has_clear_firing_lane(origin, target - origin, origin.distance_to(target)):
+						fire_seconds += maxf(0.0, seconds + observed - maxf(seconds, ready))
 			seconds += duration
 		previous = point
-	return {"seconds": seconds, "exposure": exposure}
+	return {"seconds": seconds, "exposure": exposure, "fire_seconds": fire_seconds}
 
 
 ## 兼容动作执行分派；决策来自 assess_options，不在这里再次选方案。

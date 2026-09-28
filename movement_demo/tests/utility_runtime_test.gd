@@ -37,10 +37,12 @@ func _run() -> void:
 	var saw_reload := false
 	var saw_shot := false
 	var start: Vector3 = enemy.global_position
+	var furthest_distance := 0.0
 	for frame in range(1800):
 		await physics_frame
 		if frame == 600:
-			player.global_position = arena.to_global(Vector3(0, 0, -4))
+			# 真正走到CoverF后制造调查需求；没有受压且射界始终通畅时原地开火是有效行为。
+			player.global_position = arena.to_global(Vector3(6, 0, 4))
 		if frame == 1200:
 			player.global_position = arena.to_global(Vector3(2, 0, 2.5))
 		var before := Time.get_ticks_usec()
@@ -49,9 +51,10 @@ func _run() -> void:
 		actions[String(ai.utility_current.get("id", &""))] = true
 		saw_reload = saw_reload or enemy.ammo.is_reloading
 		saw_shot = saw_shot or enemy.ammo.magazine_rounds < 3
+		furthest_distance = maxf(furthest_distance, enemy.global_position.distance_to(start))
 	samples.sort()
 	check(saw_shot and saw_reload, "自主行动实际开火并完成空匣换弹调度")
-	check(enemy.global_position.distance_to(start) > 0.2, "自主行动实际移动而非原地停摆")
+	check(furthest_distance > 0.2, "玩家进入掩体后自主行动实际移动，不把返回起点误判为停摆")
 	check(ai.action_selector.total_evaluated_count > 1000, "持续行动期间空间扫描保持推进")
 	check(samples[1782] < 16000 and samples[-1] < 50000, "30秒完整AI循环P99低于16ms且没有50ms集中阻塞")
 	print("RUNTIME actions=", actions.keys(), " P99=", samples[1782] / 1000.0, "ms max=", samples[-1] / 1000.0, "ms")

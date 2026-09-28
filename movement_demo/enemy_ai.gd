@@ -224,6 +224,13 @@ func step_selected_action(delta: float, sees_player: bool) -> Vector3:
 	var id: StringName = utility_current.get("id", &"")
 	if id.is_empty() or id == &"reload":
 		return Vector3.ZERO
+	if id == &"search" and utility_current.get("search_recovery", false):
+		# 同一个搜索方案继续执行时也要恢复，不能只在动作启动时处理失效目标。
+		utility_current.erase("search_recovery")
+		# 启动动作可能已从旧记忆生成有效的新TRACK/观察；不能用旧标记取消它。
+		if not search.is_observing() and cover_selection._path_to(actor.global_position, search.utility_destination()).is_empty():
+			search.recover_unreachable_destination()
+			return Vector3.ZERO
 	if id == &"cover" and cover.phase == cover.Phase.HIDE:
 		# 是否继续躲藏由统一评估决定，不能另一个计时器抢先启动探头。
 		return Vector3.ZERO
@@ -404,7 +411,9 @@ func assess_reload_options() -> Array[Dictionary]:
 func _reload_risk_aversion() -> float:
 	var missing_health: float = 1.0 - clampf(actor.health / maxf(actor.max_health, 1.0), 0.0, 1.0)
 	var confidence := pow(0.5, utility_threat_age_seconds / maxf(0.5, utility_threat_half_life_seconds))
-	return reload_risk_weight * confidence * (1.0 + missing_health + recent_damage_pressure + nearby_shot_pressure)
+	# 看到/记得玩家都不等于正在受压，否则墙角每次重新目击都会立刻退回去。
+	# 暴露几何仍用于选路；避险倾向由真实来弹、受伤和已有伤势支撑。
+	return reload_risk_weight * confidence * (missing_health + recent_damage_pressure + nearby_shot_pressure)
 
 
 ## 旧换弹评分接口复用共同窗口；转移期间恢复火力需等到抵达。

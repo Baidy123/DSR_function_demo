@@ -1,5 +1,8 @@
 extends "res://enemy_action.gd"
 
+const NEARBY_ENGAGEMENT_RADII := [0.5, 1.0]
+const NEARBY_ENGAGEMENT_DIRECTIONS := 8
+
 # 战术：交战选位、射击节奏与可用动作。具体武器执行由 Enemy 负责。
 ## 首次／重新真实目击玩家，或真正受伤且有攻击者位置时，尝试攻击占位的概率。
 ## 持续可见不重抽；攻击占位或掩体动作中不重选。0=不触发，1=每次满足条件都尝试。
@@ -238,6 +241,12 @@ func get_engagement_candidate_points() -> Array[Vector3]:
 		return points
 	var band: Vector2 = _ranged_distance_band()
 	points.append(actor.global_position)
+	# 墙角可能只需挪半步就有射界；只采目标周围的大圆环会漏掉这些近点。
+	# 这里只生成候选，距离带、身体空间、路径和完整射界仍由同一入口验证。
+	for offset_distance: float in NEARBY_ENGAGEMENT_RADII:
+		for index in range(NEARBY_ENGAGEMENT_DIRECTIONS):
+			var angle := TAU * float(index) / NEARBY_ENGAGEMENT_DIRECTIONS
+			points.append(actor.global_position + Vector3(cos(angle), 0.0, sin(angle)) * offset_distance)
 	# 保留已经评分的目标，避免角色移动后环形采样变化导致目的地无故消失。
 	if not agent.target_position.is_equal_approx(actor.global_position):
 		points.append(agent.target_position)

@@ -248,6 +248,25 @@ func has_committed_segment() -> bool:
 
 
 ## 搜寻保留自己的目标；公共NavigationAgent可能正被掩体动作使用。
+func is_observing() -> bool:
+	return investigation_phase == ai.State.SEARCH and search_is_pausing and not search_current_target_active
+
+
+func recover_unreachable_destination() -> void:
+	# 只有统一选择器真正执行搜索后才改进度；评估阶段不选点、不消耗候选。
+	if investigation_phase == ai.State.SEARCH and search_sample_count > 0:
+		_skip_current_search_point()
+		search_is_pausing = false
+		_segment_boundary_pending = false
+		if not _advance_systematic_search_target():
+			_end_search()
+	elif investigation_phase == ai.State.TRACK:
+		_finish_tracking(true)
+	else:
+		begin_search(ai.last_known_position)
+	ai.invalidate_utility()
+
+
 func utility_destination() -> Vector3:
 	if investigation_phase == ai.State.TRACK and has_suspected_position:
 		return suspected_position
