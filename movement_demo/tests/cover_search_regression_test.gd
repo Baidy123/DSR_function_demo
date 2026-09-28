@@ -39,6 +39,7 @@ func run(scene: Node) -> Dictionary:
 	cover.reset()
 	enemy.global_position = arena.to_global(Vector3(0, 0, 0))
 	ai.last_known_position = enemy.global_position
+	ai.has_visual_memory = false
 	ai.search.search_seconds = 0.0
 	ai.search.search_hint_chance = 0.0
 	var first_targets: Array[Vector3] = []
@@ -49,10 +50,11 @@ func run(scene: Node) -> Dictionary:
 		ai.search.begin_search()
 		ai.search._advance_systematic_search_target()
 		first_targets.append(ai.search.search_current_target)
-	var varied := false
+	# 无方向证据时应先查最后已知位置；不能继续要求首个目标必须随机变化。
+	var near_known_position := true
 	for point in first_targets:
-		varied = varied or not point.is_equal_approx(first_targets[0])
-	checks["search_targets_vary_between_runs"] = varied
+		near_known_position = near_known_position and ai._horizontal_distance_between(point, ai.last_known_position) <= ai.search.search_arrival_distance
+	checks["search_without_direction_checks_known_position_first"] = near_known_position
 	checks.merge(await _check_search(scene, enemy))
 	scene.set_meta("cover_search_checks", checks)
 	return checks

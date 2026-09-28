@@ -255,7 +255,9 @@ func assess_options(ai: Node, sees_player: bool) -> Array[Dictionary]:
 		if not ai.search.noise_search_origin.is_finite():
 			_assess_cover(ai, threat, information, needs_reload, reload_seconds, options)
 			_assess_peek(ai, threat, information, sees_player, options)
-			_assess_attack(ai, threat, information, options)
+			# 怀疑位置只用于调查；未重新目击前，不预支抵达后的射击收益。
+			if sees_player:
+				_assess_attack(ai, threat, information, options)
 			_assess_suppression(ai, sees_player, exposure, information, options)
 		if not sees_player and ai.can_use_action(&"search"):
 			# 只能使用搜寻自己的目标，不能把掩体写入的脚下目标算成安全搜寻路线。

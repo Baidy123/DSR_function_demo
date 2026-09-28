@@ -173,15 +173,88 @@ var search_timer: float = 0.0
 var search_pause_timer: float = 0.0
 var search_is_pausing: bool = false
 
+# 只由真实目击更新；失视后的预测绝不读取玩家速度或位置。
+var observed_velocity: Vector3 = Vector3.ZERO
+var investigation_phase: int = -1
+var _return_to_area_search := false
+var _segment_released := false
+var _segment_nearby_pressure := 0.0
+var _segment_boundary_pending := false
+var _track_waypoint := Vector3.INF
+var _track_best_distance := INF
+var _track_stuck_seconds := 0.0
+
 const Actor = preload("res://enemy_actor.gd")
+
+
+func observe_visual_motion(displacement: Vector3, delta: float, continuous: bool) -> void:
+	if not continuous:
+		# 新目击使旧调查失效；不能跨失视区间推算速度。
+		reset()
+		ai.last_seen_direction = Vector3.ZERO
+		return
+	if delta <= 0.0:
+		return
+	displacement.y = 0.0
+	var weight := 1.0 - exp(-delta / 0.35)
+	observed_velocity = observed_velocity.lerp(displacement / delta, weight)
+	ai.last_seen_direction = observed_velocity.normalized() if observed_velocity.length() >= 0.1 else Vector3.ZERO
+
+
+func predicted_position() -> Vector3:
+	var distance := track_distance
+	if not observed_velocity.is_zero_approx():
+		# 按最后可见速度预测短短一段；原 Track Distance 作为最大距离。
+		distance = minf(track_distance, observed_velocity.length() * 1.25)
+	return ai.last_seen_position + ai.last_seen_direction * distance
+
+
+func _begin_segment() -> void:
+	_segment_released = false
+	_segment_nearby_pressure = ai.nearby_shot_pressure
+
+
+func release_segment() -> void:
+	_segment_released = true
+
+
+func is_segment_released() -> bool:
+	return _segment_released
+
+
+func investigate_known_threat(position: Vector3) -> void:
+	# 新的真实受击线索替代旧调查，不恢复已被旧战术入口改坏的计时或目标。
+	investigation_phase = -1
+	_return_to_area_search = false
+	has_suspected_position = false
+	if _set_suspected_position_from_raw(position, 2.0):
+		_start_track_to_suspected()
+	else:
+		begin_search(position)
+	release_segment()
+
+
+func has_committed_segment() -> bool:
+	# 单发擦弹不必立即折返；明显新增的连续近弹允许重新判断风险。
+	if ai.nearby_shot_pressure > _segment_nearby_pressure + 0.25:
+		release_segment()
+	if _segment_released:
+		return false
+	if _segment_boundary_pending:
+		return false
+	if ai.state == ai.State.TRACK:
+		return has_suspected_position and track_timer > 0.0
+	return ai.state == ai.State.SEARCH and (search_current_target_active or (search_is_pausing and search_pause_timer > 0.0))
 
 
 ## 搜寻保留自己的目标；公共NavigationAgent可能正被掩体动作使用。
 func utility_destination() -> Vector3:
-	if ai.state == ai.State.TRACK and has_suspected_position:
+	if investigation_phase == ai.State.TRACK and has_suspected_position:
 		return suspected_position
-	if ai.state == ai.State.SEARCH and search_current_target_active:
+	if investigation_phase == ai.State.SEARCH and search_current_target_active:
 		return search_current_target
+	if investigation_phase == ai.State.SEARCH and search_is_pausing:
+		return actor.global_position
 	return noise_search_origin if noise_search_origin.is_finite() else ai.last_known_position
 
 
@@ -191,6 +264,8 @@ func begin_tracking_or_search(allow_hint: bool = true) -> void:
 		agent.target_position = actor.global_position
 		return
 	ai.is_alerted = true
+	investigation_phase = -1
+	_return_to_area_search = false
 	ai.tactics.ranged_has_destination = false
 	ai.tactics.ranged_repath_timer = 0.0
 	search_timer = 0.0
@@ -206,7 +281,7 @@ func begin_tracking_or_search(allow_hint: bool = true) -> void:
 	# 第二优先：不用作弊，只根据玩家最后真正被看到时的移动方向进行推断。
 	if not ai.last_seen_direction.is_zero_approx():
 		search_direction = ai.last_seen_direction.normalized()
-		var raw_target: Vector3 = ai.last_seen_position + search_direction * track_distance
+		var raw_target: Vector3 = predicted_position()
 		if _set_suspected_position_from_raw(raw_target, 2.0):
 			_start_track_to_suspected()
 			return
@@ -315,7 +390,7 @@ func _try_tracking_cheat_hint(chance: float) -> bool:
 		return false
 
 	# 到这里说明“外挂概率”已经真正命中。
-	# 后面的工作只是把这次提示转换成一个可用的导航目标，不能再因为一次误差点不合法就把提示吞掉。
+	# 只在带误差的样本中寻找可用位置；全部失败就等待下次机会。
 	var max_snap_distance: float = maxf(1.5, tracking_hint_error_radius + 0.75)
 	var attempts: int = maxi(1, tracking_hint_position_attempts)
 
@@ -343,25 +418,8 @@ func _try_tracking_cheat_hint(chance: float) -> bool:
 				)
 			return true
 
-	# 带误差的候选都不适合 TRACK 时，不再把已经命中的外挂作废。
-	# 退回玩家真实位置，并使用更宽松的导航目标转换：
-	# 瞄准/注意力仍指向玩家附近，但移动终点取路径上最后一个角色真正站得下的位置。
-	if _set_suspected_position_relaxed(ai.player.global_position):
-		var fallback_direction: Vector3 = suspected_look_position - actor.global_position
-		fallback_direction.y = 0.0
-		if not fallback_direction.is_zero_approx():
-			search_direction = fallback_direction.normalized()
-		if debug_tracking_cheat:
-			print(
-				"[AI][追踪提示] 成功：使用真实位置的宽松Nav回退 suspected=",
-				suspected_position,
-				" look=",
-				suspected_look_position
-			)
-		return true
-
 	if debug_tracking_cheat:
-		print("[AI][追踪提示] 失败：概率已命中，但玩家附近与通往该区域的导航路径都不可用")
+		print("[AI][追踪提示] 失败：带误差的候选不可用，保留原调查")
 	return false
 
 
@@ -465,10 +523,8 @@ func _set_suspected_position_from_raw(raw_target: Vector3, max_snap_distance: fl
 	return true
 
 
-## 外挂概率已经命中时使用的宽松位置转换。
-## 它不要求目标拥有 TRACK 的完整边界余量；如果玩家附近终点站不下，
-## 就沿“当前NPC -> 玩家附近Nav点”的导航路径从后往前找最后一个可站立点。
-## 这样“知道大概在哪”与“是否能精确走到那个点”不会再混成一件事。
+## 已知声源使用的宽松位置转换；概率位置提示不使用这个回退。
+## 终点站不下时，沿已知声源的导航路径找最后一个可站立点。
 
 
 func _set_suspected_position_relaxed(raw_target: Vector3) -> bool:
@@ -523,12 +579,23 @@ func _start_track_to_suspected() -> void:
 		search_direction = direction.normalized()
 
 	track_timer = track_seconds
+	_return_to_area_search = investigation_phase == ai.State.SEARCH and search_sample_count > 0
+	investigation_phase = ai.State.TRACK
+	_begin_segment()
+	_segment_boundary_pending = false
+	_track_waypoint = Vector3.INF
+	_track_best_distance = INF
+	_track_stuck_seconds = 0.0
 	ai.state = ai.State.TRACK
 	agent.target_position = suspected_position
 
 
 func _process_track(delta: float) -> Vector3:
 	track_timer = maxf(0.0, track_timer - delta)
+	if _return_to_area_search:
+		search_elapsed_seconds += delta
+		if search_seconds > 0.0:
+			search_timer = maxf(0.0, search_timer - delta)
 
 	var reached_track_target: bool = (
 		has_suspected_position
@@ -540,10 +607,23 @@ func _process_track(delta: float) -> Vector3:
 	# SEARCH 的圆心始终回到玩家最后真正出现/最后已知的位置，
 	# 不把 TRACK 的预测终点当成新的搜索中心。
 	if track_timer <= 0.0 or reached_track_target or agent.is_navigation_finished():
-		begin_search(ai.last_known_position)
+		_finish_tracking(not reached_track_target)
 		return Vector3.ZERO
 
 	var next_position: Vector3 = agent.get_next_path_position()
+	var distance: float = ai._horizontal_distance(next_position)
+	if not _track_waypoint.is_finite() or _track_waypoint.distance_to(next_position) > 0.25:
+		_track_waypoint = next_position
+		_track_best_distance = distance
+		_track_stuck_seconds = 0.0
+	elif distance < _track_best_distance - search_stuck_min_progress_distance:
+		_track_best_distance = distance
+		_track_stuck_seconds = 0.0
+	else:
+		_track_stuck_seconds += delta
+	if _track_stuck_seconds >= search_stuck_repath_seconds:
+		_finish_tracking(true)
+		return Vector3.ZERO
 	var direction: Vector3 = next_position - actor.global_position
 	direction.y = 0.0
 	if direction.is_zero_approx():
@@ -551,11 +631,37 @@ func _process_track(delta: float) -> Vector3:
 	return direction.normalized()
 
 
+func _finish_tracking(failed: bool = false) -> void:
+	has_suspected_position = false
+	if not _return_to_area_search:
+		begin_search(ai.last_known_position)
+		if failed:
+			release_segment()
+		ai.invalidate_utility()
+		return
+	_return_to_area_search = false
+	investigation_phase = ai.State.SEARCH
+	ai.state = ai.State.SEARCH
+	# 概率提示只是本轮搜索的一次支线，不重抽区域、不恢复已消耗的计时。
+	search_current_target_active = false
+	search_is_pausing = true
+	search_pause_timer = maxf(0.0, search_pause_seconds)
+	search_hint_timer = maxf(0.25, search_hint_interval_seconds)
+	if failed:
+		release_segment()
+	agent.target_position = actor.global_position
+	ai.invalidate_utility()
+
+
 func begin_search(center: Vector3 = Vector3.INF) -> void:
 	if not is_enabled():
 		ai.state = ai.State.IDLE
 		return
 	ai.state = ai.State.SEARCH
+	investigation_phase = ai.State.SEARCH
+	_return_to_area_search = false
+	_begin_segment()
+	_segment_boundary_pending = false
 	ai.is_alerted = true
 
 	# 普通搜索沿用最后目击圆心；本次由声音触发时，以新的声源位置为圆心。
@@ -601,7 +707,7 @@ func begin_search(center: Vector3 = Vector3.INF) -> void:
 
 	_build_systematic_area_search()
 
-	# 先停一下观察，然后选择第一个随机搜寻目标。
+	# 先停一下观察，再按最后目击轨迹选择调查位置。
 	agent.target_position = actor.global_position
 
 	if debug_systematic_search:
@@ -627,21 +733,25 @@ func _process_search(delta: float) -> Vector3:
 			_end_search()
 			return Vector3.ZERO
 
-	# 保留现有追踪提示；真正重新发现玩家时仍由主状态机打断搜索。
-	if not noise_search_origin.is_finite() and search_hint_timer <= 0.0:
-		search_hint_timer = maxf(0.25, search_hint_interval_seconds)
-		if _try_tracking_cheat_hint(get_current_search_hint_chance()):
-			_start_track_to_suspected()
-			return Vector3.ZERO
-
-	# 每到一个搜寻目标，短暂停留观察，再从尚未覆盖的区域随机选点。
+	# 提示检查保留原间隔，但等当前段观察结束才接受；不会途中突然折返。
 	if search_is_pausing:
 		search_stuck_timer = 0.0
 		search_progress_best_distance = INF
 		search_pause_timer = maxf(0.0, search_pause_timer - delta)
 
 		if search_pause_timer <= 0.0:
+			if not _segment_boundary_pending:
+				# Utility 在 step 前运行：显式留一帧，才能在两段之间重新选择。
+				_segment_boundary_pending = true
+				ai.invalidate_utility()
+				return Vector3.ZERO
+			_segment_boundary_pending = false
 			search_is_pausing = false
+			if not noise_search_origin.is_finite() and search_hint_timer <= 0.0:
+				search_hint_timer = maxf(0.25, search_hint_interval_seconds)
+				if _try_tracking_cheat_hint(get_current_search_hint_chance()):
+					_start_track_to_suspected()
+					return Vector3.ZERO
 
 			if not _advance_systematic_search_target():
 				if debug_systematic_search:
@@ -705,7 +815,7 @@ func _process_search(delta: float) -> Vector3:
 
 ## 生成固定的“圆形区域覆盖搜索路线”。
 ##
-## 用均匀地面样本估算可达面积，每次从未覆盖部分随机挑选搜寻目标。
+## 用均匀地面样本估算可达面积，按轨迹推测给未覆盖位置排序。
 
 
 func _build_systematic_area_search() -> void:
@@ -768,19 +878,32 @@ func _mark_search_coverage(point: Vector3) -> void:
 		if ai._horizontal_distance_between(point, search_sweep_points[index]) <= search_coverage_radius:
 			search_sweep_points.remove_at(index)
 
-## 从未覆盖区域随机选择真实可达的搜寻目标。
+## 方向判断随失视时间变弱，随后自然扩展到两侧和其他未覆盖区域。
+func _search_point_cost(point: Vector3) -> float:
+	var origin: Vector3 = search_origin
+	var prediction: Vector3 = origin
+	var confidence := 0.0
+	if ai.has_visual_memory and not noise_search_origin.is_finite() and not ai.last_seen_direction.is_zero_approx():
+		prediction = predicted_position()
+		confidence = pow(0.5, ai.utility_unseen_seconds / 4.0)
+	var offset := point - origin
+	offset.y = 0.0
+	var backwards := maxf(0.0, -offset.dot(ai.last_seen_direction))
+	return lerpf(offset.length(), ai._horizontal_distance_between(point, prediction) + backwards, confidence) + ai._horizontal_distance(point) * 0.25
 
 
 func _advance_systematic_search_target() -> bool:
 	if get_search_coverage() >= search_coverage_goal:
 		return false
-	# 从未覆盖候选里抽几个，再选较近的一个，减少横穿整个搜索区。
+	# 候选已有空间/路径过滤；这里只做廉价排序，选中后重新核实路径。
 	while not search_sweep_points.is_empty():
-		var chosen_index: int = randi_range(0, search_sweep_points.size() - 1)
-		for attempt in range(3):
-			var candidate_index: int = randi_range(0, search_sweep_points.size() - 1)
-			if ai._horizontal_distance(search_sweep_points[candidate_index]) < ai._horizontal_distance(search_sweep_points[chosen_index]):
+		var chosen_index := 0
+		var best_cost := _search_point_cost(search_sweep_points[0])
+		for candidate_index in range(1, search_sweep_points.size()):
+			var cost := _search_point_cost(search_sweep_points[candidate_index])
+			if cost < best_cost:
 				chosen_index = candidate_index
+				best_cost = cost
 		var destination: Vector3 = search_sweep_points[chosen_index]
 		search_sweep_points.remove_at(chosen_index)
 		var path: PackedVector3Array = NavigationServer3D.map_get_path(
@@ -791,6 +914,7 @@ func _advance_systematic_search_target() -> bool:
 		search_sweep_index += 1
 		search_current_target = destination
 		search_current_target_active = true
+		_begin_segment()
 		var planned_direction: Vector3 = destination - actor.global_position
 		planned_direction.y = 0.0
 		if not planned_direction.is_zero_approx():
@@ -804,7 +928,7 @@ func _advance_systematic_search_target() -> bool:
 		search_target_timer = path_length / maxf(0.1, actor.move_speed * search_move_speed_multiplier) + 3.0
 		agent.target_position = destination
 		if debug_systematic_search:
-			print("[AI][搜索] 随机目标=", destination, " 已覆盖=", snappedf(get_search_coverage() * 100.0, 0.1), "%")
+			print("[AI][搜索] 轨迹调查目标=", destination, " 已覆盖=", snappedf(get_search_coverage() * 100.0, 0.1), "%")
 		return true
 	# 动态障碍使所有剩余目标失败时退出，不把失败点当作已覆盖。
 	search_current_target_active = false
@@ -826,6 +950,8 @@ func _finish_current_search_point() -> void:
 
 
 func _skip_current_search_point() -> void:
+	release_segment()
+	ai.invalidate_utility()
 	search_current_target_active = false
 	search_progress_best_distance = INF
 	search_stuck_timer = 0.0
@@ -836,6 +962,8 @@ func _skip_current_search_point() -> void:
 
 
 func _end_search() -> void:
+	investigation_phase = -1
+	_return_to_area_search = false
 	noise_search_origin = Vector3.INF
 	# 搜索完整结束后，才退出“知道玩家”状态并恢复正常巡逻。
 	ai.is_alerted = false
@@ -866,6 +994,11 @@ func _end_search() -> void:
 
 
 func reset() -> void:
+	observed_velocity = Vector3.ZERO
+	investigation_phase = -1
+	_return_to_area_search = false
+	_segment_released = false
+	_segment_boundary_pending = false
 	noise_search_origin = Vector3.INF
 	has_suspected_position = false
 	suspected_position = actor.global_position

@@ -174,11 +174,7 @@ func _physics_process(delta: float) -> void:
 		utility_threat_age_seconds = 0.0
 		search.noise_search_origin = Vector3.INF
 		var new_seen_position: Vector3 = player.global_position
-		if was_seeing_player:
-			var seen_motion := new_seen_position - last_seen_position
-			seen_motion.y = 0.0
-			if seen_motion.length() > 0.05:
-				last_seen_direction = seen_motion.normalized()
+		search.observe_visual_motion(new_seen_position - last_seen_position, delta, was_seeing_player)
 		last_seen_position = new_seen_position
 		has_visual_memory = true
 		is_alerted = true
@@ -270,7 +266,7 @@ func _utility_current_valid(sees_player: bool) -> bool:
 		return false
 	match id:
 		&"cover": return cover.is_active()
-		&"attack_position": return tactics.attack_position.is_active() and tactics.can_use_attack_positions and actor.can_use_firearms()
+		&"attack_position": return sees_player and tactics.attack_position.is_active() and tactics.can_use_attack_positions and actor.can_use_firearms()
 		&"suppression", &"exit_suppression": return not sees_player and actions[id].is_active() and actor.can_use_firearms()
 		&"search": return (is_alerted or search.noise_search_origin.is_finite()) and not sees_player and state in [State.SEARCH, State.TRACK, State.INVESTIGATE]
 		&"patrol": return not is_alerted and state == State.PATROL
@@ -302,7 +298,11 @@ func _update_utility_decision(delta: float, sees_player: bool) -> void:
 	if valid and action_selector.same_option(best, utility_current):
 		utility_current = best
 		return
-	if valid and (_utility_elapsed < utility_hold_seconds or best.cost + utility_switch_advantage >= current_cost):
+	# 已经开始的一段调查走完并观察后再比较普通战术；目击、危险和换弹可打断。
+	if valid and utility_current.get("id") == &"search" and search.has_committed_segment() and best.get("id") != &"reload":
+		return
+	var search_interrupted: bool = utility_current.get("id") == &"search" and search.is_segment_released()
+	if valid and not search_interrupted and (_utility_elapsed < utility_hold_seconds or best.cost + utility_switch_advantage >= current_cost):
 		return
 	_start_utility_option(best, sees_player)
 
@@ -328,8 +328,8 @@ func _start_utility_option(option: Dictionary, sees_player: bool) -> void:
 			invalidate_utility()
 			return
 	var preserve_search: bool = (option.id == &"search" and (
-		(state == State.TRACK and search.has_suspected_position)
-		or (state == State.SEARCH and search.search_sample_count > 0)
+		(search.investigation_phase == State.TRACK and search.has_suspected_position)
+		or (search.investigation_phase == State.SEARCH and search.search_sample_count > 0)
 		or (state == State.INVESTIGATE and utility_current.get("id") == &"search")))
 	var search_target: Vector3 = search.utility_destination()
 	var same_reload_destination: bool = (utility_current.get("id") == &"reload" and option.id == &"reload"
@@ -360,6 +360,8 @@ func _start_utility_option(option: Dictionary, sees_player: bool) -> void:
 			agent.target_position = option.destination.get("position", last_known_position)
 		&"search":
 			if preserve_search:
+				if search.investigation_phase >= 0:
+					state = search.investigation_phase
 				agent.target_position = search_target
 			else:
 				search.begin_tracking_or_search(false)
@@ -570,6 +572,7 @@ func _on_hit_received(damage: float, attacker_position: Vector3) -> void:
 		search.search_sample_count = 0
 		search.search_current_target_active = false
 	elif damage > 0.0:
+		search.release_segment()
 		utility_threat_age_seconds = 0.0
 		recent_damage_pressure = minf(2.0, recent_damage_pressure + 0.5 + damage / maxf(actor.max_health, 1.0))
 		if cover.phase == cover.Phase.HIDE:
@@ -609,6 +612,14 @@ func _investigate_attack(attacker_position: Vector3) -> void:
 
 	last_known_position = attacker_position + Vector3(cos(angle), 0.0, sin(angle)) * radius
 	last_known_position.y = actor.global_position.y
+	if utility_current.get("id") == &"search" and search.investigation_phase >= 0:
+		state = search.investigation_phase
+		if search.is_segment_released():
+			search.investigate_known_threat(last_known_position)
+		# 单发近弹先更新风险，保持当前调查目标与计时；新增压力由统一选择入口判断。
+		return
+	# 非搜索动作期间收到新攻击线索，旧调查不能在之后当作有效快照恢复。
+	search.investigation_phase = -1
 
 	state = State.REPOSITION if combat_type == CombatType.RANGED else State.INVESTIGATE
 	tactics.ranged_repath_timer = 0.0
