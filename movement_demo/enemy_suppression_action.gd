@@ -19,6 +19,7 @@ var active: bool = false
 var remaining: float = 0.0
 var target_center: Vector3
 var aim_point: Vector3
+var _clear_targets: Array[Vector3] = []
 
 
 
@@ -47,7 +48,7 @@ func utility_fire_fraction() -> float:
 	var clear := 0.0
 	for offset: Vector3 in [Vector3.ZERO, Vector3.RIGHT, Vector3.LEFT, Vector3.FORWARD, Vector3.BACK]:
 		var target: Vector3 = center + offset * target_radius
-		if tactics.has_clear_firing_lane(actor.get_shot_origin(), target - actor.get_shot_origin(), actor.get_shot_origin().distance_to(target)):
+		if _can_reach_target(target):
 			clear += 0.2
 	return clear
 
@@ -55,6 +56,7 @@ func utility_fire_fraction() -> float:
 func reset() -> void:
 	active = false
 	remaining = 0.0
+	_clear_targets.clear()
 
 
 # 只在真实目击从有到无时调用；持续看不见不会每帧重启。
@@ -105,12 +107,28 @@ func on_shot_fired() -> void:
 
 
 # 子类只负责目标区域，计时、结束和射击权限继续共用。
-func _prepare_targets(_center: Vector3) -> bool:
-	return true
+func _prepare_targets(center: Vector3) -> bool:
+	_clear_targets.clear()
+	for offset: Vector3 in [Vector3.ZERO, Vector3.RIGHT, Vector3.LEFT, Vector3.FORWARD, Vector3.BACK]:
+		var target: Vector3 = center + offset * maxf(0.0, target_radius)
+		if _can_reach_target(target):
+			_clear_targets.append(target)
+	return not _clear_targets.is_empty()
 
 
 func _targets_available() -> bool:
+	if _can_reach_target(aim_point):
+		return true
+	# 射界改变时先换可射样本；全被挡住则结束，不能挂着压制标签等超时。
+	if not _prepare_targets(target_center):
+		return false
+	_select_aim_point()
 	return true
+
+
+func _can_reach_target(target: Vector3) -> bool:
+	var origin: Vector3 = actor.get_shot_origin()
+	return actor.weapon != null and origin.distance_to(target) <= actor.weapon.fire_range and tactics.has_clear_firing_lane(origin, target - origin, origin.distance_to(target))
 
 
 func state_label() -> String:
@@ -121,9 +139,9 @@ func _select_aim_point() -> void:
 	var angle := randf() * TAU
 	var radius := sqrt(randf()) * maxf(0.0, target_radius)
 	aim_point = target_center + Vector3(cos(angle), 0.0, sin(angle)) * radius
-	# 中心已在启动时核实射程。边缘采样越界则回退中心，避免永远等不到一枪。
-	if actor.weapon != null and actor.get_shot_origin().distance_to(aim_point) > actor.weapon.fire_range:
-		aim_point = target_center
+	# 随机采样仍限于可射区域；失败回退到启动时核实的点，不回退到被墙挡住的中心。
+	if not _can_reach_target(aim_point) and not _clear_targets.is_empty():
+		aim_point = _clear_targets.pick_random()
 
 
 func finish(sees_player: bool) -> void:

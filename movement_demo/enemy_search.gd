@@ -176,6 +176,15 @@ var search_is_pausing: bool = false
 const Actor = preload("res://enemy_actor.gd")
 
 
+## 搜寻保留自己的目标；公共NavigationAgent可能正被掩体动作使用。
+func utility_destination() -> Vector3:
+	if ai.state == ai.State.TRACK and has_suspected_position:
+		return suspected_position
+	if ai.state == ai.State.SEARCH and search_current_target_active:
+		return search_current_target
+	return noise_search_origin if noise_search_origin.is_finite() else ai.last_known_position
+
+
 func begin_tracking_or_search(allow_hint: bool = true) -> void:
 	if not is_enabled():
 		ai.state = ai.State.IDLE

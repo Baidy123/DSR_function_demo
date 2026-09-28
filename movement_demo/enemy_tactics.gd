@@ -80,6 +80,9 @@ var fire_burst_shots: int = 0
 var fire_pause_remaining: float = 0.0
 var ranged_repath_timer: float = 0.0
 var ranged_has_destination: bool = false
+var _move_waypoint := Vector3.INF
+var _move_best_distance := INF
+var _move_stuck_seconds := 0.0
 
 const Actor = preload("res://enemy_actor.gd")
 
@@ -264,6 +267,8 @@ func get_engagement_candidate_points() -> Array[Vector3]:
 
 
 func assess_engagement_point(point: Vector3, threat: Vector3) -> Dictionary:
+	if ai.is_utility_destination_blocked(point):
+		return {}
 	if not is_enabled() or ai.combat_type != ai.CombatType.RANGED or not actor.can_use_firearms() or not threat.is_finite():
 		return {}
 	var band: Vector2 = _ranged_distance_band()
@@ -354,6 +359,7 @@ func step_evaluated_engagement(destination: Dictionary, delta: float, sees_playe
 	ranged_has_destination = true
 	var distance: float = ai._horizontal_distance(point)
 	if distance <= 0.12 and _engagement_point_valid(actor.global_position, _ranged_distance_band()):
+		reset_movement_progress()
 		ai.state = ai.State.HOLD_POSITION
 		return Vector3.ZERO
 	ai.state = ai.State.REPOSITION
@@ -363,7 +369,23 @@ func step_evaluated_engagement(destination: Dictionary, delta: float, sees_playe
 		next = point
 	elif agent.is_navigation_finished():
 		ranged_has_destination = false
-		ai.invalidate_utility()
+		ai.block_utility_destination(point)
+		ai._cancel_utility_execution()
+		return Vector3.ZERO
+	# 动态身体不会改变烘焙导航；需要按实际靠近拐点的进展判断，不能只检查路径存在。
+	var waypoint_distance: float = ai._horizontal_distance(next)
+	if not _move_waypoint.is_finite() or ai._horizontal_distance_between(next, _move_waypoint) > 0.25:
+		_move_waypoint = next
+		_move_best_distance = INF
+	if waypoint_distance < _move_best_distance - 0.05:
+		_move_best_distance = waypoint_distance
+		_move_stuck_seconds = 0.0
+	else:
+		_move_stuck_seconds += maxf(0.0, delta)
+	if _move_stuck_seconds >= 2.0:
+		ai.block_utility_destination(point)
+		ai._cancel_utility_execution()
+		reset_movement_progress()
 		return Vector3.ZERO
 	var direction: Vector3 = next - actor.global_position
 	direction.y = 0.0
@@ -570,7 +592,14 @@ func _has_clear_ray_to_known_position(from: Vector3) -> bool:
 	return actor.get_world_3d().direct_space_state.intersect_ray(query).is_empty()
 
 
+func reset_movement_progress() -> void:
+	_move_waypoint = Vector3.INF
+	_move_best_distance = INF
+	_move_stuck_seconds = 0.0
+
+
 func reset() -> void:
+	reset_movement_progress()
 	reset_fire_timing()
 	ranged_repath_timer = 0.0
 	ranged_has_destination = false

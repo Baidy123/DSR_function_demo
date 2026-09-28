@@ -63,7 +63,7 @@ func _prepare_targets(center: Vector3) -> bool:
 		var target: Vector3 = point + Vector3.UP * 0.8
 		if actor.get_shot_origin().distance_to(target) > actor.weapon.fire_range:
 			continue
-		if not ai.cover_selection.has_clear_line(actor.get_shot_origin(), target):
+		if not _can_reach_target(target):
 			continue
 		if along < 0.0:
 			first_exit.append(target)
@@ -74,7 +74,16 @@ func _prepare_targets(center: Vector3) -> bool:
 
 
 func _targets_available() -> bool:
-	return tactics.can_suppress_exits and is_instance_valid(target_cover) and ai.cover_selection.has_clear_line(actor.get_shot_origin(), aim_point)
+	if not tactics.can_suppress_exits or not is_instance_valid(target_cover):
+		return false
+	if _can_reach_target(aim_point):
+		return true
+	first_exit = first_exit.filter(_can_reach_target)
+	second_exit = second_exit.filter(_can_reach_target)
+	if first_exit.is_empty() or second_exit.is_empty():
+		return false
+	_select_aim_point()
+	return true
 
 
 func utility_fire_fraction() -> float:

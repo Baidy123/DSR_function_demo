@@ -258,8 +258,8 @@ func assess_options(ai: Node, sees_player: bool) -> Array[Dictionary]:
 			_assess_attack(ai, threat, information, options)
 			_assess_suppression(ai, sees_player, exposure, information, options)
 		if not sees_player and ai.can_use_action(&"search"):
-			# 搜索沿当前有效导航目标推进；尚无目标时先按已知威胁规划，查询不设置导航。
-			var point: Vector3 = ai.agent.target_position if ai.state in [ai.State.TRACK, ai.State.SEARCH, ai.State.INVESTIGATE] else threat
+			# 只能使用搜寻自己的目标，不能把掩体写入的脚下目标算成安全搜寻路线。
+			var point: Vector3 = ai.search.utility_destination()
 			var path: PackedVector3Array = ai.cover_selection._path_to(ai.actor.global_position, point)
 			if not path.is_empty():
 				var route: Dictionary = assess_route(ai, path, threat, ai.search.movement_multiplier(), reload_seconds if ai.actor.ammo.is_reloading else 0.0)
@@ -345,6 +345,8 @@ func _assess_cover(ai: Node, threat: Vector3, information: float, needs_reload: 
 	if not ai.reload_destination.is_empty():
 		_append_cover_destination(ai, destinations, ai.reload_destination)
 	for destination: Dictionary in destinations:
+		if ai.is_utility_destination_blocked(destination.hide):
+			continue
 		if ai._reload_avoid_position.is_finite() and ai._horizontal_distance_between(destination.hide, ai._reload_avoid_position) < 0.9:
 			continue
 		if not ai._reload_destination_valid(destination):
@@ -384,6 +386,8 @@ func _assess_peek(ai: Node, threat: Vector3, information: float, sees_player: bo
 			if not points.has(point):
 				points.append(point)
 	for point: Vector3 in points:
+		if ai.is_utility_destination_blocked(point):
+			continue
 		if ai.utility_rejected_attack_points.any(func(previous: Vector3): return previous.distance_to(point) < 0.25):
 			continue
 		if not ai.is_position_free(point) or not ai.cover_selection.has_clear_line(point + Vector3.UP * 0.8, threat + Vector3.UP * 0.8):
@@ -421,6 +425,8 @@ func _assess_attack(ai: Node, threat: Vector3, information: float, options: Arra
 	if active.is_active() and is_instance_valid(active.active_cover):
 		assessments.append(ai.cover_selection.assess_attack_point(active.destination, active.active_cover, target, target))
 	for assessment: Dictionary in assessments:
+		if ai.is_utility_destination_blocked(assessment.position):
+			continue
 		if not assessment.usable or assessment.position.distance_to(threat) > maxf(ai.perception.sight_distance, ai.perception.close_awareness_radius):
 			continue
 		if ai.utility_rejected_attack_points.any(func(point: Vector3): return point.distance_to(assessment.position) < 0.25):

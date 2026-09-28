@@ -65,13 +65,18 @@ var cover
 @export_range(0.1, 2.0, 0.1) var utility_recheck_seconds: float = 0.4
 @export_range(0.0, 3.0, 0.1) var utility_hold_seconds: float = 0.6
 @export_range(0.0, 5.0, 0.1) var utility_switch_advantage: float = 0.5
+## 没有目击、受伤或近弹的新证据时，旧威胁确定性每过这么多秒减半。
+## 只影响风险估计，不删除位置记忆、不强制离开掩体；4秒为试玩初值。
+@export_range(0.5, 30.0, 0.5) var utility_threat_half_life_seconds: float = 4.0
 ## 仅Debug总开关开启时输出选中动作及分数构成。
 @export var debug_utility: bool = false
 var utility_options: Array[Dictionary] = []
 var utility_current: Dictionary = {}
 var utility_unseen_seconds: float = 0.0
+var utility_threat_age_seconds: float = 0.0
 var utility_suppression_pending: bool = false
 var utility_rejected_attack_points: Array[Vector3] = []
+var _utility_blocked_destinations: Array[Dictionary] = []
 var _utility_rejection_threat: Vector3 = Vector3.INF
 var _utility_elapsed: float = 0.0
 var _utility_timer: float = 0.0
@@ -150,6 +155,9 @@ func is_arena_active() -> bool:
 
 func _physics_process(delta: float) -> void:
 	_enforce_action_permissions()
+	for entry: Dictionary in _utility_blocked_destinations:
+		entry.remaining -= maxf(0.0, delta)
+	_utility_blocked_destinations = _utility_blocked_destinations.filter(func(entry): return entry.remaining > 0.0)
 	recent_damage_pressure = maxf(0.0, recent_damage_pressure - delta * 0.5)
 	nearby_shot_pressure = maxf(0.0, nearby_shot_pressure - delta * 0.5)
 	if actor.is_dead or not is_arena_active() or player.is_dead() or player.is_in_dialogue:
@@ -161,7 +169,9 @@ func _physics_process(delta: float) -> void:
 	if NavigationServer3D.map_get_iteration_id(agent.get_navigation_map()) == 0:
 		return
 	var sees_player: bool = perception.can_see_player()
+	utility_threat_age_seconds += maxf(0.0, delta)
 	if sees_player:
+		utility_threat_age_seconds = 0.0
 		search.noise_search_origin = Vector3.INF
 		var new_seen_position: Vector3 = player.global_position
 		if was_seeing_player:
@@ -274,6 +284,8 @@ func _update_utility_decision(delta: float, sees_player: bool) -> void:
 	for option: Dictionary in utility_options:
 		if action_selector.same_option(option, utility_current):
 			current_cost = option.cost
+			# 保持动作时也展示本次实际比较的分数，避免调试面板显示旧代价。
+			utility_current = option
 	valid = valid and is_finite(current_cost)
 	if best.is_empty():
 		if not utility_current.is_empty():
@@ -308,9 +320,11 @@ func _start_utility_option(option: Dictionary, sees_player: bool) -> void:
 			_reload_avoid_position = option.destination.hide
 			invalidate_utility()
 			return
-	var preserve_search: bool = (option.id == &"search" and state in [State.SEARCH, State.TRACK, State.INVESTIGATE]
-		and not cover.is_active() and not tactics.attack_position.is_active() and not tactics.suppression.is_active())
-	var search_target: Vector3 = agent.target_position
+	var preserve_search: bool = (option.id == &"search" and (
+		(state == State.TRACK and search.has_suspected_position)
+		or (state == State.SEARCH and search.search_sample_count > 0)
+		or (state == State.INVESTIGATE and utility_current.get("id") == &"search")))
+	var search_target: Vector3 = search.utility_destination()
 	var same_reload_destination: bool = (utility_current.get("id") == &"reload" and option.id == &"reload"
 		and not reload_destination.is_empty() and not option.destination.is_empty()
 		and reload_destination.body == option.destination.body and reload_destination.hide.is_equal_approx(option.destination.hide))
@@ -331,6 +345,7 @@ func _start_utility_option(option: Dictionary, sees_player: bool) -> void:
 				invalidate_utility()
 		&"engage":
 			state = State.REPOSITION if combat_type == CombatType.RANGED else State.APPROACH
+			tactics.reset_movement_progress()
 			tactics.ranged_has_destination = false
 			tactics.ranged_repath_timer = 0.0
 			agent.target_position = option.destination.get("position", last_known_position)
@@ -377,7 +392,8 @@ func assess_reload_options() -> Array[Dictionary]:
 
 func _reload_risk_aversion() -> float:
 	var missing_health: float = 1.0 - clampf(actor.health / maxf(actor.max_health, 1.0), 0.0, 1.0)
-	return reload_risk_weight * (1.0 + missing_health + recent_damage_pressure + nearby_shot_pressure)
+	var confidence := pow(0.5, utility_threat_age_seconds / maxf(0.5, utility_threat_half_life_seconds))
+	return reload_risk_weight * confidence * (1.0 + missing_health + recent_damage_pressure + nearby_shot_pressure)
 
 
 ## 旧换弹评分接口复用共同窗口；转移期间恢复火力需等到抵达。
@@ -545,6 +561,7 @@ func _on_hit_received(damage: float, attacker_position: Vector3) -> void:
 		search.search_sample_count = 0
 		search.search_current_target_active = false
 	elif damage > 0.0:
+		utility_threat_age_seconds = 0.0
 		recent_damage_pressure = minf(2.0, recent_damage_pressure + 0.5 + damage / maxf(actor.max_health, 1.0))
 		if cover.phase == cover.Phase.HIDE:
 			_reload_avoid_position = actor.global_position
@@ -574,6 +591,7 @@ func _investigate_attack(attacker_position: Vector3) -> void:
 		return
 	search.noise_search_origin = Vector3.INF
 	# 受击或近身来弹直接进入唯一的“知道玩家”状态。
+	utility_threat_age_seconds = 0.0
 	# attacker_position 仍可带误差，但不再区分“只警觉、尚未目击”这种记忆状态。
 	is_alerted = true
 
@@ -644,6 +662,8 @@ func _on_attack_position_phase_changed(current_phase: int) -> void:
 
 # 动作只汇报结束与已知位置；接下来交战还是追踪，由决策层衔接。
 func _on_attack_position_finished(sees_player: bool, known_position: Vector3, reason: String) -> void:
+	if utility_current.get("id") == &"attack_position" and (reason.contains("无进展") or reason.contains("超时") or reason.contains("导航提前")):
+		block_utility_destination(utility_current.destination.position)
 	if not sees_player and utility_current.get("id") == &"attack_position":
 		# 到过却没发现目标的观察点不再假设必有信息收益，直到获得新威胁信息。
 		utility_rejected_attack_points.append(utility_current.destination.position)
@@ -737,8 +757,10 @@ func reset_actions() -> void:
 	_utility_timer = 0.0
 	_utility_elapsed = 0.0
 	utility_unseen_seconds = 0.0
+	utility_threat_age_seconds = 0.0
 	utility_suppression_pending = false
 	utility_rejected_attack_points.clear()
+	_utility_blocked_destinations.clear()
 	_utility_rejection_threat = Vector3.INF
 	_clear_reload_plan()
 	for action in actions.values():
@@ -750,6 +772,16 @@ func reset_actions() -> void:
 func cancel_action(id: StringName) -> void:
 	if actions.has(id):
 		actions[id].reset()
+
+
+## 实际走不动的目的地暂时排除；目击不清除，三秒后允许重新考虑。
+func block_utility_destination(point: Vector3) -> void:
+	_utility_blocked_destinations.append({"position": point, "remaining": 3.0})
+	invalidate_utility()
+
+
+func is_utility_destination_blocked(point: Vector3) -> bool:
+	return _utility_blocked_destinations.any(func(entry): return _horizontal_distance_between(entry.position, point) < 0.75)
 
 
 func _on_noise_heard(position: Vector3) -> void:
