@@ -445,7 +445,7 @@ func _assess_attack(ai: Node, threat: Vector3, information: float, options: Arra
 
 
 func _assess_suppression(ai: Node, sees_player: bool, exposure: float, information: float, options: Array[Dictionary]) -> void:
-	if sees_player or not ai.actor.can_use_firearms():
+	if sees_player or not ai.actor.can_use_firearms() or ai.is_executing_cover_plan():
 		return
 	for id: StringName in [&"suppression", &"exit_suppression"]:
 		if not ai.can_use_action(id) or not ai.actions.has(id):

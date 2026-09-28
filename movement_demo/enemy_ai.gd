@@ -189,7 +189,8 @@ func _physics_process(delta: float) -> void:
 		utility_unseen_seconds += delta
 	if sees_player != was_seeing_player:
 		if not sees_player:
-			utility_suppression_pending = true
+			# 自己撤入掩体造成的失视不是压制时机，不能反过来抢占躲藏计划。
+			utility_suppression_pending = not is_executing_cover_plan()
 		invalidate_utility()
 	if state == State.IDLE:
 		patrol_pause_timer = maxf(0.0, patrol_pause_timer - delta)
@@ -251,6 +252,12 @@ func step_selected_action(delta: float, sees_player: bool) -> Vector3:
 
 func invalidate_utility() -> void:
 	_utility_timer = 0.0
+
+
+## 同时看已选计划和动作阶段，覆盖移动结束后、下一帧才发现失视的边界。
+func is_executing_cover_plan() -> bool:
+	return (cover.is_active() or utility_current.get("id") == &"cover"
+		or (utility_current.get("id") == &"reload" and not utility_current.get("destination", {}).is_empty()))
 
 
 func _utility_current_valid(sees_player: bool) -> bool:
@@ -331,6 +338,8 @@ func _start_utility_option(option: Dictionary, sees_player: bool) -> void:
 	if not same_reload_destination:
 		_cancel_utility_execution()
 	utility_current = option
+	if is_executing_cover_plan():
+		utility_suppression_pending = false
 	_utility_elapsed = 0.0
 	match option.id:
 		&"reload": start_reload_plan(option)
@@ -707,7 +716,7 @@ func on_tactical_action_started(id: StringName) -> void:
 
 
 func start_suppression() -> void:
-	utility_suppression_pending = true
+	utility_suppression_pending = not is_executing_cover_plan()
 	invalidate_utility()
 
 
