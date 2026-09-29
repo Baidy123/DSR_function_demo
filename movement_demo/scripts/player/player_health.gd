@@ -1,5 +1,8 @@
 extends CanvasLayer
 
+## 有效命中先通知战斗模块；Debug 无敌仅免除扣血。
+signal hit_received(damage: float)
+
 @onready var debug_settings = get_node("/root/DebugSettings")
 
 ## 出生和重新开始时的最大生命；100 是当前试玩初值。
@@ -65,6 +68,7 @@ func _update_stamina_display() -> void:
 func receive_hit(damage: float) -> void:
 	if is_dead or not is_finite(damage) or damage <= 0.0:
 		return
+	hit_received.emit(damage)
 	if is_invincible():
 		print("[玩家][无敌] 受到伤害：%.2f；无敌，未扣血；生命：%.2f / %.2f" % [damage, health, max_health])
 		return

@@ -53,7 +53,7 @@ func _run() -> void:
 		if no_fire:
 			blocked_routes += 1
 			check(is_equal_approx(option.breakdown.unavailable_seconds, ai.utility_horizon_seconds), "整段无射界的撤退不能领取火力收益")
-	check(blocked_routes > 0, "实际地图存在整段无射界的撤退候选")
+	check(options.any(func(option): return option.get("mode") == &"covering_retreat"), "实际地图存在可评估的撤退候选")
 	# 超长反应等待覆盖整个评分窗口，即使路线暴露也不能记为能开火。
 	ai.training.profile.set_setting(&"tactics", &"fire_reaction_seconds", ai.utility_horizon_seconds + 1.0)
 	ai.context.fire.fire_reaction_elapsed = 0.0
@@ -79,6 +79,11 @@ func _run() -> void:
 	collision.shape = collision.shape.duplicate()
 	collision.shape.size = Vector3(0.2, 2.2, 0.6)
 	for frame in range(3): await physics_frame
+	# 中心弹道明确被墙挡住，避免把仅外围散布擦墙的路线误当作完全不能开火。
+	actor.global_position = Vector3(24, 0, -3)
+	var blocked: Dictionary = ai.context.spatial.assess_route(ai.context, PackedVector3Array([Vector3(24, 0.3, -3.1)]), Vector3(22, 0, -3), 0.8, 0.0, true)
+	check(is_zero_approx(blocked.fire_seconds), "真实墙体阻断中心弹道时整段路线不预支火力")
+	actor.global_position = Vector3(24, 0, -2)
 	var prefix := PackedVector3Array([Vector3(24, 0.3, -4)])
 	var first: Dictionary = ai.context.spatial.assess_route(ai.context, prefix, threat, 0.8, 0.0, true)
 	prefix.append(Vector3(24, 0.3, -2))

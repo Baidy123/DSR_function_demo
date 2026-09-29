@@ -115,7 +115,9 @@ func _run() -> void:
 		await physics_frame
 		preload("res://tests/enemy/enemy_fire_fixture.gd").advance_evaluation(ai, true)
 	var visible_options: Array = ai.action_selector.assess_options(ai, true)
-	check(visible_options.any(func(o): return o.id == &"attack_position"), "目击时仍能评估真实攻击占位")
+	# 该方向未必有部分遮身的优质点；正例由 attack_point_validation_test 的真实几何覆盖。
+	var attack_options: Array = visible_options.filter(func(o): return o.id == &"attack_position")
+	check(attack_options.all(func(o): return ai.cover_selection.assess_attack_point(o.destination.position, o.destination.body, ai.last_known_position + Vector3.UP * 0.8, ai.last_known_position + Vector3.UP * 0.8).protection >= 0.2), "目击攻击候选必须满足部分遮身，不能强行加入无遮身点")
 	var hidden_options: Array = ai.action_selector.assess_options(ai, false)
 	check(not hidden_options.any(func(o): return o.id == &"attack_position"), "失视后的怀疑位置不能直接产生攻击占位")
 	var covers: Array = visible_options.filter(func(o): return o.id == &"cover")
@@ -142,7 +144,7 @@ func _run() -> void:
 		check(not search.has_committed_segment(), "到点观察结束留出Utility重评边界")
 		ai.invalidate_utility()
 		ai._update_utility_decision(0.5, false)
-		check(ai.utility_current.id == &"cover", "段结束后其他更好方案可以接管")
+		check(ai.utility_current.id == &"search", "段结束后同一份旧威胁不能把调查拉回躲藏")
 		ai._start_utility_option(fixed.choices[0], false)
 		search._advance_systematic_search_target()
 		search.search_is_pausing = false

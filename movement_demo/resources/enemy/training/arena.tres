@@ -48,6 +48,9 @@ overridden = PackedStringArray("lost_target_hint_chance", "search_hint_decay_mod
 
 [sub_resource type="Resource" id="selection"]
 script = ExtResource("selection")
+attack_minimum_protection = null
+attack_maximum_protection = null
+attack_refinement_levels = null
 cover_lateral_test_distance = 0.3
 minimum_cover_quality = 0.1
 overridden = PackedStringArray("cover_lateral_test_distance", "minimum_cover_quality")
@@ -58,17 +61,18 @@ overridden = PackedStringArray()
 
 [sub_resource type="Resource" id="tactics"]
 script = ExtResource("tactics")
-fire_stability_target = 0.9
+nearby_shot_accuracy_penalty = 0.1
+fire_stability_target = 0.6
 burst_shot_count = 10
 burst_pause_seconds = 1.5
 ranged_flank_weight = 5.0
 ranged_wall_support_weight = 4.0
-overridden = PackedStringArray("fire_stability_target", "burst_shot_count", "burst_pause_seconds", "ranged_flank_weight", "ranged_wall_support_weight")
+overridden = PackedStringArray("fire_stability_target", "burst_shot_count", "burst_pause_seconds", "ranged_flank_weight", "ranged_wall_support_weight", "damage_accuracy_penalty", "nearby_shot_accuracy_penalty")
 
 [resource]
 script = ExtResource("profile")
 display_name = "竞技场现有训练"
-selected_tactics = Array[StringName]([&"cover", &"attack_position", &"covering_retreat", &"exit_suppression"])
+selected_tactics = Array[StringName]([&"cover", &"covering_retreat", &"exit_suppression", &"attack_position"])
 ai = SubResource("ai")
 tactics = SubResource("tactics")
 search = SubResource("search")

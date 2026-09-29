@@ -93,7 +93,10 @@ func _engagement_point_valid(point: Vector3, band: Vector2, threat: Vector3 = Ve
 	if not point.is_finite() or actor.weapon == null:
 		return false
 	var distance: float = context._horizontal_distance_between(point, threat)
-	if distance < band.x or distance > band.y:
+	var current_distance: float = context._horizontal_distance(threat)
+	var committed: bool = _running and plan.get("destination", {}).get("position", Vector3.INF).distance_to(point) < 0.05 and distance >= current_distance - 0.05
+	# 被逼近时允许先退半步，不能要求一步到达完整距离带才承认退路。
+	if distance > band.y or (distance < band.x and not committed and distance < current_distance + 0.2):
 		return false
 	if point.distance_to(threat) > maxf(context.perception.sight_distance, context.perception.close_awareness_radius):
 		return false
@@ -135,9 +138,11 @@ func step_evaluated_engagement(destination: Dictionary, delta: float, sees_playe
 		agent.target_position = point
 	ranged_has_destination = true
 	var distance: float = context._horizontal_distance(point)
-	if distance <= 0.12 and _engagement_point_valid(actor.global_position, _ranged_distance_band()):
+	if distance <= 0.12:
 		reset_movement_progress()
 		context.state = context.State.HOLD_POSITION
+		if context._horizontal_distance(context.last_known_position) < _ranged_distance_band().x:
+			_running = false
 		return Vector3.ZERO
 	context.state = context.State.REPOSITION
 	var next: Vector3 = agent.get_next_path_position()
@@ -171,7 +176,7 @@ func step_evaluated_engagement(destination: Dictionary, delta: float, sees_playe
 func _engagement_final_segment_clear(point: Vector3) -> bool:
 	var count: int = maxi(1, ceili(context._horizontal_distance(point) / 0.1))
 	for index in range(1, count + 1):
-		if not context.is_position_free(actor.global_position.lerp(point, float(index) / count)):
+		if not context.is_position_free(actor.global_position.lerp(point, float(index) / count), true):
 			return false
 	return true
 
@@ -218,9 +223,9 @@ func evaluate_point(point: Variant) -> Dictionary:
 	var candidate := assess_engagement_point(point, context.last_known_position)
 	if candidate.is_empty():
 		return {}
-	var route: Dictionary = context.spatial.assess_route(context, candidate.path, context.last_known_position, 1.0, context.spatial._reload_seconds(context) if actor.ammo.is_reloading else 0.0)
+	var route: Dictionary = context.spatial.assess_route(context, candidate.path, context.last_known_position, 1.0, context.spatial._reload_seconds(context), true)
 	var exposed: float = route.exposure + context._reload_exposure(candidate.position, context.last_known_position) * maxf(0.0, context.utility_horizon_seconds - route.seconds)
-	return {"destination": candidate, "cost": context.spatial.score(maxf(route.seconds, context.spatial._ammo_wait(context)), exposed)}
+	return {"destination": candidate, "cost": context.spatial.score(maxf(route.seconds - route.fire_seconds, context.spatial._ammo_wait(context)), exposed)}
 
 func collect_candidates(visible: bool) -> Array[Dictionary]:
 	var result: Array[Dictionary] = []
@@ -241,8 +246,8 @@ func collect_candidates(visible: bool) -> Array[Dictionary]:
 		var checked := assess_engagement_point(destination.position, threat)
 		if checked.is_empty():
 			continue
-		var route: Dictionary = context.spatial.assess_route(context, checked.path, threat, 1.0, context.spatial._reload_seconds(context) if actor.ammo.is_reloading else 0.0)
-		result.append(option(checked, maxf(route.seconds, context.spatial._ammo_wait(context)), route.exposure + context._reload_exposure(checked.position, threat) * maxf(0.0, horizon - route.seconds)))
+		var route: Dictionary = context.spatial.assess_route(context, checked.path, threat, 1.0, context.spatial._reload_seconds(context), true)
+		result.append(option(checked, maxf(route.seconds - route.fire_seconds, context.spatial._ammo_wait(context)), route.exposure + context._reload_exposure(checked.position, threat) * maxf(0.0, horizon - route.seconds)))
 	return result
 
 func validate(candidate: Dictionary, visible: bool) -> bool:

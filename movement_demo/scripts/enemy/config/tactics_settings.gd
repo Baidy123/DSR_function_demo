@@ -4,6 +4,17 @@ extends "res://scripts/enemy/config/module_settings.gd"
 func _init() -> void:
 	section = &"tactics"
 
+## 实际受伤一次减少的中心命中概率；0.15 表示减少15个百分点，0关闭。
+@export_range(0.0, 1.0, 0.01) var damage_accuracy_penalty: float = 0.15:
+	set(value):
+		damage_accuracy_penalty = value
+		mark_override(&"damage_accuracy_penalty")
+## 一发未命中的子弹从附近通过时减少的中心概率；0.02表示2个百分点。
+@export_range(0.0, 1.0, 0.01) var nearby_shot_accuracy_penalty: float = 0.02:
+	set(value):
+		nearby_shot_accuracy_penalty = value
+		mark_override(&"nearby_shot_accuracy_penalty")
+
 ## 接敌侧移/后退和掩护撤退时允许开火；关闭后只在停稳时射击，转身冲刺仍停火。
 @export var fire_while_moving: bool = true:
 	set(value):

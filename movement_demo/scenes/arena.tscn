@@ -10,7 +10,7 @@
 [ext_resource type="Resource" uid="uid://kayehxxh8jes" path="res://resources/weapons/enemy_test_pistol.tres" id="12_weapon"]
 [ext_resource type="Script" uid="uid://bnmfescbn8pk6" path="res://scripts/enemy/enemy_unit_type.gd" id="17_unit_type"]
 [ext_resource type="Script" uid="uid://daiu2qlnmqmsi" path="res://scripts/enemy/enemy_training.gd" id="18_training"]
-[ext_resource type="Resource" path="res://resources/enemy/training/arena.tres" id="training_profile"]
+[ext_resource type="Resource" uid="uid://dpp6fjr8paihk" path="res://resources/enemy/training/arena.tres" id="training_profile"]
 [ext_resource type="Resource" path="res://resources/enemy/units/ranged.tres" id="unit_profile"]
 
 [sub_resource type="StandardMaterial3D" id="FloorMaterial"]
@@ -267,6 +267,7 @@ profile = ExtResource("training_profile")
 
 [node name="AI" type="Node" parent="Enemy" unique_id=1624589162]
 script = ExtResource("6_ai")
+utility_fire_weight = 2.0
 
 [node name="Perception" type="Node" parent="Enemy/AI" unique_id=1530092005]
 script = ExtResource("9_perception")

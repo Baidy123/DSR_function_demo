@@ -59,8 +59,7 @@ func start(known_position: Vector3, from_hit: bool = false) -> bool:
 	_query_target = known_position + Vector3.UP * 0.8
 	for region in context.get_tree().get_nodes_in_group("cover_region"):
 		if context.navigation_region.is_ancestor_of(region):
-			for point in region.get_attack_candidates():
-				_candidates.append({"position": point, "cover": region})
+			_candidates.append_array(selection.attack_cells(region, _query_target))
 	phase = Phase.FIND
 	phase_changed.emit(phase)
 	actor.agent.target_position = actor.global_position
@@ -215,9 +214,6 @@ func _unusable_reason(point: Vector3) -> String:
 	if not _within_sight_range(point, _known_position()):
 		return "超过感知距离"
 	var target: Vector3 = _known_position() + Vector3.UP * 0.8
-	var origin: Vector3 = point + actor.get_shot_origin() - actor.global_position
-	if not context.fire.has_clear_firing_lane(origin, target - origin, origin.distance_to(target)):
-		return "完整射界被掩体遮挡"
 	var result: Dictionary = selection.assess_attack_point(point, active_cover, target, target)
 	return "" if result.usable else result.reason
 
@@ -257,39 +253,48 @@ func evaluation_points() -> Array:
 	var points: Array = []
 	if not context._known_reload_threat().is_finite() or actor.move_speed <= 0.0: return points
 	for region in context.spatial.regions():
-		for point in region.get_attack_candidates(): points.append({"position": point, "body": region})
+		points.append_array(region.get_attack_cells())
 	return points
 
 func evaluation_weight() -> int:
 	return 6
 
 func evaluate_point(point: Variant) -> Dictionary:
+	if point.has("depth"):
+		# 调度单位保持固定，细分在本区域的预算查询内完成，目标移动不重排扫描队列。
+		var source: Array[Dictionary] = [point]
+		var best: Dictionary = {}
+		for cell in selection.attack_geometry.refine(context, point.body, context.last_known_position + Vector3.UP * 0.8, source):
+			var result := _assess_position(cell)
+			if not result.is_empty() and (best.is_empty() or result.cost < best.cost): best = result
+		return best
+	return _assess_position(point)
+
+func _assess_position(point: Dictionary) -> Dictionary:
 	var threat: Vector3 = context.last_known_position
 	if not is_instance_valid(point.body) or point.position.distance_to(threat) > maxf(context.perception.sight_distance, context.perception.close_awareness_radius): return {}
 	var target := threat + Vector3.UP * 0.8
 	var checked: Dictionary = selection.assess_attack_point(point.position, point.body, target, target)
 	if not checked.usable: return {}
-	var origin: Vector3 = point.position + actor.get_shot_origin() - actor.global_position
-	if not context.fire.has_clear_firing_lane(origin, target - origin, origin.distance_to(target)): return {}
 	var path: PackedVector3Array = selection._path_to(actor.global_position, point.position)
 	if path.is_empty(): return {}
-	var route: Dictionary = context.spatial.assess_route(context, path, threat, 1.0, context.spatial._reload_seconds(context))
-	var exposed: float = route.exposure + context._reload_exposure(point.position, threat) * maxf(0.0, context.utility_horizon_seconds - route.seconds)
-	return {"destination": {"position": point.position, "body": point.body, "path": path}, "cost": context.spatial.score(maxf(route.seconds, context.spatial._ammo_wait(context)), exposed)}
+	var route: Dictionary = context.spatial.assess_route(context, path, threat, 1.0, context.spatial._reload_seconds(context), context.sees_player)
+	var remaining: float = maxf(0.0, context.utility_horizon_seconds - route.seconds)
+	var exposed: float = route.exposure + context._reload_exposure(point.position, threat, checked.protection) * remaining
+	var unavailable: float = maxf(route.seconds - route.fire_seconds, context.spatial._ammo_wait(context)) + remaining * (1.0 - checked.fire_quality)
+	return {"destination": {"position": point.position, "body": point.body, "path": path}, "unavailable": unavailable,
+		"exposed": exposed, "cost": context.spatial.score(unavailable, exposed)}
 
 func collect_candidates(visible: bool) -> Array[Dictionary]:
 	var result: Array[Dictionary] = []
 	if not visible or actor.move_speed <= 0.0: return result
-	var destinations: Array = context.spatial.destinations(self)
-	if is_active(): destinations.append({"position": destination, "body": active_cover})
-	for point in destinations:
-		if context.is_utility_destination_blocked(point.position): continue
-		var assessment := evaluate_point(point)
+	var assessments: Array = context.spatial.assessments(self)
+	if is_active(): assessments.append(evaluate_point({"position": destination, "body": active_cover}))
+	for assessment: Dictionary in assessments:
 		if assessment.is_empty(): continue
 		var candidate: Dictionary = assessment.destination
-		var route: Dictionary = context.spatial.assess_route(context, candidate.path, context.last_known_position, 1.0, context.spatial._reload_seconds(context) if actor.ammo.is_reloading else 0.0)
-		var exposed: float = route.exposure + context._reload_exposure(candidate.position, context.last_known_position) * maxf(0.0, context.utility_horizon_seconds - route.seconds)
-		result.append(option(candidate, maxf(route.seconds, context.spatial._ammo_wait(context)), exposed))
+		if context.is_utility_destination_blocked(candidate.position) or not is_instance_valid(candidate.body): continue
+		result.append(option(candidate, maxf(assessment.unavailable, context.spatial._ammo_wait(context)), assessment.exposed))
 	return result
 
 func validate(candidate: Dictionary, visible: bool) -> bool:

@@ -4,6 +4,22 @@ extends "res://scripts/enemy/config/module_settings.gd"
 func _init() -> void:
 	section = &"selection"
 
+## 优质攻击区域至少遮住的身体投影比例；枪口安全仍单独检查。
+@export_range(0.05, 0.5, 0.05) var attack_minimum_protection: float = 0.2:
+	set(value):
+		attack_minimum_protection = value
+		mark_override(&"attack_minimum_protection")
+## 过多遮挡属于躲藏区；攻击区优先保留约四分之一至半身的遮挡。
+@export_range(0.3, 0.9, 0.05) var attack_maximum_protection: float = 0.65:
+	set(value):
+		attack_maximum_protection = value
+		mark_override(&"attack_maximum_protection")
+## 在玩家到墙角的遮挡边界附近细分区域；查询仍由空间服务分帧执行。
+@export_range(0, 2, 1) var attack_refinement_levels: int = 1:
+	set(value):
+		attack_refinement_levels = value
+		mark_override(&"attack_refinement_levels")
+
 ## 掩体选位：朝远离威胁方向移动会得到奖励，朝威胁方向冲会被强烈惩罚。
 @export_range(0.0, 10.0, 0.1) var away_from_threat_weight: float = 4.0:
 	set(value):
@@ -40,7 +56,7 @@ func _init() -> void:
 	set(value):
 		debug_cover_selection = value
 		mark_override(&"debug_cover_selection")
-## Debug运行时显示攻击候选评估：绿=可用，红=淘汰；只按最后目击位置查询，不控制AI动作。
+## Debug运行时显示攻击区域：绿=可用，橙=未通过，暗红=内圈禁用；只用目击记忆。
 @export var debug_attack_points: bool = true:
 	set(value):
 		debug_attack_points = value

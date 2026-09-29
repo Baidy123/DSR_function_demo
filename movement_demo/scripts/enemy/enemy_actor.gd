@@ -25,6 +25,7 @@ signal reset_completed
 ## 持续移动时的发声间隔（秒）；刚开始移动立即发声。
 @export_range(0.05, 2.0, 0.05) var movement_noise_interval: float = 0.4
 var _movement_noise_timer: float = 0.0
+var _status_text: String = ""
 
 @export_group("Shooting")
 ## 是否允许执行射击；可暂时关闭以单独观察移动和掩体行为。
@@ -165,13 +166,24 @@ func reset_target() -> void:
 	reset_completed.emit()
 
 
-func _apply_debug_mode(enabled: bool) -> void:
-	$Label.visible = enabled
+func _apply_debug_mode(_enabled: bool) -> void:
+	_refresh_status_label()
 
 
-## AI 可以补充状态文字；仅 Debug 模式显示，没有 AI 时显示生命。
+## AI 的动作文字仅 Debug 显示，真实换弹进度在普通游戏中也显示。
 func set_status_text(text: String) -> void:
-	$Label.text = text
+	_status_text = text
+	_refresh_status_label()
+
+func _refresh_status_label() -> void:
+	if not is_instance_valid(debug_settings): return
+	var reload_text := ""
+	# 换弹属于武器状态，与当前战术动作并行；动作改名不能隐藏真实进度。
+	if weapon != null and ammo.is_reloading:
+		var remaining: float = maxf(0.1, weapon.reload_seconds) * (1.0 - ammo.reload_progress)
+		reload_text = "换弹 %d%% · 剩余 %.1f 秒" % [floori(ammo.reload_progress * 100.0), remaining]
+	$Label.visible = debug_settings.enabled or not reload_text.is_empty()
+	$Label.text = _status_text + ("\n" + reload_text if not reload_text.is_empty() else "") if debug_settings.enabled else reload_text
 
 
 func _update_health_label() -> void:
@@ -187,9 +199,16 @@ func update_weapon(delta: float, visible_point: Vector3 = Vector3.INF) -> void:
 	shot_cooldown = maxf(0.0, shot_cooldown - elapsed)
 	if not can_use_firearms():
 		cancel_reload()
+	var was_reloading: bool = ammo.is_reloading
 	ammo.advance_reload(elapsed)
+	_refresh_status_label()
 	var can_aim: bool = can_use_firearms() and visible_point.is_finite()
-	_update_weapon_stability(elapsed, visible_point if can_aim else Vector3.INF)
+	if was_reloading:
+		_hold_reload_accuracy()
+		_weapon_move_distance = 0.0
+		_last_visible_point = visible_point if can_aim else Vector3.INF
+	else:
+		_update_weapon_stability(elapsed, visible_point if can_aim else Vector3.INF)
 	if not can_aim:
 		clear_aim()
 		return
@@ -238,11 +257,25 @@ func equip_weapon(data: WeaponData) -> void:
 func request_reload() -> bool:
 	if not can_use_firearms() or get_tree().paused:
 		return false
-	return ammo.start_reload()
+	if not ammo.start_reload(): return false
+	_hold_reload_accuracy()
+	_refresh_status_label()
+	return true
+
+func _hold_reload_accuracy() -> void:
+	weapon_stability = 0.0
+	weapon_recovery_timer = maxf(0.0, weapon.get_aim_settings(false).delay) if weapon != null else 0.0
+
+## 身体只执行精度损失；惩罚参数由公共射击服务从本敌人的训练快照读取。
+func apply_aim_penalty(amount: float) -> void:
+	if not can_use_firearms() or not is_finite(amount) or amount <= 0.0: return
+	weapon_stability = clampf(weapon_stability - amount, 0.0, 1.0)
+	weapon_recovery_timer = maxf(weapon_recovery_timer, weapon.get_aim_settings(false).delay)
 
 
 func cancel_reload() -> void:
 	ammo.cancel_reload()
+	_refresh_status_label()
 
 
 func get_center_probability() -> float:
@@ -333,6 +366,11 @@ func try_fire() -> bool:
 		if hit.collider.is_in_group("player"):
 			hit.collider.receive_hit(weapon.damage)
 			hit_player = true
+	# 只通知对方阵营，实际命中不再叠加近弹；线段已在第一处碰撞截断。
+	for listener in get_tree().get_nodes_in_group("shot_listener"):
+		var receiver: Node = listener.get_parent()
+		if receiver.is_in_group("player") and receiver != last_shot_collider:
+			listener.notice_shot(origin, endpoint)
 	if debug_shooting:
 		print("[敌人][开火] ", "命中玩家" if hit_player else ("被物体挡住" if not hit.is_empty() else "未命中"), "；中心概率=", roundi(probability * 100.0), "%")
 	_draw_shot(origin, endpoint, hit_player)

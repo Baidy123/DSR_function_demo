@@ -30,7 +30,7 @@ var cover_quality_weight: float:
 var debug_cover_selection: bool:
 	get: return _training_setting(&"debug_cover_selection", true)
 	set(value): _set_training_setting(&"debug_cover_selection", value)
-## Debug运行时显示攻击候选评估：绿=可用，红=淘汰；只按最后目击位置查询，不控制AI动作。
+## Debug运行时显示攻击区域：绿=可用，橙=未通过，暗红=内圈禁用；只用目击记忆。
 var debug_attack_points: bool:
 	get: return _training_setting(&"debug_attack_points", true)
 	set(value): _set_training_setting(&"debug_attack_points", value)
@@ -38,6 +38,7 @@ var debug_attack_points: bool:
 var ai:
 	get: return get_parent().context
 @onready var enemy = get_parent().get_parent()
+var attack_geometry = preload("res://scripts/enemy/services/enemy_attack_geometry.gd").new()
 
 
 func _ready() -> void:
@@ -54,15 +55,24 @@ func get_attack_assessments(threat_origin: Vector3, target_point: Vector3) -> Ar
 	for region in get_tree().get_nodes_in_group("cover_region"):
 		if not ai.navigation_region.is_ancestor_of(region):
 			continue
-		for point: Vector3 in region.get_attack_candidates():
-			results.append(assess_attack_point(point, region, threat_origin, target_point))
+		for cell in attack_cells(region, threat_origin):
+			results.append(assess_attack_cell(cell, threat_origin, target_point))
 	return results
+
+
+func attack_cells(region: StaticBody3D, threat: Vector3) -> Array[Dictionary]:
+	return attack_geometry.cells(ai, region, threat)
+
+func assess_attack_cell(cell: Dictionary, threat: Vector3, target: Vector3) -> Dictionary:
+	var result := assess_attack_point(cell.position, cell.body, threat, target)
+	result.polygon = cell.polygon
+	return result
 
 
 func assess_attack_point(point: Vector3, region: StaticBody3D, threat_origin: Vector3, target_point: Vector3) -> Dictionary:
 	var result := {"position": point, "cover": region, "space_free": false,
 		"reachable": false, "clear_shot": false, "in_range": false,
-		"protection": 0.0, "usable": false, "reason": "导航未就绪"}
+		"protection": 0.0, "fire_quality": 0.0, "usable": false, "reason": "导航未就绪"}
 	if not is_instance_valid(region) or not point.is_finite() or not threat_origin.is_finite() or not target_point.is_finite():
 		result.reason = "无效位置"
 		return result
@@ -88,17 +98,42 @@ func assess_attack_point(point: Vector3, region: StaticBody3D, threat_origin: Ve
 		result.reason = "射界受阻"
 	elif result.protection < 0.0:
 		result.reason = "身体形状不支持"
-	elif result.protection >= 1.0:
-		result.reason = "完全遮挡"
-	elif not has_clear_shot_cone(shot_origin, shot_origin.direction_to(target_point), enemy.get_max_shot_deviation_degrees(), shot_origin.distance_to(target_point), region):
-		result.reason = "散布射界贴墙"
+	elif result.protection < float(_training_setting(&"attack_minimum_protection", 0.2)):
+		result.reason = "身体缺少掩护"
+	elif result.protection > float(_training_setting(&"attack_maximum_protection", 0.65)):
+		result.reason = "身体遮挡过多"
+	elif not _attack_wall_clearance(point, region):
+		result.reason = "过于贴近墙角"
+	elif point.distance_to(target_point - Vector3.UP * 0.8) > maxf(ai.perception.sight_distance, ai.perception.close_awareness_radius):
+		result.reason = "超感知距离"
+	elif not ai.fire.has_clear_firing_lane(shot_origin, target_point - shot_origin, shot_origin.distance_to(target_point)):
+		result.reason = "枪口空间受阻"
 	else:
 		result.usable = true
 		result.reason = "可用"
+		result.fire_quality = ai.fire.firing_lane_quality(shot_origin, target_point - shot_origin, shot_origin.distance_to(target_point))
 	return result
 
 
-## 架枪按最大散布预留完整锥体空间；身体部分遮挡不再是硬性条件。
+## 保留身体到墙面的余量；导航可站立并不代表贴角处适合稳定架枪。
+func _attack_wall_clearance(point: Vector3, region: StaticBody3D) -> bool:
+	var wall := region.get_node_or_null("CollisionShape3D") as CollisionShape3D
+	var body := enemy.get_node("CollisionShape3D") as CollisionShape3D
+	if wall == null or not wall.shape is BoxShape3D or not body.shape is CapsuleShape3D:
+		return false
+	var local := wall.to_local(point)
+	var half: Vector3 = wall.shape.size * 0.5
+	# 相邻墙角的扇环可能重叠，不能借另一个扇环绕过任何墙角的禁用内圈。
+	for x in [-half.x, half.x]:
+		for z in [-half.z, half.z]:
+			if Vector2(local.x - x, local.z - z).length() < region.attack_inner_radius:
+				return false
+	var nearest := wall.to_global(Vector3(clampf(local.x, -half.x, half.x), local.y, clampf(local.z, -half.z, half.z)))
+	var radius: float = body.shape.radius * maxf(body.global_basis.x.length(), body.global_basis.z.length())
+	return ai._horizontal_distance_between(point, nearest) >= radius + 0.1
+
+
+## 旧专项几何验证入口。当前开火使用 FireController 的三维枪口空间查询。
 ## 在当前平地场景检查散布锥的水平投影，避免只测边缘射线漏掉锥内墙角。
 ## 只检查所属掩体；远处地面或目标后的墙不应让所有站位失效。
 var _polygon_cache_frame := -1
@@ -149,28 +184,8 @@ func has_clear_shot_cone(origin: Vector3, direction: Vector3, spread_degrees: fl
 
 
 
-# 用现有胶囊身体中部的上/中/下 × 左/中/右共9个采样点估算，不把比例当精确面积。
-# 只计所属掩体的遮挡，旁边不相关的墙不能让这个点冒充“有掩护”。
 func _attack_body_protection(point: Vector3, threat_origin: Vector3, region: StaticBody3D) -> float:
-	var collision: CollisionShape3D = enemy.get_node("CollisionShape3D")
-	if not collision.shape is CapsuleShape3D:
-		return -1.0
-	var center: Vector3 = point + collision.global_position - enemy.global_position
-	var direction := center - threat_origin
-	direction.y = 0.0
-	if direction.is_zero_approx():
-		return 0.0
-	var side := direction.normalized().cross(Vector3.UP)
-	var radius: float = collision.shape.radius * minf(collision.global_basis.x.length(), collision.global_basis.z.length())
-	var vertical: float = maxf(0.0, collision.shape.height * 0.5 - collision.shape.radius) * 0.7 * collision.global_basis.y.length()
-	var protected := 0
-	for height in [-vertical, 0.0, vertical]:
-		for width in [-radius * 0.8, 0.0, radius * 0.8]:
-			var sample: Vector3 = center + Vector3.UP * height + side * width
-			var hit: Dictionary = enemy.get_world_3d().direct_space_state.intersect_ray(_ray_query(threat_origin, sample))
-			if not hit.is_empty() and hit.collider == region:
-				protected += 1
-	return float(protected) / 9.0
+	return attack_geometry.protection(ai, point, threat_origin, region)
 
 
 ## 换弹只需要可达且有遮挡的躲藏点，不要求同时找到可射击的Peek。
@@ -286,7 +301,18 @@ func _choose_peek(hiding: Vector3, points: Array, look_position: Vector3) -> Vec
 	return best
 
 
+var _path_frame := -1
+var _path_cache: Dictionary = {}
+
 func _path_to(from: Vector3, to: Vector3) -> PackedVector3Array:
+	if _path_frame != Engine.get_physics_frames():
+		_path_frame = Engine.get_physics_frames()
+		_path_cache.clear()
+	var key := [from, to, enemy.agent.navigation_layers, NavigationServer3D.map_get_iteration_id(enemy.agent.get_navigation_map())]
+	if not _path_cache.has(key): _path_cache[key] = _query_path_to(from, to)
+	return _path_cache[key]
+
+func _query_path_to(from: Vector3, to: Vector3) -> PackedVector3Array:
 	var nav_point: Vector3 = NavigationServer3D.region_get_closest_point(ai.navigation_region.get_rid(), to)
 	# 导航只允许厘米级水平误差；不能把墙外/地图外的点吸附到边缘后当作可达。
 	# 当前烘焙导航比地面高约 0.3 米，因此高度单独留出容差。

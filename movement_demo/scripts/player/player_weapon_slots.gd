@@ -19,6 +19,7 @@ const Ammo = preload("res://scripts/weapons/weapon_ammo.gd")
 @export_range(0, 9999, 1) var starting_shotgun_ammo: int = 36
 var reserve_ammo: Dictionary = {}
 var _ammo_states: Array = [null, null]
+var _reload_modes: Array[bool] = [false, false]
 
 var active_slot: int = -1
 # 两把枪分别保留精度；收起期间不自动恢复，防止反复切枪刷新惩罚。
@@ -80,6 +81,7 @@ func select_slot(slot: int) -> bool:
 
 func _equip_slot(slot: int) -> void:
 	if active_slot >= 0:
+		_reload_modes[active_slot] = combat.is_slow_reload()
 		_aim_states[active_slot] = {
 			"weapon": combat.weapon,
 			"accuracy": combat.accuracy,
@@ -89,7 +91,8 @@ func _equip_slot(slot: int) -> void:
 	var data: WeaponData = _weapon_at(slot)
 	if _ammo_states[slot] == null or _ammo_states[slot].weapon != data:
 		_ammo_states[slot] = Ammo.new(data, reserve_ammo)
-	combat.equip_weapon(data, true, _ammo_states[slot])
+		_reload_modes[slot] = false
+	combat.equip_weapon(data, true, _ammo_states[slot], _reload_modes[slot])
 	var saved: Dictionary = _aim_states[slot]
 	if saved.get("weapon") == data:
 		# 拔枪至多回到初始精度；已有更差的精度和恢复等待继续保留。
@@ -109,8 +112,12 @@ func _update_display() -> void:
 			var state = _ammo_states[slot]
 			var rounds: int = state.magazine_rounds if state != null and state.weapon == data else data.magazine_capacity
 			labels[slot].text += "\n%d/%d · 备弹%d" % [rounds, data.magazine_capacity, reserve_ammo.get(data.ammo_type, 0)]
+			if state != null and state.weapon == data and state.reload_checkpoint > 0.0 and slot != active_slot:
+				labels[slot].text += "\n换弹已保留 50%"
 		labels[slot].modulate = Color(1.0, 0.82, 0.35) if slot == active_slot else Color(0.7, 0.73, 0.78)
 	$Panel/Content/Hint.text = "1 / 2 或滚轮切枪 · R换弹"
 	if combat.ammo.is_reloading:
 		var progress: int = floori(combat.ammo.reload_progress * 100.0)
-		$Panel/Content/Hint.text = ("快速换弹中 %d%% · 禁跑" if combat.is_sprint_blocked() else "慢速换弹中 %d%% · 可跑") % progress
+		$Panel/Content/Hint.text = ("慢速换弹中 %d%% · 可跑" if combat.is_slow_reload() else "快速换弹中 %d%% · 奔跑会中断") % progress
+	elif combat.ammo.reload_checkpoint > 0.0:
+		$Panel/Content/Hint.text = "换弹暂停 50% · 停跑后继续"

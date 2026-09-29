@@ -10,6 +10,8 @@ func _initialize() -> void:
 
 func _run() -> void:
 	var scene = load("res://scenes/main.tscn").instantiate()
+	# 固定本测试实例的伤害边界，不能假定用户场景一直保留100点生命。
+	scene.get_node("Player/Health").max_health = 100.0
 	root.add_child(scene)
 	current_scene = scene
 	# 本组只验证原行为；射击与玩家死亡联动由 enemy_shooting_test 覆盖。

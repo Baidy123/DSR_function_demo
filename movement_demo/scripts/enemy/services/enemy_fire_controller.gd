@@ -25,6 +25,16 @@ var ranged_min_distance: float:
 func setup(shared_context) -> void:
 	context = shared_context
 	fire_decision.setup(context, &"fire_decision")
+	actor.hit_received.connect(_on_hit_received)
+	context.event_received.connect(_on_evidence_event)
+
+func _on_hit_received(damage: float, _attacker_position: Vector3) -> void:
+	if is_finite(damage) and damage > 0.0:
+		actor.apply_aim_penalty(float(context.setting(&"tactics", &"damage_accuracy_penalty", 0.15)))
+
+func _on_evidence_event(event: StringName, _data: Dictionary) -> void:
+	if event == &"near_shot":
+		actor.apply_aim_penalty(float(context.setting(&"tactics", &"nearby_shot_accuracy_penalty", 0.02)))
 
 func update(delta: float, visible: bool, moving: bool, intent: Dictionary) -> void:
 	request = intent
@@ -142,32 +152,63 @@ func has_clear_suppression_lane(origin: Vector3, direction: Vector3, distance: f
 	return context.cover_selection.has_clear_line(origin, origin + direction.normalized() * minf(0.5, distance))
 
 
-## 普通交战仍检查完整散布，不把压制的宽松条件用于精确选位。
+## 中心弹道与近枪口空间是硬条件；远处外围散布擦墙只降低质量。
+
+var _lane_frame := -1
+var _lane_cache: Dictionary = {}
+var _muzzle_shape := ConvexPolygonShape3D.new()
+var _muzzle_query := PhysicsShapeQueryParameters3D.new()
+var _muzzle_dimensions := Vector2.INF
 
 func has_clear_firing_lane(origin: Vector3, direction: Vector3, distance: float) -> bool:
+	if _lane_frame != Engine.get_physics_frames():
+		_lane_frame = Engine.get_physics_frames()
+		_lane_cache.clear()
+	var key := [origin, direction, distance, actor.get_max_shot_deviation_degrees()]
+	if not _lane_cache.has(key):
+		_lane_cache[key] = _query_clear_firing_lane(origin, direction, distance)
+	return _lane_cache[key]
+
+func _query_clear_firing_lane(origin: Vector3, direction: Vector3, distance: float) -> bool:
 	if direction.is_zero_approx() or distance <= 0.0:
 		return false
 	var axis := direction.normalized()
 	var endpoint := origin + axis * distance
 	if not context.cover_selection.has_clear_line(origin, endpoint):
 		return false
-	var start := Vector2(origin.x, origin.z)
-	var end := Vector2(endpoint.x, endpoint.z)
 	var spread: float = actor.get_max_shot_deviation_degrees()
-	var radius: float = distance * tan(deg_to_rad(spread)) + 0.1
-	for body in context.get_tree().get_nodes_in_group("cover_region"):
-		if not context.navigation_region.is_ancestor_of(body):
-			continue
-		var collision: CollisionShape3D = body.get_node_or_null("CollisionShape3D")
-		if collision == null or not collision.shape is BoxShape3D:
-			continue
-		var center := Vector2(collision.global_position.x, collision.global_position.z)
-		var extent: float = (collision.shape.size * collision.global_basis.get_scale()).length() * 0.5
-		if center.distance_to(Geometry2D.get_closest_point_to_segment(center, start, end)) > radius + extent:
-			continue
-		if not context.cover_selection.has_clear_shot_cone(origin, axis, spread, distance, body):
-			return false
-	return true
+	var near_distance := minf(0.5, distance)
+	# 一次凸体查询覆盖枪口前半米的真实三维散布空间，普通障碍也参与。
+	var dimensions := Vector2(spread, near_distance)
+	if dimensions != _muzzle_dimensions:
+		_muzzle_dimensions = dimensions
+		var points := PackedVector3Array()
+		var radius := 0.08 + near_distance * tan(deg_to_rad(spread))
+		for index in 12:
+			var angle := TAU * index / 12.0
+			var radial := Vector3(cos(angle), sin(angle), 0) / cos(PI / 12.0)
+			points.append(radial * 0.08)
+			points.append(radial * radius + Vector3.FORWARD * near_distance)
+		_muzzle_shape.points = points
+	var query := _muzzle_query
+	query.shape = _muzzle_shape
+	query.transform = Transform3D(Basis.looking_at(axis, Vector3.UP if absf(axis.y) < 0.999 else Vector3.RIGHT), origin)
+	query.collision_mask = 1
+	query.exclude = context.cover_selection._ray_query(origin, endpoint).exclude
+	var space: PhysicsDirectSpaceState3D = actor.get_world_3d().direct_space_state
+	return space.intersect_shape(query, 1).is_empty()
+
+## 水平外围弹道的通畅比例参与候选的有效火力估计，不要求极端散布全部避墙。
+## 以训练期望的中心命中概率估计，不随当前转身或单发后精度波动重画区域。
+func firing_lane_quality(origin: Vector3, direction: Vector3, distance: float) -> float:
+	if direction.is_zero_approx() or distance <= 0.0: return 0.0
+	var axis := direction.normalized()
+	var clear := 0.0
+	for fraction in [-1.0, -0.66, -0.33, 0.33, 0.66, 1.0]:
+		var ray := axis.rotated(Vector3.UP, deg_to_rad(actor.get_max_shot_deviation_degrees() * fraction))
+		if context.cover_selection.has_clear_line(origin, origin + ray * distance): clear += 1.0
+	var center := clampf(fire_stability_target, 0.0, 1.0)
+	return center + (1.0 - center) * clear / 6.0
 
 
 ## 统一决策可用同一条件复核固定目的地；路径失效直接触发重评。

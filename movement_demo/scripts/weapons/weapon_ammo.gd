@@ -5,6 +5,8 @@ var weapon: WeaponData
 var magazine_rounds: int = 0
 var is_reloading: bool = false
 var reload_progress: float = 0.0
+## 可选的已完成阶段；暂停后仍禁止开火。具体保留门槛由调用者决定。
+var reload_checkpoint: float = 0.0
 var infinite_reserve: bool = false
 var _reserve_pool: Dictionary
 
@@ -21,7 +23,7 @@ func reserve_count() -> int:
 
 
 func can_fire() -> bool:
-	return weapon != null and not is_reloading and magazine_rounds > 0
+	return weapon != null and not is_reloading and reload_checkpoint <= 0.0 and magazine_rounds > 0
 
 
 func consume_round() -> bool:
@@ -32,17 +34,26 @@ func consume_round() -> bool:
 
 
 func can_reload() -> bool:
-	if weapon == null or is_reloading or magazine_rounds >= maxi(1, weapon.magazine_capacity):
+	if weapon == null or is_reloading:
 		return false
-	return infinite_reserve or reserve_count() > 0
+	# 收起期间共享备弹可能被另一把枪用完，仍须允许完成已经保留的阶段并解除禁射。
+	return reload_checkpoint > 0.0 or (magazine_rounds < maxi(1, weapon.magazine_capacity) and (infinite_reserve or reserve_count() > 0))
 
 
 func start_reload() -> bool:
 	if not can_reload():
 		return false
 	is_reloading = true
-	reload_progress = 0.0
+	reload_progress = reload_checkpoint
 	return true
+
+## 暂停只保留调用者指定的已完成阶段，不补弹、不扣备弹、不后台计时。
+func suspend_reload(checkpoint: float) -> void:
+	if not is_reloading: return
+	reload_checkpoint = clampf(checkpoint, 0.0, reload_progress)
+	if is_equal_approx(checkpoint, reload_progress): reload_checkpoint = checkpoint
+	reload_progress = reload_checkpoint
+	is_reloading = false
 
 
 # 只累计进度；何时开始/中断由玩家输入或AI决定。
@@ -63,3 +74,4 @@ func advance_reload(delta: float, speed_multiplier: float = 1.0) -> void:
 func cancel_reload() -> void:
 	is_reloading = false
 	reload_progress = 0.0
+	reload_checkpoint = 0.0

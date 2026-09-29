@@ -9,7 +9,7 @@ func collect_candidates(visible: bool) -> Array[Dictionary]:
 	for destination in transfer_candidates():
 		if not _valid_cover(destination): continue
 		destination.path = selection._path_to(actor.global_position, destination.hide)
-		var route: Dictionary = context.spatial.assess_route(context, destination.path, threat, transfer.covering_retreat_speed_multiplier, 0.0, true)
+		var route: Dictionary = context.spatial.assess_cover_route(destination.path, threat, transfer.covering_retreat_speed_multiplier, 0.0, true)
 		var exposed: float = route.exposure + context._reload_exposure(destination.hide, threat) * maxf(0.0, horizon - route.seconds)
 		var candidate := option(destination, horizon - route.fire_seconds, exposed, horizon - minf(horizon, route.seconds))
 		candidate.mode = &"covering_retreat"

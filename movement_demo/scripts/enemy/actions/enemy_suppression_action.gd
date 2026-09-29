@@ -20,6 +20,7 @@ var remaining: float = 0.0
 var target_center: Vector3
 var aim_point: Vector3
 var _clear_targets: Array[Vector3] = []
+var _preview_information_retention: float = 0.0
 
 
 
@@ -34,12 +35,18 @@ func utility_available() -> bool:
 	if not context.has_visual_memory or actor.ammo.magazine_rounds <= 0 or actor.ammo.is_reloading:
 		return false
 	var center: Vector3 = context.last_seen_position + Vector3.UP * 0.8
-	if actor.get_shot_origin().distance_to(center) > actor.weapon.fire_range:
-		return false
+	# 范围由实际射击样本判断：记忆中心超距时，近侧出口仍可能在射程内。
 	var preview = get_script().new()
 	preview.action_id = action_id
+	preview.definition = definition
 	preview.setup(context, config_section)
-	return preview._prepare_targets(center)
+	var available: bool = preview._prepare_targets(center)
+	_preview_information_retention = preview.information_retention() if available else 0.0
+	return available
+
+## 普通区域压制没有封住已知出口，等待期间目标的不确定性持续增加。
+func information_retention() -> float:
+	return 0.0
 
 
 ## 执行会把全部射击分配到可射样本，不能再按未被使用的遮挡样本扣除射击时间。
@@ -69,8 +76,6 @@ func on_target_lost() -> void:
 	if not context.has_visual_memory or context.player.is_dead() or context.player.is_in_dialogue:
 		return
 	var center: Vector3 = context.last_seen_position + Vector3.UP * 0.8
-	if actor.get_shot_origin().distance_to(center) > actor.weapon.fire_range:
-		return
 	if not _prepare_targets(center):
 		return
 	target_center = center
@@ -157,7 +162,8 @@ func collect_candidates(visible: bool) -> Array[Dictionary]:
 	var horizon: float = context.utility_horizon_seconds
 	var available: float = maxf(0.0, minf(horizon, duration) - context.spatial._ammo_wait(context)) * utility_fire_fraction()
 	var threat: Vector3 = context._known_reload_threat()
-	return [option({}, horizon - available, context.spatial._exposure(context, actor.global_position, threat) * horizon, minf(horizon, duration))]
+	var information := minf(horizon, duration) * (1.0 - _preview_information_retention)
+	return [option({}, horizon - available, context.spatial._exposure(context, actor.global_position, threat) * horizon, information)]
 
 func validate(_candidate: Dictionary, visible: bool) -> bool:
 	return not visible and is_enabled() and utility_available()

@@ -171,6 +171,57 @@ func get_attack_candidates() -> Array[Vector3]:
 	return points
 
 
+## 连续扇环的极坐标小区域；用于运行时评估和填色，旧点接口仍供出口目标采样。
+var _attack_cells_signature: Array = []
+var _attack_cells_cache: Array[Dictionary] = []
+
+func get_attack_cells() -> Array[Dictionary]:
+	var collision := _collision()
+	var signature := [collision.global_transform, collision.shape.size, attack_inner_radius, attack_outer_radius, attack_sample_spacing]
+	if signature == _attack_cells_signature: return _attack_cells_cache.duplicate()
+	_attack_cells_signature = signature
+	var cells: Array[Dictionary] = []
+	var radii := _attack_radii()
+	var spacing := maxf(0.2, attack_sample_spacing)
+	var rings := maxi(1, ceili((radii.y - radii.x) / spacing))
+	for sector in _attack_sectors():
+		for ring in rings:
+			var inner := lerpf(radii.x, radii.y, float(ring) / rings)
+			var outer := lerpf(radii.x, radii.y, float(ring + 1) / rings)
+			var steps := maxi(1, ceili(outer * PI * 1.5 / spacing))
+			for index in steps:
+				cells.append(_attack_cell(sector.center, inner, outer, sector.start + PI * 1.5 * index / steps, PI * 1.5 / steps, 0))
+	_attack_cells_cache = cells
+	return cells.duplicate()
+
+func subdivide_attack_cell(cell: Dictionary) -> Array[Dictionary]:
+	var cells: Array[Dictionary] = []
+	var middle: float = (cell.inner + cell.outer) * 0.5
+	for radii in [Vector2(cell.inner, middle), Vector2(middle, cell.outer)]:
+		for index in 2:
+			cells.append(_attack_cell(cell.center, radii.x, radii.y, cell.angle + cell.sweep * index * 0.5, cell.sweep * 0.5, cell.depth + 1))
+	return cells
+
+func _attack_cell(center: Vector3, inner: float, outer: float, angle: float, sweep: float, depth: int) -> Dictionary:
+	var polygon := PackedVector3Array()
+	for polar in [Vector2(inner, angle), Vector2(outer, angle), Vector2(outer, angle + sweep), Vector2(inner, angle + sweep)]:
+		polygon.append(_collision().to_global(center + _attack_offset(polar.y, polar.x)))
+	return {"center": center, "inner": inner, "outer": outer, "angle": angle, "sweep": sweep, "depth": depth,
+		"corner": _collision().to_global(center), "polygon": polygon, "body": self, "cover": self,
+		"position": _collision().to_global(center + _attack_offset(angle + sweep * 0.5, (inner + outer) * 0.5))}
+
+func get_attack_exclusion_polygons() -> Array[PackedVector3Array]:
+	var polygons: Array[PackedVector3Array] = []
+	for sector in _attack_sectors():
+		for index in 36:
+			var a: float = sector.start + PI * 1.5 * index / 36.0
+			var b: float = sector.start + PI * 1.5 * (index + 1) / 36.0
+			polygons.append(PackedVector3Array([_collision().to_global(sector.center),
+				_collision().to_global(sector.center + _attack_offset(a, _attack_radii().x)),
+				_collision().to_global(sector.center + _attack_offset(b, _attack_radii().x))]))
+	return polygons
+
+
 func is_hiding_position(point: Vector3, threat: Vector3) -> bool:
 	if _dimensions().is_zero_approx():
 		return false
@@ -257,6 +308,9 @@ func _preview_attack_regions(mesh: ImmediateMesh, filled: bool) -> void:
 			var inside_b: Vector3 = sector.center + _attack_offset(b, radii.x)
 			var outside_b: Vector3 = sector.center + _attack_offset(b, radii.y)
 			if filled:
+				for point in [sector.center, inside_a, inside_b]:
+					mesh.surface_set_color(Color(0.65, 0.12, 0.12, 0.25))
+					mesh.surface_add_vertex(point + Vector3.UP * 0.025)
 				for point in [inside_a, outside_a, outside_b, inside_a, outside_b, inside_b]:
 					mesh.surface_set_color(Color(1.0, 0.65, 0.1, 0.12))
 					mesh.surface_add_vertex(point + Vector3.UP * 0.025)

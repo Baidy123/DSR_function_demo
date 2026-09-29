@@ -1,6 +1,7 @@
 extends "res://scripts/enemy/actions/enemy_action.gd"
 
 var transfer = preload("res://scripts/enemy/actions/enemy_cover_motion.gd").new()
+var _transfer_reconsider := false
 
 func evaluation_channel() -> StringName:
 	return &"shelter_geometry"
@@ -38,7 +39,7 @@ func collect_candidates(visible: bool) -> Array[Dictionary]:
 		if not _valid_cover(destination):
 			continue
 		destination.path = selection._path_to(actor.global_position, destination.hide)
-		var route: Dictionary = context.spatial.assess_route(context, destination.path, threat, transfer.run_speed_multiplier, context.spatial._reload_seconds(context) if actor.ammo.is_reloading else 0.0)
+		var route: Dictionary = context.spatial.assess_cover_route(destination.path, threat, transfer.run_speed_multiplier, context.spatial._reload_seconds(context) if actor.ammo.is_reloading else 0.0)
 		var exposed: float = route.exposure + context._reload_exposure(destination.hide, threat) * maxf(0.0, horizon - route.seconds)
 		var candidate := option(destination, horizon, exposed, maxf(information, horizon - minf(horizon, route.seconds)))
 		candidate.conceals = true
@@ -76,6 +77,7 @@ func validate(candidate: Dictionary, visible: bool) -> bool:
 	return super.validate(candidate, visible) and (candidate.get("mode") == &"peek" or _valid_cover(candidate.destination))
 
 func begin(candidate: Dictionary, visible: bool) -> bool:
+	_transfer_reconsider = false
 	candidate.conceals = true
 	super.begin(candidate, visible)
 	context.utility_suppression_pending = false
@@ -89,6 +91,7 @@ func valid(_visible: bool) -> bool:
 	return _running and is_enabled() and transfer.is_active()
 
 func tick(delta: float, visible: bool) -> Dictionary:
+	_transfer_reconsider = false
 	var direction := Vector3.ZERO
 	if transfer.phase == transfer.Phase.RUN_TO_COVER:
 		agent.target_position = transfer.cover_detour_position if transfer.cover_detour_active else transfer.hide_position
@@ -103,11 +106,17 @@ func tick(delta: float, visible: bool) -> Dictionary:
 
 func reset() -> void:
 	transfer.reset()
+	_transfer_reconsider = false
+
+func can_interrupt(next: Dictionary, _visible: bool) -> bool:
+	# 有效转移执行到底，避免邻近样本轮换不断清空卡住计时和绕行次数。
+	return next.get("urgent", false) or _transfer_reconsider or transfer.phase != transfer.Phase.RUN_TO_COVER
 
 func state_label() -> String:
 	return transfer.state_label()
 
 func on_event(event: StringName, _data: Dictionary) -> void:
 	if event == &"damage" and _running:
+		_transfer_reconsider = true
 		transfer.on_damage_received()
 		_running = transfer.is_active()

@@ -14,6 +14,10 @@ func check(ok: bool, label: String) -> void:
 		push_error(label)
 
 func _run() -> void:
+	# --editor 的首次扫描晚于 SceneTree 初始化，避免测试先结束并中断扫描。
+	await create_timer(1.0).timeout
+	while EditorInterface.get_resource_filesystem().is_scanning():
+		await process_frame
 	var host := Node.new()
 	var unit = preload("res://scripts/enemy/enemy_unit_type.gd").new()
 	unit.name = "UnitType"

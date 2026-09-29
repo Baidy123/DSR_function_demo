@@ -3,7 +3,9 @@ extends Node3D
 @onready var debug_settings = get_node("/root/DebugSettings")
 
 const SHORT_REASONS := {"空间被占": "占位", "不可达": "无路", "射界受阻": "挡枪",
-	"散布射界贴墙": "贴墙", "超射程": "超距", "无武器": "无枪", "完全遮挡": "全遮"}
+	"散布射界贴墙": "贴墙", "超射程": "超距", "无武器": "无枪", "完全遮挡": "全遮",
+	"身体缺少掩护": "无遮身", "过于贴近墙角": "贴角", "超感知距离": "视距外", "完整射界受阻": "挡枪",
+	"身体遮挡过多": "遮挡过多", "枪口空间受阻": "堵枪口"}
 
 # 只读的运行时调试显示，独立于AI的决策更新；关闭后不再执行候选查询。
 var assessments: Array[Dictionary] = []
@@ -45,8 +47,7 @@ func _physics_process(delta: float) -> void:
 		_known_target = ai.last_seen_position + Vector3.UP * 0.8
 		for region in get_tree().get_nodes_in_group("cover_region"):
 			if ai.navigation_region.is_ancestor_of(region):
-				for point in region.get_attack_candidates():
-					_pending.append({"position": point, "cover": region})
+				_pending.append_array(selection.attack_cells(region, _known_target))
 		_cursor = 0
 		_results.clear()
 	# 调试查询分帧执行：每帧最多64点，并在约2.5毫秒后让出；完整后统一显示。
@@ -57,7 +58,7 @@ func _physics_process(delta: float) -> void:
 		if not is_instance_valid(candidate.cover):
 			clear()
 			return
-		_results.append(selection.assess_attack_point(candidate.position, candidate.cover, _known_target, _known_target))
+		_results.append(selection.assess_attack_cell(candidate, _known_target, _known_target))
 		_cursor += 1
 		if Time.get_ticks_usec() - started >= 2500:
 			break
@@ -88,11 +89,11 @@ func refresh() -> void:
 
 
 func _draw_results() -> void:
-	# 区域有大量样本：所有红绿标记合在一张网格中，每个掩体只显示一份汇总。
+	# 同一网格填充扇环小区域；绿色是合格区域，暗红是内圈禁用区，橙色是其余候选区。
 	var summaries := {}
 	var mesh := ImmediateMesh.new()
 	if not assessments.is_empty():
-		mesh.surface_begin(Mesh.PRIMITIVE_LINES)
+		mesh.surface_begin(Mesh.PRIMITIVE_TRIANGLES)
 	for result in assessments:
 		var region: StaticBody3D = result.cover
 		if not summaries.has(region):
@@ -102,18 +103,24 @@ func _draw_results() -> void:
 		summary.usable += int(result.usable)
 		if not result.usable:
 			summary.reasons[result.reason] = summary.reasons.get(result.reason, 0) + 1
-		var color := Color.GREEN if result.usable else Color(1.0, 0.25, 0.2)
-		for offset in [Vector3.RIGHT, Vector3.FORWARD]:
+		var color := Color(0.1, 1.0, 0.2, 0.65) if result.usable else Color(1.0, 0.6, 0.15, 0.12)
+		var polygon: PackedVector3Array = result.polygon
+		for index in [0, 1, 2, 0, 2, 3]:
 			mesh.surface_set_color(color)
-			mesh.surface_add_vertex(result.position + Vector3.UP * 0.08 - offset * 0.05)
-			mesh.surface_set_color(color)
-			mesh.surface_add_vertex(result.position + Vector3.UP * 0.08 + offset * 0.05)
+			mesh.surface_add_vertex(polygon[index] + Vector3.UP * (0.07 if result.usable else 0.05))
 	if not assessments.is_empty():
+		for region in summaries:
+			for polygon in region.get_attack_exclusion_polygons():
+				for vertex in polygon:
+					mesh.surface_set_color(Color(0.65, 0.08, 0.12, 0.4))
+					mesh.surface_add_vertex(vertex + Vector3.UP * 0.06)
 		mesh.surface_end()
 	var material := StandardMaterial3D.new()
 	material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	material.vertex_color_use_as_albedo = true
 	material.no_depth_test = true
+	material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	material.cull_mode = BaseMaterial3D.CULL_DISABLED
 	_markers.mesh = mesh
 	_markers.material_override = material
 	_markers.visible = not assessments.is_empty()
@@ -137,7 +144,7 @@ func _draw_results() -> void:
 		var collision: CollisionShape3D = region.get_node("CollisionShape3D")
 		label.global_position = collision.to_global(Vector3.UP * collision.shape.size.y * 0.5) + Vector3.UP * 0.35
 		label.modulate = Color.GREEN if summary.usable > 0 else Color.WHITE
-		label.text = "%s\n可用 %d/%d" % [region.name, summary.usable, summary.count]
+		label.text = "%s\n有效区域 %d/%d" % [region.name, summary.usable, summary.count]
 		var reasons: Array = summary.reasons.keys()
 		reasons.sort_custom(func(a, b): return summary.reasons[a] > summary.reasons[b])
 		for reason in reasons.slice(0, 2):

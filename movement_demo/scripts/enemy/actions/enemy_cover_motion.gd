@@ -390,7 +390,7 @@ func _cover_short_segment_is_clear(destination: Vector3) -> bool:
 	for sample_index in range(1, sample_count + 1):
 		var t: float = float(sample_index) / float(sample_count)
 		var sample: Vector3 = start.lerp(horizontal_destination, t)
-		if not context.is_position_free(sample):
+		if not context.is_position_free(sample, true):
 			return false
 
 	return true
@@ -521,6 +521,9 @@ func _refresh_move_timer(destination: Vector3) -> void:
 
 func _finish(sees_player: bool) -> void:
 	var remembered: Vector3 = look_position
+	# 移动阶段退出意味着没有抵达；绕行耗尽后不能下一轮又选择同一个点。
+	if phase == Phase.RUN_TO_COVER or (phase == Phase.PEEK_OUT and not sees_player):
+		context.block_utility_destination(hide_position if phase == Phase.RUN_TO_COVER else peek_position)
 	reset()
 	finished.emit(sees_player, remembered)
 	context.resume_after_action(sees_player, remembered)

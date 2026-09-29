@@ -43,7 +43,7 @@ func _run() -> void:
 		for point: Vector3 in region.get_attack_candidates():
 			if not valid.is_empty():
 				break
-			var free: bool = ai.is_position_free(point)
+			var free: bool = ai.context.is_position_free(point)
 			var reachable: bool = not selection._path_to(enemy.global_position, point).is_empty()
 			free_points += int(free)
 			reachable_points += int(reachable)
@@ -71,15 +71,44 @@ func _run() -> void:
 		scene.free()
 		_finish()
 		return
-	_check("遮身仅作信息保留，允许完全暴露", valid.protection >= 0.0 and valid.protection < 1.0)
+	_check("优质攻击点必须有适量身体遮挡", valid.protection >= 0.2 and valid.protection <= 0.65)
 	_check("合格点有路径与通畅射界", valid.reachable and valid.space_free and valid.clear_shot)
 	var point: Vector3 = valid.position
+	_check("合格点给身体与墙面保留余量", selection._attack_wall_clearance(point, wall))
+	var origin: Vector3 = point + enemy.get_shot_origin() - enemy.global_position
+	_check("绿色点也通过实际开火服务的完整射界", ai.context.fire.has_clear_firing_lane(origin, threat - origin, origin.distance_to(threat)))
+	ai.is_alerted = true
+	ai.last_known_position = threat - Vector3.UP * 0.8
+	var attack = ai.actions[&"attack_position"]
+	var assessment: Dictionary = attack.evaluate_point({"position": point, "body": wall})
+	_check("真实部分遮身点也进入攻击动作评估", not assessment.is_empty())
+	if not assessment.is_empty():
+		_check("绿色点通过执行前的统一复核", attack.validate(attack.option(assessment.destination, 0.0, 0.0), true))
+		await _check_actual_fire(enemy, player, ai, attack.option(assessment.destination, 0.0, 0.0), threat)
+	var body_collision: CollisionShape3D = enemy.get_node("CollisionShape3D")
+	var wall_collision: CollisionShape3D = wall.get_node("CollisionShape3D")
+	var wall_half: Vector3 = wall_collision.shape.size * 0.5
+	var near_corner := wall_collision.to_global(Vector3(wall_half.x, -wall_half.y, wall_half.z))
+	near_corner += wall_collision.global_basis.x.normalized() * (body_collision.shape.radius + 0.02)
+	_check("身体勉强站得下的贴角点仍不适合架枪", not selection._attack_wall_clearance(near_corner, wall))
+	# 同一墙角点，玩家转到敌人正面，墙落在敌人背后，不再提供遮身。
+	var front_target := point + (point - wall_collision.global_position).normalized() * 4.0
+	front_target.y = point.y + 0.8
+	var in_front: Dictionary = selection.assess_attack_point(point, wall, front_target, front_target)
+	_check("敌人在墙与玩家之间不能变绿", in_front.protection == 0.0 and not in_front.usable)
+	var old_sight: float = ai.perception.sight_distance
+	var old_close: float = ai.perception.close_awareness_radius
+	ai.perception.sight_distance = 1.0
+	ai.perception.close_awareness_radius = 0.0
+	_check("绿色预览也遵守实际感知距离", not selection.assess_attack_point(point, wall, threat, threat).usable)
+	ai.perception.sight_distance = old_sight
+	ai.perception.close_awareness_radius = old_close
 	var other_side := point + Vector3.UP * 0.8 + (point + Vector3.UP * 0.8 - threat).normalized() * 5.0
 	var arena = scene.get_node("Arena")
 	var open_point: Vector3 = arena.to_global(Vector3(12, 0, 8))
 	var open_target := open_point + Vector3.LEFT + Vector3.UP * 0.8
 	var exposed: Dictionary = selection.assess_attack_point(open_point, wall, open_target, open_target)
-	_check("其他条件通过时完全无遮身也允许架枪", exposed.reachable and exposed.space_free and exposed.clear_shot and exposed.in_range and exposed.usable and exposed.protection == 0.0)
+	_check("其他条件通过也淘汰完全无遮身点", exposed.reachable and exposed.space_free and exposed.clear_shot and exposed.in_range and not exposed.usable and exposed.protection == 0.0)
 	var outside: Dictionary = selection.assess_attack_point(arena.to_global(Vector3(13.2, 0, 8)), wall, threat, threat)
 	_check("导航边界外淘汰", not outside.usable and not outside.reachable)
 	var high: Dictionary = selection.assess_attack_point(point + Vector3.UP * 3, wall, threat, threat)
@@ -105,7 +134,7 @@ func _run() -> void:
 	var before: Array = selection.get_attack_assessments(threat, threat)
 	var expected_count := 0
 	for region in get_nodes_in_group("cover_region"):
-		expected_count += region.get_attack_candidates().size()
+		expected_count += selection.attack_cells(region, threat).size()
 	player.global_position = point
 	for frame in range(3):
 		await physics_frame
@@ -199,6 +228,35 @@ func _run() -> void:
 	_finish()
 
 
+func _check_actual_fire(enemy, player, ai, candidate: Dictionary, threat: Vector3) -> void:
+	var old_position: Vector3 = enemy.global_position
+	var old_player: Vector3 = player.global_position
+	var old_seen: Vector3 = ai.last_seen_position
+	enemy.global_position = candidate.destination.position
+	player.global_position = threat - Vector3.UP * 0.8
+	player.get_node("Health").debug_invincible = true
+	ai.last_seen_position = player.global_position
+	enemy.shooting_enabled = true
+	enemy.face_direction(player.global_position - enemy.global_position, 10.0)
+	for frame in range(3): await physics_frame
+	ai._start_utility_option(candidate, true)
+	var shots: int = enemy.shot_count
+	for frame in range(180):
+		await physics_frame
+		if ai.current_action == null: break
+		var output: Dictionary = ai.current_action.tick(1.0 / 60.0, true)
+		enemy.face_direction(output.facing, 1.0 / 60.0)
+		ai.context.fire.update(1.0 / 60.0, true, false, output.fire)
+		if enemy.shot_count > shots: break
+	_check("部分遮身的绿色点到位后实际开火，不堵枪口", enemy.shot_count > shots)
+	ai._cancel_utility_execution()
+	enemy.shooting_enabled = false
+	enemy.global_position = old_position
+	player.global_position = old_player
+	ai.last_seen_position = old_seen
+	for frame in range(3): await physics_frame
+
+
 func _check_disconnected_path(scene: Node, enemy: Node3D, ai: Node, selection: Node, wall: StaticBody3D) -> void:
 	var original_region = ai.navigation_region
 	var original_map: RID = enemy.agent.get_navigation_map()
@@ -220,7 +278,7 @@ func _check_disconnected_path(scene: Node, enemy: Node3D, ai: Node, selection: N
 	NavigationServer3D.map_set_use_edge_connections(test_map, false)
 	fixture.set_navigation_map(test_map)
 	enemy.agent.set_navigation_map(test_map)
-	ai.navigation_region = fixture
+	ai.context.navigation_region = fixture
 	enemy.global_position = Vector3(200, 0, 0)
 	for frame in range(60):
 		await physics_frame
@@ -232,7 +290,7 @@ func _check_disconnected_path(scene: Node, enemy: Node3D, ai: Node, selection: N
 	_check("测试确实产生未到达终点的部分路径", not raw_path.is_empty() and raw_path[raw_path.size() - 1].distance_to(projected) > 0.1)
 	var result: Dictionary = selection.assess_attack_point(destination, wall, Vector3(201, 0.8, 0), Vector3(201, 0.8, 0))
 	_check("候选在另一导航孤岛也不能靠部分路径通过", not result.usable and not result.reachable)
-	ai.navigation_region = original_region
+	ai.context.navigation_region = original_region
 	enemy.agent.set_navigation_map(original_map)
 	enemy.global_position = original_position
 	fixture.free()

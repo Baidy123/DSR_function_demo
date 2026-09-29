@@ -32,17 +32,36 @@ var utility_current: Dictionary:
 	get: return context.utility_current
 	set(value): context.utility_current = value
 @export_group("Utility AI")
+## 所有动作共同估计未来多少秒的火力缺失、暴露和信息损失，单位为秒。
+## 调大更重视转移到位后的持续收益，调小更重视眼前收益；实际动作仍可提前结束或重评。
 @export_range(1.0, 12.0, 0.5) var utility_horizon_seconds: float = 4.0
+## 每秒有效火力缺失的代价权重；各项相加后选择总代价最低的方案。
+## 调大更倾向维持射击、尽快恢复火力；调小更能接受停火转移或躲藏。0表示不计此项代价。
 @export_range(0.0, 10.0, 0.1) var utility_fire_weight: float = 3.0
+## 暴露风险的基础权重，还会乘上伤势、近期受击/近弹压力和可见目标的近身压力。
+## 调大更重视掩护和拉开距离，调小更愿意暴露交战；没有压力时不会仅因权重大就强制躲藏。
+## 0表示不计暴露风险；本参数不改变受到命中时的准度惩罚。
 @export_range(0.0, 10.0, 0.1) var utility_risk_weight: float = 3.0
+## 每秒信息损失的代价权重，例如躲进掩体后无法持续观察目标。
+## 调大更重视保持/重新获得目标信息，调小更能接受失视躲藏；0表示不计此项代价。
 @export_range(0.0, 10.0, 0.1) var utility_information_weight: float = 1.0
+## 正常情况下重新收集并比较动作候选的间隔，单位为秒；受击、配置变化等可请求提前重评。
+## 调小反应更及时但评估更频繁，调大更省计算但可能反应较慢；重评后仍需满足切换条件。
 @export_range(0.1, 2.0, 0.1) var utility_recheck_seconds: float = 0.4
+## 新方案开始后通常至少保持的时间，单位为秒，减少动作反复切换。
+## 调大执行更稳定但接管更慢；0取消此等待。当前方案失效或动作主动释放保持时可提前切换。
+## 保持时间结束后仍需满足切换优势，并且当前动作允许被中断。
 @export_range(0.0, 3.0, 0.1) var utility_hold_seconds: float = 0.6
+## 新方案的总代价须比当前有效方案低超过此分值，才通常允许切换；这是绝对分差。
+## 调大更愿意继续当前方案，调小更容易换动作；与三个代价权重的尺度相关。
+## 0仍只会因更优方案而切换；当前方案失效或动作主动释放保持时不受此分差限制。
 @export_range(0.0, 5.0, 0.1) var utility_switch_advantage: float = 0.5
 ## 没有目击、受伤或近弹的新证据时，旧威胁确定性每过这么多秒减半。
-## 只影响风险估计，不删除位置记忆、不强制离开掩体；4秒为试玩初值。
+## 调大使旧威胁的避险影响保留更久，调小更快降低旧威胁影响；不会删除位置记忆或强制出掩体。
+## 只控制风险估计中的威胁确定性，不控制受击/近弹压力自身的消退速度，也不削弱可见目标的近身压力。
 @export_range(0.5, 30.0, 0.5) var utility_threat_half_life_seconds: float = 4.0
-## 仅Debug总开关开启时输出选中动作及分数构成。
+## 与 Debug 总开关同时开启时，在动作切换成功后输出选中动作、总代价及火力/风险/信息代价。
+## cost越低越有利于被选中；未选候选可在运行时查看本节点的utility_options。
 @export var debug_utility: bool = false
 
 func _ready() -> void:
@@ -77,6 +96,7 @@ func refresh_configuration(force: bool = false) -> void:
 		if definition == null or _implementations.get(id) != definition.implementation:
 			if current_action == actions[id]: _cancel_utility_execution(&"configuration")
 			else: actions[id].cancel(&"configuration")
+			context.spatial.unregister(actions[id])
 			actions.erase(id)
 			_implementations.erase(id)
 	for id in resolved.definitions.keys():

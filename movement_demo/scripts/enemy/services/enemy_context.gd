@@ -24,6 +24,7 @@ var utility_threat_half_life_seconds := 4.0
 var avoid_position := Vector3.INF
 var _exposure_frame := -1
 var _exposure_cache: Dictionary = {}
+var _exposure_safe_distance := 3.0
 var combat_type: int:
 	get: return CombatType.RANGED if unit != null and unit.capabilities.has(&"firearms") else CombatType.MELEE
 var patrol_pause_seconds: float:
@@ -129,6 +130,7 @@ func notice_shot(origin: Vector3, endpoint: Vector3) -> void:
 		return
 	_investigate_attack(origin - Vector3.UP * 0.8)
 	nearby_shot_pressure = minf(1.0, nearby_shot_pressure + 0.15)
+	event_received.emit(&"near_shot", {})
 	invalidate_utility()
 
 func resume_after_action(_visible: bool, _position: Vector3) -> void:
@@ -175,7 +177,7 @@ func _horizontal_distance(point: Vector3) -> float:
 func _horizontal_distance_between(a: Vector3, b: Vector3) -> float:
 	return Vector2(a.x - b.x, a.z - b.z).length()
 
-func is_position_free(point: Vector3) -> bool:
+func is_position_free(point: Vector3, include_player: bool = false) -> bool:
 	var collision: CollisionShape3D = actor.get_node("CollisionShape3D")
 	var query = PhysicsShapeQueryParameters3D.new()
 	query.shape = collision.shape
@@ -183,26 +185,32 @@ func is_position_free(point: Vector3) -> bool:
 	query.transform = Transform3D(Basis.IDENTITY, point + collision.position + Vector3.UP * 0.05)
 	query.collision_mask = actor.collision_mask
 	query.exclude = [actor.get_rid()]
-	# 候选点评估只检查障碍，不能借碰撞查询感知墙后玩家的位置。
-	if is_instance_valid(player) and player is CollisionObject3D:
+	# 候选点评估排除玩家，不能借碰撞查询感知墙后位置；短段实际避障可包含身体。
+	if not include_player and is_instance_valid(player) and player is CollisionObject3D:
 		query.exclude = [actor.get_rid(), player.get_rid()]
 	return actor.get_world_3d().direct_space_state.intersect_shape(query, 1).is_empty()
 
-func _reload_exposure(point: Vector3, threat: Vector3) -> float:
+func _reload_exposure(point: Vector3, threat: Vector3, body_protection: float = -1.0) -> float:
 	var frame := Engine.get_physics_frames()
 	if _exposure_frame != frame:
 		_exposure_frame = frame
 		_exposure_cache.clear()
-	var key := [point, threat]
+		_exposure_safe_distance = maxf(1.0, float(setting(&"tactics", &"ranged_min_distance", 4.0))) if combat_type == CombatType.RANGED else 3.0
+	var key := [point, threat, body_protection]
 	if _exposure_cache.has(key): return _exposure_cache[key]
 	var direction: Vector3 = point - threat
 	direction.y = 0.0
 	var side: Vector3 = direction.normalized().cross(Vector3.UP) * 0.35
-	var exposed: float = 0.0
-	for offset: Vector3 in [Vector3.ZERO, side, -side]:
-		if cover_selection.has_clear_line(threat + Vector3.UP * 0.8, point + Vector3.UP * 0.8 + offset):
-			exposed += 1.0 / 3.0
-	var result := exposed * (1.0 + clampf(1.0 - direction.length() / 3.0, 0.0, 1.0))
+	var exposed: float = 1.0 - clampf(body_protection, 0.0, 1.0)
+	if body_protection < 0.0:
+		exposed = 0.0
+		var query: PhysicsRayQueryParameters3D = cover_selection._ray_query(threat + Vector3.UP * 0.8, point + Vector3.UP * 0.8)
+		var space := actor.get_world_3d().direct_space_state
+		for offset: Vector3 in [Vector3.ZERO, side, -side]:
+			query.to = point + Vector3.UP * 0.8 + offset
+			if space.intersect_ray(query).is_empty():
+				exposed += 1.0 / 3.0
+	var result := exposed * (1.0 + clampf(1.0 - direction.length() / _exposure_safe_distance, 0.0, 1.0))
 	_exposure_cache[key] = result
 	return result
 
@@ -210,8 +218,12 @@ func _reload_risk_aversion() -> float:
 	var missing_health: float = 1.0 - clampf(actor.health / maxf(actor.max_health, 1.0), 0.0, 1.0)
 	var confidence := pow(0.5, utility_threat_age_seconds / maxf(0.5, utility_threat_half_life_seconds))
 	# 看到/记得玩家都不等于正在受压，否则墙角每次重新目击都会立刻退回去。
-	# 暴露几何仍用于选路；避险倾向由真实来弹、受伤和已有伤势支撑。
-	return reload_risk_weight * confidence * (missing_health + recent_damage_pressure + nearby_shot_pressure)
+	# 暴露几何用于选路；除来弹和伤势外，当前可见目标的逼近也形成避险需求。
+	var close_pressure := 0.0
+	if sees_player and combat_type == CombatType.RANGED and last_known_position.is_finite():
+		var safe_distance: float = maxf(1.0, float(setting(&"tactics", &"ranged_min_distance", 4.0)))
+		close_pressure = 2.0 * clampf(1.0 - _horizontal_distance(last_known_position) / safe_distance, 0.0, 1.0)
+	return reload_risk_weight * (confidence * (missing_health + recent_damage_pressure + nearby_shot_pressure) + close_pressure)
 
 
 ## 旧换弹评分接口复用共同窗口；转移期间恢复火力需等到抵达。

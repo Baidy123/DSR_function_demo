@@ -11,6 +11,14 @@ enum AimMode { PROBABILITY, SPREAD_CONE }
 ## 选择本节点的射击算法；两种模式共用锁定、碰撞和伤害结算。
 @export_enum("旧概率模式:0", "新散布锥模式:1") var aim_mode: int = AimMode.SPREAD_CONE
 
+@export_group("受击准度")
+## 被有效命中时增加的散布半角（度），Debug 无敌也生效；0关闭。
+@export_range(0.0, 45.0, 0.1, "suffix:°") var damage_spread_degrees: float = 3.0
+## 未命中的敌方子弹从附近通过时增加的散布半角（度）；一发只应用一次。
+@export_range(0.0, 45.0, 0.1, "suffix:°") var nearby_shot_spread_degrees: float = 0.4
+## 真实弹道到玩家胸部的近弹检测距离；墙后延长线不参与。
+@export_range(0.0, 5.0, 0.1) var nearby_shot_radius: float = 1.5
+
 signal weapon_changed(data: WeaponData)
 signal shot_fired(hit: bool, stability: float)
 
@@ -38,6 +46,8 @@ var player_position_before_move: Vector3 = Vector3.ZERO
 
 func _ready() -> void:
 	debug_settings.changed.connect(_apply_debug_mode)
+	player.get_node("Health").hit_received.connect(_on_hit_received)
+	add_to_group("shot_listener")
 	equip_weapon(weapon)
 	_apply_debug_mode(debug_settings.enabled)
 
@@ -48,16 +58,19 @@ func _apply_debug_mode(enabled: bool) -> void:
 
 ## 装备组件调用此接口；切槽传 true 保留上一枪冷却，避免快速切枪绕过射速。
 ## Resource 只保存配置，不保存运行中的稳定度。
-func equip_weapon(data: WeaponData, preserve_cooldown: bool = false, ammo_state = null) -> void:
-	cancel_reload()
+## ammo_state 保留该枪的半程，resume_slow_reload 恢复该槽原有的快慢方式。
+func equip_weapon(data: WeaponData, preserve_cooldown: bool = false, ammo_state = null, resume_slow_reload: bool = false) -> void:
+	interrupt_reload()
 	weapon = data
 	ammo = ammo_state if ammo_state != null else Ammo.new(data)
+	_reload_started_sprinting = resume_slow_reload
 	accuracy = weapon.get_aim_settings(is_using_spread_cone()).initial if weapon != null else 0.0
 	accuracy_recovery_timer = 0.0
 	cancel_aim()
 	if not preserve_cooldown:
 		shot_cooldown = 0.0
 	last_result = ""
+	_resume_reload_if_ready()
 	weapon_changed.emit(weapon)
 
 
@@ -71,7 +84,7 @@ func _unhandled_input(event: InputEvent) -> void:
 		request_reload()
 		get_viewport().set_input_as_handled()
 		return
-	if ammo.is_reloading:
+	if ammo.is_reloading or ammo.reload_checkpoint > 0.0:
 		return
 	if player.is_in_dialogue or weapon == null or not can_combat():
 		return
@@ -85,9 +98,13 @@ func _unhandled_input(event: InputEvent) -> void:
 func request_reload() -> bool:
 	if weapon == null or player.is_dead() or player.is_in_dialogue or get_tree().paused:
 		return false
+	var resuming: bool = ammo.reload_checkpoint > 0.0
+	if resuming and player.is_sprinting and not _reload_started_sprinting:
+		return false
 	if not ammo.start_reload():
 		return false
-	_reload_started_sprinting = player.is_sprinting
+	_hold_reload_accuracy()
+	if not resuming: _reload_started_sprinting = player.is_sprinting
 	shot_requested = false
 	fire_held = false
 	return true
@@ -97,9 +114,48 @@ func cancel_reload() -> void:
 	ammo.cancel_reload()
 	_reload_started_sprinting = false
 
+## 奔跑或切枪只退回已经完成的半程；前半程取消后允许使用匣内余弹。
+func interrupt_reload() -> void:
+	if not ammo.is_reloading: return
+	var committed: bool = ammo.reload_checkpoint > 0.0 or ammo.reload_progress >= 0.5 or is_equal_approx(ammo.reload_progress, 0.5)
+	ammo.suspend_reload(0.5 if committed else 0.0)
+	shot_requested = false
+	fire_held = false
 
-func is_sprint_blocked() -> bool:
-	return ammo.is_reloading and not _reload_started_sprinting
+func _resume_reload_if_ready() -> void:
+	if ammo.reload_checkpoint > 0.0 and not ammo.is_reloading:
+		request_reload()
+
+func is_slow_reload() -> bool:
+	return _reload_started_sprinting
+
+func _hold_reload_accuracy() -> void:
+	accuracy = 0.0
+	accuracy_recovery_timer = maxf(0.0, weapon.get_aim_settings(is_using_spread_cone()).delay) if weapon != null else 0.0
+
+func _on_hit_received(damage: float) -> void:
+	if damage > 0.0: _apply_aim_disruption(damage_spread_degrees)
+
+func _apply_aim_disruption(degrees: float) -> void:
+	if weapon == null or player.is_dead() or not is_finite(degrees) or degrees <= 0.0: return
+	var minimum := clampf(weapon.min_spread_angle_degrees, 0.0, 45.0)
+	var maximum := clampf(weapon.max_spread_angle_degrees, minimum, 45.0)
+	var span := maximum - minimum
+	if span <= 0.0: return
+	# 检查器以角度调参，内部仍沿用已有稳定度和两种瞄准模式的恢复流程。
+	accuracy = clampf(accuracy - degrees / span, 0.0, 1.0)
+	accuracy_recovery_timer = maxf(accuracy_recovery_timer, weapon.get_aim_settings(is_using_spread_cone()).delay)
+
+func notice_shot(origin: Vector3, endpoint: Vector3) -> void:
+	if weapon == null or player.is_dead() or player.is_in_dialogue or get_tree().paused: return
+	var chest: Vector3 = player.global_position + Vector3.UP * 0.8
+	var closest := Geometry3D.get_closest_point_to_segment(chest, origin, endpoint)
+	if chest.distance_to(closest) > maxf(0.0, nearby_shot_radius): return
+	if chest.distance_squared_to(closest) > 0.000001:
+		var query := PhysicsRayQueryParameters3D.create(chest, closest, 1, [player.get_rid()])
+		query.hit_from_inside = true
+		if not player.get_world_3d().direct_space_state.intersect_ray(query).is_empty(): return
+	_apply_aim_disruption(nearby_shot_spread_degrees)
 
 
 func cancel_aim() -> void:
@@ -152,9 +208,15 @@ func begin_frame(delta: float, aim_pressed: bool) -> void:
 
 # Player 移动后调用，以实际位移判断移动惩罚，射击使用本帧的视线。
 func end_frame(delta: float, moving: bool) -> void:
+	var was_reloading: bool = ammo.is_reloading
 	if player.is_dead() or player.is_in_dialogue:
 		cancel_reload()
 	elif not get_tree().paused:
+		if player.is_sprinting and not _reload_started_sprinting:
+			interrupt_reload()
+		else:
+			_resume_reload_if_ready()
+		was_reloading = was_reloading or ammo.is_reloading or ammo.reload_checkpoint > 0.0
 		var reload_speed: float = sprint_reload_speed_multiplier if _reload_started_sprinting else 1.0
 		ammo.advance_reload(delta, reload_speed)
 	if not can_combat() or player.is_in_dialogue:
@@ -169,7 +231,10 @@ func end_frame(delta: float, moving: bool) -> void:
 
 		var settings: Dictionary = weapon.get_aim_settings(is_using_spread_cone())
 		var recovery: float = settings.recovery
-		if moving:
+		if was_reloading:
+			# 完成的这一帧也保持最低，下一帧才开始原恢复等待，避免大delta提前恢复。
+			_hold_reload_accuracy()
+		elif moving:
 			var displacement: Vector3 = player.global_position - player_position_before_move
 			var distance: float = Vector2(displacement.x, displacement.z).length()
 			# 两种模式都逐米累积；移动惩罚不能覆盖其他来源造成的更低稳定度。
@@ -329,7 +394,8 @@ func shoot() -> void:
 				$HUD/Reticle.hide()
 	# 使用实际命中点截断后的线段检测近处来弹；墙后的延长线不会触发。
 	for listener in get_tree().get_nodes_in_group("shot_listener"):
-		listener.notice_shot(origin, endpoint)
+		if listener.get_parent() != player and listener.get_parent() != last_shot_collider:
+			listener.notice_shot(origin, endpoint)
 	var settings: Dictionary = weapon.get_aim_settings(is_using_spread_cone())
 	accuracy = maxf(minf(accuracy, settings.shot_floor), accuracy - settings.shot_penalty)
 	accuracy_recovery_timer = settings.delay

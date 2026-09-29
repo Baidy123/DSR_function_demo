@@ -21,11 +21,11 @@ func collect_candidates(visible: bool) -> Array[Dictionary]:
 			if not context.spatial.cover_valid(destination) or context.is_utility_destination_blocked(destination.hide): continue
 			if context.avoid_position.is_finite() and context._horizontal_distance_between(destination.hide, context.avoid_position) < 0.9: continue
 			destination.path = selection._path_to(actor.global_position, destination.hide)
-			var moving: Dictionary = context.spatial.assess_route(context, destination.path, threat, transfer.run_speed_multiplier, seconds if actor.ammo.is_reloading else 0.0)
+			var moving: Dictionary = context.spatial.assess_cover_route(destination.path, threat, transfer.run_speed_multiplier, seconds if actor.ammo.is_reloading else 0.0)
 			var exposed: float = moving.exposure + context._reload_exposure(destination.hide, threat) * maxf(0.0, horizon - moving.seconds)
 			var information: float = horizon if not visible else maxf(0.0, horizon - moving.seconds)
 			if not actor.ammo.is_reloading: result.append(option(destination, moving.seconds + seconds, exposed, information, &"after_cover"))
-			var walking: Dictionary = context.spatial.assess_route(context, destination.path, threat, transfer.run_speed_multiplier, seconds)
+			var walking: Dictionary = context.spatial.assess_cover_route(destination.path, threat, transfer.run_speed_multiplier, seconds)
 			var walking_exposure: float = walking.exposure + context._reload_exposure(destination.hide, threat) * maxf(0.0, horizon - walking.seconds)
 			result.append(option(destination, maxf(walking.seconds, seconds), walking_exposure, horizon if not visible else maxf(0.0, horizon - walking.seconds), &"on_way"))
 	for candidate in result:
@@ -70,6 +70,15 @@ func tick(delta: float, visible: bool) -> Dictionary:
 
 func reset() -> void:
 	transfer.reset()
+
+func state_label() -> String:
+	var travelling: bool = not plan.get("destination", {}).is_empty() and transfer.phase != transfer.Phase.HIDE
+	if actor.ammo.is_reloading:
+		# 身体显示实际进度，此处只描述与换弹同时进行的移动。
+		return "前往掩体" if travelling else "原地停留"
+	if actor.ammo.magazine_rounds > 0:
+		return "换弹完成，继续前往掩体" if travelling else "换弹完成"
+	return "前往掩体，准备换弹" if travelling else "准备换弹"
 
 func on_event(event: StringName, _data: Dictionary) -> void:
 	if event == &"damage" and _running and not plan.destination.is_empty():

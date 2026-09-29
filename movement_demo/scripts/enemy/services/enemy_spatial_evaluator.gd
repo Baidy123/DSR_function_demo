@@ -24,12 +24,26 @@ var _route_cache: Dictionary = {}
 func register(action) -> void:
 	for job in jobs:
 		if job.channel == action.evaluation_channel():
+			if job.owners.any(func(owner): return owner.get_ref() == action): return
 			job.owners.append(weakref(action))
 			return
 	jobs.append({"owner": weakref(action), "owners": [weakref(action)], "channel": action.evaluation_channel(), "points": [], "cursor": 0, "priority": 0, "priority_cursor": 0, "completed_passes": 0, "cache": []})
 	_position = Vector3.INF
 
+## 显式撤销注册，不能依靠旧实例是否还被调试器或其他观察者持有来决定生命周期。
+func unregister(action) -> void:
+	for index in range(jobs.size() - 1, -1, -1):
+		var job := jobs[index]
+		job.owners = job.owners.filter(func(owner): return owner.get_ref() != null and owner.get_ref() != action)
+		if job.owners.is_empty():
+			jobs.remove_at(index)
+		else:
+			job.owner = job.owners[0]
+	_position = Vector3.INF
+
 func reset_evaluation() -> void:
+	_route_frame = -1
+	_route_cache.clear()
 	for job in jobs:
 		job.cache.clear()
 		job.points.clear()
@@ -107,7 +121,7 @@ func advance_evaluation() -> void:
 			job.completed_passes += 1
 			completed_passes += 1
 		if not assessment.is_empty():
-			_store_candidate(job.cache, assessment.destination, assessment.cost)
+			_store_candidate(job.cache, assessment.destination, assessment.cost, assessment)
 		last_evaluated_count += 1
 		total_evaluated_count += 1
 	last_evaluation_usec = Time.get_ticks_usec() - started
@@ -116,6 +130,14 @@ func destinations(action) -> Array:
 	for job in jobs:
 		if job.channel == action.evaluation_channel():
 			return _cached_destinations(job.cache)
+	return []
+
+## 已在预算内完成的几何结果；候选收集只重算共同代价，提交执行时再精确复核。
+func assessments(action) -> Array:
+	for job in jobs:
+		if job.channel == action.evaluation_channel():
+			_prune_cache(job.cache)
+			return job.cache.map(func(entry): return entry.assessment)
 	return []
 
 func cached_candidate_count() -> int:
@@ -141,7 +163,27 @@ func cover_valid(destination: Dictionary) -> bool:
 	var threat: Vector3 = context._known_reload_threat()
 	if not threat.is_finite() or not is_instance_valid(destination.get("body")) or not context.is_position_free(destination.hide):
 		return false
-	return context.cover_selection._center_hidden_by_cover(destination.hide, threat + Vector3.UP * 0.8, destination.body) and not context.cover_selection._path_to(context.actor.global_position, destination.hide).is_empty()
+	if not context.cover_selection._center_hidden_by_cover(destination.hide, threat + Vector3.UP * 0.8, destination.body):
+		return false
+	var path: PackedVector3Array = context.cover_selection._path_to(context.actor.global_position, destination.hide)
+	return cover_route_safe(path, threat)
+
+## 撤向掩体不能穿过已知威胁的近身范围；已在近处时仍允许向外脱离。
+## 只使用感知/受击记忆，不查询隐藏玩家的实时坐标。
+func cover_route_safe(path: PackedVector3Array, threat: Vector3) -> bool:
+	if path.is_empty(): return false
+	var start_distance: float = context._horizontal_distance_between(context.actor.global_position, threat)
+	var nearest: float = context.cover_selection._minimum_path_distance_to_threat(path, threat)
+	return nearest >= minf(1.5, start_distance) - 0.1
+
+func assess_cover_route(path: PackedVector3Array, threat: Vector3, multiplier: float, reload_seconds: float, evaluate_fire: bool = false) -> Dictionary:
+	var route := assess_route(context, path, threat, multiplier, reload_seconds, evaluate_fire).duplicate()
+	var start_distance: float = context._horizontal_distance_between(context.actor.global_position, threat)
+	var nearest: float = context.cover_selection._minimum_path_distance_to_threat(path, threat)
+	# 把主动接近威胁折算为额外暴露时间，仍由共同风险权重决定是否值得。
+	var approach := clampf((start_distance - nearest) / maxf(1.5, start_distance), 0.0, 1.0)
+	route.exposure += approach * minf(route.seconds, context.utility_horizon_seconds)
+	return route
 
 func cover_points() -> Array:
 	var threat: Vector3 = context._known_reload_threat()
@@ -161,7 +203,7 @@ func assess_cover_point(destination: Dictionary) -> Dictionary:
 	if selection.require_assigned_cover and selection._cover_quality(destination.hide, threat + Vector3.UP * 0.8, destination.body) < selection.minimum_cover_quality:
 		return {}
 	var path: PackedVector3Array = selection._path_to(context.actor.global_position, destination.hide)
-	var route := assess_route(context, path, threat, float(context.setting(&"cover", &"run_speed_multiplier", 2.0)), _reload_seconds(context))
+	var route := assess_cover_route(path, threat, float(context.setting(&"cover", &"run_speed_multiplier", 2.0)), _reload_seconds(context))
 	var horizon: float = context.utility_horizon_seconds
 	var exposure: float = route.exposure + _exposure(context, destination.hide, threat) * maxf(0.0, horizon - route.seconds)
 	var current: Dictionary = destination.duplicate()
@@ -169,13 +211,13 @@ func assess_cover_point(destination: Dictionary) -> Dictionary:
 	return {"destination": current, "cost": score(horizon, exposure, horizon if not context.sees_player else maxf(0.0, horizon - route.seconds))}
 
 
-func _store_candidate(cache: Array, destination: Dictionary, cost: float) -> void:
+func _store_candidate(cache: Array, destination: Dictionary, cost: float, assessment: Dictionary = {}) -> void:
 	var point: Vector3 = destination.get("hide", destination.get("position", Vector3.INF))
 	for index in range(cache.size() - 1, -1, -1):
 		var previous: Dictionary = cache[index].destination
 		if previous.get("body") == destination.get("body") and previous.get("hide", previous.get("position", Vector3.INF)).is_equal_approx(point):
 			cache.remove_at(index)
-	cache.append({"destination": destination, "cost": cost, "time": Time.get_ticks_msec()})
+	cache.append({"destination": destination, "cost": cost, "assessment": assessment, "time": Time.get_ticks_msec()})
 	cache.sort_custom(func(a: Dictionary, b: Dictionary): return a.cost < b.cost)
 	if cache.size() > CACHED_DESTINATIONS:
 		cache.resize(CACHED_DESTINATIONS)
@@ -217,8 +259,10 @@ func assess_route(ai, path: PackedVector3Array, threat: Vector3, multiplier: flo
 	if frame != _route_frame:
 		_route_frame = frame
 		_route_cache.clear()
-	var key := [path, threat, multiplier, reload_seconds, ai.actor.global_position, ai.actor.move_speed, ai.utility_horizon_seconds]
-	if not evaluate_fire and _route_cache.has(key): return _route_cache[key]
+	var fire_state: Array = [ai.fire.fire_reaction_elapsed, ai.fire.fire_reaction_seconds, ai.fire.fire_pause_remaining, ai.actor.shot_cooldown, ai.fire.fire_while_moving,
+		ai.perception.sight_distance, ai.perception.close_awareness_radius, ai.actor.weapon, ai.actor.weapon.fire_range if ai.actor.weapon != null else 0.0, ai.actor.can_use_firearms()] if evaluate_fire else []
+	var key := [path, threat, multiplier, reload_seconds, ai.actor.global_position, ai.actor.move_speed, ai.utility_horizon_seconds, evaluate_fire, fire_state]
+	if _route_cache.has(key): return _route_cache[key]
 	var speed: float = maxf(0.01, ai.actor.move_speed * maxf(0.0, multiplier))
 	var walk_speed: float = minf(speed, maxf(0.01, ai.actor.move_speed))
 	var seconds: float = 0.0
@@ -226,8 +270,14 @@ func assess_route(ai, path: PackedVector3Array, threat: Vector3, multiplier: flo
 	var fire_seconds: float = 0.0
 	var keep_sight: bool = evaluate_fire and threat.is_finite() and ai.actor.can_use_firearms() and ai.fire.fire_while_moving
 	var ready: float = maxf(ai.actor.shot_cooldown, maxf(ai.fire.fire_pause_remaining, ai.fire.fire_reaction_seconds - ai.fire.fire_reaction_elapsed)) if evaluate_fire else 0.0
+	ready = maxf(ready, reload_seconds)
 	var target := threat + Vector3.UP * 0.8
 	var previous: Vector3 = ai.actor.global_position
+	var horizon: float = ai.utility_horizon_seconds
+	var actor_height: float = ai.actor.global_position.y
+	var shot_offset: Vector3 = ai.actor.get_shot_origin() - ai.actor.global_position if evaluate_fire else Vector3.ZERO
+	var sight_distance: float = maxf(ai.perception.sight_distance, ai.perception.close_awareness_radius) if evaluate_fire else 0.0
+	var fire_range: float = ai.actor.weapon.fire_range if keep_sight else 0.0
 	for point: Vector3 in path:
 		var length: float = ai._horizontal_distance_between(previous, point)
 		var samples: int = maxi(1, ceili(length / 0.5))
@@ -235,23 +285,23 @@ func assess_route(ai, path: PackedVector3Array, threat: Vector3, multiplier: flo
 			var distance: float = length / samples
 			var slow_distance: float = minf(distance, maxf(0.0, reload_seconds - seconds) * walk_speed)
 			var duration: float = slow_distance / walk_speed + (distance - slow_distance) / speed
-			var observed: float = minf(duration, maxf(0.0, ai.utility_horizon_seconds - seconds))
+			var observed: float = minf(duration, maxf(0.0, horizon - seconds))
 			if observed > 0.0:
 				var sample: Vector3 = previous.lerp(point, (float(index) + 0.5) / samples)
 				exposure += _exposure(ai, sample, threat) * observed
 				if keep_sight:
 					# 导航点悬在地面上方；射界必须按角色实际枪口高度检查。
-					sample.y = ai.actor.global_position.y
-					var origin: Vector3 = sample + ai.actor.get_shot_origin() - ai.actor.global_position
-					keep_sight = (sample.distance_to(threat) <= maxf(ai.perception.sight_distance, ai.perception.close_awareness_radius)
+					sample.y = actor_height
+					var origin: Vector3 = sample + shot_offset
+					keep_sight = (sample.distance_to(threat) <= sight_distance
 						and ai.cover_selection.has_clear_line(origin, target))
 					# 主动退入墙后即失视，不能预支之后绕出墙另一端的火力。
-					if keep_sight and origin.distance_to(target) <= ai.actor.weapon.fire_range and ai.fire.has_clear_firing_lane(origin, target - origin, origin.distance_to(target)):
+					if keep_sight and origin.distance_to(target) <= fire_range and ai.fire.has_clear_firing_lane(origin, target - origin, origin.distance_to(target)):
 						fire_seconds += maxf(0.0, seconds + observed - maxf(seconds, ready))
 			seconds += duration
 		previous = point
 	var result := {"seconds": seconds, "exposure": exposure, "fire_seconds": fire_seconds}
-	if not evaluate_fire: _route_cache[key] = result
+	_route_cache[key] = result
 	return result
 
 

@@ -1149,7 +1149,12 @@ func cancel(reason: StringName = &"switch") -> void:
 	if reason != &"switch": reset()
 
 func can_interrupt(next: Dictionary, visible: bool) -> bool:
-	return visible or next.get("urgent", false) or not has_committed_segment()
+	if visible or next.get("urgent", false): return true
+	var committed := has_committed_segment()
+	# 搜索段边界允许换方案，但同一份旧威胁不能把调查重新送回躲藏。
+	# 新受伤/明显近弹通过 release_segment 解锁撤离，换弹仍可立即接管。
+	if next.get("conceals", false) and not _segment_released: return false
+	return not committed
 
 func hold_released() -> bool:
 	return is_segment_released()

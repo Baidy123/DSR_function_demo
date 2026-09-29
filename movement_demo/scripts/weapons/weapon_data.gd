@@ -37,7 +37,7 @@ enum AmmoType { RIFLE, PISTOL, SMG, SHOTGUN }
 @export_group("概率模式参数（百分比）")
 ## 初始直射中心概率：0.5表示50%；松开瞄准也将概率限制到不超过本值。
 @export_range(0.0, 1.0, 0.01) var initial_accuracy: float = 0.5
-## 从初始概率恢复到100%需要的秒数，不含恢复延迟。
+## 从初始概率恢复到100%需要的秒数，不含恢复延迟；初始为100%时按从0到100%计算。
 @export_range(0.1, 10.0, 0.1) var stabilize_seconds: float = 2.0
 ## 玩家移动惩罚最多将中心概率降到此值：0.35表示35%；不会抬高已经更低的概率。
 @export_range(0.0, 1.0, 0.01) var moving_accuracy_cap: float = 0.35
@@ -90,9 +90,12 @@ enum AmmoType { RIFLE, PISTOL, SMG, SHOTGUN }
 ## 两套输入在这里换算，战斗脚本继续共用惩罚、等待、恢复流程。
 func get_aim_settings(use_spread: bool) -> Dictionary:
 	if not use_spread:
+		# 初始100%也会因换弹/受伤下降，恢复速度不能因此永久变成零。
+		var recovery_span := 1.0 - clampf(initial_accuracy, 0.0, 1.0)
+		if is_zero_approx(recovery_span): recovery_span = 1.0
 		return {
 			"initial": initial_accuracy,
-			"recovery": (1.0 - initial_accuracy) / maxf(stabilize_seconds, 0.01),
+			"recovery": recovery_span / maxf(stabilize_seconds, 0.01),
 			"moving_cap": moving_accuracy_cap,
 			"player_move_loss": maxf(0.0, player_move_accuracy_loss_per_meter),
 			"shot_penalty": shot_accuracy_penalty,
