@@ -8,6 +8,11 @@ var player: Node3D
 var agent: NavigationAgent3D
 var arena_zone: Area3D
 var navigation_region: NavigationRegion3D
+var arena: Node3D
+var _spawn_position := Vector3.ZERO
+var _spawn_checked := false
+var _spawn_valid := false
+var _environment_warning := ""
 var perception: Node
 var cover_selection: Node
 var fire
@@ -37,8 +42,7 @@ var reload_risk_weight: float:
 func setup(body: CharacterBody3D, perception_node: Node, selection_node: Node) -> void:
 	actor = body
 	agent = body.get_node("NavigationAgent3D")
-	arena_zone = body.get_node("../CombatZone")
-	navigation_region = body.get_node("../NavigationRegion3D")
+	refresh_environment()
 	player = body.get_tree().get_first_node_in_group("player")
 	perception = perception_node
 	cover_selection = selection_node
@@ -55,7 +59,71 @@ func can_use_action(id: StringName) -> bool:
 	return permitted.has(id)
 
 func is_arena_active() -> bool:
-	return is_instance_valid(player) and arena_zone.overlaps_body(player)
+	return environment_ready() and is_instance_valid(player) and player.is_inside_tree() and arena_zone.overlaps_body(player)
+
+
+## 只向父级寻找最近的竞技场，允许中间有 Enemies 等整理容器。
+func refresh_environment() -> bool:
+	var owner_arena := actor.get_parent()
+	while owner_arena != null and not owner_arena.has_method("enemy_environment"):
+		owner_arena = owner_arena.get_parent()
+	var environment: Dictionary = owner_arena.enemy_environment() if owner_arena != null else {}
+	var zone = environment.get("zone") as Area3D
+	var navigation = environment.get("navigation") as NavigationRegion3D
+	var changed: bool = arena != owner_arena or arena_zone != zone or navigation_region != navigation
+	if changed:
+		detach_environment()
+		arena = owner_arena
+		arena_zone = zone
+		navigation_region = navigation
+		_spawn_position = actor.global_position
+		_spawn_checked = false
+		_environment_warning = ""
+		if arena != null: arena.register_enemy(actor)
+	if not is_instance_valid(player) or not player.is_inside_tree():
+		player = actor.get_tree().get_first_node_in_group("player")
+	return changed
+
+
+func detach_environment() -> void:
+	if is_instance_valid(arena): arena.unregister_enemy(actor)
+	arena = null
+	arena_zone = null
+	navigation_region = null
+	_spawn_checked = false
+	_spawn_valid = false
+
+
+func environment_ready() -> bool:
+	if not is_instance_valid(arena_zone) or not is_instance_valid(navigation_region):
+		_warn_environment("需要放在带 CombatZone 和 NavigationRegion3D 的竞技场内")
+		return false
+	if not navigation_region.is_inside_tree() or not navigation_region.enabled or navigation_region.navigation_mesh == null:
+		_spawn_checked = false
+		return false
+	var map := navigation_region.get_navigation_map()
+	if not map.is_valid() or NavigationServer3D.map_get_iteration_id(map) == 0:
+		return false
+	# 同一导航地图已同步，不代表刚拖入/重新挂载的区域已经完成同步。
+	if NavigationServer3D.region_get_iteration_id(navigation_region.get_rid()) == 0:
+		return false
+	if agent.get_navigation_map() != map: agent.set_navigation_map(map)
+	if not _spawn_checked:
+		var shape := arena_zone.get_node_or_null("CollisionShape3D") as CollisionShape3D
+		var inside := false
+		if shape != null and not shape.disabled and shape.shape is BoxShape3D:
+			inside = AABB(-shape.shape.size * 0.5, shape.shape.size).has_point(shape.to_local(_spawn_position + Vector3.UP * 0.8))
+		var point := NavigationServer3D.region_get_closest_point(navigation_region.get_rid(), _spawn_position)
+		_spawn_valid = inside and _horizontal_distance_between(point, _spawn_position) <= 0.05 and absf(point.y - _spawn_position.y) <= 0.5 and is_position_free(_spawn_position)
+		_spawn_checked = true
+		if not _spawn_valid: _warn_environment("出生点必须在本竞技场战斗区域及可站立导航范围内")
+	return _spawn_valid
+
+
+func _warn_environment(message: String) -> void:
+	if _environment_warning == message: return
+	_environment_warning = message
+	push_warning("%s：%s；敌人保持待命。" % [actor.get_path(), message])
 
 func invalidate_utility() -> void:
 	reevaluate.emit()

@@ -14,6 +14,8 @@ var _utility_elapsed := 0.0
 var _configuration := 0
 var _implementations: Dictionary = {}
 var _enabled_last_frame := false
+var _restoring_environment := false
+var _physics_was_enabled := true
 var frame_costs: Dictionary = {}
 @onready var actor: CharacterBody3D = get_parent()
 @onready var unit_type: Node = get_node("../UnitType")
@@ -115,6 +117,9 @@ func refresh_configuration(force: bool = false) -> void:
 	invalidate_utility()
 
 func _physics_process(delta: float) -> void:
+	if _restoring_environment: return
+	if context.refresh_environment():
+		_reset_decisions()
 	var stamp := Time.get_ticks_usec()
 	refresh_configuration()
 	frame_costs.configuration = Time.get_ticks_usec() - stamp
@@ -272,13 +277,34 @@ func _update_label() -> void:
 	actor.set_status_text("%s：%s\n生命 %d / %d" % [name, label, ceili(actor.health), ceili(actor.max_health)])
 
 func _exit_tree() -> void:
+	_physics_was_enabled = is_physics_processing()
+	context.detach_environment()
 	# 打破公共 RefCounted 服务之间的所有权环；运行中实例由 actions 唯一持有。
 	if context.fire != null:
-		context.fire.fire_decision.context = null
-		context.fire.context = null
+		context.fire.detach()
+	for action in actions.values():
+		action.cancel(&"exit_tree")
+		context.spatial.unregister(action)
 	if context.spatial != null: context.spatial.context = null
 	current_action = null
 	actions.clear()
+
+
+func _enter_tree() -> void:
+	if context.fire != null:
+		_restoring_environment = true
+		call_deferred("_resume_after_reparent")
+
+
+func _resume_after_reparent() -> void:
+	if not is_inside_tree(): return
+	context.refresh_environment()
+	context.fire.setup(context)
+	context.spatial.context = context
+	refresh_configuration(true)
+	_reset_decisions()
+	_restoring_environment = false
+	set_physics_process(_physics_was_enabled)
 
 var state: int:
 	get: return context.state

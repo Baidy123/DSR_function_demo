@@ -22,6 +22,8 @@ func _run() -> void:
 	player.global_position = enemy.global_position + Vector3(0, 0, 4.8)
 	enemy.look_at(player.global_position)
 	var weapon := WeaponData.new()
+	# 本项抽样1102发；有限弹匣不能让大部分样本复用上一枪的结果。
+	weapon.magazine_capacity = 1200
 	weapon.initial_accuracy = 0.4
 	weapon.shot_accuracy_penalty = 0.0
 	weapon.accuracy_recovery_delay = 10.0

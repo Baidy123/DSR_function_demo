@@ -41,11 +41,11 @@ func _run() -> void:
 	check(ai.cover_selection._path_to(LIVE_POSITION, LIVE_POSITION).is_empty(), "现场脚下偏出导航约0.098米，严格路径检查失败")
 	ai.actions[&"search"].begin_search()
 	ai.actions[&"search"].search_pause_timer = 0.183333
-	var remaining: int = ai.actions[&"search"].search_sweep_points.size()
+	var remaining: int = ai.actions[&"search"].coverage.pending.size()
 	check(remaining > 0, "脚下偏出导航但区域内仍存在可达搜索点")
 	var option := search_option(ai)
 	check(not option.is_empty(), "原地观察不依赖到脚下的导航路径，搜索仍能参选")
-	check(ai.actions[&"search"].search_pause_timer == 0.183333 and ai.actions[&"search"].search_sweep_points.size() == remaining, "候选评估不推进观察或消耗搜索点")
+	check(ai.actions[&"search"].search_pause_timer == 0.183333 and ai.actions[&"search"].coverage.pending.size() == remaining, "候选评估不推进观察或消耗搜索点")
 	# 原场景HIDE，Utility只剩掩体时无法让观察计时继续。
 	for frame in range(60):
 		await physics_frame
@@ -80,7 +80,7 @@ func _run() -> void:
 	if not option.is_empty():
 		ai._start_utility_option(option, false)
 		preload("res://tests/enemy/enemy_fire_fixture.gd").tick_selected(ai, 0.01, false)
-		check(ai.actions[&"search"].investigation_phase == ai.State.SEARCH and not ai.actions[&"search"].search_sweep_points.is_empty(), "执行时生成记忆位置附近的可达区域")
+		check(ai.actions[&"search"].investigation_phase == ai.State.SEARCH and not ai.actions[&"search"].coverage.pending.is_empty(), "执行时生成记忆位置附近的可达区域")
 	# 评分用的是旧非法记忆，但启动动作可能已经生成有效的轨迹预测点。
 	var found_track := false
 	for direction: Vector3 in [Vector3.RIGHT, Vector3.BACK, Vector3.FORWARD, Vector3.LEFT]:
@@ -107,7 +107,7 @@ func _run() -> void:
 	ai.actions[&"search"].search_current_target_active = true
 	ai.actions[&"search"].search_is_pausing = false
 	var coverage: float = ai.actions[&"search"].get_search_coverage()
-	remaining = ai.actions[&"search"].search_sweep_points.size()
+	remaining = ai.actions[&"search"].coverage.pending.size()
 	ai.utility_current = {"id": &"search", "destination": {}, "cost": 0.0}
 	option = search_option(ai)
 	check(not option.is_empty(), "正在执行的目标失效时搜索仍有恢复候选")
@@ -116,7 +116,7 @@ func _run() -> void:
 		ai.utility_current = option
 		preload("res://tests/enemy/enemy_fire_fixture.gd").tick_selected(ai, 0.01, false)
 		check(ai.actions[&"search"].search_current_target != INVALID_MEMORY and ai.actions[&"search"].search_current_target_active, "同一搜索动作内切换到可达替代目标")
-		check(ai.actions[&"search"].get_search_coverage() == coverage and ai.actions[&"search"].search_sweep_points.size() < remaining, "失败点不计覆盖且保留其余搜索进度")
+		check(ai.actions[&"search"].get_search_coverage() == coverage and ai.actions[&"search"].coverage.pending.size() < remaining, "失败点不计覆盖且保留其余搜索进度")
 		check(not ai.cover_selection._path_to(enemy.global_position, ai.actions[&"search"].search_current_target).is_empty(), "替代目标通过原有严格导航校验")
 	var start: Vector3 = enemy.global_position
 	for frame in range(240):
@@ -125,9 +125,9 @@ func _run() -> void:
 	check(enemy.global_position.distance_to(start) > 0.6, "完整AI从现场位置实际离开，继续寻找")
 	# 真正无区域可搜时应结束，而不是永久保留恢复动作。
 	ai.actions[&"search"].begin_search()
-	ai.actions[&"search"].search_sweep_points.clear()
-	ai.actions[&"search"].search_uncovered_points.assign([INVALID_MEMORY])
-	ai.actions[&"search"].search_sample_count = 1
+	ai.actions[&"search"].coverage.pending.clear()
+	ai.actions[&"search"].coverage.uncovered.assign([INVALID_MEMORY])
+	ai.actions[&"search"].coverage.sample_count = 1
 	ai.actions[&"search"].search_current_target = INVALID_MEMORY
 	ai.actions[&"search"].search_current_target_active = true
 	ai.actions[&"search"].search_is_pausing = false

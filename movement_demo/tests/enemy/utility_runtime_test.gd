@@ -68,7 +68,7 @@ func _run() -> void:
 		ai._start_utility_option({"id": &"engage", "destination": destination, "cost": 0.0}, true)
 		ai.current_action.tick(1.0 / 60.0, true)
 		check(ai.agent.target_position.is_equal_approx(destination.position), "普通接敌执行准确的评分目的地")
-	ai.unit_type.combat_type = ai.CombatType.MELEE
+	ai.unit_type.profile = load("res://resources/enemy/units/melee.tres").duplicate(true)
 	ai.refresh_configuration(true)
 	ai._start_utility_option({"id": &"melee_engage", "destination": {}, "cost": 0.0}, true)
 	ai.last_known_position += Vector3.RIGHT

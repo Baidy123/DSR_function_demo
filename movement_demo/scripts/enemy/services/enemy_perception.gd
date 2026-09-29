@@ -23,7 +23,7 @@ var ai:
 
 
 func can_see_player() -> bool:
-	if not is_instance_valid(ai.player) or not ai.arena_zone.overlaps_body(ai.player):
+	if not ai.is_arena_active():
 		return false
 
 	var offset: Vector3 = ai.player.global_position - actor.global_position

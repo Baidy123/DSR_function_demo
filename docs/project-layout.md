@@ -7,7 +7,8 @@ movement_demo/
 ├── project.godot          Godot 工程入口
 ├── scenes/
 │   ├── main.tscn          主场景，F5 默认入口
-│   ├── arena.tscn         竞技场与敌人配置
+│   ├── arena.tscn         战斗区域与敌人实例
+│   ├── enemy/             可直接拖入竞技场的 enemy.tscn
 │   ├── player/            玩家战斗、生命与武器槽场景
 │   ├── world/             掩体、训练区域和墙体场景
 │   └── ui/                对话界面场景
@@ -15,7 +16,7 @@ movement_demo/
 │   ├── enemy/             身体、AI 协调、装配与评分入口
 │   │   ├── actions/       默认行为、战术动作和共用动作执行组件
 │   │   ├── config/        兵种、训练、动作定义及参数资源脚本
-│   │   └── services/      感知、记忆、上下文、射击和空间查询
+│   │   └── services/      感知、记忆、上下文、射击、搜索提示/覆盖和空间查询
 │   ├── player/            玩家移动、战斗、生命和武器槽
 │   ├── weapons/           武器数据与弹药执行
 │   ├── world/             掩体、训练靶、区域、门和 NPC

@@ -19,7 +19,8 @@ func _run() -> void:
 	var enemy = scene.get_node("Arena/Enemy")
 	var ai = enemy.get_node("AI")
 	var player = scene.get_node("Player")
-	var action = ai.tactics.attack_position
+	preload("res://tests/enemy/enemy_fire_fixture.gd").set_training_action(ai, &"attack_position", true)
+	var action = ai.actions[&"attack_position"]
 	ai.set_physics_process(false)
 	player.set_physics_process(false)
 	enemy.shooting_enabled = false

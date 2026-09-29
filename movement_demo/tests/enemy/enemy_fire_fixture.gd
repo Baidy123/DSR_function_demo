@@ -63,18 +63,18 @@ static func _configure_common(enemy: Node) -> void:
 	# 固定本测试所需权限，不让用户在检查器增删动作影响射击流程验证。
 	unit.profile = preload("res://resources/enemy/units/ranged.tres").duplicate(true)
 	training.profile.selected_tactics.assign([&"cover", &"covering_retreat"])
-	training.tactics_fire_while_moving = true
-	training.tactics_fire_reaction_seconds = 0.5
-	training.tactics_burst_shot_count = 3
-	training.tactics_burst_pause_seconds = 1.0
-	training.tactics_fire_stability_target = 0.7
-	training.tactics_ranged_min_distance = 4.0
-	training.tactics_ranged_max_distance = 6.0
-	training.perception_sight_distance = 10.0
-	training.perception_sight_angle_degrees = 120.0
-	training.fire_decision_recovery_gain_weight = 0.35
-	training.fire_decision_close_range_weight = 0.35
-	training.fire_decision_wait_pressure_per_second = 0.45
+	training.profile.set_setting(&"tactics", &"fire_while_moving", true)
+	training.profile.set_setting(&"tactics", &"fire_reaction_seconds", 0.5)
+	training.profile.set_setting(&"tactics", &"burst_shot_count", 3)
+	training.profile.set_setting(&"tactics", &"burst_pause_seconds", 1.0)
+	training.profile.set_setting(&"tactics", &"fire_stability_target", 0.7)
+	training.profile.set_setting(&"tactics", &"ranged_min_distance", 4.0)
+	training.profile.set_setting(&"tactics", &"ranged_max_distance", 6.0)
+	training.profile.set_setting(&"perception", &"sight_distance", 10.0)
+	training.profile.set_setting(&"perception", &"sight_angle_degrees", 120.0)
+	training.profile.set_setting(&"fire_decision", &"recovery_gain_weight", 0.35)
+	training.profile.set_setting(&"fire_decision", &"close_range_weight", 0.35)
+	training.profile.set_setting(&"fire_decision", &"wait_pressure_per_second", 0.45)
 	enemy.shooting_enabled = true
 	enemy.aim_turn_speed_degrees = 90.0
 	ai.refresh_configuration(true)

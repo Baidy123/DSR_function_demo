@@ -6,6 +6,17 @@ import subprocess
 
 TESTS = [
     "enemy_modular_contract_test",
+    "enemy_configuration_cleanup_test",
+    "enemy_scene_test",
+    "search_components_test",
+    "search_area_coverage_test",
+    "enemy_firing_lane_test",
+    "enemy_basic_capabilities_test",
+    "enemy_reload_test",
+    "attack_hold_regression_test",
+    "attack_points_test",
+    "enemy_weapon_test",
+    "enemy_probability_test",
     "enemy_optional_removal_test",
     "enemy_configuration_lifecycle_test",
     "reload_approach_timing_test",

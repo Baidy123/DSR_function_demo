@@ -20,16 +20,6 @@ func _init() -> void:
 		attack_refinement_levels = value
 		mark_override(&"attack_refinement_levels")
 
-## 掩体选位：朝远离威胁方向移动会得到奖励，朝威胁方向冲会被强烈惩罚。
-@export_range(0.0, 10.0, 0.1) var away_from_threat_weight: float = 4.0:
-	set(value):
-		away_from_threat_weight = value
-		mark_override(&"away_from_threat_weight")
-## 路径或掩体位置比当前位置更靠近威胁时的惩罚。
-@export_range(0.0, 10.0, 0.1) var closer_to_threat_weight: float = 5.0:
-	set(value):
-		closer_to_threat_weight = value
-		mark_override(&"closer_to_threat_weight")
 ## 开启时额外使用所属掩体的质量门槛和评分；关闭时要求身体中心及两侧被静态墙遮挡。
 ## 两种模式都必须先位于威胁对侧，且中心射线被当前掩体挡住；不再手动指定 Cover Body。
 @export var require_assigned_cover: bool = true:
@@ -46,11 +36,6 @@ func _init() -> void:
 	set(value):
 		minimum_cover_quality = value
 		mark_override(&"minimum_cover_quality")
-## 掩护质量越高，越优先选择。
-@export_range(0.0, 10.0, 0.1) var cover_quality_weight: float = 3.0:
-	set(value):
-		cover_quality_weight = value
-		mark_override(&"cover_quality_weight")
 ## 调试时打印区域候选数量、合格数量及最终选择的掩体和位置。
 @export var debug_cover_selection: bool = true:
 	set(value):

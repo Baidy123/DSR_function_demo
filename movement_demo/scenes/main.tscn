@@ -190,7 +190,6 @@ starting_smg_ammo = 120
 starting_shotgun_ammo = 24
 
 [node name="Health" parent="Player" unique_id=550391103 instance=ExtResource("12_health")]
-max_health = 10000.0
 
 [node name="NPC" type="StaticBody3D" parent="." unique_id=226967711]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -7.883234, 0, 3.7864947)

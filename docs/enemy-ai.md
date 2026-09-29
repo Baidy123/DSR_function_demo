@@ -6,7 +6,7 @@
 
 ## 在 Godot 中配置敌人
 
-1. 打开 `movement_demo/scenes/main.tscn`，选择 `Arena/Enemy/UnitType`。
+1. 打开 `movement_demo/scenes/arena.tscn`，选择 `Enemy/UnitType`。敌人已是独立场景实例；如需展开子节点，右键 Enemy 启用“可编辑子节点”。主场景中的路径仍为 `Arena/Enemy/UnitType`。
 2. `profile` 是可保存、复制和复用的 `EnemyUnitProfile` 资源。现成模板位于 `resources/enemy/units/ranged.tres` 和 `resources/enemy/units/melee.tres`。
 3. 展开兵种资源，可以分别配置“默认行为”和“战术动作”。默认行为仍是独立模块；模板只是预先填好的组合。
 4. 选择同一敌人的 `Training`，其 `profile` 是可复用的 `EnemyTrainingProfile`。检查器上方的“战术解锁”由当前兵种的战术目录生成。
@@ -19,6 +19,19 @@
 选择“出口压制”会自动包含“普通压制”；选择“掩护撤离”会自动包含“掩体行动”。自动包含项显示为勾选且锁定，并注明来源。二者都有独立实例与候选，不会因为高级项启用就排除基础项，也不因继承关系获得评分优先权。原有手动选择保留，取消高级项时不会误删手动启用的基础项。
 
 更换兵种后，旧兵种独有的显式选择保存在训练资源里，但隐藏且不装配。切回原兵种可以恢复。高级项缺少兵种提供的关联基础项时，检查器解释原因，运行时拒绝启用。单独打开训练 `.tres` 时，需在面板中明确选择预览兵种；该预览不修改资源，不借用上一个敌人的兵种。
+
+搜索外挂提示的递减方式位于 **Training → Profile → Search → Search Hint Decay Mode**；也可打开训练 `.tres` 后展开 Search。检查器提供下拉选项，资源文本仍保存整数，编号保持兼容：
+
+| 保存值 | 方式 | 相关参数 |
+| --- | --- | --- |
+| 0 | 不递减 | 使用基础 `Search Hint Chance` |
+| 1 | 按时间线性递减 | `Search Hint Linear Decay Seconds` 指定降到最低倍率的时间 |
+| 2 | 按时间指数递减 | `Search Hint Half Life Seconds` 指定时间倍率的半衰期 |
+| 3 | 按距离线性递减 | `Search Hint Distance Falloff` 指定玩家离开本轮搜索中心多远时降到最低倍率 |
+| 4 | 时间与距离共同递减 | 时间指数倍率与距离线性倍率相乘，再限制到最低倍率 |
+| 5 | 自定义公式 | 调用搜索动作的 `_custom_search_hint_decay_multiplier`；默认返回1，需定制公式才有递减效果 |
+
+`Search Hint Min Multiplier` 限制最低倍率，最终概率为基础概率乘以倍率。递减仅影响 SEARCH 期间的提示；刚失视时的 `Lost Target Hint Chance` 单独计算。新建训练资源的默认模式为4，已有训练 `.tres` 中保存的模式优先。
 
 ## 文件职责
 
@@ -34,13 +47,15 @@
 | 公共记忆、证据和查询接口 | `scripts/enemy/services/enemy_memory.gd`、`scripts/enemy/services/enemy_context.gd` |
 | 感知和空间查询 | `scripts/enemy/services/enemy_perception.gd`、`scripts/enemy/services/enemy_cover_selection.gd`、`scripts/enemy/services/enemy_spatial_evaluator.gd` |
 | 射击节奏与稳枪/开火选择 | `scripts/enemy/services/enemy_fire_controller.gd`、`scripts/enemy/services/enemy_fire_decision.gd` |
+| 搜索提示与区域覆盖 | `scripts/enemy/services/enemy_search_hints.gd`、`scripts/enemy/services/enemy_search_coverage.gd` |
+| 竞技场接入与复位 | `scripts/world/shooting_range.gd`、`scenes/enemy/enemy.tscn` |
 | 基础执行能力 | `scripts/enemy/enemy_actor.gd`、武器和弹药组件 |
 
 当前默认行为入口为 `scripts/enemy/actions/enemy_patrol_action.gd`、`scripts/enemy/actions/enemy_search.gd`、`scripts/enemy/actions/enemy_tactics.gd`（现仅负责远程接敌）、`scripts/enemy/actions/enemy_melee_action.gd`、`scripts/enemy/actions/enemy_reload_action.gd`。近战和远程使用不同接敌模块，巡逻与搜索可以共享。
 
 战术入口为 `scripts/enemy/actions/enemy_cover_action.gd`、`scripts/enemy/actions/enemy_covering_retreat_action.gd`、`scripts/enemy/actions/enemy_attack_position_action.gd`、`scripts/enemy/actions/enemy_suppression_action.gd`、`scripts/enemy/actions/enemy_exit_suppression_action.gd`。掩体、撤离与换弹各自拥有 `scripts/enemy/actions/enemy_cover_motion.gd` 的移动执行实例，不访问另一个可选动作的运行实例。
 
-`enemy_actions/*.tres` 中两个脚本引用各有用途：`script` 指向资源结构 `EnemyActionDefinition`，`implementation` 指向动作实现。多个参数版本可以共用同一个实现，公共几何和移动算法也可以使用辅助脚本。这不代表一个动作同时运行两套逻辑。
+`resources/enemy/actions/*.tres` 中两个脚本引用各有用途：`script` 指向资源结构 `EnemyActionDefinition`，`implementation` 指向动作实现。多个参数版本可以共用同一个实现，公共几何和移动算法也可以使用辅助脚本。这不代表一个动作同时运行两套逻辑。
 
 ## 运行过程
 
@@ -212,33 +227,26 @@ python movement_demo/tests/enemy/run_enemy_regressions.py --godot E:/Godot/Godot
 
 目录迁移后建议关闭旧编辑器会话并重新打开项目，避免仍打开的旧路径场景被再次保存。继续使用项目随附的插件，不要因清理目录移除自动加载所依赖的插件文件。
 
-### 把敌人放入新场景
+### 直接拖入竞技场
 
-最直接的起点是复制现有竞技场结构，或把 `scenes/arena.tscn` 的 Enemy 分支保存成可复用场景，再放入符合下列条件的父节点。当前没有独立发布的通用 Enemy 场景，接入任意新地图前仍需满足这些条件。
+从 Godot 文件系统把 **`res://scenes/enemy/enemy.tscn` 拖到竞技场的 Arena 节点下**，摆到战斗区域内的可行走导航地面即可。也可以先建一个 `Enemies` 容器，再把敌人拖进去。无需复制已有敌人的节点分支、手建 AI 子节点或手动填写导航路径。当前 Arena 内的原有 Enemy 已替换成同一场景的实例，保留原位置、朝向和 AI 参数。
 
 ```text
-Arena（或承载战斗区域的父节点）
-├── CombatZone                 Area3D，能够检测玩家
-├── NavigationRegion3D        已烘焙且启用的导航区域
-└── Enemy                     CharacterBody3D + enemy_actor.gd
-    ├── UnitType              enemy_unit_type.gd + 兵种 profile
-    ├── Training              enemy_training.gd + 训练 profile
-    ├── AI                    enemy_ai.gd
-    │   ├── Perception        enemy_perception.gd
-    │   └── Cover             enemy_cover_selection.gd
-    ├── NavigationAgent3D
-    ├── Body
-    ├── CollisionShape3D
-    └── Label / FrontMarker   沿用现有身体与调试显示结构
+Arena                         shooting_range.gd 区域控制器
+├── CombatZone                Area3D + BoxShape3D，能够检测玩家
+├── NavigationRegion3D       启用且已烘焙的本区导航
+└── Enemies                   可选的 Node3D 整理容器
+    ├── Enemy                拖入 enemy.tscn
+    └── Enemy2               再拖入另一个实例
 ```
 
-这些名称中，`UnitType`、`Training`、`AI/Perception`、`AI/Cover`、`NavigationAgent3D`、同级 `CombatZone` 与 `NavigationRegion3D` 是当前脚本直接访问的路径。重命名或改变父子关系时，需同时调整接入代码；只改变节点显示名称会导致路径错误。
+敌人向父级查找最近的区域控制器，只绑定该区域的 CombatZone 和导航。玩家进入本区才激活，最后一名玩家离场时，本区直接子靶和已注册敌人各复位一次；不会刷新其他竞技场。这里没有全地图激活、自动生成器或自动传送。
 
-场景还需有加入 `player` 组的玩家，提供当前玩家脚本的存活、对话、生命与伤害接口。直接沿用 `scenes/main.tscn` 的玩家分支最省事；用其他玩家实现时，按 `enemy_context.gd`、感知与射击服务的调用逐项适配。保留项目配置中的 `DebugSettings`、`GameState` 及现有场景所需自动加载。
+场景已包含身体、碰撞、武器、NavigationAgent3D、UnitType、Training、AI/Perception、AI/Cover、外观和标签。默认引用现有远程兵种与竞技场训练；需要不同敌人时，修改该实例的 UnitType/Profile、Training/Profile 或 Weapon。只调一个实例的资源时先“设为唯一”或复制 `.tres`；运行时兵种、训练和搜索状态已按敌人隔离。
 
-导航网格、角色碰撞尺寸、Agent 半径／高度／路径高度偏移必须与地图匹配。先验证能获得有效路径，再检查 Utility 选择；场景刚加入树时导航尚未同步，不应把第一帧没有路径误判为动作失效。
+保留 prefab 内部节点名称；竞技场的 CombatZone 与 NavigationRegion3D 仍由区域控制器按名称提供。导航尚未同步时等待；缺少区域、导航或玩家时待命。出生点不在本区 BoxShape3D 战斗范围、导航不可站立或身体空间被占用时停用并提示，请在编辑器调整位置后重新运行。新加入区域必须等待自身导航同步，不能因为全局导航地图已就绪就立即运行。区域/导航节点释放、替换、敌人释放和重新挂父节点均维护注册与动作清理。
 
-新掩体建议实例化 `scenes/world/cover.tscn`，保留 `cover_region.gd` 提供的区域与查询协议。不同敌人可共享兵种模板；需要独立数值时使用各自的训练资源。当前完整性能样本主要来自单敌人竞技场，多敌人需要另外实测。
+本场景用于现有项目的战斗区域。沿用 `scenes/main.tscn` 的玩家接口、`player` 组及项目的 DebugSettings、GameState 等自动加载；它不是跨项目独立安装包。新增掩体使用 `scenes/world/cover.tscn`，碰撞与导航尺寸需要匹配。自动化已覆盖多实例和跨区域隔离，性能门槛仍来自现有单敌人测试。
 
 ### 运行时改配置
 
@@ -273,4 +281,18 @@ enemy.get_node("AI").refresh_configuration(true)
 | 移动资源后报找不到文件 | 使用新路径重新打开场景；检查 load/preload、场景 ext_resource、自动加载和动态目录字符串 |
 | 性能检查偶发超限 | 保留实际峰值，确认同时运行的游戏／编辑器负载；隔离复测，不能直接放宽阈值 |
 
-当前仍保留少量旧参数访问兼容接口，以及尚未全部迁移的专项测试。后续移除兼容接口前应先查实际调用者，不能仅因新主场景没有直接引用就删除。
+### 已清理字段与保留依据
+
+| 分组 | 移除的字段 | 原因 |
+| --- | --- | --- |
+| tactics | `ranged_flank_weight`、`ranged_wall_support_weight`、`ranged_wall_probe_distance` | 当前候选及 Utility 评分不读取，修改不影响行为 |
+| selection | `away_from_threat_weight`、`closer_to_threat_weight`、`cover_quality_weight` | 仅旧同步 `choose_cover` 使用；当前由统一路线/风险评分负责 |
+| exit_suppression | `target_radius` | 出口动作覆盖了普通区域采样流程，该字段没有消费者 |
+
+普通压制的 `suppression.target_radius`、公共近弹检测用的 `cover.shot_radius`、感知用的 `search.track_sight_angle_degrees` 都保留；仅移除动作上无消费者的重复转发。所有搜索提示模式和 CUSTOM 扩展保留。NoiseData 的 `audio_stream` 是有文档与持久化测试的音频预留，当前不驱动播放；对话资源动态访问的 GameState 字段、动作基类协议和引擎/信号回调均保留。
+
+Training 节点的旧前缀字段与无消费者的配置包装已移除，统一使用 `training.profile.setting(section, key)` / `set_setting(section, key, value)`。切兵种直接替换 `unit_type.profile`。攻击占位只执行统一评分已选定的位置，删除无人使用的旧 `start/can_start/FIND` 遍历及专用结果信号；掩体和压制也不再保留无人订阅的 finished 信号。公共动作协议与事件保持不变。
+
+搜索动作仍控制计时、导航与中断；`enemy_search_hints` 计算概率及单个误差样本，`enemy_search_coverage` 独立持有每个敌人的采样、排序与覆盖进度。辅助组件不反向持有动作，不访问其他可选模块，保持随机抽样顺序和失视信息边界。
+
+旧测试的合并、替代与已取消规则见 [清理映射](superpowers/plans/2026-09-29-enemy-cleanup-test-mapping.md)。

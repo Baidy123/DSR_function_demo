@@ -136,7 +136,7 @@ func check_scene(selector: RefCounted) -> void:
 	var suppression_target: Vector3 = suppressed.aim_point
 	selector.assess_options(ai, false)
 	check(suppressed.is_active() == suppression_state and suppressed.aim_point == suppression_target, "压制候选查询不启动行动或改写瞄准点")
-	ai.unit_type.combat_type = ai.CombatType.MELEE
+	ai.unit_type.profile = load("res://resources/enemy/units/melee.tres").duplicate(true)
 	ai.refresh_configuration(true)
 	var melee: Array = selector.assess_options(ai, true)
 	check(not melee.any(func(option): return option.id in [&"reload", &"cover", &"attack_position", &"suppression", &"exit_suppression"]), "近战兵种不参与无法执行的枪械与躲藏方案")

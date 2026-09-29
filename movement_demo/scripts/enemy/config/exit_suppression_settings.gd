@@ -4,7 +4,7 @@ extends "res://scripts/enemy/config/module_settings.gd"
 func _init() -> void:
 	section = &"exit_suppression"
 
-## 朝最后目击位置附近压制的最短秒数；当前未接弹匣。
+## 朝可通行掩体出口压制的最短秒数；空匣时交回统一换弹调度。
 @export_range(0.1, 10.0, 0.1) var duration_min: float = 3.0:
 	set(value):
 		duration_min = value
@@ -14,11 +14,6 @@ func _init() -> void:
 	set(value):
 		duration_max = value
 		mark_override(&"duration_max")
-## 瞄准点在最后目击位置周围的水平采样半径；实际子弹继续使用枪械散布。
-@export_range(0.0, 3.0, 0.05) var target_radius: float = 0.75:
-	set(value):
-		target_radius = value
-		mark_override(&"target_radius")
 ## 最后目击位置离掩体实体表面的最大水平距离；只推测邻近掩体，不追踪墙后玩家。
 @export_range(0.1, 4.0, 0.05) var cover_inference_distance: float = 1.75:
 	set(value):

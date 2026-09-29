@@ -30,7 +30,7 @@ func _run() -> void:
 	ai.set_physics_process(false)
 	player.set_physics_process(false)
 	Fixture.configure_timing(enemy)
-	ai.search.debug_tracking_cheat = false
+	ai.actions[&"search"].debug_tracking_cheat = false
 	ai.cover_selection.debug_cover_selection = false
 	enemy.debug_shooting = false
 	player.get_node("Health").debug_invincible = true
@@ -94,11 +94,11 @@ func _run() -> void:
 	await check_fast_movement(enemy, recorder, "取消换弹")
 	enemy.ammo.magazine_rounds = 0
 	enemy.request_reload()
-	unit.combat_type = unit.CombatType.MELEE
+	unit.profile = load("res://resources/enemy/units/melee.tres").duplicate(true)
 	check(not enemy.request_reload() and not enemy.try_fire(), "近战禁止请求换弹与开火")
 	enemy.update_weapon(2.0, target)
 	check(not enemy.ammo.is_reloading and enemy.ammo.magazine_rounds == 0, "中途切近战取消进度且不补弹")
-	unit.combat_type = unit.CombatType.RANGED
+	unit.profile = load("res://resources/enemy/units/ranged.tres").duplicate(true)
 	enemy.request_reload()
 	enemy.receive_hit(enemy.health)
 	check(not enemy.ammo.is_reloading and not enemy.request_reload(), "死亡取消并拒绝换弹")
@@ -110,8 +110,9 @@ func _run() -> void:
 	check(not enemy.ammo.is_reloading and not enemy.request_reload(), "卸下武器取消换弹")
 
 	# 本文件验证基础弹药循环：关闭测试实例的掩体权限，固定为无可用掩体回退。
-	# 环境选案与先到掩体的时机由enemy_reload_decision_test覆盖。
-	ai.training.allowed_actions = ai.training.allowed_actions.filter(func(action): return action.action_id != &"cover")
+	# 环境选案与先到掩体的时机由reload_approach_timing_test覆盖。
+	ai.training.profile.selected_tactics.clear()
+	ai.refresh_configuration(true)
 	enemy.equip_weapon(weapon)
 	enemy.look_at(player.global_position)
 	player.global_position = enemy.global_position + Vector3(0, 0, 4.8)
@@ -122,7 +123,7 @@ func _run() -> void:
 	ai._physics_process(0.1)
 	check(enemy.ammo.is_reloading and enemy.ammo.reload_progress > 0.0, "无掩体权限时AI发现空匣开始并推进基础换弹")
 	ai._update_label()
-	check(enemy.get_node("Label").text.contains("换弹中"), "敌人状态文字显示换弹")
+	check(enemy.get_node("Label").text.contains("换弹 "), "敌人状态文字显示换弹")
 	player.is_in_dialogue = true
 	ai._physics_process(0.1)
 	check(not enemy.ammo.is_reloading and enemy.ammo.magazine_rounds == 0, "对话期间AI取消且不自动重启换弹")
@@ -137,13 +138,13 @@ func _run() -> void:
 	player.global_position = enemy.global_position + Vector3(0, 0, 4.8)
 	enemy.look_at(player.global_position)
 	weapon.reload_seconds = 0.4
-	ai.tactics.fire_reaction_seconds = 0.0
-	ai.tactics.burst_pause_seconds = 0.0
+	ai.training.profile.set_setting(&"tactics", &"fire_reaction_seconds", 0.0)
+	ai.training.profile.set_setting(&"tactics", &"burst_pause_seconds", 0.0)
 	for frame in range(5):
 		await physics_frame
 	var saw_reload := false
 	count = enemy.shot_count
-	for frame in range(180):
+	for frame in range(360):
 		await physics_frame
 		ai._physics_process(1.0 / 60.0)
 		saw_reload = saw_reload or enemy.ammo.is_reloading

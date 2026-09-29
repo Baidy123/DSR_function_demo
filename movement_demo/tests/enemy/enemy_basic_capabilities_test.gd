@@ -30,7 +30,7 @@ func _run() -> void:
 	var target: Vector3 = player.global_position + Vector3.UP * 0.8
 	_check("测试站位有真实视线", ai.perception.can_see_player())
 
-	unit.combat_type = unit.CombatType.MELEE
+	unit.profile = load("res://resources/enemy/units/melee.tres").duplicate(true)
 	enemy.update_weapon(1.0, target)
 	_check("近战即使装备枪也不能直接瞄准", not enemy.has_aim)
 	var shots: int = enemy.shot_count
@@ -55,50 +55,41 @@ func _run() -> void:
 	_check("近战仍可直接执行转身", not is_equal_approx(enemy.rotation.y, rotation_before))
 	enemy.look_at(player.global_position)
 
-	unit.combat_type = unit.CombatType.RANGED
+	unit.profile = load("res://resources/enemy/units/ranged.tres").duplicate(true)
 	enemy.update_weapon(1.0, target)
 	_check("远程直接瞄准并实际开火", enemy.has_aim and enemy.try_fire())
 	_check("远程实际射线仍命中玩家", enemy.last_shot_collider == player)
 	enemy.update_weapon(1.0, target)
-	unit.combat_type = unit.CombatType.MELEE
+	unit.profile = load("res://resources/enemy/units/melee.tres").duplicate(true)
 	_check("远程切近战后未更新瞄准也立即拒绝开火", not enemy.try_fire())
 	enemy.shot_cooldown = 0.5
 	enemy.update_weapon(0.2, target)
 	_check("禁用枪械仍推进旧冷却并清理瞄准", is_equal_approx(enemy.shot_cooldown, 0.3) and not enemy.has_aim)
 
-	# 训练可以限制战术动作，不能授予近战枪械执行资格。
-	training.allowed_actions = unit.available_actions.duplicate()
-	ai.state = ai.State.HOLD_POSITION
-	ai.tactics.update_shooting(2.0, true, false)
+	# 训练只解锁战术，不能授予近战枪械资格。
+	training.profile.selected_tactics.assign([&"suppression"])
+	ai.refresh_configuration(true)
+	ai.context.fire.update(2.0, true, false, {"owner": &"engage"})
 	_check("训练开放接敌仍不能让近战AI瞄准", not enemy.has_aim)
-	ai.is_alerted = true
-	ai.has_visual_memory = true
-	ai.last_seen_position = player.global_position
-	preload("res://tests/enemy/enemy_fire_fixture.gd").set_training_action(ai, &"suppression", true)
-	unit.available_actions.append(load("res://resources/enemy/actions/suppression.tres"))
-	training.allowed_actions = unit.available_actions.duplicate()
-	ai.tactics.area_suppression.on_target_lost()
-	_check("训练开放压制仍不能让近战启动枪械动作", not ai.tactics.area_suppression.is_active())
-
-	unit.combat_type = unit.CombatType.RANGED
-	ai.tactics.area_suppression.on_target_lost()
-	_check("远程资格允许启动已有压制动作", ai.tactics.area_suppression.is_active())
-	enemy.update_weapon(1.0, target)
-	unit.combat_type = unit.CombatType.MELEE
+	_check("训练开放压制仍不能让近战装配枪械动作", not ai.actions.has(&"suppression"))
+	unit.profile = load("res://resources/enemy/units/ranged.tres").duplicate(true)
+	ai.refresh_configuration(true)
+	_check("远程资格允许装配已有压制动作", ai.actions.has(&"suppression"))
+	ai.context.fire.request = {"owner": &"suppression", "mode": &"memory", "point": target}
+	unit.profile = load("res://resources/enemy/units/melee.tres").duplicate(true)
 	shots = enemy.shot_count
-	ai.tactics.area_suppression.step(0.1, false)
-	_check("压制中切近战会结束枪械动作", not ai.tactics.area_suppression.is_active())
-	ai.tactics.update_shooting(1.0, false, false)
-	_check("压制撤销后清理瞄准且没有多开一枪", not enemy.has_aim and enemy.shot_count == shots)
-
-	unit.combat_type = unit.CombatType.RANGED
-	training.allowed_actions.clear()
-	unit.available_actions.clear()
+	ai.refresh_configuration(true)
+	ai.context.fire.update_shooting(1.0, false, false)
+	_check("切近战撤销枪械动作并清理瞄准，没有多开一枪", not ai.actions.has(&"suppression") and not enemy.has_aim and enemy.shot_count == shots)
+	unit.profile = load("res://resources/enemy/units/ranged.tres").duplicate(true)
+	training.profile.selected_tactics.clear()
+	unit.profile.default_behaviors.clear()
+	ai.refresh_configuration(true)
 	enemy.update_weapon(1.0, target)
 	_check("基础开火不要求登记或授权战术动作", enemy.try_fire())
 	shots = enemy.shot_count
-	ai.tactics.update_shooting(2.0, true, false)
-	_check("战术清单关闭仍阻止AI自行开火", enemy.shot_count == shots and not enemy.has_aim)
+	ai.context.fire.update(2.0, true, false, {"owner": &"engage"})
+	_check("动作清单关闭仍阻止AI自行开火", enemy.shot_count == shots and not enemy.has_aim)
 
 	# 基础执行不依赖AI或Training；保留UnitType作为兵种资格来源。
 	ai.free()

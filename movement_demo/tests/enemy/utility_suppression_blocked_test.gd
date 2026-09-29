@@ -30,6 +30,10 @@ func _run() -> void:
 	ai.last_seen_position = player.global_position
 	ai.last_known_position = player.global_position
 	var action = ai.actions[&"suppression"]
+	# 先完成合法出生点验证，再模拟运行中靠近枪口的动态障碍。
+	# 否则测试构造的是出生时身体已经嵌墙，敌人应保持待命。
+	for frame in range(5): await physics_frame
+	check(ai.context.environment_ready(), "动态堵枪口测试从合法出生点开始")
 	var wall := StaticBody3D.new()
 	var shape := CollisionShape3D.new()
 	var box := BoxShape3D.new()

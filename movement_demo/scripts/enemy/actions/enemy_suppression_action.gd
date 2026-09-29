@@ -1,6 +1,5 @@
 extends "res://scripts/enemy/actions/enemy_action.gd"
 
-signal finished(sees_player: bool, known_position: Vector3)
 
 ## 朝最后目击位置附近压制的最短秒数；换弹不会延长本次压制时长。
 var duration_min: float:
@@ -153,7 +152,6 @@ func _select_aim_point() -> void:
 
 func finish(sees_player: bool) -> void:
 	reset()
-	finished.emit(sees_player, context.last_known_position)
 	_running = false
 	context.resume_after_action(sees_player, context.last_known_position)
 	if context.cover_selection.debug_cover_selection:

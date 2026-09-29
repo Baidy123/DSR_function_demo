@@ -18,6 +18,10 @@ func _run() -> void:
 	player.set_physics_process(false)
 	preload("res://tests/enemy/enemy_fire_fixture.gd").configure_timing(actor)
 	preload("res://tests/enemy/enemy_fire_fixture.gd").set_training_action(ai, &"attack_position", true)
+	# 本段验证切换到其他动作的计时所有权；开放掩体换弹时继续执行
+	# reload/on_way 也是合法避险，不能把预算扫描先找到哪条路当成测试前提。
+	ai.training.profile.selected_tactics.assign([&"attack_position"])
+	ai.refresh_configuration(true)
 	actor.weapon.reload_seconds = 3.5
 	player.get_node("Health").debug_invincible = true
 	ai.cover_selection.debug_cover_selection = false
@@ -43,7 +47,10 @@ func _run() -> void:
 	var shots_before: int = actor.shot_count
 	for frame in range(210):
 		await physics_frame
-		if frame == 30: player.global_position = actor.global_position + Vector3.LEFT * 1.2
+		if frame == 30:
+			player.global_position = actor.global_position + Vector3.LEFT * 1.2
+			# 瞬移后等待物理碰撞体同步，避免凭旧碰撞位置制造一帧虚假失视。
+			await physics_frame
 		ai._physics_process(STEP)
 		var elapsed := (frame + 1) * STEP
 		if actor.ammo.is_reloading:
@@ -61,6 +68,7 @@ func _run() -> void:
 	check(not actor.get_node("Label").visible, "非Debug模式完成换弹后隐藏头顶进度")
 	player.get_node("Health").debug_invincible = true
 	# 在实际合法的长路线执行边走边换，验证完成与到达是两个不同事件。
+	preload("res://tests/enemy/enemy_fire_fixture.gd").set_training_action(ai, &"cover", true)
 	ai.reset_actions()
 	actor.global_position = Vector3(24, 0, -2)
 	player.global_position = Vector3(20, 0, -2)

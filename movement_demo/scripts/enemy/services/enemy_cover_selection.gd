@@ -1,14 +1,6 @@
 extends Node
 
 # 掩体选位：只返回可用位置及遮挡评估，不执行转移、躲藏或开火。
-## 掩体选位：朝远离威胁方向移动会得到奖励，朝威胁方向冲会被强烈惩罚。
-var away_from_threat_weight: float:
-	get: return _training_setting(&"away_from_threat_weight", 4.0)
-	set(value): _set_training_setting(&"away_from_threat_weight", value)
-## 路径或掩体位置比当前位置更靠近威胁时的惩罚。
-var closer_to_threat_weight: float:
-	get: return _training_setting(&"closer_to_threat_weight", 5.0)
-	set(value): _set_training_setting(&"closer_to_threat_weight", value)
 ## 开启时额外使用所属掩体的质量门槛和评分；关闭时要求身体中心及两侧被静态墙遮挡。
 ## 两种模式都必须先位于威胁对侧，且中心射线被当前掩体挡住；不再手动指定 Cover Body。
 var require_assigned_cover: bool:
@@ -22,10 +14,6 @@ var cover_lateral_test_distance: float:
 var minimum_cover_quality: float:
 	get: return _training_setting(&"minimum_cover_quality", 0.20)
 	set(value): _set_training_setting(&"minimum_cover_quality", value)
-## 掩护质量越高，越优先选择。
-var cover_quality_weight: float:
-	get: return _training_setting(&"cover_quality_weight", 3.0)
-	set(value): _set_training_setting(&"cover_quality_weight", value)
 ## 调试时打印区域候选数量、合格数量及最终选择的掩体和位置。
 var debug_cover_selection: bool:
 	get: return _training_setting(&"debug_cover_selection", true)
@@ -133,172 +121,13 @@ func _attack_wall_clearance(point: Vector3, region: StaticBody3D) -> bool:
 	return ai._horizontal_distance_between(point, nearest) >= radius + 0.1
 
 
-## 旧专项几何验证入口。当前开火使用 FireController 的三维枪口空间查询。
-## 在当前平地场景检查散布锥的水平投影，避免只测边缘射线漏掉锥内墙角。
-## 只检查所属掩体；远处地面或目标后的墙不应让所有站位失效。
-var _polygon_cache_frame := -1
-var _polygon_cache: Dictionary = {}
-
-func has_clear_shot_cone(origin: Vector3, direction: Vector3, spread_degrees: float, distance: float, region: StaticBody3D) -> bool:
-	if not is_instance_valid(region) or direction.is_zero_approx():
-		return false
-	var axis := direction.normalized()
-	if not has_clear_line(origin, origin + axis * distance):
-		return false
-	if spread_degrees <= 0.0:
-		return true
-	if _polygon_cache_frame != Engine.get_physics_frames():
-		_polygon_cache_frame = Engine.get_physics_frames()
-		_polygon_cache.clear()
-	var cone_key := [origin, axis, spread_degrees, distance]
-	if not _polygon_cache.has(cone_key):
-		var reference := Vector3.UP if absf(axis.y) < 0.999 else Vector3.RIGHT
-		var right := axis.cross(reference).normalized()
-		var up := right.cross(axis).normalized()
-		var radius := distance * tan(deg_to_rad(clampf(spread_degrees, 0.0, 45.0))) / cos(PI / 16.0)
-		# 显式留8厘米余量；向外挪到能绕开墙角，不要求身体一定被遮住。
-		var clearance := 0.08
-		var points := PackedVector2Array()
-		for index in range(16):
-			var phi := TAU * float(index) / 16.0
-			var radial := right * cos(phi) + up * sin(phi)
-			var near_point := origin + radial * clearance
-			var far_point := origin + axis * distance + radial * (radius + clearance)
-			points.append(Vector2(near_point.x, near_point.z))
-			points.append(Vector2(far_point.x, far_point.z))
-		_polygon_cache[cone_key] = Geometry2D.convex_hull(points)
-	var collision := region.get_node_or_null("CollisionShape3D") as CollisionShape3D
-	if collision == null or not collision.shape is BoxShape3D:
-		return false
-	var footprint_key := [collision.global_transform, collision.shape.size]
-	if not _polygon_cache.has(footprint_key):
-		var half: Vector3 = collision.shape.size * 0.5
-		var footprint := PackedVector2Array()
-		for x in [-half.x, half.x]:
-			for y in [-half.y, half.y]:
-				for z in [-half.z, half.z]:
-					var corner := collision.to_global(Vector3(x, y, z))
-					footprint.append(Vector2(corner.x, corner.z))
-		_polygon_cache[footprint_key] = Geometry2D.convex_hull(footprint)
-	return Geometry2D.intersect_polygons(_polygon_cache[cone_key], _polygon_cache[footprint_key]).is_empty()
-
-
-
 func _attack_body_protection(point: Vector3, threat_origin: Vector3, region: StaticBody3D) -> float:
 	return attack_geometry.protection(ai, point, threat_origin, region)
 
 
-## 换弹只需要可达且有遮挡的躲藏点，不要求同时找到可射击的Peek。
-func get_reload_cover_candidates(threat_origin: Vector3) -> Array[Dictionary]:
-	var results: Array[Dictionary] = []
-	for region in get_tree().get_nodes_in_group("cover_region"):
-		if not ai.navigation_region.is_ancestor_of(region):
-			continue
-		for candidate: Dictionary in region.get_candidates(threat_origin, enemy.global_position):
-			var point: Vector3 = candidate.hide
-			if not ai.is_position_free(point) or not _center_hidden_by_cover(point, threat_origin, region):
-				continue
-			if require_assigned_cover:
-				if _cover_quality(point, threat_origin, region) < minimum_cover_quality:
-					continue
-			elif not is_hidden_at(point, threat_origin):
-				continue
-			var path: PackedVector3Array = _path_to(enemy.global_position, point)
-			if not path.is_empty():
-				results.append({"hide": point, "body": region, "path": path})
-	return results
-
-
-func choose_cover(threat_origin: Vector3, look_position: Vector3) -> Dictionary:
-	var hide_position := Vector3.ZERO
-	var peek_position := Vector3.ZERO
-	var best_score: float = INF
-	var best_cover: StaticBody3D = null
-	var current_threat_distance: float = ai._horizontal_distance_between(enemy.global_position, threat_origin)
-	var candidate_count: int = 0
-	var viable_count: int = 0
-
-	# 每个掩体自己提供四面区域；候选只来自本竞技场，且已经筛到威胁的对侧。
-	for region in get_tree().get_nodes_in_group("cover_region"):
-		if not ai.navigation_region.is_ancestor_of(region):
-			continue
-		for candidate in region.get_candidates(threat_origin, enemy.global_position):
-			candidate_count += 1
-			var hiding: Vector3 = candidate.hide
-			if not ai.is_position_free(hiding):
-				continue
-			# “位于背面”还不等于真的安全：必须由当前掩体挡住射线。
-			if not _center_hidden_by_cover(hiding, threat_origin, region):
-				continue
-			var quality: float = _cover_quality(hiding, threat_origin, region)
-			if require_assigned_cover:
-				if quality < minimum_cover_quality:
-					continue
-			elif not is_hidden_at(hiding, threat_origin):
-				continue
-			var path: PackedVector3Array = _path_to(enemy.global_position, hiding)
-			if path.is_empty():
-				continue
-			var peeking: Vector3 = _choose_peek(hiding, candidate.peeks, look_position)
-			if not peeking.is_finite():
-				continue
-			viable_count += 1
-
-			var length: float = _path_length_from_path(path)
-			var move_direction: Vector3 = hiding - enemy.global_position
-			move_direction.y = 0.0
-			var away_direction: Vector3 = enemy.global_position - threat_origin
-			away_direction.y = 0.0
-			var away_alignment: float = 0.0
-			if not move_direction.is_zero_approx() and not away_direction.is_zero_approx():
-				away_alignment = move_direction.normalized().dot(away_direction.normalized())
-			var cover_threat_distance: float = ai._horizontal_distance_between(hiding, threat_origin)
-			var min_path_distance: float = _minimum_path_distance_to_threat(path, threat_origin)
-
-			var score: float = length
-			score -= maxf(0.0, away_alignment) * away_from_threat_weight
-			score += maxf(0.0, -away_alignment) * away_from_threat_weight
-			score += maxf(0.0, current_threat_distance - cover_threat_distance) * closer_to_threat_weight
-			score += maxf(0.0, current_threat_distance - min_path_distance) * closer_to_threat_weight
-			if require_assigned_cover:
-				score -= quality * cover_quality_weight
-			if score < best_score:
-				best_score = score
-				hide_position = hiding
-				peek_position = peeking
-				best_cover = region
-
-	if is_inf(best_score):
-		if debug_cover_selection:
-			print("[AI][掩体] 四面区域无有效躲藏/探头组合，候选=", candidate_count)
-		return {}
-	if debug_cover_selection:
-		print("[AI][掩体] 区域选位 Cover=", best_cover.name, " Hide=", hide_position,
-			" Peek=", peek_position, " 合格候选=", viable_count)
-	return {"hide": hide_position, "peek": peek_position, "body": best_cover}
-
-
-# 用已知威胁位置检测射界；不以墙后玩家的新坐标来调整 Peek。
-
-
+## 用已知威胁位置检测探头射界，不读取墙后玩家的新坐标。
 func _peek_has_los(point: Vector3, look_position: Vector3) -> bool:
 	return has_clear_line(point + Vector3.UP * 0.8, look_position + Vector3.UP * 0.8)
-
-
-func _choose_peek(hiding: Vector3, points: Array, look_position: Vector3) -> Vector3:
-	var best := Vector3.INF
-	var best_length := INF
-	for point: Vector3 in points:
-		if not ai.is_position_free(point) or not _peek_has_los(point, look_position):
-			continue
-		var path := _path_to(hiding, point)
-		if path.is_empty():
-			continue
-		var length := _path_length_from_path(path)
-		if length < best_length:
-			best = point
-			best_length = length
-	return best
 
 
 var _path_frame := -1

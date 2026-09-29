@@ -28,6 +28,15 @@ func setup(shared_context) -> void:
 	actor.hit_received.connect(_on_hit_received)
 	context.event_received.connect(_on_evidence_event)
 
+
+func detach() -> void:
+	if actor.hit_received.is_connected(_on_hit_received):
+		actor.hit_received.disconnect(_on_hit_received)
+	if context.event_received.is_connected(_on_evidence_event):
+		context.event_received.disconnect(_on_evidence_event)
+	fire_decision.context = null
+	context = null
+
 func _on_hit_received(damage: float, _attacker_position: Vector3) -> void:
 	if is_finite(damage) and damage > 0.0:
 		actor.apply_aim_penalty(float(context.setting(&"tactics", &"damage_accuracy_penalty", 0.15)))

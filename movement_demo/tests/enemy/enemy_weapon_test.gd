@@ -93,7 +93,7 @@ func _run() -> void:
 	enemy.equip_weapon(null)
 	enemy.update_weapon(1.0, target)
 	_check("卸下武器不射击", not enemy.try_fire() and not enemy.has_aim)
-	enemy.get_node("AI").tactics.update_shooting(1.0, true, false)
+	enemy.get_node("AI").context.fire.update(1.0, true, false, {"owner": &"engage"})
 	_check("AI允许无武器存在", enemy.weapon == null and enemy.shot_count == 0)
 
 	# 换另一把枪后，实际射线与伤害均读取新资源，而非仅修改显示值。

@@ -27,7 +27,9 @@ func _init() -> void:
 		search_hint_interval_seconds = value
 		mark_override(&"search_hint_interval_seconds")
 ## SEARCH 期间的外挂概率如何随调查持续时间/玩家离开搜索中心的距离递减。
-@export var search_hint_decay_mode: int = 4:
+## 只影响搜索期间的提示概率，不影响刚失视时的 Lost Target Hint Chance。
+## 自定义模式调用搜索动作的扩展公式；默认实现返回1，尚未定制时等同不递减。
+@export_enum("不递减:0", "按时间线性递减:1", "按时间指数递减:2", "按距离线性递减:3", "时间与距离共同递减:4", "自定义公式:5") var search_hint_decay_mode: int = 4:
 	set(value):
 		search_hint_decay_mode = value
 		mark_override(&"search_hint_decay_mode")

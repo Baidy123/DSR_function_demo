@@ -56,21 +56,6 @@ func _init() -> void:
 	set(value):
 		ranged_repath_seconds = value
 		mark_override(&"ranged_repath_seconds")
-## 远程选位时更偏好侧向换位，而不是只沿玩家径向前后移动。
-@export_storage var ranged_flank_weight: float = 3.0:
-	set(value):
-		ranged_flank_weight = value
-		mark_override(&"ranged_flank_weight")
-## 候选射击位附近若有侧墙/后墙，可获得额外战术价值。
-@export_storage var ranged_wall_support_weight: float = 2.5:
-	set(value):
-		ranged_wall_support_weight = value
-		mark_override(&"ranged_wall_support_weight")
-## 探测候选射击位附近墙体的距离。
-@export_storage var ranged_wall_probe_distance: float = 1.5:
-	set(value):
-		ranged_wall_probe_distance = value
-		mark_override(&"ranged_wall_probe_distance")
 ## 近战接近时的停止距离（米）；远程保持距离由 Ranged Min/Max Distance 控制。
 @export var stopping_distance: float = 1.3:
 	set(value):

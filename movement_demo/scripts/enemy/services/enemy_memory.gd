@@ -18,7 +18,6 @@ var utility_unseen_seconds := 0.0
 var utility_threat_age_seconds := 0.0
 var utility_suppression_pending := false
 var utility_rejected_attack_points: Array[Vector3] = []
-var _utility_rejection_threat := Vector3.INF
 var blocked_destinations: Array[Dictionary] = []
 var patrol_pause_timer := 0.0
 var investigation_hint_allowed := false

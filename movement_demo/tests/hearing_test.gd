@@ -41,8 +41,9 @@ func _run() -> void:
 	noise.emit_from(player, 6.0)
 	await settle()
 	check(heard.size() == 1, "无遮挡范围内听见")
-	check(ai.is_alerted and ai.state in [ai.State.TRACK, ai.State.SEARCH] and ai.search.noise_search_origin.is_equal_approx(player.global_position), "未目击时调查声源或搜索附近可达区域")
+	check(ai.is_alerted and ai.actions[&"search"].noise_search_origin.is_equal_approx(player.global_position), "未目击时记录声源证据，交给统一决策")
 	check(not ai.has_visual_memory and enemy.shot_count == 0, "听见不等于目击或盲射")
+	ai._physics_process(0.01)
 	var origin: Vector3 = ai.last_known_position
 	player.global_position += Vector3.RIGHT
 	await settle()
@@ -74,42 +75,42 @@ func _run() -> void:
 	wall.free()
 	await settle()
 	# 同一声源重复发声不重新计时；新声音位置可以更新调查目的地。
-	ai.search.track_timer = 1.23
+	ai.actions[&"search"].track_timer = 1.23
 	noise.emit_from(player, 6.0)
 	await settle()
-	check(is_equal_approx(ai.search.track_timer, 1.23), "同位置重复声源不重启调查计时")
+	check(is_equal_approx(ai.actions[&"search"].track_timer, 1.23), "同位置重复声源不重启调查计时")
 	player.global_position += Vector3.RIGHT
 	noise.emit_from(player, 6.0)
 	await settle()
 	check(ai.last_known_position.is_equal_approx(player.global_position), "新发声位置更新记忆")
 	ai.has_visual_memory = true
 	ai.last_seen_position = enemy.global_position + Vector3.LEFT * 3.0
-	ai.search.begin_search()
-	check(ai.search.search_origin.is_equal_approx(ai.last_known_position), "新声源搜索不被旧目击圆心覆盖")
-	ai.search.debug_tracking_cheat = true
-	check(not ai.search._try_tracking_cheat_hint(1.0), "声音调查不启用隐藏目标提示")
+	ai.actions[&"search"].begin_search()
+	check(ai.actions[&"search"].search_origin.is_equal_approx(ai.last_known_position), "新声源搜索不被旧目击圆心覆盖")
+	ai.actions[&"search"].debug_tracking_cheat = true
+	check(not ai.actions[&"search"]._try_tracking_cheat_hint(1.0), "声音调查不启用隐藏目标提示")
 	var training = enemy.get_node("Training")
-	training.perception_hearing_enabled = false
+	training.profile.set_setting(&"perception", &"hearing_enabled", false)
 	count = heard.size()
 	noise.emit_from(player, 6.0)
 	await settle()
 	check(heard.size() == count, "关闭听觉不接收声源")
-	training.perception_hearing_enabled = true
-	var allowed = training.allowed_actions.duplicate()
-	training.allowed_actions.clear()
-	ai.reset_actions()
-	ai.state = ai.State.IDLE
-	noise.emit_from(player, 6.0)
-	await settle()
-	check(ai.state == ai.State.IDLE, "听见不能绕过训练动作权限")
-	training.allowed_actions = allowed
+	training.profile.set_setting(&"perception", &"hearing_enabled", true)
+	var allowed: Array[StringName] = training.profile.selected_tactics.duplicate()
+	training.profile.selected_tactics.clear()
+	ai.refresh_configuration(true)
+	check(ai.actions.has(&"search"), "清空战术训练不删除兵种默认搜索")
+	training.profile.selected_tactics.assign(allowed)
 	var unit = enemy.get_node("UnitType")
-	var available = unit.available_actions.duplicate()
-	unit.available_actions.clear()
+	var available: Array[EnemyActionDefinition] = unit.profile.default_behaviors.duplicate()
+	unit.profile.default_behaviors.clear()
+	ai.refresh_configuration(true)
+	enemy.reset_target()
 	noise.emit_from(player, 6.0)
 	await settle()
-	check(ai.state == ai.State.IDLE, "听见不能赋予兵种没有的搜索动作")
-	unit.available_actions = available
+	check(not ai.actions.has(&"search") and ai.state == ai.State.IDLE, "听见不能赋予兵种没有的搜索动作")
+	unit.profile.default_behaviors.assign(available)
+	ai.refresh_configuration(true)
 	await check_movement_and_shooting()
 	await check_priority_and_multiple()
 	# 只有声源快照驱动实走，玩家随后移动而不发新声。
@@ -127,11 +128,11 @@ func _run() -> void:
 	check(enemy.global_position.distance_to(start) > 0.5, "敌人实际寻路走向声源")
 	check(enemy.global_position.distance_to(origin) < start.distance_to(origin), "实走接近发声位置")
 	check(ai.last_known_position.is_equal_approx(origin) and enemy.shot_count == 0, "调查中不偷读玩家坐标或开火")
-	ai.search.track_timer = 0.0
+	ai.actions[&"search"].track_timer = 0.0
 	ai._physics_process(0.02)
 	check(ai.state == ai.State.SEARCH, "调查结束转入声源附近搜索")
-	ai.search.search_seconds = 0.05
-	ai.search.search_timer = 0.05
+	ai.actions[&"search"].search_seconds = 0.05
+	ai.actions[&"search"].search_timer = 0.05
 	ai._physics_process(0.1)
 	check(ai.state == ai.State.IDLE and not ai.is_alerted, "搜索无果恢复待机巡逻")
 	player.global_position = Vector3.ZERO
@@ -139,7 +140,7 @@ func _run() -> void:
 	count = heard.size()
 	ai.perception.receive_noise(player, enemy.global_position, 100.0, 1.0)
 	check(heard.size() == count and not ai.is_alerted, "竞技场未激活时不因声音唤醒")
-	check(not ai.search.noise_search_origin.is_finite(), "离场刷新清理声音调查")
+	check(not ai.actions[&"search"].noise_search_origin.is_finite(), "离场刷新清理声音调查")
 	finish()
 
 func check_movement_and_shooting() -> void:
@@ -205,32 +206,26 @@ func check_priority_and_multiple() -> void:
 	enemy.reset_target()
 	player.global_position = enemy.global_position + Vector3(0, 0, 4.8)
 	await settle()
-	ai.cover.phase = ai.cover.Phase.HIDE
-	noise.emit_from(player, 6.0)
-	await settle()
-	check(ai.cover.phase == ai.cover.Phase.HIDE and not ai.search.noise_search_origin.is_finite(), "声音不抢占正在执行的躲藏")
-	ai.reset_actions()
-	ai.actions[&"attack_position"].phase = ai.actions[&"attack_position"].Phase.HOLD
-	noise.emit_from(player, 6.0)
-	await settle()
-	check(ai.actions[&"attack_position"].is_active() and not ai.search.noise_search_origin.is_finite(), "声音不抢占正在执行的架枪")
-	ai.reset_actions()
-	ai.current_suppression.active = true
-	noise.emit_from(player, 6.0)
-	await settle()
-	check(ai.current_suppression.is_active() and not ai.search.noise_search_origin.is_finite(), "声音不抢占正在执行的压制")
-	ai.reset_actions()
+	for id in [&"cover", &"attack_position", &"suppression"]:
+		preload("res://tests/enemy/enemy_fire_fixture.gd").set_training_action(ai, id, true)
+		ai.current_action = ai.actions[id]
+		ai.current_action._running = true
+		ai.utility_current = {"id": id, "accepts_noise": false}
+		noise.emit_from(player, 6.0)
+		await settle()
+		check(ai.current_action == ai.actions[id] and not ai.context.noise_search_origin.is_finite(), "声音不抢占当前%s动作" % id)
+		ai.reset_actions()
 	ai.perception.sight_distance = 10.0
 	enemy.look_at(player.global_position)
 	ai._physics_process(0.01)
 	noise.emit_from(player, 6.0)
 	await settle()
-	check(ai.has_visual_memory and not ai.search.noise_search_origin.is_finite(), "真实目击优先于声音调查")
+	check(ai.has_visual_memory and not ai.actions[&"search"].noise_search_origin.is_finite(), "真实目击优先于声音调查")
 	ai.perception.sight_distance = 0.0
 	enemy.reset_target()
-	var peer = enemy.duplicate()
+	var peer = load("res://scenes/enemy/enemy.tscn").instantiate()
+	peer.position = enemy.position + Vector3(2, 0, 0)
 	enemy.get_parent().add_child(peer)
-	peer.global_position = enemy.global_position + Vector3(2, 0, 0)
 	var peer_ai = peer.get_node("AI")
 	peer_ai.set_physics_process(false)
 	peer_ai.perception.sight_distance = 0.0
@@ -239,17 +234,17 @@ func check_priority_and_multiple() -> void:
 	noise.emit_from(player, 6.0)
 	await settle()
 	check(ai.is_alerted and peer_ai.is_alerted, "范围内多个敌人分别听见并调查")
-	check(ai.search != peer_ai.search, "多个敌人独立保存调查进度")
-	var peer_origin: Vector3 = peer_ai.search.noise_search_origin
+	check(ai.actions[&"search"] != peer_ai.actions[&"search"], "多个敌人独立保存调查进度")
+	var peer_origin: Vector3 = peer_ai.actions[&"search"].noise_search_origin
 	var count := heard.size()
 	enemy.receive_hit(enemy.health)
 	noise.emit_from(player, 6.0)
 	await settle()
-	check(heard.size() == count and not ai.search.noise_search_origin.is_finite(), "死亡清理调查且不再接收声音")
-	check(peer_ai.search.noise_search_origin == peer_origin, "一名敌人死亡不清除其他敌人的调查")
+	check(heard.size() == count and not ai.actions[&"search"].noise_search_origin.is_finite(), "死亡清理调查且不再接收声音")
+	check(peer_ai.actions[&"search"].noise_search_origin == peer_origin, "一名敌人死亡不清除其他敌人的调查")
 	peer.free()
 	enemy.reset_target()
-	check(not ai.search.noise_search_origin.is_finite(), "复位不保留过期声源")
+	check(not ai.actions[&"search"].noise_search_origin.is_finite(), "复位不保留过期声源")
 	var data = noise.duplicate()
 	data.audio_stream = AudioStreamGenerator.new()
 	var file := "user://hearing-resource-test.tres"

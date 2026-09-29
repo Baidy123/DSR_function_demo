@@ -10,7 +10,7 @@
 python movement_demo/tests/enemy/run_enemy_regressions.py --godot E:/Godot/Godot_v4.7.2-stable_win64_console.exe
 ```
 
-运行器 `TESTS` 列出当前 24 套正式回归。末尾可指定测试名（不含 `.gd`）。日志固定写入 `movement_demo/logs/enemy_regressions/`，同名结果覆盖。
+运行器 `TESTS` 列出当前 35 套正式回归。末尾可指定测试名（不含 `.gd`）。日志固定写入 `movement_demo/logs/enemy_regressions/`，同名结果覆盖。
 
 掩体专项包含 `cover_tactical_safety_test`（威胁近身路线、真实玩家身体阻挡、失败点排除）和 `stationary_cover_search_test`（玩家持续静止，敌人从躲藏推进调查并恢复开火）。`attack_point_validation_test` 已迁移到当前公共上下文接口，检查部分遮身、贴角余量、射界、感知距离及绿色预览与动作评估的一致性。`utility_suppression_blocked_test` 还验证两种压制同时参选时，出口压制能够实际胜出并开火。
 
@@ -32,8 +32,16 @@ python movement_demo/tests/enemy/run_enemy_regressions.py --godot E:/Godot/Godot
 
 该面板测试当前 14 项断言通过。Godot 4.7.2 使用 `--editor --script` 自定义 `SceneTree` 退出时仍报告编辑器 RID / 资源未释放；只等待初始化后退出的空脚本也能复现。因此将面板断言结果与编辑器退出检查分开记录，不把它算入上述无错误回归集合。测试会等待首次扫描完成，避免另行中断文件扫描。
 
-## 其他专项脚本
+## 本次清理增加的覆盖
 
-其他文件保留武器执行、地图几何、历史行为检查或复现场景。部分仍使用旧接口，未全部迁移或复测，不属于上述正式回归集合。使用前核对入口，不应将扫描整个目录当作当前统一测试集。
+`enemy_scene_test` 验证直接/容器内拖入、实例配置与搜索进度隔离、实际开火、跨区隔离、去重复位、导航自身延迟同步、导航/战斗区释放替换、区域外及不可站立出生点、无玩家/晚加入、注销和重新挂父节点。无效布置用例预期产生待命警告。
+
+`enemy_configuration_cleanup_test` 检查七个失效字段及资源覆盖键移除、有效字段保存重载、默认与显式覆盖语义，以及嵌套场景的参数/位置保存。`search_components_test` 覆盖六种衰减、最低倍率、零概率、误差样本和随机调用顺序。`search_area_coverage_test` 从旧脚本迁移三个种子的实际导航搜寻，独立更密地面采样验证覆盖超过90%，失败目标和路径拐点不计覆盖，死亡/复位清理进度。
+
+`enemy_firing_lane_test` 取代旧平面全锥测试，验证真实三维枪口空间、外围散布降低评分、当前枪口朝障碍暂缓及转出后命中。`enemy_basic_capabilities_test`、`enemy_reload_test`、`attack_hold_regression_test`、`attack_points_test`、`enemy_weapon_test`、`enemy_probability_test` 已迁移并加入正式运行器，保留身体执行、换弹脚步、实际站位保持、四面与旋转缩放几何、换枪与概率实射。概率测试显式提供足够弹药，避免空匣后重复统计上一枪。
+
+27个失效历史入口的替代关系逐项列在 [清理映射](superpowers/plans/2026-09-29-enemy-cleanup-test-mapping.md)，包括已被统一评分替代的旧概率触发规则；不是按文件名批量丢弃有效测试。
+
+听觉另运行 `--script res://tests/hearing_test.gd`，已迁移到当前动作/配置接口，保留45项逻辑声音、真实移动/开枪、权限、搜索、多人和资源保存检查。`test_enemy_probability_inspector.gd` 需要打开场景的编辑器测试环境，继续作为专项保留，不属于 headless 运行器。
 
 已被替代的旧结构迁移、固定优先级、旧权限测试和性能探针已删除，见 [实施记录](superpowers/plans/2026-09-29-enemy-modular-ai.md)。

@@ -47,16 +47,16 @@ func _run() -> void:
 	ai.last_known_position = player.global_position
 	ai.last_seen_position = player.global_position
 	var search = ai.actions[&"search"]
-	check(search.has_method("observe_visual_motion"), "连续真实目击支持短时运动估计")
-	if search.has_method("observe_visual_motion"):
-		search.observe_visual_motion(Vector3.ZERO, 1.0 / 60.0, false)
+	check(ai.context.has_method("observe_visual_motion"), "连续真实目击支持短时运动估计")
+	if ai.context.has_method("observe_visual_motion"):
+		ai.context.observe_visual_motion(Vector3.ZERO, 1.0 / 60.0, false)
 		for f in range(60):
-			search.observe_visual_motion(Vector3(0.02, 0, 0), 1.0 / 60.0, true)
+			ai.context.observe_visual_motion(Vector3(0.02, 0, 0), 1.0 / 60.0, true)
 		check(ai.last_seen_direction.dot(Vector3.RIGHT) > 0.95, "每帧不足0.05米的慢走仍能记录方向")
 		check(search.observed_velocity.x > 1.0 and search.observed_velocity.x < 1.3, "速度估计来自位移与经过时间")
-		for f in range(90): search.observe_visual_motion(Vector3.ZERO, 1.0 / 60.0, true)
+		for f in range(90): ai.context.observe_visual_motion(Vector3.ZERO, 1.0 / 60.0, true)
 		check(ai.last_seen_direction.is_zero_approx(), "目击玩家停下后不会永久沿用旧方向")
-		search.observe_visual_motion(Vector3(30, 0, 0), 0.1, false)
+		ai.context.observe_visual_motion(Vector3(30, 0, 0), 0.1, false)
 		check(search.observed_velocity.is_zero_approx(), "重新目击不把墙后移动当作观察轨迹")
 
 	ai.last_seen_direction = Vector3.RIGHT
@@ -70,9 +70,9 @@ func _run() -> void:
 	ai.last_known_position = ai.last_seen_position
 	ai.utility_unseen_seconds = 0.5
 	search.begin_search()
-	search.search_sweep_points.assign([Vector3(18, 0, 0), Vector3(22, 0, 0)])
-	search.search_uncovered_points.assign(search.search_sweep_points)
-	search.search_sample_count = 2
+	search.coverage.pending.assign([Vector3(18, 0, 0), Vector3(22, 0, 0)])
+	search.coverage.uncovered.assign(search.coverage.pending)
+	search.coverage.sample_count = 2
 	check(search._advance_systematic_search_target() and search.search_current_target.x > 20, "先检查轨迹前方，不被较近的后方点吸引")
 	if search.has_method("_search_point_cost"):
 		var fresh_forward: float = search._search_point_cost(Vector3(22, 0, 0))
@@ -92,13 +92,13 @@ func _run() -> void:
 	search.begin_search()
 	search.search_elapsed_seconds = 7.0
 	search._mark_search_coverage(ai.last_seen_position)
-	var uncovered: Array = search.search_uncovered_points.duplicate()
-	var sample_count: int = search.search_sample_count
+	var uncovered: Array = search.coverage.uncovered.duplicate()
+	var sample_count: int = search.coverage.sample_count
 	search._set_suspected_position_from_raw(Vector3(21, 0, 1), 2.0)
 	search._start_track_to_suspected()
 	search.track_timer = 0.0
 	search._process_track(0.01)
-	check(search.search_sample_count == sample_count and search.search_uncovered_points == uncovered, "提示追踪返回后保留本轮未覆盖区域")
+	check(search.coverage.sample_count == sample_count and search.coverage.uncovered == uncovered, "提示追踪返回后保留本轮未覆盖区域")
 	check(search.search_elapsed_seconds >= 7.0, "提示不重置搜索累计时间和衰减")
 	var rejected := RejectedHints.new()
 	rejected.setup(ai.context, &"search")

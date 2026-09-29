@@ -1,16 +1,8 @@
 extends RefCounted
 
-signal finished(sees_player: bool, known_position: Vector3)
 
 enum Phase { NONE, RUN_TO_COVER, HIDE, PEEK_OUT, WATCH }
 
-## 敌人胸部到实际弹道线段的警戒半径（米）；墙挡住来弹时不会隔墙触发。
-var shot_radius: float:
-	get: return _setting(&"shot_radius", 1.5)
-	set(value): _set_setting(&"shot_radius", value)
-## 每次新的有效近身来弹触发“寻找掩体”的概率。0=从不找掩体，1=每次都找。
-## 已经处于跑向掩体/躲藏/探头流程时不会重新掷骰子，避免连续来弹让行为反复取消。
-## 到达有效躲藏位置后等待探头的秒数；新来弹可重新计时，真正看见玩家则立即结束躲藏。
 ## 抵达 Peek 后最多观察多少秒；看见玩家会提前结束，否则转入追踪或搜索。
 var watch_seconds: float:
 	get: return _setting(&"watch_seconds", 2.0)
@@ -525,7 +517,6 @@ func _finish(sees_player: bool) -> void:
 	if phase == Phase.RUN_TO_COVER or (phase == Phase.PEEK_OUT and not sees_player):
 		context.block_utility_destination(hide_position if phase == Phase.RUN_TO_COVER else peek_position)
 	reset()
-	finished.emit(sees_player, remembered)
 	context.resume_after_action(sees_player, remembered)
 
 

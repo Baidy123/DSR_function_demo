@@ -25,16 +25,6 @@ var _move_stuck_seconds := 0.0
 
 
 
-func get_engagement_candidates() -> Array[Dictionary]:
-	var candidates: Array[Dictionary] = []
-	for point: Vector3 in get_engagement_candidate_points():
-		var candidate: Dictionary = assess_engagement_point(point, context.last_known_position)
-		if not candidate.is_empty():
-			candidates.append(candidate)
-	return candidates
-
-
-## 先生成少量原始点，供统一评分器分帧完成空间、射界及路径查询。
 
 func get_engagement_candidate_points() -> Array[Vector3]:
 	var points: Array[Vector3] = []

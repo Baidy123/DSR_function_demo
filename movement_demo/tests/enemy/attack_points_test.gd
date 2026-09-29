@@ -22,6 +22,22 @@ func _run() -> void:
 	collision.shape.size = Vector3(4, 2, 1)
 	collision.position.y = 1.0
 	wall.add_child(collision)
+	for direction in [Vector3.RIGHT, Vector3.LEFT, Vector3.FORWARD, Vector3.BACK]:
+		var threat: Vector3 = collision.to_global(direction * 10.0)
+		var candidates: Array = wall.get_candidates(threat, Vector3.ZERO)
+		var tangent := Vector3(-direction.z, 0, direction.x)
+		var extent: float = collision.shape.size.x * 0.5 if absf(tangent.x) > 0.5 else collision.shape.size.z * 0.5
+		var ratio: float = 0.25 if absf(direction.x) > 0.5 else 0.75
+		var valid := not candidates.is_empty()
+		for candidate in candidates:
+			var local: Vector3 = collision.to_local(candidate.hide)
+			valid = valid and local.dot(direction) < 0.0 and wall.is_hiding_position(candidate.hide, threat)
+			valid = valid and absf(local.dot(tangent)) <= extent * ratio + 0.001
+			for peek in candidate.peeks:
+				valid = valid and absf(collision.to_local(peek).dot(tangent)) > extent
+		_check("四面背向躲藏、短边25%%长边75%%及端点范围_%s" % direction, valid)
+	var diagonal_candidates: Array = wall.get_candidates(collision.to_global(Vector3(10, 0, 10)), Vector3.ZERO)
+	_check("斜向威胁允许两个背向面参与", diagonal_candidates.any(func(c): return collision.to_local(c.hide).x < -2.0) and diagonal_candidates.any(func(c): return collision.to_local(c.hide).z < -0.5))
 	var before: Array = wall.get_candidates(Vector3(0, 0, 4), Vector3(0, 0, -4))
 	var points: Array = wall.get_attack_candidates()
 	_check("四角区域提供多个不重复站位", points.size() > 8 and _unique_count(points) == points.size())

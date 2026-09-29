@@ -7,14 +7,9 @@ var noise_search_origin: Vector3:
 		if context != null: context.noise_search_origin = value
 
 # 搜寻：丢失目标后的预测追踪、调查和区域搜索。由 AI 统一调用。
-enum SearchHintDecayMode {
-	NONE,
-	LINEAR_TIME,
-	EXPONENTIAL_TIME,
-	LINEAR_DISTANCE,
-	TIME_AND_DISTANCE,
-	CUSTOM
-}
+const SearchHintDecayMode = preload("res://scripts/enemy/services/enemy_search_hints.gd").SearchHintDecayMode
+var hints = preload("res://scripts/enemy/services/enemy_search_hints.gd").new()
+var coverage = preload("res://scripts/enemy/services/enemy_search_coverage.gd").new()
 
 ## 是否允许 AI 在失去视野后偶尔读取一次墙后玩家的位置。
 ## 关闭后不再用隐藏位置生成追踪目标，仍保留真实目击方向和来弹推测。
@@ -88,11 +83,6 @@ var track_move_speed_multiplier: float:
 var track_attention_weight: float:
 	get: return _setting(&"track_attention_weight", 0.75)
 	set(value): _set_setting(&"track_attention_weight", value)
-## TRACK 状态的水平总视野角（度）；实际取它与普通 Sight Angle Degrees 的较大值。
-## 例如 220° 表示前方左右各约 110°；仍保留身后的盲区，不是 360° 透视。
-var track_sight_angle_degrees: float:
-	get: return _setting(&"track_sight_angle_degrees", 220.0)
-	set(value): _set_setting(&"track_sight_angle_degrees", value)
 ## TRACK 的移动目标至少离 NavigationRegion 边界这么远，避免目标贴在 NavMesh 边缘导致角色顶住边界。
 var track_nav_edge_margin: float:
 	get: return _setting(&"track_nav_edge_margin", 0.35)
@@ -158,11 +148,6 @@ var has_suspected_position: bool = false
 var track_timer: float = 0.0
 var search_direction: Vector3 = Vector3.ZERO
 var search_hint_timer: float = 0.0
-## 尚未尝试、且未被已抵达目标的小圆覆盖的搜寻候选点。
-var search_sweep_points: Array[Vector3] = []
-# 均匀采样近似面积；只有抵达搜寻目标才删去小圆内的样本，寻路拐点不计入。
-var search_uncovered_points: Array[Vector3] = []
-var search_sample_count: int = 0
 var search_progress_waypoint: Vector3 = Vector3.INF
 var search_target_timer: float = 0.0
 var search_sweep_index: int = 0
@@ -190,12 +175,6 @@ var _track_best_distance := INF
 var _track_stuck_seconds := 0.0
 
 const Actor = preload("res://scripts/enemy/enemy_actor.gd")
-
-
-func observe_visual_motion(displacement: Vector3, delta: float, continuous: bool) -> void:
-	if not continuous:
-		reset()
-	context.observe_visual_motion(displacement, delta, continuous)
 
 
 func predicted_position() -> Vector3:
@@ -251,7 +230,7 @@ func is_observing() -> bool:
 
 func recover_unreachable_destination() -> void:
 	# 只有统一选择器真正执行搜索后才改进度；评估阶段不选点、不消耗候选。
-	if investigation_phase == context.State.SEARCH and search_sample_count > 0:
+	if investigation_phase == context.State.SEARCH and coverage.sample_count > 0:
 		_skip_current_search_point()
 		search_is_pausing = false
 		_segment_boundary_pending = false
@@ -312,49 +291,15 @@ func begin_tracking_or_search(allow_hint: bool = true) -> void:
 
 
 func get_current_search_hint_chance() -> float:
-	if search_hint_chance <= 0.0:
-		return 0.0
-
-	var elapsed: float = maxf(0.0, search_elapsed_seconds)
-	var player_displacement: float = 0.0
-	if is_instance_valid(context.player):
-		player_displacement = context._horizontal_distance_between(search_origin, context.player.global_position)
-
-	var minimum: float = clampf(search_hint_min_multiplier, 0.0, 1.0)
-	var multiplier: float = 1.0
-
-	match search_hint_decay_mode:
-		SearchHintDecayMode.NONE:
-			multiplier = 1.0
-
-		SearchHintDecayMode.LINEAR_TIME:
-			var t: float = clampf(elapsed / maxf(0.01, search_hint_linear_decay_seconds), 0.0, 1.0)
-			multiplier = lerpf(1.0, minimum, t)
-
-		SearchHintDecayMode.EXPONENTIAL_TIME:
-			multiplier = pow(0.5, elapsed / maxf(0.01, search_hint_half_life_seconds))
-
-		SearchHintDecayMode.LINEAR_DISTANCE:
-			var distance_ratio: float = clampf(player_displacement / maxf(0.01, search_hint_distance_falloff), 0.0, 1.0)
-			multiplier = lerpf(1.0, minimum, distance_ratio)
-
-		SearchHintDecayMode.TIME_AND_DISTANCE:
-			var time_multiplier: float = pow(0.5, elapsed / maxf(0.01, search_hint_half_life_seconds))
-			var combined_distance_ratio: float = clampf(player_displacement / maxf(0.01, search_hint_distance_falloff), 0.0, 1.0)
-			var distance_multiplier: float = lerpf(1.0, minimum, combined_distance_ratio)
-			multiplier = time_multiplier * distance_multiplier
-
-		SearchHintDecayMode.CUSTOM:
-			multiplier = _custom_search_hint_decay_multiplier(elapsed, player_displacement)
-
-	multiplier = clampf(multiplier, minimum, 1.0)
-	return clampf(search_hint_chance * multiplier, 0.0, 1.0)
+	var displacement := 0.0
+	if search_hint_chance > 0.0 and is_instance_valid(context.player):
+		displacement = context._horizontal_distance_between(search_origin, context.player.global_position)
+	return hints.chance(search_hint_chance, search_hint_decay_mode, search_elapsed_seconds, displacement,
+		search_hint_min_multiplier, search_hint_linear_decay_seconds, search_hint_half_life_seconds,
+		search_hint_distance_falloff, _custom_search_hint_decay_multiplier)
 
 
-## CUSTOM 模式的扩展接口。
-## 想自己写递减公式时，只改/覆写这里并返回 0~1 倍率即可。
-
-
+## CUSTOM 模式扩展：返回 0～1 倍率。
 func _custom_search_hint_decay_multiplier(
 	elapsed_seconds: float,
 	player_displacement: float
@@ -389,7 +334,7 @@ func _try_tracking_cheat_hint(chance: float) -> bool:
 		if debug_tracking_cheat:
 			print("[AI][追踪提示] 失败：AI未激活或player无效")
 		return false
-	if not context.arena_zone.overlaps_body(context.player):
+	if not context.is_arena_active():
 		if debug_tracking_cheat:
 			print("[AI][追踪提示] 失败：player不在CombatZone")
 		return false
@@ -411,12 +356,7 @@ func _try_tracking_cheat_hint(chance: float) -> bool:
 	var attempts: int = maxi(1, tracking_hint_position_attempts)
 
 	for attempt_index in range(attempts):
-		var raw_target: Vector3 = context.player.global_position
-
-		if tracking_hint_error_radius > 0.0:
-			var error_angle: float = randf_range(0.0, TAU)
-			var error_radius: float = sqrt(randf()) * tracking_hint_error_radius
-			raw_target += Vector3(cos(error_angle), 0.0, sin(error_angle)) * error_radius
+		var raw_target: Vector3 = hints.sample(context.player.global_position, tracking_hint_error_radius)
 
 		if _set_suspected_position_from_raw(raw_target, max_snap_distance):
 			var hint_direction: Vector3 = suspected_look_position - actor.global_position
@@ -595,7 +535,7 @@ func _start_track_to_suspected() -> void:
 		search_direction = direction.normalized()
 
 	track_timer = track_seconds
-	_return_to_area_search = investigation_phase == context.State.SEARCH and search_sample_count > 0
+	_return_to_area_search = investigation_phase == context.State.SEARCH and coverage.sample_count > 0
 	investigation_phase = context.State.TRACK
 	_begin_segment()
 	_segment_boundary_pending = false
@@ -733,7 +673,7 @@ func begin_search(center: Vector3 = Vector3.INF) -> void:
 			" forward=",
 			search_direction,
 			" points=",
-			search_sweep_points.size()
+			coverage.pending.size()
 		)
 
 
@@ -835,98 +775,28 @@ func _process_search(delta: float) -> Vector3:
 
 
 func _build_systematic_area_search() -> void:
-	search_sweep_points.clear()
-	search_uncovered_points.clear()
-	search_sample_count = 0
-	var radius: float = maxf(1.0, search_radius)
-	# 均匀采样近似面积；每轮随机转动采样网，避免目标坐标固定。
-	var spacing: float = maxf(0.5, maxf(search_coverage_radius * 0.5, radius / 18.0))
-	var angle: float = randf() * TAU
-	var extent: int = int(ceil(radius / spacing))
-	for x in range(-extent, extent + 1):
-		for z in range(-extent, extent + 1):
-			var offset = Vector3(x * spacing, 0, z * spacing)
-			if offset.length() > radius:
-				continue
-			_try_append_systematic_search_point(search_origin + offset.rotated(Vector3.UP, angle))
-	search_uncovered_points.assign(search_sweep_points)
-	search_sample_count = search_uncovered_points.size()
-
-## 将面积采样点转换成可达地面上的候选点。
-
-
-func _try_append_systematic_search_point(raw_point: Vector3) -> bool:
-	var nav_point: Vector3 = NavigationServer3D.region_get_closest_point(
-		context.navigation_region.get_rid(), raw_point
-	)
-	if context._horizontal_distance_between(raw_point, nav_point) > search_nav_snap_tolerance:
-		return false
-	var destination = Vector3(nav_point.x, actor.global_position.y, nav_point.z)
-	if context._horizontal_distance_between(destination, search_origin) > search_radius:
-		return false
-	if not context.is_position_free(destination):
-		return false
-	# 只统计本轮起点所在连通区域内可达的地面。
-	var path: PackedVector3Array = NavigationServer3D.map_get_path(
-		agent.get_navigation_map(), actor.global_position, destination, true, agent.navigation_layers
-	)
-	if path.is_empty() or context._horizontal_distance_between(path[path.size() - 1], destination) > 0.2:
-		return false
-	for existing: Vector3 in search_sweep_points:
-		if context._horizontal_distance_between(existing, destination) < 0.3:
-			return false
-	search_sweep_points.append(destination)
-	return true
+	coverage.build(context, search_origin, search_radius, search_coverage_radius, search_nav_snap_tolerance)
 
 
 func get_search_coverage() -> float:
-	if search_sample_count == 0:
-		return 1.0
-	return 1.0 - float(search_uncovered_points.size()) / float(search_sample_count)
+	return coverage.fraction()
 
 
 func _mark_search_coverage(point: Vector3) -> void:
-	# 目标点的假想小圆，与真实视野分开，按用户规则不检测墙壁遮挡。
-	for index in range(search_uncovered_points.size() - 1, -1, -1):
-		if context._horizontal_distance_between(point, search_uncovered_points[index]) <= search_coverage_radius:
-			search_uncovered_points.remove_at(index)
-	for index in range(search_sweep_points.size() - 1, -1, -1):
-		if context._horizontal_distance_between(point, search_sweep_points[index]) <= search_coverage_radius:
-			search_sweep_points.remove_at(index)
+	coverage.mark(point)
 
-## 方向判断随失视时间变弱，随后自然扩展到两侧和其他未覆盖区域。
+
 func _search_point_cost(point: Vector3) -> float:
-	var origin: Vector3 = search_origin
-	var prediction: Vector3 = origin
-	var confidence := 0.0
-	if context.has_visual_memory and not noise_search_origin.is_finite() and not context.last_seen_direction.is_zero_approx():
-		prediction = predicted_position()
-		confidence = pow(0.5, context.utility_unseen_seconds / 4.0)
-	var offset := point - origin
-	offset.y = 0.0
-	var backwards := maxf(0.0, -offset.dot(context.last_seen_direction))
-	return lerpf(offset.length(), context._horizontal_distance_between(point, prediction) + backwards, confidence) + context._horizontal_distance(point) * 0.25
+	return coverage.point_cost(point, predicted_position())
 
 
 func _advance_systematic_search_target() -> bool:
 	if get_search_coverage() >= search_coverage_goal:
 		return false
-	# 候选已有空间/路径过滤；这里只做廉价排序，选中后重新核实路径。
-	while not search_sweep_points.is_empty():
-		var chosen_index := 0
-		var best_cost := _search_point_cost(search_sweep_points[0])
-		for candidate_index in range(1, search_sweep_points.size()):
-			var cost := _search_point_cost(search_sweep_points[candidate_index])
-			if cost < best_cost:
-				chosen_index = candidate_index
-				best_cost = cost
-		var destination: Vector3 = search_sweep_points[chosen_index]
-		search_sweep_points.remove_at(chosen_index)
-		var path: PackedVector3Array = NavigationServer3D.map_get_path(
-			agent.get_navigation_map(), actor.global_position, destination, true, agent.navigation_layers
-		)
-		if path.is_empty() or context._horizontal_distance_between(path[path.size() - 1], destination) > 0.2:
-			continue
+	var next: Dictionary = coverage.take_next(predicted_position())
+	if not next.is_empty():
+		var destination: Vector3 = next.position
+		var path: PackedVector3Array = next.path
 		search_sweep_index += 1
 		search_current_target = destination
 		search_current_target_active = true
@@ -988,9 +858,7 @@ func _end_search() -> void:
 	search_is_pausing = false
 	track_timer = 0.0
 	search_hint_timer = 0.0
-	search_sweep_points.clear()
-	search_uncovered_points.clear()
-	search_sample_count = 0
+	coverage.reset()
 	search_sweep_index = 0
 	search_current_target = actor.global_position
 	search_current_target_active = false
@@ -1020,9 +888,7 @@ func reset() -> void:
 	track_timer = 0.0
 	search_direction = Vector3.ZERO
 	search_hint_timer = 0.0
-	search_sweep_points.clear()
-	search_uncovered_points.clear()
-	search_sample_count = 0
+	coverage.reset()
 	search_sweep_index = 0
 	search_current_target = actor.global_position
 	search_current_target_active = false
