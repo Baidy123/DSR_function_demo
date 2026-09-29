@@ -18,6 +18,8 @@ var second_exit: Array[Vector3] = []
 var _next_exit: int = 0
 var _shots_remaining: int = 0
 var _inference_confidence: float = 0.0
+var _exit_geometry: Dictionary = {}
+var _exit_memory: Vector3
 
 
 func reset() -> void:
@@ -28,66 +30,34 @@ func reset() -> void:
 	_next_exit = 0
 	_shots_remaining = 0
 	_inference_confidence = 0.0
+	_exit_geometry.clear()
 
 
 func _prepare_targets(center: Vector3) -> bool:
 	reset()
-	var nearby: Array[Dictionary] = []
-	var ground := center - Vector3.UP * 0.8
-	# 距离按碰撞盒表面计算，适配现有掩体的旋转与缩放。
-	for region in context.get_tree().get_nodes_in_group("cover_region"):
-		if not context.navigation_region.is_ancestor_of(region):
-			continue
-		var collision: CollisionShape3D = region.get_node_or_null("CollisionShape3D")
-		if collision == null or not collision.shape is BoxShape3D:
-			continue
-		var half: Vector3 = collision.shape.size * 0.5
-		var local: Vector3 = collision.to_local(ground)
-		var surface: Vector3 = collision.to_global(Vector3(clampf(local.x, -half.x, half.x), local.y, clampf(local.z, -half.z, half.z)))
-		var distance := Vector2(surface.x - ground.x, surface.z - ground.z).length()
-		if distance <= cover_inference_distance:
-			nearby.append({"body": region, "distance": distance})
-	nearby.sort_custom(func(a, b): return a.distance < b.distance)
-	# 最近的墙不一定有射界；继续尝试其他邻近掩体，不读取隐藏玩家位置。
-	for candidate in nearby:
-		target_cover = candidate.body
-		first_exit.clear()
-		second_exit.clear()
-		_prepare_cover_exits()
-		if not first_exit.is_empty() or not second_exit.is_empty():
-			_inference_confidence = 1.0 - 0.5 * clampf(candidate.distance / maxf(0.1, cover_inference_distance), 0.0, 1.0)
-			return true
-	target_cover = null
-	return false
+	_exit_memory = center - Vector3.UP * 0.8
+	_exit_geometry = context.cover_selection.suppression_geometry(_exit_memory, cover_inference_distance)
+	if _exit_geometry.is_empty(): return false
+	target_cover = _exit_geometry.body
+	_inference_confidence = _exit_geometry.confidence
+	first_exit.assign(_exit_geometry.first)
+	second_exit.assign(_exit_geometry.second)
+	return not first_exit.is_empty() or not second_exit.is_empty()
 
 
 func _prepare_cover_exits() -> void:
-	var box: CollisionShape3D = target_cover.get_node("CollisionShape3D")
-	var size: Vector3 = box.shape.size
-	var along_x := size.x * box.global_basis.x.length() >= size.z * box.global_basis.z.length()
-	var half_length := (size.x if along_x else size.z) * 0.5
-	# 使用原墙角攻击区域的样本，但目标必须处在长轴两端之外，不能打向墙面中部。
-	for point in target_cover.get_attack_candidates():
-		var local: Vector3 = box.to_local(point)
-		var along: float = local.x if along_x else local.z
-		if absf(along) < half_length:
-			continue
-		var target: Vector3 = point + Vector3.UP * 0.8
-		if actor.get_shot_origin().distance_to(target) > actor.weapon.fire_range:
-			continue
-		if not _can_reach_target(target):
-			continue
-		if along < 0.0:
-			first_exit.append(target)
-		else:
-			second_exit.append(target)
+	_exit_geometry = context.cover_selection._suppression_cover_geometry(target_cover, _exit_memory)
+	first_exit.assign(_exit_geometry.get("first", []))
+	second_exit.assign(_exit_geometry.get("second", []))
 
 
 func information_retention() -> float:
 	# 封住越多可信出口，等待时目标可能移动的范围越小；并非固定战术优先级。
 	var coverage := (float(not first_exit.is_empty()) + float(not second_exit.is_empty())) * 0.5
 	var freshness := pow(0.5, context.utility_unseen_seconds / maxf(0.5, context.utility_threat_half_life_seconds))
-	return 0.65 * _inference_confidence * coverage * freshness
+	var balance: float = _exit_geometry.get("balance", 0.0)
+	var passage_fraction := float(_exit_geometry.get("open_sides", 0)) * 0.5
+	return 0.65 * _inference_confidence * coverage * freshness * balance * passage_fraction
 
 
 func _can_reach_target(target: Vector3) -> bool:
@@ -98,12 +68,12 @@ func _can_reach_target(target: Vector3) -> bool:
 func _targets_available() -> bool:
 	if not is_instance_valid(target_cover):
 		return false
-	if _can_reach_target(aim_point):
-		return true
-	first_exit = first_exit.filter(_can_reach_target)
-	second_exit = second_exit.filter(_can_reach_target)
+	# 动态障碍可封住通道而不挡射线；每次执行同时复核身体通行和实际射界。
+	_prepare_cover_exits()
 	if first_exit.is_empty() and second_exit.is_empty():
 		return false
+	if aim_point in first_exit or aim_point in second_exit:
+		return true
 	_select_aim_point()
 	return true
 

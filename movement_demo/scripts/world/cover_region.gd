@@ -171,7 +171,7 @@ func get_attack_candidates() -> Array[Vector3]:
 	return points
 
 
-## 连续扇环的极坐标小区域；用于运行时评估和填色，旧点接口仍供出口目标采样。
+## 连续扇环的极坐标小区域；用于运行时评估和填色，旧点接口保留给专项几何检查。
 var _attack_cells_signature: Array = []
 var _attack_cells_cache: Array[Dictionary] = []
 

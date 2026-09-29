@@ -24,6 +24,7 @@ TESTS = [
     "lost_contact_initiative_test",
     "suppression_lane_test",
     "utility_suppression_blocked_test",
+    "exit_suppression_geometry_test",
     "utility_suppression_trigger_test",
     "enemy_fire_timing_test",
     "enemy_fire_decision_test",

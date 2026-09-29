@@ -143,7 +143,8 @@ func _run() -> void:
 	check(exits._prepare_targets(center) and exits.target_cover == cover, "最近掩体不可射时继续选择其他可信邻近掩体")
 	check(exits.first_exit.is_empty() != exits.second_exit.is_empty(), "只露出一侧出口时仍保留封锁方案")
 	var original_range: float = enemy.weapon.fire_range
-	enemy.weapon.fire_range = 2.5
+	# 新出口取身体能绕出的入口，射程仍位于真实出口与记忆中心之间。
+	enemy.weapon.fire_range = 2.6
 	check(enemy.get_shot_origin().distance_to(center) > enemy.weapon.fire_range and exits.utility_available(), "记忆中心超射程但实际出口可射时仍可参选")
 	exits.on_target_lost()
 	check(exits.is_active() and enemy.get_shot_origin().distance_to(exits.aim_point) <= enemy.weapon.fire_range, "执行阶段同样按实际出口射程启动")

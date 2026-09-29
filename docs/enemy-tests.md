@@ -10,11 +10,13 @@
 python movement_demo/tests/enemy/run_enemy_regressions.py --godot E:/Godot/Godot_v4.7.2-stable_win64_console.exe
 ```
 
-运行器 `TESTS` 列出当前 23 套正式回归。末尾可指定测试名（不含 `.gd`）。日志固定写入 `movement_demo/logs/enemy_regressions/`，同名结果覆盖。
+运行器 `TESTS` 列出当前 24 套正式回归。末尾可指定测试名（不含 `.gd`）。日志固定写入 `movement_demo/logs/enemy_regressions/`，同名结果覆盖。
 
 掩体专项包含 `cover_tactical_safety_test`（威胁近身路线、真实玩家身体阻挡、失败点排除）和 `stationary_cover_search_test`（玩家持续静止，敌人从躲藏推进调查并恢复开火）。`attack_point_validation_test` 已迁移到当前公共上下文接口，检查部分遮身、贴角余量、射界、感知距离及绿色预览与动作评估的一致性。`utility_suppression_blocked_test` 还验证两种压制同时参选时，出口压制能够实际胜出并开火。
 
 `attack_region_quality_test` 隔离外围墙，检查 3 个距离、8 个方向共 24 组视角的可用区域面积、部分身体遮挡、内圈排除和外围散布容错；感知及射程上限由 `attack_point_validation_test` 单独覆盖。`close_range_spacing_test` 使用真实移动，验证满血未受击时退让、玩家持续逼近时再次后撤、后撤开火及失视信息边界。`utility_budget_test` 保留 20 毫秒耗时门槛和 180 帧覆盖检查。
+
+`exit_suppression_geometry_test` 隔离外围墙后使用真实碰撞，覆盖敌人自身到两端的等距／不等距评分与统一选择器结果、贴墙及窄缝、间隙扩大后恢复、仅中点可站立但进出受阻、动态封堵、无关邻墙、旋转缩放与短边出口。移动隐藏玩家不得改变评分或可用出口；评分预览不得改写运行中的瞄准与连射状态。最后以已锁定旧出口的状态切换目标，验证跟枪途中不射击、跟上后真实子弹朝向新出口，并在60帧内检查双压制评分与通行复核合计小于20毫秒。`utility_suppression_blocked_test` 继续检查统一选择器实际选择并执行出口压制，以及记忆中心超距但真实出口仍在射程内；范围按新的身体入口采样设置为2.6米。
 
 `enemy_configuration_lifecycle_test` 遍历 32 种战术选择，检查实际装配、空间任务所有者、共享查询通道和开火请求；另外检查同帧撤销再恢复、两个敌人的训练深复制、参数保存重载、替换/缺省训练资源及重生清理。测试刻意持有旧实例，避免把“恰好被释放”当作正确注销。原模块协议检查还覆盖动态扩展、能力限制、包含循环和协调器无具体战术分支。
 

@@ -447,6 +447,106 @@ func has_clear_line(from: Vector3, to: Vector3) -> bool:
 	return enemy.get_world_3d().direct_space_state.intersect_ray(_ray_query(from, to)).is_empty()
 
 
+## 只用目击记忆推断掩体；射线可达和身体可通行分别返回，供两种压制共同估计。
+func suppression_geometry(known: Vector3, inference_distance: float) -> Dictionary:
+	var nearby: Array[Dictionary] = []
+	for region in get_tree().get_nodes_in_group("cover_region"):
+		if not ai.navigation_region.is_ancestor_of(region): continue
+		var box := region.get_node_or_null("CollisionShape3D") as CollisionShape3D
+		if box == null or box.disabled or not box.shape is BoxShape3D or (region.collision_layer & 1) == 0: continue
+		var half: Vector3 = box.shape.size * 0.5
+		var local := box.to_local(known)
+		var surface := box.to_global(Vector3(clampf(local.x, -half.x, half.x), local.y, clampf(local.z, -half.z, half.z)))
+		var distance: float = ai._horizontal_distance_between(known, surface)
+		if distance <= inference_distance:
+			nearby.append({"body": region, "distance": distance})
+	nearby.sort_custom(func(a, b): return a.distance < b.distance)
+	var blocked: Dictionary = {}
+	for candidate in nearby:
+		var geometry := _suppression_cover_geometry(candidate.body, known)
+		if geometry.is_empty(): continue
+		geometry.confidence = 1.0 - 0.5 * clampf(candidate.distance / maxf(0.1, inference_distance), 0.0, 1.0)
+		if not geometry.first.is_empty() or not geometry.second.is_empty(): return geometry
+		if blocked.is_empty(): blocked = geometry
+	return blocked
+
+
+func _suppression_cover_geometry(region: StaticBody3D, known: Vector3) -> Dictionary:
+	var box := region.get_node_or_null("CollisionShape3D") as CollisionShape3D
+	var body := enemy.get_node("CollisionShape3D") as CollisionShape3D
+	if box == null or box.disabled or not box.shape is BoxShape3D or (region.collision_layer & 1) == 0: return {}
+	if not body.shape is CapsuleShape3D: return {}
+	var half: Vector3 = box.shape.size * 0.5
+	var observer := box.to_local(enemy.global_position)
+	# 使用面向敌人的墙面两端；从短边观察时不能仍取长轴出口。
+	var along_x := absf(observer.z) / half.z >= absf(observer.x) / half.x
+	var along_axis := box.global_basis.x if along_x else box.global_basis.z
+	var across_axis := box.global_basis.z if along_x else box.global_basis.x
+	var half_along: float = half.x if along_x else half.z
+	var half_across: float = half.z if along_x else half.x
+	var side := signf(observer.z if along_x else observer.x)
+	if is_zero_approx(side): return {}
+	var radius: float = body.shape.radius * maxf(body.global_basis.x.length(), body.global_basis.z.length())
+	var margin_along := (radius + 0.1) / along_axis.length()
+	var margin_across := (radius + 0.1) / across_axis.length()
+	var memory := box.to_local(known)
+	var memory_along: float = memory.x if along_x else memory.z
+	var memory_across: float = memory.z if along_x else memory.x
+	# 正面中部的邻墙不代表玩家躲在墙后；记忆应在背侧或接近能绕出的端部。
+	if memory_across * side > half_across and absf(memory_along) < half_along - margin_along: return {}
+	var hidden_along := clampf(memory_along, -maxf(0.0, half_along - margin_along), maxf(0.0, half_along - margin_along))
+	var hidden := _suppression_point(box, along_x, hidden_along, -side * (half_across + margin_across))
+	var hit: Dictionary = enemy.get_world_3d().direct_space_state.intersect_ray(_ray_query(enemy.get_shot_origin(), hidden + Vector3.UP * 0.8))
+	if hit.get("collider") != region: return {}
+	var result := {"body": region, "first": [], "second": [], "open_sides": 0, "balance": 0.0}
+	var centers: Array[Vector3] = []
+	for end in [-1.0, 1.0]:
+		var points: Array[Vector3] = []
+		var passable := false
+		centers.append(_suppression_point(box, along_x, end * (half_along + margin_along), side * (half_across + margin_across)))
+		# 小范围的端部通道，独立于攻击站位的270度扇环，避免打到无关区域。
+		for offset in [0.0, 0.15, 0.3]:
+			var along: float = end * (half_along + margin_along + offset / along_axis.length())
+			var start := _suppression_point(box, along_x, along, -side * (half_across + margin_across))
+			var finish := _suppression_point(box, along_x, along, side * (half_across + margin_across))
+			if not suppression_passage_free(start, finish): continue
+			passable = true
+			# 瞄准身体绕出墙后的可见入口；墙厚中线在斜视角下仍可能被本墙遮住。
+			var target := finish + Vector3.UP * 0.8
+			if enemy.weapon != null and enemy.get_shot_origin().distance_to(target) <= enemy.weapon.fire_range and has_clear_line(enemy.get_shot_origin(), target):
+				points.append(target)
+		result["first" if end < 0.0 else "second"] = points
+		result.open_sides += int(passable)
+	var first_distance: float = ai._horizontal_distance_between(enemy.global_position, centers[0])
+	var second_distance: float = ai._horizontal_distance_between(enemy.global_position, centers[1])
+	# 归一化到两出口间距：0=基本站在一端，1=到两端等距；不读取玩家位置。
+	result.balance = 1.0 - clampf(absf(first_distance - second_distance) / maxf(0.1, centers[0].distance_to(centers[1])), 0.0, 1.0)
+	return result
+
+
+func _suppression_point(box: CollisionShape3D, along_x: bool, along: float, across: float) -> Vector3:
+	return box.to_global(Vector3(along, -box.shape.size.y * 0.5, across) if along_x else Vector3(across, -box.shape.size.y * 0.5, along))
+
+
+## 扫过完整身体，不能把射线穿得过的窄缝或孤立落脚点当成出入口。
+func suppression_passage_free(start: Vector3, finish: Vector3) -> bool:
+	var body := enemy.get_node("CollisionShape3D") as CollisionShape3D
+	var query := PhysicsShapeQueryParameters3D.new()
+	query.shape = body.shape
+	query.transform = Transform3D(body.global_basis, start + body.global_position - enemy.global_position + Vector3.UP * 0.05)
+	query.collision_mask = enemy.collision_mask
+	query.exclude = _ray_query(start, finish).exclude
+	query.margin = 0.02
+	var space: PhysicsDirectSpaceState3D = enemy.get_world_3d().direct_space_state
+	if not space.intersect_shape(query, 1).is_empty(): return false
+	query.motion = finish - start
+	var travel: PackedFloat32Array = space.cast_motion(query)
+	if travel[0] < 1.0: return false
+	query.transform.origin += query.motion
+	query.motion = Vector3.ZERO
+	return space.intersect_shape(query, 1).is_empty()
+
+
 func _ray_query(from: Vector3, to: Vector3) -> PhysicsRayQueryParameters3D:
 	var query: PhysicsRayQueryParameters3D = PhysicsRayQueryParameters3D.create(from, to, 1, [enemy.get_rid()])
 	if is_instance_valid(ai.player) and ai.player is CollisionObject3D:

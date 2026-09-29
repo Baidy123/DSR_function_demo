@@ -120,6 +120,10 @@ func _update_suppression_shooting(delta: float, movement_requested: bool) -> voi
 	var moving: bool = movement_requested or Vector2(actor.velocity.x, actor.velocity.z).length() > 0.05
 	if actor.get_shot_origin().distance_to(point) > actor.weapon.fire_range or fire_pause_remaining > 0.0 or (moving and not fire_while_moving):
 		return
+	# aim_acquired 记录曾经跟上过目标，换点后仍可能为true；必须核实当前方向。
+	var desired: Vector3 = point - actor.get_shot_origin()
+	if desired.is_zero_approx() or actor.aim_direction.angle_to(desired) > actor.AIM_ACQUIRE_ANGLE:
+		return
 	if not has_clear_suppression_lane(actor.get_shot_origin(), actor.aim_direction, actor.get_shot_origin().distance_to(point)):
 		context.invalidate_utility()
 		return

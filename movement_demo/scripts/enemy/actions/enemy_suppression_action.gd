@@ -44,9 +44,14 @@ func utility_available() -> bool:
 	_preview_information_retention = preview.information_retention() if available else 0.0
 	return available
 
-## 普通区域压制没有封住已知出口，等待期间目标的不确定性持续增加。
+## 近侧出口明显更近、或另一端身体无法通过时，集中压制记忆区域更有效。
 func information_retention() -> float:
-	return 0.0
+	var geometry: Dictionary = context.cover_selection.suppression_geometry(context.last_seen_position,
+		float(context.setting(&"exit_suppression", &"cover_inference_distance", 1.75)))
+	if geometry.is_empty(): return 0.0
+	var focus := maxf(1.0 - float(geometry.balance), 1.0 - float(geometry.open_sides) * 0.5)
+	var freshness := pow(0.5, context.utility_unseen_seconds / maxf(0.5, context.utility_threat_half_life_seconds))
+	return 0.65 * float(geometry.confidence) * focus * freshness
 
 
 ## 执行会把全部射击分配到可射样本，不能再按未被使用的遮挡样本扣除射击时间。
