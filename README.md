@@ -2,7 +2,7 @@
 
 使用 Godot 和 GDScript 制作的 3D 俯视角功能性 demo。
 
-当前工程包含玩家移动与耐力、对话、枪械锁定与 3D 散射、训练靶、竞技场及敌人巡逻、感知、搜索和掩体走位。竞技场 AI 在玩家进入区域后运行，离场后刷新并等待再次进入。
+当前工程包含玩家移动与耐力、对话、枪械锁定与 3D 散射、训练靶、场景交互物、竞技场及敌人巡逻、感知、搜索和掩体走位。竞技场 AI 在玩家进入区域后运行，离场后刷新并等待再次进入。
 
 ## 打开工程
 
@@ -18,6 +18,7 @@
 - [操作与移动说明](docs/gameplay/MOVEMENT.md)
 - [战斗说明](docs/gameplay/COMBAT.md)
 - [竞技场说明](docs/gameplay/ARENA.md)
+- [场景交互物说明](docs/gameplay/INTERACTION.md)
 - [敌人 AI 结构、维护与使用部署](docs/enemy-ai.md)
 - [项目目录结构](docs/project-layout.md)
 

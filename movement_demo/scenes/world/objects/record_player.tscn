@@ -1,0 +1,46 @@
+[gd_scene format=3]
+
+[ext_resource type="PackedScene" path="res://scenes/world/interactable.tscn" id="1_interactable"]
+[ext_resource type="Script" path="res://scripts/world/interactions/emit_noise_effect.gd" id="2_emit_noise"]
+[ext_resource type="Script" path="res://scripts/world/interactions/set_flag_effect.gd" id="3_set_flag"]
+[ext_resource type="Script" path="res://scripts/world/interactions/interaction_effect.gd" id="4_effect"]
+[ext_resource type="Resource" path="res://resources/noise/music_noise.tres" id="5_music"]
+
+[sub_resource type="Resource" id="Effect_music_noise"]
+script = ExtResource("2_emit_noise")
+noise = ExtResource("5_music")
+radius = 12.0
+
+[sub_resource type="Resource" id="Effect_music_flag"]
+script = ExtResource("3_set_flag")
+flag = &"music_playing"
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_record"]
+albedo_color = Color(0.35, 0.24, 0.16, 1)
+
+[sub_resource type="BoxMesh" id="BoxMesh_record"]
+material = SubResource("StandardMaterial3D_record")
+size = Vector3(0.8, 0.3, 0.7)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_disc"]
+albedo_color = Color(0.9, 0.78, 0.35, 1)
+
+[sub_resource type="CylinderMesh" id="CylinderMesh_disc"]
+material = SubResource("StandardMaterial3D_disc")
+top_radius = 0.25
+bottom_radius = 0.25
+height = 0.04
+
+[node name="RecordPlayer" instance=ExtResource("1_interactable")]
+display_name = "唱片机"
+verb = "使用"
+used_hint = "音乐正在播放"
+effects = Array[ExtResource("4_effect")]([SubResource("Effect_music_noise"), SubResource("Effect_music_flag")])
+
+[node name="Body" parent="." index="1"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.9, 0)
+mesh = SubResource("BoxMesh_record")
+
+[node name="Disc" type="MeshInstance3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.07, 0)
+mesh = SubResource("CylinderMesh_disc")

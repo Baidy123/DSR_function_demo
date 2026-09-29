@@ -7,6 +7,7 @@
 .godot_ai_update/
 *.tmp
 *.log
+.DS_Store
 /movement_demo/logs/*
 !/movement_demo/logs/.gdignore
 export_credentials.cfg

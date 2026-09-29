@@ -1,0 +1,32 @@
+[gd_scene format=3]
+
+[ext_resource type="PackedScene" path="res://scenes/world/interactable.tscn" id="1_interactable"]
+[ext_resource type="Script" path="res://scripts/world/interactions/show_dialogue_effect.gd" id="2_show_dialogue"]
+[ext_resource type="Script" path="res://scripts/world/interactions/set_flag_effect.gd" id="3_set_flag"]
+[ext_resource type="Script" path="res://scripts/world/interactions/interaction_effect.gd" id="4_effect"]
+[ext_resource type="Resource" path="res://resources/dialogue/wine_glass.dialogue" id="5_dialogue"]
+
+[sub_resource type="Resource" id="Effect_wine_dialogue"]
+script = ExtResource("2_show_dialogue")
+dialogue_resource = ExtResource("5_dialogue")
+
+[sub_resource type="Resource" id="Effect_wine_flag"]
+script = ExtResource("3_set_flag")
+flag = &"saw_wine_clue"
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_wine"]
+albedo_color = Color(0.85, 0.25, 0.35, 1)
+
+[sub_resource type="CylinderMesh" id="CylinderMesh_wine"]
+material = SubResource("StandardMaterial3D_wine")
+top_radius = 0.07
+bottom_radius = 0.04
+height = 0.24
+
+[node name="WineGlass" instance=ExtResource("1_interactable")]
+display_name = "酒杯"
+effects = Array[ExtResource("4_effect")]([SubResource("Effect_wine_dialogue"), SubResource("Effect_wine_flag")])
+
+[node name="Body" parent="." index="1"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.85, 0)
+mesh = SubResource("CylinderMesh_wine")

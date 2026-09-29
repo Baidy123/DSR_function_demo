@@ -1,0 +1,49 @@
+[gd_scene format=3]
+
+[ext_resource type="PackedScene" path="res://scenes/world/interactable.tscn" id="1_interactable"]
+[ext_resource type="Script" path="res://scripts/world/sliding_barrier.gd" id="2_barrier"]
+[ext_resource type="Script" path="res://scripts/world/interactions/call_method_effect.gd" id="3_call_method"]
+[ext_resource type="Script" path="res://scripts/world/interactions/set_flag_effect.gd" id="4_set_flag"]
+[ext_resource type="Script" path="res://scripts/world/interactions/interaction_effect.gd" id="5_effect"]
+
+[sub_resource type="Resource" id="Effect_open_barrier"]
+script = ExtResource("3_call_method")
+target_path = NodePath("../Barrier")
+method = &"open"
+use_argument = false
+
+[sub_resource type="Resource" id="Effect_access_flag"]
+script = ExtResource("4_set_flag")
+flag = &"arena_access"
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_barrier"]
+albedo_color = Color(0.82, 0.55, 0.18, 1)
+
+[sub_resource type="BoxMesh" id="BoxMesh_barrier"]
+material = SubResource("StandardMaterial3D_barrier")
+size = Vector3(2.2, 1.6, 0.2)
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_barrier"]
+size = Vector3(2.2, 1.6, 0.2)
+
+[node name="AccessGate" type="Node3D"]
+
+[node name="Reader" parent="." instance=ExtResource("1_interactable")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, -0.9)
+display_name = "门禁读卡器"
+verb = "刷卡"
+required_items = Array[StringName]([&"keycard"])
+blocked_hint = "需要门禁卡"
+effects = Array[ExtResource("5_effect")]([SubResource("Effect_open_barrier"), SubResource("Effect_access_flag")])
+
+[node name="Barrier" type="Node3D" parent="."]
+script = ExtResource("2_barrier")
+
+[node name="Panel" type="AnimatableBody3D" parent="Barrier"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.8, 0)
+
+[node name="Mesh" type="MeshInstance3D" parent="Barrier/Panel"]
+mesh = SubResource("BoxMesh_barrier")
+
+[node name="Collision" type="CollisionShape3D" parent="Barrier/Panel"]
+shape = SubResource("BoxShape3D_barrier")
