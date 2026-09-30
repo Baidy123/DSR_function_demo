@@ -75,6 +75,11 @@
 
 协调器先处理朝向和近战意图，再提交移动及射击意图，使开始挥击的同一帧也受约束。这只是执行冲突处理；采用何种方案仍由 Utility 决定，没有给近战候选增加评分优先级。将来不同能力有不同冲突规则时，在各自执行接口中扩展条件查询，不在每个行为中复制一套阶段判断。
 
+### 两种压制的共享环境参数
+
+掩体推断距离现在位于 **Training → Profile → Selection → Cover Inference Distance**，默认仍为 `1.75` 米。普通压制与出口压制都调用 `cover_selection.suppression_geometry(known_position)`；服务统一读取 `selection.cover_inference_distance`，不读取出口动作的训练分组。取消出口战术或移除其参数资源不会改变普通压制的几何估计。
+
+该字段从 `exit_suppression` 分组移入 `selection`。本次核对的工程资源没有保存该字段的显式自定义值，因此没有重设场景参数。若从工程外导入旧训练资源，需要将旧字段及其 `overridden` 键迁到 Selection；旧出口字段和动作上的同名转发入口已移除，避免留下两个调参来源。
 
 ## 运行过程
 

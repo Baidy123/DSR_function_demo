@@ -277,7 +277,8 @@ func has_clear_line(from: Vector3, to: Vector3) -> bool:
 
 
 ## 只用目击记忆推断掩体；射线可达和身体可通行分别返回，供两种压制共同估计。
-func suppression_geometry(known: Vector3, inference_distance: float) -> Dictionary:
+func suppression_geometry(known: Vector3) -> Dictionary:
+	var inference_distance: float = _training_setting(&"cover_inference_distance", 1.75)
 	var nearby: Array[Dictionary] = []
 	for region in get_tree().get_nodes_in_group("cover_region"):
 		if not ai.navigation_region.is_ancestor_of(region): continue

@@ -13,6 +13,7 @@ TESTS = [
     "enemy_firing_lane_test",
     "enemy_basic_capabilities_test",
     "enemy_execution_contract_test",
+    "enemy_shared_geometry_settings_test",
     "enemy_melee_execution_test",
     "enemy_melee_utility_test",
     "enemy_melee_approach_test",

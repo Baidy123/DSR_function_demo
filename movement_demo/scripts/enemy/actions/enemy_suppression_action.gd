@@ -45,8 +45,7 @@ func utility_available() -> bool:
 
 ## 近侧出口明显更近、或另一端身体无法通过时，集中压制记忆区域更有效。
 func information_retention() -> float:
-	var geometry: Dictionary = context.cover_selection.suppression_geometry(context.last_seen_position,
-		float(context.setting(&"exit_suppression", &"cover_inference_distance", 1.75)))
+	var geometry: Dictionary = context.cover_selection.suppression_geometry(context.last_seen_position)
 	if geometry.is_empty(): return 0.0
 	var focus := maxf(1.0 - float(geometry.balance), 1.0 - float(geometry.open_sides) * 0.5)
 	var freshness := pow(0.5, context.utility_unseen_seconds / maxf(0.5, context.utility_threat_half_life_seconds))

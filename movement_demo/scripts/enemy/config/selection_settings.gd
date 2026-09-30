@@ -4,6 +4,12 @@ extends "res://scripts/enemy/config/module_settings.gd"
 func _init() -> void:
 	section = &"selection"
 
+## 最后目击位置到掩体表面的最大推断距离；两种压制共用，不依赖出口压制是否解锁。
+@export_range(0.1, 4.0, 0.05) var cover_inference_distance: float = 1.75:
+	set(value):
+		cover_inference_distance = value
+		mark_override(&"cover_inference_distance")
+
 ## 优质攻击区域至少遮住的身体投影比例；枪口安全仍单独检查。
 @export_range(0.05, 0.5, 0.05) var attack_minimum_protection: float = 0.2:
 	set(value):
