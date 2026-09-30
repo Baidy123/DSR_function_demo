@@ -20,7 +20,7 @@ python movement_demo/tests/enemy/run_enemy_regressions.py --godot E:/Godot/Godot
 
 Fire Mode 近战武器新增 `enemy_melee_weapon_test`，26/26 项通过：验证原单发／自动编号、新武器保存重载、无弹药／换弹、近战兵自主接近并连续实际命中、伤害／准度／击退、短武器距离、关闭近战，以及玩家／远程兵拒绝装备、出生错误配置和切换兵种取消未完成攻击。测试只配置现有兵种和武器，不直接选中近战行为来代替自主攻击验证。
 
-武器模式面板专项：`--headless --editor --path movement_demo --script res://tests/weapon_fire_mode_inspector_test.gd`。7/7 项通过，实际 Inspector 验证原 Fire Mode 可见、没有新增 Weapon Type、近战隐藏枪械字段，以及原生撤销／重做恢复显示并保留原值。和现有编辑器专项一样，退出时的 RID／资源占用提示单独记录，不等于运行时回归出错。
+武器模式面板专项：`--headless --editor --path movement_demo --script res://tests/weapon_fire_mode_inspector_test.gd`。2026-09-30 用户报告已打开的编辑器切换近战后仍显示远程字段；现场确认模式为2、插件隐藏规则有效，但旧资源实例的 setter 未发出刷新通知。原7项测试通过不足以覆盖此情况。现扩展为14项，通过真实下拉框验证直接资源与敌人内嵌 Weapon、即时通知缺失、切回枪械、原生撤销／重做及数值保留。新增用例在修复前失败，检查器增加延迟刷新后14/14通过；当前用户编辑器也已确认远程字段隐藏。和现有编辑器专项一样，退出时的 RID／资源占用提示单独记录，不等于运行时回归出错。
 
 Fire Mode 版本本地工作区完整敌人回归41/41、玩家战斗回归14/14通过。此工作区包含另行保留的共享压制参数修改；本阶段提交不包含该无关修改及其专项，提交副本另外验证依赖完整性和相关行为，不能将它们混写为本次新增近战功能。
 

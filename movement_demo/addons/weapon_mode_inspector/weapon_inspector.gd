@@ -59,6 +59,11 @@ func _can_handle(object: Object) -> bool:
 
 func _parse_property(object: Object, type: Variant.Type, path: String, hint: PropertyHint,
 		hint_text: String, _usage: int, _wide: bool) -> bool:
+	if path == "fire_mode":
+		var editor := FireModeProperty.new()
+		editor.configure(hint_text, int(object.fire_mode))
+		add_property_editor(path, editor)
+		return true
 	if object.fire_mode == WeaponData.FireMode.MELEE and (path in FIREARM_FIELDS or PROBABILITY_FIELDS.has(path) or SPREAD_FIELDS.has(path)):
 		return true
 	var mode: int = _context_mode(object)
@@ -90,6 +95,42 @@ func _context_mode(weapon: Object) -> int:
 	if combat.get("weapon") != weapon:
 		return -1
 	return 0 if script_path == "res://scripts/enemy/enemy_actor.gd" else int(combat.get("aim_mode"))
+
+
+# 保留原资源字段与原生撤销；已打开资源热更新后可能漏发 setter 通知，
+# 因此选择结束及撤销／重做更新控件时，由检查器延迟请求一次面板重建。
+class FireModeProperty extends EditorProperty:
+	var option := OptionButton.new()
+	var shown_mode: int = -1
+
+	func _init() -> void:
+		option.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		add_child(option)
+		add_focusable(option)
+		option.item_selected.connect(_on_selected)
+
+	func configure(enum_hint: String, current_mode: int) -> void:
+		shown_mode = current_mode
+		for entry in enum_hint.split(","):
+			var parts := entry.rsplit(":", true, 1)
+			option.add_item(parts[0], int(parts[1]) if parts.size() == 2 else option.item_count)
+
+	func _update_property() -> void:
+		var weapon := get_edited_object()
+		var mode: int = int(weapon.get(get_edited_property()))
+		option.select(option.get_item_index(mode))
+		if mode != shown_mode:
+			shown_mode = mode
+			weapon.notify_property_list_changed.call_deferred()
+
+	func _set_read_only(read_only: bool) -> void:
+		option.disabled = read_only
+
+	func _on_selected(index: int) -> void:
+		var weapon := get_edited_object()
+		shown_mode = option.get_item_id(index)
+		emit_changed(get_edited_property(), shown_mode)
+		weapon.notify_property_list_changed.call_deferred()
 
 
 # 仍把修改交给原生资源 Inspector，因此撤销、资源脏标记和保存保持正常。
