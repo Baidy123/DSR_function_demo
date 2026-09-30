@@ -16,6 +16,8 @@ func _run() -> void:
 	root.add_child(scene)
 	current_scene = scene
 	var ai = scene.get_node("Arena/Enemy/AI")
+	# 明确本测试所需动作；用户可在保存的训练中关闭攻击占位。
+	preload("res://tests/enemy/enemy_fire_fixture.gd").set_training_action(ai, &"attack_position", true)
 	selector = ai.context.spatial
 	var player = scene.get_node("Player")
 	ai.set_physics_process(false)

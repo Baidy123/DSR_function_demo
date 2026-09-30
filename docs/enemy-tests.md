@@ -4,13 +4,33 @@
 
 ## 当前回归
 
+2026-09-30 玩家近战初次接入后完整敌人回归35/35通过，记录见 [玩家阶段](superpowers/plans/2026-09-30-player-melee.md)。随后用户授权远程敌人阶段，新增 `enemy_melee_execution_test.gd`（24项）和 `enemy_melee_utility_test.gd`，完整敌人回归37/37通过。层级纠正后 Utility 专项扩展为15项，验证现有接敌的 `engage / melee` 方案、实际推开和退让接续、同一行为内方案区分与中断边界、武器关闭近战、兵种装配隔离；不新增独立挥击行为。执行专项继续验证独立执行、动画同步与生命周期。玩家侧另有 `tests/player_enemy_melee_hit_test.gd`（15项），验证两种准度模式、切枪、30／60／120 Hz 物理击退、瞄准切换和墙体阻挡。见 [远程敌人接入记录](superpowers/plans/2026-09-30-ranged-enemy-melee.md)。
+
+2026-09-30 增加 [表现接口验证](gameplay/PRESENTATION.md#维护与验证)。`utility_budget_test` 和 `attack_point_validation_test` 现在只在运行实例中明确启用其测试所需的攻击占位，避免依赖用户当前的训练勾选；不改保存的训练资源。涉及20毫秒预算的测试应避免与资源导入等高负载任务并行。
+
+近战层级纠正后完整敌人回归再次37/37通过，基础执行24/24、Utility 近战15/15。默认行为仍为原4个，训练与战术目录没有增加挥击；协调器、选择器和统一评分公式沿用原实现。
+
 在仓库根目录运行：
 
 ```powershell
 python movement_demo/tests/enemy/run_enemy_regressions.py --godot E:/Godot/Godot_v4.7.2-stable_win64_console.exe
 ```
 
-运行器 `TESTS` 列出当前 35 套正式回归。末尾可指定测试名（不含 `.gd`）。日志固定写入 `movement_demo/logs/enemy_regressions/`，同名结果覆盖。
+运行器 `TESTS` 列出当前 40 套正式回归。末尾可指定测试名（不含 `.gd`）。日志固定写入 `movement_demo/logs/enemy_regressions/`，同名结果覆盖。
+
+Fire Mode 近战武器新增 `enemy_melee_weapon_test`，26/26 项通过：验证原单发／自动编号、新武器保存重载、无弹药／换弹、近战兵自主接近并连续实际命中、伤害／准度／击退、短武器距离、关闭近战，以及玩家／远程兵拒绝装备、出生错误配置和切换兵种取消未完成攻击。测试只配置现有兵种和武器，不直接选中近战行为来代替自主攻击验证。
+
+武器模式面板专项：`--headless --editor --path movement_demo --script res://tests/weapon_fire_mode_inspector_test.gd`。7/7 项通过，实际 Inspector 验证原 Fire Mode 可见、没有新增 Weapon Type、近战隐藏枪械字段，以及原生撤销／重做恢复显示并保留原值。和现有编辑器专项一样，退出时的 RID／资源占用提示单独记录，不等于运行时回归出错。
+
+Fire Mode 版本本地工作区完整敌人回归41/41、玩家战斗回归14/14通过。此工作区包含另行保留的共享压制参数修改；本阶段提交不包含该无关修改及其专项，提交副本另外验证依赖完整性和相关行为，不能将它们混写为本次新增近战功能。
+
+按暂存区导出的独立提交副本首次导入通过，无脚本／资源错误；敌人相关回归7/7（近战武器、基础执行、Utility 请求、持续追近、执行契约、模块协议、原武器）和玩家战斗完整回归14/14通过。该副本未带入上述本地压制改动与用户武器／训练配置，用于确认提交内容可独立运行。
+
+基础执行接口整理的 `enemy_execution_contract_test`（16项）验证前摇移动／转向／开火／换弹互斥、收招移动、受击外力、取消冷却及表现快照隔离。它随本次依赖一并保留；与此无关的共享压制参数专项仍留在本地。
+
+`enemy_melee_approach_test` 覆盖正常交战后玩家持续追近：保留场景武器、训练和掩体，先推进一秒交战使退路候选就绪，再驱动六秒实际玩家移动。不手动选中近战，也不堵住退路。5项检查包含进入有效范围、自主出手、命中击退、收招退让和前摇／开火互斥；该场景在修复前出现合法近战长期未被选中的失败，修复后通过。
+
+此前正常追近修复后完整敌人回归38/38通过，追近5/5、基础近战执行24/24、Utility 近战15/15；保留原有装配、射击、退让与性能断言，编辑器导入无脚本／资源错误。
 
 掩体专项包含 `cover_tactical_safety_test`（威胁近身路线、真实玩家身体阻挡、失败点排除）和 `stationary_cover_search_test`（玩家持续静止，敌人从躲藏推进调查并恢复开火）。`attack_point_validation_test` 已迁移到当前公共上下文接口，检查部分遮身、贴角余量、射界、感知距离及绿色预览与动作评估的一致性。`utility_suppression_blocked_test` 还验证两种压制同时参选时，出口压制能够实际胜出并开火。
 
@@ -22,7 +42,7 @@ python movement_demo/tests/enemy/run_enemy_regressions.py --godot E:/Godot/Godot
 
 `reload_approach_timing_test` 启用攻击站位后逐帧检查玩家靠近、实际动作切换与换弹计时，另外执行合法长路线的边走边换，检查弹匣尚有余弹时也不能在换弹过程中开枪。显示分别验证准备阶段、跨动作保留的实际进度、关闭Debug仍能看见进度，以及补满后继续转移的阶段，不能仅凭动作名称判断是否仍在换弹。
 
-玩家及双方准度验证使用 `python movement_demo/tests/run_combat_regressions.py --godot E:/Godot/Godot_v4.7.2-stable_win64_console.exe`，当前 8 套入口，日志在 `movement_demo/logs/combat_regressions/`。其中 `aim_disruption_test` 验证双方真实直击/擦身弹道、墙体遮挡、换弹最低准度及恢复、重复惩罚排除和移动火力缓存边界；兼容入口复用玩家瞄准模式、散布、移动惩罚、模式参数和第一碰撞物检查。`player_reload_checkpoint_test` 覆盖50%边界、重复奔跑中断、前半程取消后真实开火、后半程强制续换禁射、两槽隔离、慢速方式保留、共享备弹耗尽及死亡重开；原换弹测试继续驱动真实Shift输入。另覆盖弹药、生命与自动射击。
+玩家及双方准度验证使用 `python movement_demo/tests/run_combat_regressions.py --godot E:/Godot/Godot_v4.7.2-stable_win64_console.exe`，当前 14 套入口，日志在 `movement_demo/logs/combat_regressions/`。其中 `aim_disruption_test` 验证双方真实直击/擦身弹道、墙体遮挡、换弹最低准度及恢复、重复惩罚排除和移动火力缓存边界；兼容入口复用玩家瞄准模式、散布、移动惩罚、模式参数和第一碰撞物检查。`player_reload_checkpoint_test` 覆盖50%边界、重复奔跑中断、前半程取消后真实开火、后半程强制续换禁射、两槽隔离、慢速方式保留、共享备弹耗尽及死亡重开；原换弹测试继续驱动真实Shift输入。另覆盖弹药、生命与自动射击，以及玩家近战功能、表现、物理、战斗区域、体力和敌人近战受击。
 
 `enemy_fire_fixture.gd` 是公共辅助，`modular_probe_action.gd` 验证动态扩展；二者不单独运行。检查器使用编辑器模式：
 

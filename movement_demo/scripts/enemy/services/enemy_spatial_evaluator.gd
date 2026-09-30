@@ -254,18 +254,19 @@ func _ammo_wait(ai) -> float:
 func _exposure(ai, point: Vector3, threat: Vector3) -> float:
 	return ai._reload_exposure(point, threat) if threat.is_finite() else 0.0
 
-func assess_route(ai, path: PackedVector3Array, threat: Vector3, multiplier: float, reload_seconds: float, evaluate_fire: bool = false) -> Dictionary:
+func assess_route(ai, path: PackedVector3Array, threat: Vector3, multiplier: float, reload_seconds: float, evaluate_fire: bool = false, start_seconds: float = 0.0) -> Dictionary:
 	var frame := Engine.get_physics_frames()
 	if frame != _route_frame:
 		_route_frame = frame
 		_route_cache.clear()
 	var fire_state: Array = [ai.fire.fire_reaction_elapsed, ai.fire.fire_reaction_seconds, ai.fire.fire_pause_remaining, ai.actor.shot_cooldown, ai.fire.fire_while_moving,
 		ai.perception.sight_distance, ai.perception.close_awareness_radius, ai.actor.weapon, ai.actor.weapon.fire_range if ai.actor.weapon != null else 0.0, ai.actor.can_use_firearms()] if evaluate_fire else []
-	var key := [path, threat, multiplier, reload_seconds, ai.actor.global_position, ai.actor.move_speed, ai.utility_horizon_seconds, evaluate_fire, fire_state]
+	var key := [path, threat, multiplier, reload_seconds, start_seconds, ai.actor.global_position, ai.actor.move_speed, ai.utility_horizon_seconds, evaluate_fire, fire_state]
 	if _route_cache.has(key): return _route_cache[key]
 	var speed: float = maxf(0.01, ai.actor.move_speed * maxf(0.0, multiplier))
 	var walk_speed: float = minf(speed, maxf(0.01, ai.actor.move_speed))
-	var seconds: float = 0.0
+	# 组合方案可先执行一个阶段再移动；路径前的暴露由调用者提供，仍使用共同时间窗。
+	var seconds: float = maxf(0.0, start_seconds)
 	var exposure: float = 0.0
 	var fire_seconds: float = 0.0
 	var keep_sight: bool = evaluate_fire and threat.is_finite() and ai.actor.can_use_firearms() and ai.fire.fire_while_moving

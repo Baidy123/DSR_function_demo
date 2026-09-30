@@ -1,7 +1,8 @@
+@tool
 class_name WeaponData
 extends Resource
 
-enum FireMode { SEMI_AUTO, AUTOMATIC }
+enum FireMode { SEMI_AUTO, AUTOMATIC, MELEE }
 enum AmmoType { RIFLE, PISTOL, SMG, SHOTGUN }
 
 @export_group("弹匣与换弹")
@@ -29,10 +30,39 @@ enum AmmoType { RIFLE, PISTOL, SMG, SHOTGUN }
 @export_range(1.0, 180.0, 1.0) var cone_angle_degrees: float = 70.0
 ## 玩家锁定时的走路速度倍率，锁定期间禁跑；敌人移动由 AI 决定。
 @export_range(0.1, 1.0, 0.05) var locked_move_multiplier: float = 0.5
-## 玩家扳机操作：单发每次按下一枪，自动按住持续射击。敌人射击节奏仍由 AI 控制。
-@export_enum("单发:0", "自动:1") var fire_mode: int = FireMode.SEMI_AUTO
+## 单发每次按下一枪，自动按住持续射击；近战仅允许近战兵装备，不使用枪械参数。
+## 单发0、自动1保留原编号；敌人射击节奏仍由 AI 控制。
+@export_enum("单发:0", "自动:1", "近战:2") var fire_mode: int = FireMode.SEMI_AUTO:
+	set(value):
+		fire_mode = value
+		notify_property_list_changed()
 ## 两次射击的最短间隔（秒）。
 @export_range(0.05, 3.0, 0.05) var shot_interval: float = 0.2
+
+@export_group("近战参数")
+## 远程武器的附带近战或近战武器的攻击开关；不消耗弹药。
+@export var melee_enabled: bool = true
+## 近战伤害，与单发子弹伤害分别配置。
+@export_range(0.0, 1000.0, 1.0) var melee_damage: float = 25.0
+## 仅玩家生效：成功开始近战时扣除的体力；不足则不能发起，0关闭消耗。
+## 敌人目前没有体力系统，不读取此字段；敌人武器中此值不影响近战。
+@export_range(0.0, 100.0, 1.0) var melee_stamina_cost: float = 20.0
+## 角色脚底间的最大水平距离（米）。
+@export_range(0.1, 5.0, 0.05) var melee_range: float = 1.6
+## 正前方扇形总角度；90表示左右各45度。
+@export_range(1.0, 180.0, 1.0) var melee_angle_degrees: float = 90.0
+## 目标脚底与自身允许的最大高度差（米）。
+@export_range(0.0, 3.0, 0.05) var melee_height_tolerance: float = 1.0
+## 开始动作到实际出手的时间（秒）；出手时才确定是否命中。
+@export_range(0.0, 2.0, 0.01) var melee_windup_seconds: float = 0.12
+## 出手后恢复射击、换弹和切枪操作的时间（秒）。
+@export_range(0.0, 2.0, 0.01) var melee_recovery_seconds: float = 0.25
+## 两次近战开始的最短间隔；实际至少覆盖前摇与收招。
+@export_range(0.05, 5.0, 0.01) var melee_interval: float = 0.6
+## 无遮挡且目标不主动移动时的击退参考距离（米）。
+@export_range(0.0, 5.0, 0.05) var melee_knockback_distance: float = 1.0
+## 击退外力衰减至零的时间（秒）。
+@export_range(0.05, 2.0, 0.01) var melee_knockback_seconds: float = 0.2
 
 @export_group("概率模式参数（百分比）")
 ## 初始直射中心概率：0.5表示50%；松开瞄准也将概率限制到不超过本值。

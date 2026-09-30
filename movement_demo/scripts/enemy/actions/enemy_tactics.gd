@@ -3,7 +3,7 @@ extends "res://scripts/enemy/actions/enemy_action.gd"
 const NEARBY_ENGAGEMENT_RADII := [0.5, 1.0]
 const NEARBY_ENGAGEMENT_DIRECTIONS := 8
 
-## Ranged engagement: candidates and movement; shared fire timing lives in the fire controller.
+## 远程接敌组织站定射击、移动与近战推开方案；执行计时分别由射击／近战服务持有。
 var ranged_min_distance: float:
 	get: return _setting(&"ranged_min_distance", 4.0)
 	set(value): _set_setting(&"ranged_min_distance", value)
@@ -20,6 +20,7 @@ var ranged_has_destination: bool = false
 var _move_waypoint := Vector3.INF
 var _move_best_distance := INF
 var _move_stuck_seconds := 0.0
+var _melee_requested := false
 
 
 
@@ -198,6 +199,7 @@ func reset_movement_progress() -> void:
 func reset() -> void:
 	ranged_has_destination = false
 	ranged_repath_timer = 0.0
+	_melee_requested = false
 	reset_movement_progress()
 
 func evaluation_points() -> Array:
@@ -219,8 +221,13 @@ func evaluate_point(point: Variant) -> Dictionary:
 
 func collect_candidates(visible: bool) -> Array[Dictionary]:
 	var result: Array[Dictionary] = []
-	if not visible:
+	if not is_enabled() or not visible:
 		return result
+	if _running and plan.get("plan") == &"melee" and _melee_requested and context.melee.is_active_for(action_id):
+		return [plan]
+	var can_melee: bool = context.melee.can_request(visible)
+	if can_melee:
+		result.append(_melee_option())
 	var threat: Vector3 = context.last_known_position
 	var horizon: float = context.utility_horizon_seconds
 	var target := threat + Vector3.UP * 0.8
@@ -238,9 +245,13 @@ func collect_candidates(visible: bool) -> Array[Dictionary]:
 			continue
 		var route: Dictionary = context.spatial.assess_route(context, checked.path, threat, 1.0, context.spatial._reload_seconds(context), true)
 		result.append(option(checked, maxf(route.seconds - route.fire_seconds, context.spatial._ammo_wait(context)), route.exposure + context._reload_exposure(checked.position, threat) * maxf(0.0, horizon - route.seconds)))
+		if can_melee:
+			result.append(_melee_option(checked))
 	return result
 
 func validate(candidate: Dictionary, visible: bool) -> bool:
+	if candidate.get("plan") == &"melee":
+		return is_enabled() and context.melee.can_request(visible)
 	return is_enabled() and visible and (candidate.destination.is_empty() or is_engagement_destination_valid(candidate.destination))
 
 func begin(candidate: Dictionary, visible: bool) -> bool:
@@ -251,12 +262,73 @@ func begin(candidate: Dictionary, visible: bool) -> bool:
 	return true
 
 func valid(visible: bool) -> bool:
+	if _running and is_enabled() and visible and plan.get("plan") == &"melee":
+		return context.melee.is_active_for(action_id) if _melee_requested else context.melee.can_request(visible)
 	return _running and is_enabled() and visible
 
 func tick(delta: float, visible: bool) -> Dictionary:
+	if plan.get("plan") == &"melee":
+		context.state = context.State.HOLD_POSITION
+		if _melee_requested and not context.melee.is_active_for(action_id):
+			_running = false
+			return motion(Vector3.ZERO)
+		_melee_requested = true
+		var retreat := Vector3.ZERO
+		# 查询执行许可后退让；控制器维护计时，身体处理实际命中与能力冲突。
+		if context.melee.allows_movement(action_id) and not plan.destination.is_empty():
+			retreat = step_evaluated_engagement(plan.destination, delta, visible)
+			_running = true # 到达或路径失效只停止移动，不能跳过未完成的收招。
+		return motion(retreat, 1.0, context.last_known_position - actor.global_position, {}, {"owner": action_id})
 	var direction := Vector3.ZERO
 	if plan.destination.is_empty():
 		context.state = context.State.HOLD_POSITION
 	else:
 		direction = step_evaluated_engagement(plan.destination, delta, visible)
 	return motion(direction, 1.0, Vector3.INF, {"owner": action_id, "mode": &"visible"})
+
+
+func can_interrupt(_next: Dictionary, _visible: bool) -> bool:
+	return not context.melee.is_active_for(action_id)
+
+
+## 这是接敌行为的一个方案，不是新的默认／战术行为；收集只估计结果，不发起攻击。
+func _melee_option(destination: Dictionary = {}) -> Dictionary:
+	var settings: Dictionary = context.melee.weapon_settings()
+	var horizon: float = context.utility_horizon_seconds
+	var occupied: float = minf(horizon, settings.windup + settings.recovery)
+	var threat: Vector3 = context.last_known_position
+	var away: Vector3 = threat - actor.global_position
+	away.y = 0.0
+	away = away.normalized()
+	var push_distance := _free_melee_push_distance(threat, away, settings.distance)
+	# 先估计前摇期间目标的逼近；不能扣掉整个窗口的追近，再把敌人当作一直站着。
+	var closing_speed: float = maxf(0.0, -context.observed_velocity.dot(away))
+	var retained_distance := maxf(0.0, push_distance - closing_speed * settings.windup)
+	var pushed_threat: Vector3 = threat + away * retained_distance
+	var before: float = context._reload_exposure(actor.global_position, threat)
+	var reload_wait: float = context.spatial._ammo_wait(context)
+	if actor.ammo.magazine_rounds == 0 and actor.weapon != null:
+		reload_wait = maxf(reload_wait, actor.weapon.reload_seconds)
+	var ready: float = occupied + reload_wait
+	var windup: float = minf(horizon, settings.windup)
+	if destination.is_empty():
+		var exposure: float = before * windup + context._reload_exposure(actor.global_position, pushed_threat) * maxf(0.0, horizon - windup)
+		return option({}, ready, exposure, 0.0, &"melee")
+	# 和直接退让比较同一条已验证路径；近战出手后移动，收招完成后才恢复火力。
+	var route: Dictionary = context.spatial.assess_route(context, destination.path, pushed_threat, 1.0, ready, true, windup)
+	var exposure: float = before * windup + route.exposure + context._reload_exposure(destination.position, pushed_threat) * maxf(0.0, horizon - route.seconds)
+	return option(destination, maxf(ready, route.seconds - route.fire_seconds), exposure, 0.0, &"melee")
+
+
+func _free_melee_push_distance(threat: Vector3, direction: Vector3, distance: float) -> float:
+	if distance <= 0.0 or direction.is_zero_approx(): return 0.0
+	# 以可见目标处的角色体积扫出安全距离，不把墙后的空间算作必然收益。
+	var collider: CollisionShape3D = actor.get_node("CollisionShape3D")
+	var query := PhysicsShapeQueryParameters3D.new()
+	query.shape = collider.shape
+	query.transform = Transform3D(collider.global_basis, threat + Vector3.UP * (collider.position.y + 0.05))
+	query.motion = direction * distance
+	query.collision_mask = 1
+	query.exclude = [actor.get_rid(), context.player.get_rid()]
+	var fractions: PackedFloat32Array = actor.get_world_3d().direct_space_state.cast_motion(query)
+	return distance * fractions[0] if not fractions.is_empty() else 0.0

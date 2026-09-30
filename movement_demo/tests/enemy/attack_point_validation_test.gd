@@ -13,6 +13,8 @@ func _run() -> void:
 	current_scene = scene
 	var enemy = scene.get_node("Arena/Enemy")
 	var ai = enemy.get_node("AI")
+	# 只调整运行实例，不依赖用户当前是否勾选攻击占位。
+	preload("res://tests/enemy/enemy_fire_fixture.gd").set_training_action(ai, &"attack_position", true)
 	var selection = ai.cover_selection
 	var player = scene.get_node("Player")
 	ai.set_physics_process(false)

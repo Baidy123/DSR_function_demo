@@ -16,6 +16,7 @@ var _environment_warning := ""
 var perception: Node
 var cover_selection: Node
 var fire
+var melee
 var spatial
 var training: EnemyTrainingProfile
 var unit: EnemyUnitProfile

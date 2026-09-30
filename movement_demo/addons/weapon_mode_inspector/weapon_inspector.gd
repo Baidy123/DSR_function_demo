@@ -34,11 +34,22 @@ const COMMON_FIELDS := {
 	"cone_angle_degrees": "索敌总角度", "locked_move_multiplier": "锁定移动倍率",
 	"shot_interval": "射击间隔",
 	"shot_noise_radius": "枪声半径（米）",
+	"melee_damage": "近战伤害", "melee_range": "近战距离（米）",
+	"melee_stamina_cost": "近战体力消耗（仅玩家）",
+	"melee_angle_degrees": "近战总角度", "melee_height_tolerance": "近战高度容差",
+	"melee_windup_seconds": "近战前摇（秒）", "melee_recovery_seconds": "近战收招（秒）",
+	"melee_interval": "近战间隔（秒）", "melee_knockback_distance": "击退距离（米）",
+	"melee_knockback_seconds": "击退时长（秒）",
 }
 const PERCENT_FIELDS := [
 	"initial_accuracy", "moving_accuracy_cap", "shot_accuracy_penalty", "minimum_accuracy",
 	"target_move_accuracy_loss_per_meter_slow", "target_move_accuracy_loss_per_meter_fast",
 	"target_move_minimum_accuracy", "player_move_accuracy_loss_per_meter",
+]
+const FIREARM_FIELDS := [
+	"ammo_type", "magazine_capacity", "reload_seconds", "shot_noise", "shot_noise_radius",
+	"damage", "aim_range", "fire_range", "cone_angle_degrees", "locked_move_multiplier",
+	"shot_interval",
 ]
 
 
@@ -48,6 +59,8 @@ func _can_handle(object: Object) -> bool:
 
 func _parse_property(object: Object, type: Variant.Type, path: String, hint: PropertyHint,
 		hint_text: String, _usage: int, _wide: bool) -> bool:
+	if object.fire_mode == WeaponData.FireMode.MELEE and (path in FIREARM_FIELDS or PROBABILITY_FIELDS.has(path) or SPREAD_FIELDS.has(path)):
+		return true
 	var mode: int = _context_mode(object)
 	if (mode == 0 and SPREAD_FIELDS.has(path)) or (mode == 1 and PROBABILITY_FIELDS.has(path)):
 		return true

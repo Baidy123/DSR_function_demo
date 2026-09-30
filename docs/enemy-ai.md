@@ -47,15 +47,34 @@
 | 公共记忆、证据和查询接口 | `scripts/enemy/services/enemy_memory.gd`、`scripts/enemy/services/enemy_context.gd` |
 | 感知和空间查询 | `scripts/enemy/services/enemy_perception.gd`、`scripts/enemy/services/enemy_cover_selection.gd`、`scripts/enemy/services/enemy_spatial_evaluator.gd` |
 | 射击节奏与稳枪/开火选择 | `scripts/enemy/services/enemy_fire_controller.gd`、`scripts/enemy/services/enemy_fire_decision.gd` |
+| 近战请求与动作阶段 | `scripts/enemy/services/enemy_melee_controller.gd`；身体负责实际命中与冷却 |
 | 搜索提示与区域覆盖 | `scripts/enemy/services/enemy_search_hints.gd`、`scripts/enemy/services/enemy_search_coverage.gd` |
 | 竞技场接入与复位 | `scripts/world/shooting_range.gd`、`scenes/enemy/enemy.tscn` |
 | 基础执行能力 | `scripts/enemy/enemy_actor.gd`、武器和弹药组件 |
 
-当前默认行为入口为 `scripts/enemy/actions/enemy_patrol_action.gd`、`scripts/enemy/actions/enemy_search.gd`、`scripts/enemy/actions/enemy_tactics.gd`（现仅负责远程接敌）、`scripts/enemy/actions/enemy_melee_action.gd`、`scripts/enemy/actions/enemy_reload_action.gd`。近战和远程使用不同接敌模块，巡逻与搜索可以共享。
+当前默认行为入口为 `scripts/enemy/actions/enemy_patrol_action.gd`、`scripts/enemy/actions/enemy_search.gd`、`scripts/enemy/actions/enemy_tactics.gd`（远程接敌）、`scripts/enemy/actions/enemy_melee_action.gd`（近战接近）和 `scripts/enemy/actions/enemy_reload_action.gd`。远程模板仍装配巡逻、搜索、接敌、换弹四个默认行为；近战模板保持原装配。
+射击、移动、近战挥击是底层执行能力，本身不登记为默认行为或战术行为。现有行为组织这些能力并可提供多个方案；远程接敌的站定射击、移动退让和近战推开共享 `engage` 行为 ID，近战方案由 `plan = melee` 区分，仍由 Utility 统一选择，不另建装配项或训练开关。
 
 战术入口为 `scripts/enemy/actions/enemy_cover_action.gd`、`scripts/enemy/actions/enemy_covering_retreat_action.gd`、`scripts/enemy/actions/enemy_attack_position_action.gd`、`scripts/enemy/actions/enemy_suppression_action.gd`、`scripts/enemy/actions/enemy_exit_suppression_action.gd`。掩体、撤离与换弹各自拥有 `scripts/enemy/actions/enemy_cover_motion.gd` 的移动执行实例，不访问另一个可选动作的运行实例。
 
 `resources/enemy/actions/*.tres` 中两个脚本引用各有用途：`script` 指向资源结构 `EnemyActionDefinition`，`implementation` 指向动作实现。多个参数版本可以共用同一个实现，公共几何和移动算法也可以使用辅助脚本。这不代表一个动作同时运行两套逻辑。
+
+### 基础执行接口与冲突规则
+
+以下是当前实现的接口约定，不是能力种类上限。行为通过 `motion()` 提交执行意图；协调器转交意图，身体及对应服务再次检查执行条件。新增行为不能仅靠自身的 `tick()` 保证互斥。
+
+| 职责 | 查询与调用方式 |
+| --- | --- |
+| 身体自主移动／转向 | `actor.can_move()` / `can_turn()`；实际 `move_character()` / `face_direction()` 内也检查相同条件 |
+| 枪械换弹／开火 | `actor.can_reload()` / `can_fire()`；实际 `request_reload()` / `try_fire()` 再次校验 |
+| 近战请求及完成状态 | `context.melee.can_request(visible)`、`is_active_for(owner)`；选中行为输出 `melee` 意图，由 `update()` 推进 |
+| 近战期间退让 | 行为查询 `context.melee.allows_movement(owner)`，不读取控制器的 `Phase` 或 `phase` |
+| 近战表现 | 适配器读取 `presentation_state()` 返回的独立快照；快照只供表现，不作为战术条件或可写执行状态 |
+
+当前规则：开始近战会中断换弹；前摇禁止自主移动，出手后允许收招退让；整次挥击期间不能主动转向、开火、换弹或通过移动倍率冲刺。身体用本次是否已执行出手来判断移动许可，控制器仍独占阶段与计时，不新增第二份阶段状态。真实受击推移不受自主移动许可限制。取消只解除执行占用，近战冷却继续由身体推进；死亡与区域复位按既有规则清理。
+
+协调器先处理朝向和近战意图，再提交移动及射击意图，使开始挥击的同一帧也受约束。这只是执行冲突处理；采用何种方案仍由 Utility 决定，没有给近战候选增加评分优先级。将来不同能力有不同冲突规则时，在各自执行接口中扩展条件查询，不在每个行为中复制一套阶段判断。
+
 
 ## 运行过程
 
@@ -72,6 +91,8 @@ flowchart TD
     E --> B[身体与武器执行能力]
     E --> F[独立射击控制]
     F --> B
+    E --> N[独立近战控制]
+    N --> B
 ```
 
 动作估计共同时间窗口内的火力缺失、暴露与信息损失，由选择器统一算代价。保持时间、切换优势和动作的可中断条件控制切换。一个模块可以提供多个目的地或方案，不需要为每个内部阶段创建动作资源。
@@ -128,6 +149,8 @@ flowchart TD
 
 远程敌人看到玩家进入最小交战距离时，即使满血且未受击，也会产生近身风险。普通接敌允许先退一小步，再继续退回距离带；路线估计计入实际可用的移动射击时间，避免原地射击以零代价压住退让方案。隐藏玩家的实时距离不会用于这一压力。
 
+目标进入有效近战范围后，远程接敌同时比较直接退让与先挥击推开再退让。后者保留选中的退路，前摇停步，出手后在收招期间开始移动；收招未结束仍禁止开火。共同路径估计允许指定开始时间 `start_seconds`（缺省0），把前摇、退让与恢复火力放在同一时间窗口；该参数进入帧内缓存键，原路径调用保持原结果。近战候选不能按挥击后一直站着计风险，也不能先扣除整段时间的玩家追近距离，导致击退创造的短暂窗口被抹掉。
+
 ## 添加动作或新兵种
 
 1. 实现继承 `scripts/enemy/actions/enemy_action.gd` 的独立动作入口。通常实现 `collect_candidates`、`validate`、`begin`、`tick`、`reset`；按需要实现取消、中断、事件和空间评估接口。
@@ -137,7 +160,7 @@ flowchart TD
 
 新增参数字段的 setter 调用 `mark_override`，以区分“采用动作默认参数”和“训练明确覆盖”。动作定义的 `parameters` 可为兵种的某个行为提供数值变体；需要不同流程时替换实现。复用模板时，可复制某个动作定义再修改其参数，不必复制其他行为。
 
-霰弹枪、狙击枪等细分兵种后续可以作为新的兵种配置和接敌实现加入；当前仅迁移近战/远程。能力标识、行为列表和动作协议不限制将来有哪些兵种、基础执行能力或战术。当前近战沿用接近行为，未新增近战伤害玩法。
+霰弹枪、狙击枪等细分兵种后续可以作为新的兵种配置和接敌实现加入。能力标识、行为列表和动作协议不限制将来有哪些兵种、基础执行能力或战术。远程接敌与现有近战接近行为均可提交底层挥击请求；近战兵本次只补到达范围后的攻击，不优化行为逻辑或调整 Utility 评分。将现有 `units/melee.tres` 与 `weapons/enemy_test_melee.tres` 分别配置到 UnitType 和 Weapon 即可使用；详见 [近战装备说明](gameplay/MELEE.md#近战兵装备近战武器)。
 
 ## 迁移与回归
 
@@ -160,6 +183,14 @@ python movement_demo/tests/enemy/run_enemy_regressions.py --godot E:/Godot/Godot
 最终验证结果与环境限制记录于 `superpowers/plans/2026-09-29-enemy-modular-ai.md`。
 
 ## 维护协议
+
+文档修改遵守 [文档维护约束](project-layout.md#文档维护约束)。本说明中的当前实现和历史记录不构成改变用户已确认方向的授权。尤其保留近战与移动、射击并列的基础执行层级，以及玩家、敌人攻击实现分离的要求；后续 agent 不得为适配自己的方案而改写这些约束。
+
+`enemy_actor.gd.receive_melee_hit()` 独立处理敌人受击，伤害沿用 `receive_hit()`，当前准度清零后按原规则恢复，击退通过身体碰撞移动执行。AI 正常提交移动的帧只推进一次，AI 未激活时由身体补推进；死亡与区域复位清理外力。
+
+敌人主动近战沿用射击分层：动作提交 `melee` 意图，AI 转交近战控制器，控制器管理前摇／收招和参数快照，actor 提供 `can_melee()`、`begin_melee()`、`execute_melee()` 及射击／换弹互斥。近战冷却仅由 actor 物理更新推进；取消和切动作保留冷却，复位归零。动作无需也不能调用玩家 Combat 的近战攻击实现。现有远程接敌提供 `engage / melee` 方案，估计停火时间、推开后的空间暴露与障碍限制，仍经过原统一评分；没有独立挥击行为或近距离强制动作分支。同一接敌行为内切换方案也遵守前摇／收招的中断边界，执行完成后重新选择原射击或退让方案。敌人武器的体力消耗字段只对玩家有效。操作、受击及后续近战兵范围见 [近战说明](gameplay/MELEE.md)。
+
+模型、动画和子弹命中特效由独立表现组件接入，见 [接入说明](gameplay/PRESENTATION.md)。EnemyPresentation 读取身体的实际移动、瞄准和 Ammo 进度，并响应实际开火、死亡及复位通知；普通移动和冲刺分别映射。AI、训练与动作模块不操作动画播放器。空模型继续保留原 Body 倒地和复位效果。
 
 ### 改动应放在哪里
 
@@ -189,13 +220,13 @@ python movement_demo/tests/enemy/run_enemy_regressions.py --godot E:/Godot/Godot
 | `validate(candidate, visible)` | 提交执行前确认方案仍有效 |
 | `begin(candidate, visible)` | 记录选中的方案并初始化本动作进度；不能执行时返回 false |
 | `valid(visible)` | 检查正在执行的方案是否仍可继续 |
-| `tick(delta, visible)` | 推进本动作，返回运动、朝向、射击意图和运行状态 |
+| `tick(delta, visible)` | 推进本动作，返回运动、朝向、射击／近战意图和运行状态 |
 | `cancel(reason)` / `reset()` | 清除本动作进度；取消时不能重新启动其他战术 |
 | `can_interrupt(...)` / `hold_released()` | 表达中断与保持边界，供协调器统一决策 |
 | `on_event(...)` / `on_shot_fired()` | 响应公共事件或实际发射结果 |
 | `configuration_changed()` | 配置变化时刷新本动作依赖的参数分组或缓存 |
 
-用基类 `option(...)` 构建候选，提供 `unavailable_seconds`、`exposed_seconds`、`information_loss` 等共同估计，最终代价由统一评分器计算。用 `motion(...)` 返回 `direction`、`multiplier`、`facing`、`fire`、`running`；完成时将本动作 `_running` 设为 false，由协调器收尾。
+用基类 `option(...)` 构建候选，提供 `unavailable_seconds`、`exposed_seconds`、`information_loss` 等共同估计，最终代价由统一评分器计算。用 `motion(...)` 返回 `direction`、`multiplier`、`facing`、`fire`、`melee`、`running`；新增 `melee` 缺省为空，旧调用和不带此字段的输出继续有效。近战意图为 `{"owner": action_id}`，控制器核实动作已装配且当前被选中，其他动作不能借此绕过选择。完成时将本动作 `_running` 设为 false，由协调器收尾。
 
 涉及大量位置采样时，实现 `evaluation_points()`、`evaluate_point()` 等空间接口，通过分帧服务取得结果。不要在每次候选收集时同步穷举整张地图。`evaluation_weight()`、查询通道和初始扫描数量只影响计算调度，不应解释为战术优先级。
 

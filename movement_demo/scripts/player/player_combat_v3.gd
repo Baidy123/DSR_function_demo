@@ -1,5 +1,7 @@
 extends Node
 
+const ImpactEffects = preload("res://scripts/systems/effects/impact_effects.gd")
+
 @onready var debug_settings = get_node("/root/DebugSettings")
 
 const Ammo = preload("res://scripts/weapons/weapon_ammo.gd")
@@ -21,6 +23,26 @@ enum AimMode { PROBABILITY, SPREAD_CONE }
 
 signal weapon_changed(data: WeaponData)
 signal shot_fired(hit: bool, stability: float)
+signal melee_started
+signal melee_struck(target: Node3D)
+signal melee_finished
+
+@export_group("近战表现")
+## 纯表现剑光；留空关闭特效，近战判定仍正常执行。
+@export var melee_effect_scene: PackedScene = preload("res://scenes/effects/melee_slash.tscn")
+
+enum MeleePhase { READY, WINDUP, RECOVERY }
+var melee_phase: MeleePhase = MeleePhase.READY
+var melee_cooldown: float = 0.0
+var melee_elapsed: float = 0.0
+var melee_direction: Vector3 = Vector3.FORWARD
+var melee_count: int = 0
+var last_melee_target: Node3D
+var _melee_settings: Dictionary = {}
+var _melee_struck: bool = false
+var _melee_effect: Node3D
+var _melee_region: WeakRef
+var _melee_accuracy_frame: int = -1
 
 ## 由 WeaponSlots 装备的运行时引用；武器资源只在槽位中配置。
 var weapon: WeaponData
@@ -47,6 +69,7 @@ var player_position_before_move: Vector3 = Vector3.ZERO
 func _ready() -> void:
 	debug_settings.changed.connect(_apply_debug_mode)
 	player.get_node("Health").hit_received.connect(_on_hit_received)
+	player.get_node("Health").died.connect(cancel_melee)
 	add_to_group("shot_listener")
 	equip_weapon(weapon)
 	_apply_debug_mode(debug_settings.enabled)
@@ -60,6 +83,10 @@ func _apply_debug_mode(enabled: bool) -> void:
 ## Resource 只保存配置，不保存运行中的稳定度。
 ## ammo_state 保留该枪的半程，resume_slow_reload 恢复该槽原有的快慢方式。
 func equip_weapon(data: WeaponData, preserve_cooldown: bool = false, ammo_state = null, resume_slow_reload: bool = false) -> void:
+	if data != null and data.fire_mode == WeaponData.FireMode.MELEE:
+		push_warning("玩家只能装备枪械；专用近战武器仅供近战兵使用。")
+		return
+	cancel_melee()
 	interrupt_reload()
 	weapon = data
 	ammo = ammo_state if ammo_state != null else Ammo.new(data)
@@ -77,6 +104,10 @@ func equip_weapon(data: WeaponData, preserve_cooldown: bool = false, ammo_state 
 func _unhandled_input(event: InputEvent) -> void:
 	if event.is_echo():
 		return
+	if event.is_action_pressed("melee"):
+		request_melee()
+		get_viewport().set_input_as_handled()
+		return
 	if event.is_action_released("fire"):
 		fire_held = false
 		return
@@ -84,7 +115,7 @@ func _unhandled_input(event: InputEvent) -> void:
 		request_reload()
 		get_viewport().set_input_as_handled()
 		return
-	if ammo.is_reloading or ammo.reload_checkpoint > 0.0:
+	if is_melee_active() or ammo.is_reloading or ammo.reload_checkpoint > 0.0:
 		return
 	if player.is_in_dialogue or weapon == null or not can_combat():
 		return
@@ -96,7 +127,7 @@ func _unhandled_input(event: InputEvent) -> void:
 
 ## R主动请求，不要求瞄准或进入战斗区；枪械状态自己检查弹量和备弹。
 func request_reload() -> bool:
-	if weapon == null or player.is_dead() or player.is_in_dialogue or get_tree().paused:
+	if is_melee_active() or weapon == null or weapon.fire_mode == WeaponData.FireMode.MELEE or player.is_dead() or player.is_in_dialogue or get_tree().paused:
 		return false
 	var resuming: bool = ammo.reload_checkpoint > 0.0
 	if resuming and player.is_sprinting and not _reload_started_sprinting:
@@ -135,6 +166,14 @@ func _hold_reload_accuracy() -> void:
 
 func _on_hit_received(damage: float) -> void:
 	if damage > 0.0: _apply_aim_disruption(damage_spread_degrees)
+
+
+func apply_melee_disruption() -> void:
+	accuracy = 0.0
+	accuracy_recovery_timer = maxf(0.0, weapon.get_aim_settings(is_using_spread_cone()).delay) if weapon != null else 0.0
+	_melee_accuracy_frame = Engine.get_physics_frames()
+	var slots := player.get_node_or_null("WeaponSlots")
+	if slots != null: slots.apply_melee_disruption()
 
 func _apply_aim_disruption(degrees: float) -> void:
 	if weapon == null or player.is_dead() or not is_finite(degrees) or degrees <= 0.0: return
@@ -181,12 +220,15 @@ func can_combat() -> bool:
 
 # Player 在移动前调用：检查锁定，再由 Player 应用朝向。
 func begin_frame(delta: float, aim_pressed: bool) -> void:
+	if weapon != null and weapon.fire_mode == WeaponData.FireMode.MELEE:
+		equip_weapon(null) # 共享资源运行时被改成近战时，玩家也不能继续使用。
+	_advance_melee(delta)
 	player_position_before_move = player.global_position
 	shot_cooldown = maxf(0.0, shot_cooldown - delta)
 	# 0.2秒按60Hz扣减会留下浮点尾差，不能因此让连发额外等待一帧。
 	if is_zero_approx(shot_cooldown):
 		shot_cooldown = 0.0
-	if weapon == null or player.is_in_dialogue or not aim_pressed or not can_combat():
+	if is_melee_active() or weapon == null or player.is_in_dialogue or not aim_pressed or not can_combat():
 		cancel_aim()
 		return
 	is_aiming = true
@@ -211,7 +253,7 @@ func end_frame(delta: float, moving: bool) -> void:
 	var was_reloading: bool = ammo.is_reloading
 	if player.is_dead() or player.is_in_dialogue:
 		cancel_reload()
-	elif not get_tree().paused:
+	elif not get_tree().paused and not is_melee_active():
 		if player.is_sprinting and not _reload_started_sprinting:
 			interrupt_reload()
 		else:
@@ -220,6 +262,7 @@ func end_frame(delta: float, moving: bool) -> void:
 		var reload_speed: float = sprint_reload_speed_multiplier if _reload_started_sprinting else 1.0
 		ammo.advance_reload(delta, reload_speed)
 	if not can_combat() or player.is_in_dialogue:
+		cancel_melee()
 		cancel_aim()
 	if is_instance_valid(locked_target) and not _target_visible(locked_target):
 		locked_target = null
@@ -234,6 +277,8 @@ func end_frame(delta: float, moving: bool) -> void:
 		if was_reloading:
 			# 完成的这一帧也保持最低，下一帧才开始原恢复等待，避免大delta提前恢复。
 			_hold_reload_accuracy()
+		elif _melee_accuracy_frame == Engine.get_physics_frames():
+			pass # 近战命中的同一物理帧不能立即恢复准度。
 		elif moving:
 			var displacement: Vector3 = player.global_position - player_position_before_move
 			var distance: float = Vector2(displacement.x, displacement.z).length()
@@ -355,7 +400,7 @@ func _ray_to(endpoint: Vector3) -> Dictionary:
 
 
 func shoot() -> void:
-	if not is_aiming or player.is_in_dialogue or weapon == null or shot_cooldown > 0.0 or not can_combat():
+	if is_melee_active() or not is_aiming or player.is_in_dialogue or weapon == null or weapon.fire_mode == WeaponData.FireMode.MELEE or shot_cooldown > 0.0 or not can_combat():
 		return
 	if get_tree().paused or not ammo.consume_round():
 		return
@@ -382,6 +427,8 @@ func shoot() -> void:
 		direction = _random_direction_in_miss_cone(direction, 8.0, 20.0)
 	var endpoint: Vector3 = origin + direction * weapon.fire_range
 	var hit: Dictionary = _ray_to(endpoint)
+	var effects := ImpactEffects.find_for(player)
+	var impact = effects.capture_hit(hit, direction, player) if effects != null else null
 	last_shot_collider = hit.get("collider")
 	var target_hit: bool = false
 	if not hit.is_empty():
@@ -401,6 +448,7 @@ func shoot() -> void:
 	accuracy_recovery_timer = settings.delay
 	last_result = "命中" if target_hit else "未命中"
 	_draw_shot(origin, endpoint, target_hit)
+	if effects != null: effects.dispatch_impact(impact)
 	shot_fired.emit(target_hit, stability)
 	_update_status()
 
@@ -477,6 +525,151 @@ func _draw_shot(origin: Vector3, endpoint: Vector3, hit: bool) -> void:
 	line.material_override = material
 	get_tree().current_scene.add_child(line)
 	get_tree().create_timer(0.12).timeout.connect(line.queue_free)
+
+
+## 玩家近战独立函数区；执行保留在现有 Combat，不供敌人调用。
+func is_melee_active() -> bool:
+	return melee_phase != MeleePhase.READY
+
+
+func get_melee_progress() -> float:
+	if not is_melee_active(): return 0.0
+	return clampf(melee_elapsed / maxf(0.001, _melee_settings.windup + _melee_settings.recovery), 0.0, 1.0)
+
+
+func request_melee() -> bool:
+	if weapon == null or weapon.fire_mode == WeaponData.FireMode.MELEE or not weapon.melee_enabled or is_melee_active() or melee_cooldown > 0.0:
+		return false
+	if not can_combat() or player.is_in_dialogue or get_tree().paused: return false
+	# 通过全部攻击资格后才扣体力；失败请求不会打断换弹或消耗冷却。
+	if not player.try_consume_stamina(weapon.melee_stamina_cost): return false
+	# 一次挥击固定配置；资源调参、切槽或动画长度都不能改变已开始的命中。
+	_melee_settings = {
+		"damage": maxf(0.0, weapon.melee_damage), "range": maxf(0.1, weapon.melee_range),
+		"angle": clampf(weapon.melee_angle_degrees, 1.0, 180.0),
+		"height": maxf(0.0, weapon.melee_height_tolerance),
+		"windup": maxf(0.0, weapon.melee_windup_seconds),
+		"recovery": maxf(0.0, weapon.melee_recovery_seconds),
+		"distance": maxf(0.0, weapon.melee_knockback_distance),
+		"duration": maxf(0.05, weapon.melee_knockback_seconds),
+	}
+	melee_direction = -player.global_basis.z
+	melee_direction.y = 0.0
+	melee_direction = melee_direction.normalized()
+	if melee_direction.is_zero_approx(): melee_direction = Vector3.FORWARD
+	melee_cooldown = maxf(weapon.melee_interval, _melee_settings.windup + _melee_settings.recovery)
+	melee_elapsed = 0.0
+	_melee_struck = false
+	last_melee_target = null
+	melee_phase = MeleePhase.WINDUP
+	interrupt_reload()
+	cancel_aim()
+	player.is_sprinting = false
+	player.current_speed = minf(player.current_speed, player.move_speed)
+	_melee_region = null
+	# 只绑定本次所在区域；其他靶场复位不会取消这次攻击。
+	for zone in get_tree().get_nodes_in_group("combat_zone"):
+		if zone is Area3D and zone.monitoring and zone.overlaps_body(player):
+			var region: Node = zone.get_parent()
+			if region.has_signal("presentation_reset"):
+				_melee_region = weakref(region)
+				if not region.presentation_reset.is_connected(_on_melee_region_reset):
+					region.presentation_reset.connect(_on_melee_region_reset)
+				break
+	melee_count += 1
+	melee_started.emit()
+	return true
+
+
+func _advance_melee(delta: float) -> void:
+	if get_tree().paused: return
+	var elapsed := maxf(0.0, delta)
+	melee_cooldown = maxf(0.0, melee_cooldown - elapsed)
+	if is_zero_approx(melee_cooldown): melee_cooldown = 0.0
+	if not is_melee_active(): return
+	if not can_combat() or player.is_in_dialogue or weapon == null or weapon.fire_mode == WeaponData.FireMode.MELEE:
+		cancel_melee()
+		return
+	melee_elapsed += elapsed
+	if not _melee_struck and melee_elapsed + 0.000001 >= float(_melee_settings.windup):
+		_melee_struck = true
+		melee_phase = MeleePhase.RECOVERY
+		_execute_player_melee()
+		# 受击回调可能触发场景复位并取消本次动作。
+		if not is_melee_active(): return
+	if melee_elapsed + 0.000001 >= float(_melee_settings.windup + _melee_settings.recovery):
+		melee_phase = MeleePhase.READY
+		_melee_settings.clear()
+		melee_finished.emit()
+
+
+func cancel_melee() -> void:
+	var was_active := is_melee_active()
+	melee_phase = MeleePhase.READY
+	melee_elapsed = 0.0
+	_melee_settings.clear()
+	_melee_struck = false
+	_melee_region = null
+	if is_instance_valid(_melee_effect): _melee_effect.queue_free()
+	_melee_effect = null
+	if was_active: melee_finished.emit()
+	# 取消、换枪不能清除已经消耗的冷却；新场景实例自然从零开始。
+
+
+func _on_melee_region_reset(region: Node) -> void:
+	if _melee_region != null and _melee_region.get_ref() == region: cancel_melee()
+
+
+func _find_melee_target() -> Node3D:
+	var closest: Node3D
+	var nearest := INF
+	var origin: Vector3 = player.global_position + Vector3.UP * 0.8
+	var threshold: float = cos(deg_to_rad(_melee_settings.angle * 0.5))
+	for target in get_tree().get_nodes_in_group("combat_target"):
+		if not target is Node3D or not target.has_method("receive_hit") or target.is_queued_for_deletion(): continue
+		var offset: Vector3 = target.global_position - player.global_position
+		if absf(offset.y) > float(_melee_settings.height): continue
+		offset.y = 0.0
+		var distance := offset.length()
+		if distance > float(_melee_settings.range) or distance >= nearest: continue
+		if distance > 0.00001 and melee_direction.dot(offset / distance) < threshold: continue
+		var endpoint: Vector3 = target.global_position + Vector3.UP * 0.8
+		var query := PhysicsRayQueryParameters3D.create(origin, endpoint, 1, [player.get_rid()])
+		query.hit_from_inside = true
+		var hit: Dictionary = player.get_world_3d().direct_space_state.intersect_ray(query)
+		if hit.is_empty() or (hit.collider != target and not target.is_ancestor_of(hit.collider)): continue
+		closest = target
+		nearest = distance
+	return closest
+
+
+func _execute_player_melee() -> void:
+	var target := _find_melee_target()
+	last_melee_target = target
+	_show_melee_slash()
+	if is_instance_valid(target):
+		if target.has_method("receive_melee_hit"):
+			target.receive_melee_hit(_melee_settings.damage, player.global_position,
+				_melee_settings.distance, _melee_settings.duration, melee_direction)
+		else:
+			# 固定训练靶沿用自身计数与生命规则，不改成可移动角色。
+			target.receive_hit(_melee_settings.damage, player.global_position)
+	melee_struck.emit(target if is_instance_valid(target) else null)
+
+
+func _show_melee_slash() -> void:
+	if melee_effect_scene == null: return
+	if is_instance_valid(_melee_effect): _melee_effect.queue_free()
+	var effect := melee_effect_scene.instantiate()
+	if not effect is Node3D or not effect.has_method("start"):
+		effect.free()
+		return
+	_melee_effect = effect
+	add_child(effect)
+	effect.add_to_group("player_melee_effect")
+	# 子节点随 Combat 卸载，世界变换固定在实际出手位置。
+	effect.start(player.global_position + Vector3.UP * 0.85, melee_direction,
+		float(_melee_settings.range), float(_melee_settings.angle))
 
 
 func _update_status() -> void:

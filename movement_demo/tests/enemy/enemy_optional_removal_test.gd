@@ -29,7 +29,7 @@ func _run() -> void:
 	ai.cover_selection.debug_cover_selection = false
 	ai.actions[&"search"].debug_tracking_cheat = false
 	ai.actions[&"search"].tracking_cheat_enabled = false
-	check(ai.actions.size() == 4, "全部战术从兵种移除后只创建四个默认模块")
+	check(ai.actions.size() == 4 and not ai.actions.has(&"melee_strike"), "全部战术从兵种移除后保留原四个默认模块")
 	enemy.global_position = Vector3(24, 0, -2)
 	player.global_position = Vector3(22, 0, -2)
 	enemy.look_at(player.global_position)

@@ -2,6 +2,9 @@ extends CanvasLayer
 
 ## 有效命中先通知战斗模块；Debug 无敌仅免除扣血。
 signal hit_received(damage: float)
+## 结算后通知表现层；无敌不产生 damage_applied，但保留上方的原通知。
+signal damage_applied(damage: float)
+signal died
 
 @onready var debug_settings = get_node("/root/DebugSettings")
 
@@ -88,6 +91,8 @@ func receive_hit(damage: float) -> void:
 		get_tree().paused = true
 		death_screen.show()
 		restart_button.grab_focus()
+		died.emit()
+	damage_applied.emit(previous_health - health)
 	_update_display()
 
 

@@ -10,6 +10,10 @@
 [ext_resource type="Resource" uid="uid://dpp6fjr8paihk" path="res://resources/enemy/training/arena.tres" id="training_profile"]
 [ext_resource type="Resource" uid="uid://cauhlj43ul1uy" path="res://resources/enemy/units/ranged.tres" id="unit_profile"]
 
+[ext_resource type="Script" path="res://scripts/systems/presentation/visual_presentation.gd" id="presentation"]
+[ext_resource type="Script" path="res://scripts/enemy/enemy_presentation.gd" id="enemy_presentation"]
+[ext_resource type="Script" path="res://scripts/systems/effects/impact_receiver.gd" id="impact_receiver"]
+
 [sub_resource type="StandardMaterial3D" id="EnemyMaterial"]
 albedo_color = Color(0.85, 0.16, 0.3, 1)
 
@@ -65,7 +69,7 @@ mesh = SubResource("FrontMesh")
 [node name="Label" type="Label3D" parent="." unique_id=591293484]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 2.2, 0)
 billboard = 1
-text = "敌人：待机"
+text = "敌人"
 font_size = 36
 
 [node name="NavigationAgent3D" type="NavigationAgent3D" parent="." unique_id=951862842]
@@ -75,3 +79,13 @@ path_height_offset = 0.5
 path_max_distance = 1.01
 height = 1.6
 radius = 0.35
+
+[node name="Presentation" type="Node3D" parent="."]
+script = ExtResource("presentation")
+placeholder_paths = Array[NodePath]([NodePath("../Body"), NodePath("../FrontMarker")])
+
+[node name="EnemyPresentation" type="Node" parent="."]
+script = ExtResource("enemy_presentation")
+
+[node name="ImpactReceiver" type="Node" parent="."]
+script = ExtResource("impact_receiver")

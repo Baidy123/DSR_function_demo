@@ -1,9 +1,15 @@
 extends CanvasLayer
 
+signal dialogue_started(source: Node)
+signal dialogue_ended(source: Node)
+
 var dialogue_player = null
 var dialogue_resource: DialogueResource
 var dialogue_line: DialogueLine
 var is_loading: bool = false
+var dialogue_source: Node
+var _session: int = 0
+var _announced: bool = false
 
 @onready var dialogue_panel: PanelContainer = $DialoguePanel
 @onready var dialogue_text: Label = $DialoguePanel/MarginContainer/Content/DialogueText
@@ -14,7 +20,11 @@ func _ready() -> void:
 	dialogue_panel.hide()
 
 
-func open_dialogue(player, resource: DialogueResource, start: String) -> void:
+func open_dialogue(player, resource: DialogueResource, start: String, source: Node = null) -> void:
+	if dialogue_player != null: _close_dialogue()
+	_session += 1
+	dialogue_source = source
+	if is_instance_valid(source): source.tree_exiting.connect(_close_dialogue, CONNECT_ONE_SHOT)
 	dialogue_player = player
 	dialogue_player.set_dialogue_active(true)
 	dialogue_resource = resource
@@ -60,7 +70,15 @@ func _show_line(next_id: String) -> void:
 		button.queue_free()
 
 	# DM 决定下一句及其选项，UI 负责显示。
-	dialogue_line = await dialogue_resource.get_next_dialogue_line(next_id)
+	var session := _session
+	var request_resource := dialogue_resource
+	var line: DialogueLine = await request_resource.get_next_dialogue_line(next_id, [])
+	# 当前 DM 在 resource.lines 的字典中注入 resource 自身。返回的 DialogueLine
+	# 已持有其引用，移除源字典的临时回链，避免结束或取消会话后留下资源循环。
+	for data in request_resource.lines.values():
+		if data.get("resource") == request_resource: data.erase("resource")
+	if session != _session or not is_inside_tree(): return
+	dialogue_line = line
 	if dialogue_line == null:
 		_close_dialogue()
 		return
@@ -80,6 +98,9 @@ func _show_line(next_id: String) -> void:
 	choices.visible = not dialogue_line.responses.is_empty()
 	dialogue_panel.show()
 	is_loading = false
+	if not _announced:
+		_announced = true
+		dialogue_started.emit(dialogue_source)
 	for button in choices.get_children():
 		if not button.disabled:
 			button.grab_focus()
@@ -87,6 +108,14 @@ func _show_line(next_id: String) -> void:
 
 
 func _close_dialogue() -> void:
+	_session += 1
+	var source := dialogue_source
+	if is_instance_valid(source) and source.tree_exiting.is_connected(_close_dialogue):
+		source.tree_exiting.disconnect(_close_dialogue)
+	dialogue_source = null
+	if _announced:
+		_announced = false
+		dialogue_ended.emit(source if is_instance_valid(source) else null)
 	dialogue_panel.hide()
 	if is_instance_valid(dialogue_player):
 		dialogue_player.set_dialogue_active(false)
@@ -94,3 +123,7 @@ func _close_dialogue() -> void:
 	dialogue_line = null
 	dialogue_resource = null
 	is_loading = false
+
+
+func _exit_tree() -> void:
+	_close_dialogue()

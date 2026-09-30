@@ -1,6 +1,8 @@
 [gd_scene format=3]
 
 [ext_resource type="Script" path="res://scripts/world/cover_region.gd" id="1_region"]
+[ext_resource type="Script" path="res://scripts/systems/presentation/visual_presentation.gd" id="presentation"]
+[ext_resource type="Script" path="res://scripts/systems/effects/impact_receiver.gd" id="impact_receiver"]
 
 [sub_resource type="StandardMaterial3D" id="Material"]
 albedo_color = Color(0.34, 0.39, 0.45, 1)
@@ -23,3 +25,11 @@ mesh = SubResource("Mesh")
 
 [node name="CollisionShape3D" type="CollisionShape3D" parent="."]
 shape = SubResource("Shape")
+
+[node name="Presentation" type="Node3D" parent="."]
+script = ExtResource("presentation")
+placeholder_paths = Array[NodePath]([NodePath("../Mesh")])
+
+[node name="ImpactReceiver" type="Node" parent="."]
+script = ExtResource("impact_receiver")
+presentation_path = NodePath("../Presentation")
