@@ -36,5 +36,5 @@ func _physics_process(_delta: float) -> void:
 	# 等待 Player 完成转身，这期间已经锁住移动。
 	if pending_player.is_facing_npc:
 		return
-	$"../DialogueUI".open_dialogue(pending_player, dialogue_resource, dialogue_start)
+	$"../DialogueUI".open_dialogue(pending_player, dialogue_resource, dialogue_start, self)
 	pending_player = null

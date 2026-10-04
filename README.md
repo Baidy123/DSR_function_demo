@@ -17,8 +17,10 @@
 - [后续总待办](docs/TODO.md)
 - [操作与移动说明](docs/gameplay/MOVEMENT.md)
 - [战斗说明](docs/gameplay/COMBAT.md)
+- [玩家 V 近战与枪械近战参数](docs/gameplay/MELEE.md)
 - [竞技场说明](docs/gameplay/ARENA.md)
 - [场景交互物说明](docs/gameplay/INTERACTION.md)
+- [模型、动画与命中特效接入](docs/gameplay/PRESENTATION.md)
 - [敌人 AI 结构、维护与使用部署](docs/enemy-ai.md)
 - [项目目录结构](docs/project-layout.md)
 

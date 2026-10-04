@@ -19,6 +19,11 @@
 [ext_resource type="PackedScene" path="res://scenes/world/objects/terminal.tscn" id="19_terminal"]
 [ext_resource type="PackedScene" path="res://scenes/world/objects/record_player.tscn" id="20_record_player"]
 [ext_resource type="PackedScene" path="res://scenes/world/access_gate.tscn" id="21_access_gate"]
+[ext_resource type="PackedScene" path="res://scenes/effects/impact_effects.tscn" id="impact_effects"]
+[ext_resource type="Script" uid="uid://dw52opl8k324b" path="res://scripts/systems/effects/impact_receiver.gd" id="impact_receiver"]
+[ext_resource type="Script" uid="uid://bumxb08uysksl" path="res://scripts/world/npc_presentation.gd" id="npc_presentation"]
+[ext_resource type="Script" uid="uid://k0q37ja4h4tl" path="res://scripts/player/player_presentation.gd" id="player_presentation"]
+[ext_resource type="Script" uid="uid://bxfli5ujmf35g" path="res://scripts/systems/presentation/visual_presentation.gd" id="presentation"]
 
 [sub_resource type="Environment" id="Environment"]
 background_mode = 1
@@ -186,6 +191,11 @@ mesh = SubResource("PlayerMesh")
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.35, -0.4)
 mesh = SubResource("FrontMesh")
 
+[node name="Presentation" type="Node3D" parent="Player/Visual" unique_id=598926847]
+script = ExtResource("presentation")
+placeholder_paths = Array[NodePath]([NodePath("../Body"), NodePath("../FrontMarker")])
+death_during_pause = true
+
 [node name="Combat" parent="Player" unique_id=943451104 instance=ExtResource("3_4c57u")]
 sprint_reload_speed_multiplier = 0.7999999999999999
 
@@ -196,6 +206,12 @@ starting_smg_ammo = 120
 starting_shotgun_ammo = 24
 
 [node name="Health" parent="Player" unique_id=550391103 instance=ExtResource("12_health")]
+
+[node name="PlayerPresentation" type="Node" parent="Player" unique_id=564109252]
+script = ExtResource("player_presentation")
+
+[node name="ImpactReceiver" type="Node" parent="Player" unique_id=149231679]
+script = ExtResource("impact_receiver")
 
 [node name="NPC" type="StaticBody3D" parent="." unique_id=226967711]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -7.883234, 0, 3.7864947)
@@ -216,6 +232,16 @@ collision_layer = 0
 
 [node name="CollisionShape3D" type="CollisionShape3D" parent="NPC/InteractionArea" unique_id=1266831335]
 shape = SubResource("InteractionShape")
+
+[node name="Presentation" type="Node3D" parent="NPC" unique_id=537327942]
+script = ExtResource("presentation")
+placeholder_paths = Array[NodePath]([NodePath("../Body")])
+
+[node name="NpcPresentation" type="Node" parent="NPC" unique_id=1185187292]
+script = ExtResource("npc_presentation")
+
+[node name="ImpactReceiver" type="Node" parent="NPC" unique_id=944189811]
+script = ExtResource("impact_receiver")
 
 [node name="Camera3D" type="Camera3D" parent="." unique_id=1669516944]
 physics_interpolation_mode = 1
@@ -263,6 +289,16 @@ collision_layer = 0
 [node name="CollisionShape3D" type="CollisionShape3D" parent="NPCB/InteractionArea" unique_id=104211842]
 shape = SubResource("InteractionShape")
 
+[node name="Presentation" type="Node3D" parent="NPCB" unique_id=1513732941]
+script = ExtResource("presentation")
+placeholder_paths = Array[NodePath]([NodePath("../Body")])
+
+[node name="NpcPresentation" type="Node" parent="NPCB" unique_id=330588414]
+script = ExtResource("npc_presentation")
+
+[node name="ImpactReceiver" type="Node" parent="NPCB" unique_id=33098614]
+script = ExtResource("impact_receiver")
+
 [node name="CombatTest" parent="." unique_id=2089866747 instance=ExtResource("10_efxa6")]
 
 [node name="Arena" parent="." unique_id=930605498 instance=ExtResource("11_efxa6")]
@@ -286,3 +322,5 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 5.4, 0, 4.1)
 
 [node name="AccessGate" parent="Interactables" instance=ExtResource("21_access_gate")]
 transform = Transform3D(0, 0, -1, 0, 1, 0, 1, 0, 0, 9.125, 0, 0)
+
+[node name="ImpactEffects" parent="." unique_id=157028740 instance=ExtResource("impact_effects")]

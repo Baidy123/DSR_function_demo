@@ -1,9 +1,5 @@
 extends "res://scripts/enemy/actions/enemy_suppression_action.gd"
 
-## 最后目击位置离掩体实体表面的最大水平距离；只推测邻近掩体，不追踪墙后玩家。
-var cover_inference_distance: float:
-	get: return _setting(&"cover_inference_distance", 1.75)
-	set(value): _set_setting(&"cover_inference_distance", value)
 ## 每侧随机连续打出的枪数范围；仅实际开火才计数，冷却和连射停顿不换边。
 var shots_per_exit_min: int:
 	get: return _setting(&"shots_per_exit_min", 2)
@@ -36,7 +32,7 @@ func reset() -> void:
 func _prepare_targets(center: Vector3) -> bool:
 	reset()
 	_exit_memory = center - Vector3.UP * 0.8
-	_exit_geometry = context.cover_selection.suppression_geometry(_exit_memory, cover_inference_distance)
+	_exit_geometry = context.cover_selection.suppression_geometry(_exit_memory)
 	if _exit_geometry.is_empty(): return false
 	target_cover = _exit_geometry.body
 	_inference_confidence = _exit_geometry.confidence

@@ -3,10 +3,22 @@ extends CharacterBody3D
 @onready var debug_settings = get_node("/root/DebugSettings")
 
 const Ammo = preload("res://scripts/weapons/weapon_ammo.gd")
+const ImpactEffects = preload("res://scripts/systems/effects/impact_effects.gd")
 var ammo = Ammo.new()
 ## 身体执行层不读取玩家位置，也不决定追踪、搜索或掩体策略。
 signal hit_received(damage: float, attacker_position: Vector3)
 signal reset_completed
+signal shot_fired
+signal died
+signal melee_started
+signal melee_struck(target: Node3D, settings: Dictionary, direction: Vector3)
+signal melee_finished(cancelled: bool)
+
+# 冷却只由身体物理更新推进；阶段与参数快照属于敌人的近战控制器。
+var melee_active := false
+var melee_cooldown := 0.0
+var melee_count := 0
+var _melee_hit_used := false
 
 ## 基础移动速度（米/秒）；AI 可给当前行动提供速度倍率。
 @export var move_speed: float = 2.0
@@ -30,7 +42,7 @@ var _status_text: String = ""
 @export_group("Shooting")
 ## 是否允许执行射击；可暂时关闭以单独观察移动和掩体行为。
 @export var shooting_enabled: bool = true
-## 枪械伤害、射程、射速与中心概率参数；敌人使用玩家旧概率模式，空资源表示没有枪。
+## 武器类型及攻击参数；近战武器不启用射击，远程武器使用原中心概率模式。
 ## 运行时换枪调用 equip_weapon；反应时间与连射节奏仍由 AI/Tactics 决定。
 @export var weapon: WeaponData
 ## 枪口瞄准方向的最大跟随角速度（度/秒），独立于身体转速。
@@ -61,11 +73,18 @@ var is_dead: bool = false
 var initial_transform: Transform3D
 var initial_body_transform: Transform3D
 var death_tween: Tween
+var _hit_push_velocity: Vector3 = Vector3.ZERO
+var _hit_push_remaining: float = 0.0
+var _hit_push_duration: float = 0.0
+var _last_move_physics_frame: int = -1
+var _melee_accuracy_frame: int = -1
 
 @onready var agent: NavigationAgent3D = $NavigationAgent3D
 
 
 func _ready() -> void:
+	# AI 先提交正常移动；身体最后只补上尚未被推进的受击移动。
+	process_physics_priority = 100
 	debug_settings.changed.connect(_apply_debug_mode)
 	_apply_debug_mode(debug_settings.enabled)
 	_shot_rng.randomize()
@@ -74,27 +93,51 @@ func _ready() -> void:
 	reset_target()
 
 
+func _physics_process(delta: float) -> void:
+	if weapon != null and not can_equip_weapon(weapon):
+		push_warning("当前兵种不能装备专用近战武器，已取消攻击并卸下武器。")
+		equip_weapon(null)
+	melee_cooldown = maxf(0.0, melee_cooldown - maxf(0.0, delta))
+	if is_zero_approx(melee_cooldown): melee_cooldown = 0.0
+	# 未激活或暂停 AI 时仍能承受物理击退；正常移动过的帧不会重复移动。
+	if not is_dead and _hit_push_remaining > 0.0 and _last_move_physics_frame != Engine.get_physics_frames():
+		move_character(Vector3.ZERO, delta)
+
+
 ## 执行方向与速度；调用者负责决定目的地。
 func move_character(direction: Vector3, delta: float, speed_multiplier: float = 1.0) -> void:
-	if is_dead:
+	if is_dead or get_tree().paused:
 		return
+	# 自主移动与受击外力分开：任何行为都不能绕过前摇限制。
+	if not can_move(): direction = Vector3.ZERO
 	speed_multiplier = get_effective_movement_multiplier(speed_multiplier)
 	velocity.x = direction.x * move_speed * speed_multiplier
 	velocity.z = direction.z * move_speed * speed_multiplier
+	velocity += _advance_hit_push(delta)
 	if not is_on_floor():
 		velocity += get_gravity() * delta
 	else:
 		velocity.y = 0.0
 	var before: Vector3 = global_position
+	_last_move_physics_frame = Engine.get_physics_frames()
 	move_and_slide()
 	_weapon_move_distance += Vector2(global_position.x - before.x, global_position.z - before.z).length()
 	_update_movement_noise(delta, before, speed_multiplier > 1.0)
 
 
+## 条件查询与实际执行共用；不读取 AI、行为 ID 或控制器阶段。
+func can_move() -> bool:
+	return not is_dead and not get_tree().paused and (not melee_active or _melee_hit_used)
+
+
+func can_turn() -> bool:
+	return not is_dead and not get_tree().paused and not melee_active
+
+
 ## 换弹可走可转，但快速移动最多按普通速度执行；慢走保持原倍率。
 ## 行动层估算移动时限时也使用同一限制。
 func get_effective_movement_multiplier(requested: float) -> float:
-	return minf(requested, 1.0) if ammo.is_reloading else requested
+	return minf(requested, 1.0) if ammo.is_reloading or melee_active else requested
 
 
 func _update_movement_noise(delta: float, before_move: Vector3, fast_movement: bool = false) -> void:
@@ -111,7 +154,7 @@ func _update_movement_noise(delta: float, before_move: Vector3, fast_movement: b
 
 
 func face_direction(direction: Vector3, delta: float) -> void:
-	if is_dead:
+	if not can_turn():
 		return
 	if Vector2(direction.x, direction.z).is_zero_approx():
 		return
@@ -130,20 +173,65 @@ func receive_hit(damage: float, attacker_position: Vector3 = Vector3.INF) -> voi
 	health = maxf(0.0, health - maxf(damage, 0.0))
 	if health <= 0.0:
 		is_dead = true
+		cancel_melee()
+		_clear_hit_push()
 		cancel_reload()
 		clear_aim()
 		velocity = Vector3.ZERO
 		remove_from_group("combat_target")
 		$CollisionShape3D.set_deferred("disabled", true)
 		$FrontMarker.hide()
-		death_tween = create_tween().set_parallel(true)
-		death_tween.tween_property($Body, "rotation:x", PI / 2.0, 0.3)
-		death_tween.tween_property($Body, "position:y", 0.35, 0.3)
+		var presentation := get_node_or_null("Presentation")
+		if presentation == null or not presentation.has_method("has_model") or not presentation.has_model():
+			death_tween = create_tween().set_parallel(true)
+			death_tween.tween_property($Body, "rotation:x", PI / 2.0, 0.3)
+			death_tween.tween_property($Body, "position:y", 0.35, 0.3)
+		died.emit()
 	_update_health_label()
 	hit_received.emit(damage, attacker_position)
 
 
+## 敌人自身的近战受击入口。只接收结果，不读取玩家或选择战术。
+func receive_melee_hit(damage: float, attacker_position: Vector3, distance: float,
+		duration: float, fallback_direction: Vector3 = Vector3.FORWARD) -> void:
+	if is_dead or get_tree().paused: return
+	receive_hit(damage, attacker_position)
+	weapon_stability = 0.0
+	weapon_recovery_timer = maxf(0.0, weapon.get_aim_settings(false).delay) if weapon != null else 0.0
+	_melee_accuracy_frame = Engine.get_physics_frames()
+	if is_dead: return
+	var direction := global_position - attacker_position
+	direction.y = 0.0
+	if direction.is_zero_approx():
+		direction = Vector3(fallback_direction.x, 0.0, fallback_direction.z)
+	_hit_push_duration = maxf(0.05, duration)
+	_hit_push_remaining = _hit_push_duration if distance > 0.0 else 0.0
+	_hit_push_velocity = direction.normalized() * (2.0 * maxf(0.0, distance) / _hit_push_duration)
+
+
+func _advance_hit_push(delta: float) -> Vector3:
+	if _hit_push_remaining <= 0.0 or delta <= 0.0: return Vector3.ZERO
+	# 积分线性衰减速度，以本帧平均速度交给 move_and_slide；尾帧不多推一步。
+	var elapsed := minf(delta, _hit_push_remaining)
+	var before := _hit_push_remaining / _hit_push_duration
+	_hit_push_remaining = maxf(0.0, _hit_push_remaining - elapsed)
+	var after := _hit_push_remaining / _hit_push_duration
+	return _hit_push_velocity * (before + after) * 0.5 * elapsed / delta
+
+
+func _clear_hit_push() -> void:
+	_hit_push_velocity = Vector3.ZERO
+	_hit_push_remaining = 0.0
+	_hit_push_duration = 0.0
+
+
 func reset_target() -> void:
+	cancel_melee()
+	melee_cooldown = 0.0
+	melee_count = 0
+	_clear_hit_push()
+	_melee_accuracy_frame = -1
+	_last_move_physics_frame = -1
 	_movement_noise_timer = 0.0
 	if death_tween != null and death_tween.is_valid():
 		death_tween.kill()
@@ -244,6 +332,11 @@ func clear_aim() -> void:
 
 ## 不修改共享资源，也不通过换枪清掉尚未结束的开火冷却。
 func equip_weapon(data: WeaponData) -> void:
+	if not can_equip_weapon(data):
+		push_warning("专用近战武器只允许具备近战装备资格的兵种使用。")
+		if can_equip_weapon(weapon): return # 运行时拒绝错误请求，保留原有效武器。
+		data = null # 出生场景误配的武器不能成为有效装备。
+	cancel_melee()
 	cancel_reload()
 	weapon = data
 	ammo = Ammo.new(data, {}, true)
@@ -253,9 +346,19 @@ func equip_weapon(data: WeaponData) -> void:
 	clear_aim()
 
 
-## 只执行请求；打空后是否开始换弹由AI决定。敌人备弹无限、弹匣有限。
+func can_equip_weapon(data: WeaponData) -> bool:
+	if data == null or data.fire_mode != WeaponData.FireMode.MELEE: return true
+	var unit = get_node_or_null("UnitType")
+	return unit != null and unit.supports_melee_weapons()
+
+
+## 查询身体／武器执行条件，不决定换弹时机。敌人备弹无限、弹匣有限。
+func can_reload() -> bool:
+	return not melee_active and can_use_firearms() and not get_tree().paused and ammo.can_reload()
+
+
 func request_reload() -> bool:
-	if not can_use_firearms() or get_tree().paused:
+	if not can_reload():
 		return false
 	if not ammo.start_reload(): return false
 	_hold_reload_accuracy()
@@ -289,6 +392,9 @@ func get_max_shot_deviation_degrees() -> float:
 func _update_weapon_stability(delta: float, visible_point: Vector3) -> void:
 	var distance: float = _weapon_move_distance
 	_weapon_move_distance = 0.0
+	if _melee_accuracy_frame == Engine.get_physics_frames():
+		_last_visible_point = visible_point
+		return
 	if weapon == null or is_dead:
 		return
 	var settings: Dictionary = weapon.get_aim_settings(false)
@@ -319,7 +425,7 @@ func get_shot_origin() -> Vector3:
 ## AI选择与基础执行共用枪械资格；不依赖AI、Training或战术动作清单。
 ## 缺少兵种时不启用枪械，移动、转向等公共身体操作不受影响。
 func can_use_firearms() -> bool:
-	if is_dead or not shooting_enabled or weapon == null:
+	if is_dead or not shooting_enabled or weapon == null or weapon.fire_mode == WeaponData.FireMode.MELEE:
 		return false
 	var unit = get_node_or_null("UnitType")
 	return unit != null and unit.supports_firearms()
@@ -327,7 +433,7 @@ func can_use_firearms() -> bool:
 
 ## 纯查询执行条件；让评分只在枪械确实能发射时积累主动等待时间。
 func can_fire() -> bool:
-	if not can_use_firearms() or not ammo.can_fire():
+	if get_tree().paused or melee_active or not can_use_firearms() or not ammo.can_fire():
 		return false
 	if not has_aim or not aim_acquired or shot_cooldown > 0.0:
 		return false
@@ -337,6 +443,55 @@ func can_fire() -> bool:
 	if not horizontal_aim.is_zero_approx() and body_forward.angle_to(horizontal_aim) > MAX_GUN_BODY_ANGLE:
 		return false
 	return true
+
+
+## 敌人基础近战能力，不查找玩家、读取 AI 或决定何时使用。
+func can_melee() -> bool:
+	return not is_dead and not get_tree().paused and weapon != null and can_equip_weapon(weapon) and weapon.melee_enabled and not melee_active and melee_cooldown <= 0.0
+
+
+func begin_melee(interval: float) -> bool:
+	if not can_melee(): return false
+	cancel_reload()
+	clear_aim()
+	melee_active = true
+	_melee_hit_used = false
+	melee_cooldown = maxf(0.0, interval)
+	melee_count += 1
+	melee_started.emit()
+	return true
+
+
+func cancel_melee(cancelled: bool = true) -> void:
+	var active := melee_active
+	melee_active = false
+	_melee_hit_used = false
+	if active: melee_finished.emit(cancelled)
+
+
+## 纯几何查询；目标由调用者传入，不从隐藏目标获取决策信息。
+func melee_target_reachable(target: Node3D, settings: Dictionary, direction: Vector3) -> bool:
+	if not is_instance_valid(target) or not target.is_inside_tree() or target.is_queued_for_deletion(): return false
+	var offset := target.global_position - global_position
+	if absf(offset.y) > float(settings.height): return false
+	offset.y = 0.0
+	if offset.length() > float(settings.range): return false
+	if not offset.is_zero_approx() and direction.dot(offset.normalized()) < cos(deg_to_rad(float(settings.angle) * 0.5)): return false
+	var query := PhysicsRayQueryParameters3D.create(global_position + Vector3.UP * 0.8, target.global_position + Vector3.UP * 0.8, 1, [get_rid()])
+	query.hit_from_inside = true
+	var hit := get_world_3d().direct_space_state.intersect_ray(query)
+	return not hit.is_empty() and (hit.collider == target or target.is_ancestor_of(hit.collider))
+
+
+func execute_melee(target: Node3D, settings: Dictionary, direction: Vector3) -> bool:
+	if is_dead or get_tree().paused or not melee_active or _melee_hit_used or weapon == null or not can_equip_weapon(weapon): return false
+	_melee_hit_used = true
+	var hit := melee_target_reachable(target, settings, direction) and target.has_method("receive_melee_hit")
+	if hit:
+		target.receive_melee_hit(settings.damage, global_position, settings.distance, settings.duration, direction)
+	# 受击可能导致世界暂停或死亡取消，表现层仍以当前身体状态为准。
+	melee_struck.emit(target if hit else null, settings, direction)
+	return hit
 
 
 ## 只执行请求，不寻找玩家或决定行为；实际射线围绕当前枪口方向取样。
@@ -351,6 +506,8 @@ func try_fire() -> bool:
 	var query := PhysicsRayQueryParameters3D.create(origin, endpoint, 1, [get_rid()])
 	query.hit_from_inside = true
 	var hit: Dictionary = get_world_3d().direct_space_state.intersect_ray(query)
+	var effects := ImpactEffects.find_for(self)
+	var impact = effects.capture_hit(hit, last_shot_direction, self) if effects != null else null
 	last_shot_collider = hit.get("collider")
 	shot_count += 1
 	if weapon.shot_noise != null:
@@ -374,6 +531,8 @@ func try_fire() -> bool:
 	if debug_shooting:
 		print("[敌人][开火] ", "命中玩家" if hit_player else ("被物体挡住" if not hit.is_empty() else "未命中"), "；中心概率=", roundi(probability * 100.0), "%")
 	_draw_shot(origin, endpoint, hit_player)
+	if effects != null: effects.dispatch_impact(impact)
+	shot_fired.emit()
 	return true
 
 

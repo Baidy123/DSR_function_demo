@@ -1,0 +1,68 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://scripts/debug/presentation_preview.gd" id="preview"]
+[ext_resource type="Script" path="res://scripts/systems/presentation/visual_presentation.gd" id="visual"]
+[ext_resource type="PackedScene" path="res://scenes/presentation/example_model.tscn" id="model"]
+[ext_resource type="Resource" path="res://resources/animations/example_actor.tres" id="animation"]
+[ext_resource type="PackedScene" path="res://scenes/effects/impact_effects.tscn" id="effects"]
+[ext_resource type="Resource" path="res://resources/effects/metal_example.tres" id="metal"]
+
+[sub_resource type="Environment" id="environment"]
+background_mode = 1
+background_color = Color(0.07, 0.09, 0.13, 1)
+ambient_light_source = 3
+ambient_light_color = Color(0.8, 0.86, 1, 1)
+ambient_light_energy = 0.6
+
+[sub_resource type="StandardMaterial3D" id="material"]
+albedo_color = Color(0.22, 0.26, 0.32, 1)
+
+[sub_resource type="BoxMesh" id="floor"]
+material = SubResource("material")
+size = Vector3(10, 0.1, 7)
+
+[sub_resource type="BoxMesh" id="wall"]
+material = SubResource("material")
+size = Vector3(1.5, 2, 0.4)
+
+[node name="PresentationPreview" type="Node3D"]
+script = ExtResource("preview")
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="."]
+environment = SubResource("environment")
+
+[node name="Sun" type="DirectionalLight3D" parent="."]
+rotation_degrees = Vector3(-55, -30, 0)
+shadow_enabled = true
+
+[node name="Floor" type="MeshInstance3D" parent="."]
+position = Vector3(0, -0.05, 0)
+mesh = SubResource("floor")
+
+[node name="Wall" type="MeshInstance3D" parent="."]
+position = Vector3(2, 1, -1)
+mesh = SubResource("wall")
+
+[node name="Presentation" type="Node3D" parent="."]
+script = ExtResource("visual")
+model_scene = ExtResource("model")
+animation_profile = ExtResource("animation")
+
+[node name="ImpactEffects" parent="." instance=ExtResource("effects")]
+default_profile = ExtResource("metal")
+
+[node name="Camera3D" type="Camera3D" parent="."]
+position = Vector3(4, 3.5, 6)
+current = true
+fov = 48.0
+
+[node name="CanvasLayer" type="CanvasLayer" parent="."]
+
+[node name="Label" type="Label" parent="CanvasLayer"]
+offset_left = 20.0
+offset_top = 20.0
+theme_override_colors/font_shadow_color = Color(0, 0, 0, 1)
+theme_override_constants/shadow_offset_x = 2
+theme_override_constants/shadow_offset_y = 2
+theme_override_font_sizes/font_size = 20
+text = "模型与动画接口示例"

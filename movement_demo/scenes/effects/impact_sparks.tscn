@@ -1,0 +1,31 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://scripts/systems/effects/impact_effect.gd" id="1"]
+
+[sub_resource type="StandardMaterial3D" id="material"]
+shading_mode = 0
+albedo_color = Color(1, 0.65, 0.1, 1)
+
+[sub_resource type="SphereMesh" id="mesh"]
+material = SubResource("material")
+radius = 0.022
+height = 0.044
+
+[node name="ImpactSparks" type="Node3D"]
+script = ExtResource("1")
+duration = 0.7
+
+[node name="Sparks" type="CPUParticles3D" parent="."]
+emitting = false
+amount = 14
+lifetime = 0.45
+one_shot = true
+explosiveness = 1.0
+mesh = SubResource("mesh")
+direction = Vector3(0, 1, 0)
+spread = 55.0
+gravity = Vector3(0, -3, 0)
+initial_velocity_min = 1.2
+initial_velocity_max = 2.5
+scale_amount_min = 0.5
+scale_amount_max = 1.0

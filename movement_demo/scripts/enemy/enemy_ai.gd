@@ -72,6 +72,8 @@ func _ready() -> void:
 	context.spatial.context = context
 	context.fire = preload("res://scripts/enemy/services/enemy_fire_controller.gd").new()
 	context.fire.setup(context)
+	context.melee = preload("res://scripts/enemy/services/enemy_melee_controller.gd").new()
+	context.melee.setup(context)
 	context.reevaluate.connect(invalidate_utility)
 	context.event_received.connect(_dispatch_event)
 	context.fire.shot_fired.connect(_on_shot_fired)
@@ -131,6 +133,7 @@ func _physics_process(delta: float) -> void:
 		if _enabled_last_frame: reset_actions()
 		_enabled_last_frame = false
 		actor.cancel_reload()
+		context.melee.cancel()
 		actor.velocity = Vector3.ZERO
 		context.fire.update(delta, false, false, {})
 		return
@@ -151,6 +154,8 @@ func _physics_process(delta: float) -> void:
 		output = current_action.tick(delta, visible)
 	var direction: Vector3 = output.get("direction", Vector3.ZERO)
 	actor.face_direction(output.get("facing", Vector3.ZERO), delta)
+	# 先登记近战执行占用，再消费移动／射击意图；新行为同帧提交冲突请求也受身体约束。
+	context.melee.update(delta, visible, output.get("melee", {}))
 	actor.move_character(direction, delta, output.get("multiplier", 1.0))
 	context.fire.update(delta, visible, not direction.is_zero_approx(), output.get("fire", {}))
 	frame_costs.execution = Time.get_ticks_usec() - stamp
@@ -206,6 +211,7 @@ func _cancel_utility_execution(reason: StringName = &"switch") -> void:
 	current_action = null
 	utility_current = {}
 	context.fire.request = {}
+	context.melee.cancel()
 	agent.target_position = actor.global_position
 
 func invalidate_utility() -> void:
@@ -282,6 +288,8 @@ func _exit_tree() -> void:
 	# 打破公共 RefCounted 服务之间的所有权环；运行中实例由 actions 唯一持有。
 	if context.fire != null:
 		context.fire.detach()
+	if context.melee != null:
+		context.melee.detach()
 	for action in actions.values():
 		action.cancel(&"exit_tree")
 		context.spatial.unregister(action)
@@ -300,6 +308,7 @@ func _resume_after_reparent() -> void:
 	if not is_inside_tree(): return
 	context.refresh_environment()
 	context.fire.setup(context)
+	context.melee.setup(context)
 	context.spatial.context = context
 	refresh_configuration(true)
 	_reset_decisions()

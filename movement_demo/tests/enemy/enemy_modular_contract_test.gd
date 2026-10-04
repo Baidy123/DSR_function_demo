@@ -17,7 +17,8 @@ func _run() -> void:
 	var unit: EnemyUnitProfile = load("res://resources/enemy/units/ranged.tres").duplicate(true)
 	var training := EnemyTrainingProfile.new()
 	var base := Library.resolve(unit, training)
-	check(base.definitions.size() == 4, "默认行为无需训练授权")
+	check(base.definitions.size() == 4 and base.definitions.has(&"engage"), "四个默认行为无需训练授权，基础挥击不单独装配")
+	check(unit.definition(&"melee_strike") == null, "近战执行不登记为默认行为或战术行为")
 	check(Library.resolve(unit, null).definitions.size() == 4, "训练资源缺省不撤销兵种默认行为")
 	check(base.definitions.has(&"reload") and not base.definitions.has(&"cover"), "基础換弹独立于掩体战术")
 	training.selected_tactics = [&"exit_suppression"]

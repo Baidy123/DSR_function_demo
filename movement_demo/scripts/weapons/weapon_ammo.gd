@@ -15,15 +15,19 @@ func _init(data: WeaponData = null, reserve_pool: Dictionary = {}, unlimited: bo
 	weapon = data
 	_reserve_pool = reserve_pool
 	infinite_reserve = unlimited
-	magazine_rounds = maxi(1, weapon.magazine_capacity) if weapon != null else 0
+	magazine_rounds = maxi(1, weapon.magazine_capacity) if _uses_ammo() else 0
+
+
+func _uses_ammo() -> bool:
+	return weapon != null and weapon.fire_mode != WeaponData.FireMode.MELEE
 
 
 func reserve_count() -> int:
-	return maxi(0, int(_reserve_pool.get(weapon.ammo_type, 0))) if weapon != null else 0
+	return maxi(0, int(_reserve_pool.get(weapon.ammo_type, 0))) if _uses_ammo() else 0
 
 
 func can_fire() -> bool:
-	return weapon != null and not is_reloading and reload_checkpoint <= 0.0 and magazine_rounds > 0
+	return _uses_ammo() and not is_reloading and reload_checkpoint <= 0.0 and magazine_rounds > 0
 
 
 func consume_round() -> bool:
@@ -34,7 +38,7 @@ func consume_round() -> bool:
 
 
 func can_reload() -> bool:
-	if weapon == null or is_reloading:
+	if not _uses_ammo() or is_reloading:
 		return false
 	# 收起期间共享备弹可能被另一把枪用完，仍须允许完成已经保留的阶段并解除禁射。
 	return reload_checkpoint > 0.0 or (magazine_rounds < maxi(1, weapon.magazine_capacity) and (infinite_reserve or reserve_count() > 0))
@@ -58,6 +62,9 @@ func suspend_reload(checkpoint: float) -> void:
 
 # 只累计进度；何时开始/中断由玩家输入或AI决定。
 func advance_reload(delta: float, speed_multiplier: float = 1.0) -> void:
+	if not _uses_ammo():
+		cancel_reload()
+		return
 	if not is_reloading:
 		return
 	reload_progress = minf(1.0, reload_progress + maxf(0.0, delta) * maxf(0.0, speed_multiplier) / maxf(0.1, weapon.reload_seconds))

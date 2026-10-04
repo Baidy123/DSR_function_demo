@@ -14,11 +14,6 @@ func _init() -> void:
 	set(value):
 		duration_max = value
 		mark_override(&"duration_max")
-## 最后目击位置离掩体实体表面的最大水平距离；只推测邻近掩体，不追踪墙后玩家。
-@export_range(0.1, 4.0, 0.05) var cover_inference_distance: float = 1.75:
-	set(value):
-		cover_inference_distance = value
-		mark_override(&"cover_inference_distance")
 ## 每侧随机连续打出的枪数范围；仅实际开火才计数，冷却和连射停顿不换边。
 @export_range(1, 20, 1) var shots_per_exit_min: int = 2:
 	set(value):

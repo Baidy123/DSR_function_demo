@@ -3,7 +3,7 @@ extends CanvasLayer
 const Ammo = preload("res://scripts/weapons/weapon_ammo.gd")
 ## 主武器槽，按数字1选择；在这里拖入 WeaponData，空槽不会被切换选中。
 @export var primary_weapon: WeaponData
-## 副武器槽，按数字2选择；武器种类暂不限制，后续商人系统再接入装备操作。
+## 副武器槽，按数字2选择；只装备枪械，专用近战武器仅供近战兵使用。
 @export var secondary_weapon: WeaponData
 ## 出生时使用哪个槽；该槽为空时自动选择另一个非空槽。
 @export_enum("主武器:0", "副武器:1") var starting_slot: int = 0
@@ -31,6 +31,9 @@ var _aim_states: Array[Dictionary] = [{}, {}]
 @onready var secondary_label: Label = $Panel/Content/Slots/Secondary/Name
 
 func _ready() -> void:
+	for data in [primary_weapon, secondary_weapon]:
+		if data != null and data.fire_mode == WeaponData.FireMode.MELEE:
+			push_warning("玩家武器槽误配专用近战武器，该槽按空槽处理。")
 	reserve_ammo = {
 		WeaponData.AmmoType.RIFLE: starting_rifle_ammo,
 		WeaponData.AmmoType.PISTOL: starting_pistol_ammo,
@@ -70,7 +73,7 @@ func _unhandled_input(event: InputEvent) -> void:
 
 ## 只切换正在使用的槽位，不修改槽内配置。场外也可以提前选择武器。
 func select_slot(slot: int) -> bool:
-	if slot < 0 or slot > 1 or player.is_dead() or player.is_in_dialogue or get_tree().paused:
+	if slot < 0 or slot > 1 or player.is_dead() or player.is_in_dialogue or get_tree().paused or combat.is_melee_active():
 		return false
 	var data: WeaponData = _weapon_at(slot)
 	if data == null or (slot == active_slot and combat.weapon == data):
@@ -100,7 +103,17 @@ func _equip_slot(slot: int) -> void:
 		combat.accuracy_recovery_timer = saved.delay
 
 func _weapon_at(slot: int) -> WeaponData:
-	return primary_weapon if slot == 0 else secondary_weapon
+	var data: WeaponData = primary_weapon if slot == 0 else secondary_weapon
+	return data if data == null or data.fire_mode != WeaponData.FireMode.MELEE else null
+
+
+## 受击属于玩家；尚未拔出的武器也保存最低准度，避免切槽跳过惩罚。
+func apply_melee_disruption() -> void:
+	for slot in range(2):
+		var data := _weapon_at(slot)
+		if data == null: continue
+		_aim_states[slot] = {"weapon": data, "accuracy": 0.0,
+			"delay": maxf(float(_aim_states[slot].get("delay", 0.0)), data.get_aim_settings(combat.is_using_spread_cone()).delay)}
 
 func _update_display() -> void:
 	var labels: Array[Label] = [primary_label, secondary_label]
@@ -115,8 +128,10 @@ func _update_display() -> void:
 			if state != null and state.weapon == data and state.reload_checkpoint > 0.0 and slot != active_slot:
 				labels[slot].text += "\n换弹已保留 50%"
 		labels[slot].modulate = Color(1.0, 0.82, 0.35) if slot == active_slot else Color(0.7, 0.73, 0.78)
-	$Panel/Content/Hint.text = "1 / 2 或滚轮切枪 · R换弹"
-	if combat.ammo.is_reloading:
+	$Panel/Content/Hint.text = "1 / 2 或滚轮切枪 · R换弹 · V近战"
+	if combat.is_melee_active():
+		$Panel/Content/Hint.text = "近战出手中 · 暂停射击、换弹与切枪"
+	elif combat.ammo.is_reloading:
 		var progress: int = floori(combat.ammo.reload_progress * 100.0)
 		$Panel/Content/Hint.text = ("慢速换弹中 %d%% · 可跑" if combat.is_slow_reload() else "快速换弹中 %d%% · 奔跑会中断") % progress
 	elif combat.ammo.reload_checkpoint > 0.0:

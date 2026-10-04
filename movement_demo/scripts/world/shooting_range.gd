@@ -1,5 +1,7 @@
 extends Node3D
 
+signal presentation_reset(region: Node)
+
 var players_inside: Array[Node3D] = []
 var enemies: Array[CharacterBody3D] = []
 var _combat_zone: Area3D
@@ -56,6 +58,7 @@ func _on_player_exited(body: Node3D) -> void:
 
 
 func _reset_targets() -> void:
+	presentation_reset.emit(self)
 	# 直接子靶与注册的嵌套敌人去重，只刷新本区域。
 	var targets: Array[Node] = []
 	targets.assign(get_children())

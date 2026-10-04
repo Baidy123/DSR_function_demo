@@ -1,0 +1,9 @@
+[gd_resource type="Resource" script_class="WeaponData" format=3]
+
+[ext_resource type="Script" path="res://scripts/weapons/weapon_data.gd" id="weapon"]
+
+[resource]
+script = ExtResource("weapon")
+fire_mode = 2
+display_name = "近战测试武器"
+melee_enabled = true

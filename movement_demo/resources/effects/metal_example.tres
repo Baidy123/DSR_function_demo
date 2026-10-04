@@ -1,0 +1,10 @@
+[gd_resource type="Resource" script_class="ImpactProfile" format=3]
+
+[ext_resource type="Script" path="res://scripts/systems/effects/impact_profile.gd" id="1"]
+[ext_resource type="PackedScene" path="res://scenes/effects/impact_sparks.tscn" id="2"]
+
+[resource]
+script = ExtResource("1")
+effect_scene = ExtResource("2")
+surface_offset = 0.02
+max_lifetime = 1.0

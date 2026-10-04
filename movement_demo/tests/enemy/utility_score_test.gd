@@ -81,6 +81,8 @@ func check_scene(selector: RefCounted) -> void:
 	var arena = scene.get_node("Arena")
 	ai.set_physics_process(false)
 	player.set_physics_process(false)
+	# 本用例要检查压制候选的无副作用语义，显式装配它，不依赖保存的试玩勾选。
+	preload("res://tests/enemy/enemy_fire_fixture.gd").set_training_action(ai, &"suppression", true)
 	ai.cover_selection.debug_cover_selection = false
 	ai.actions[&"search"].debug_tracking_cheat = false
 	player.global_position = arena.to_global(Vector3(0, 0, 2.5))

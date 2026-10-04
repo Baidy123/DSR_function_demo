@@ -34,11 +34,22 @@ const COMMON_FIELDS := {
 	"cone_angle_degrees": "索敌总角度", "locked_move_multiplier": "锁定移动倍率",
 	"shot_interval": "射击间隔",
 	"shot_noise_radius": "枪声半径（米）",
+	"melee_damage": "近战伤害", "melee_range": "近战距离（米）",
+	"melee_stamina_cost": "近战体力消耗（仅玩家）",
+	"melee_angle_degrees": "近战总角度", "melee_height_tolerance": "近战高度容差",
+	"melee_windup_seconds": "近战前摇（秒）", "melee_recovery_seconds": "近战收招（秒）",
+	"melee_interval": "近战间隔（秒）", "melee_knockback_distance": "击退距离（米）",
+	"melee_knockback_seconds": "击退时长（秒）",
 }
 const PERCENT_FIELDS := [
 	"initial_accuracy", "moving_accuracy_cap", "shot_accuracy_penalty", "minimum_accuracy",
 	"target_move_accuracy_loss_per_meter_slow", "target_move_accuracy_loss_per_meter_fast",
 	"target_move_minimum_accuracy", "player_move_accuracy_loss_per_meter",
+]
+const FIREARM_FIELDS := [
+	"ammo_type", "magazine_capacity", "reload_seconds", "shot_noise", "shot_noise_radius",
+	"damage", "aim_range", "fire_range", "cone_angle_degrees", "locked_move_multiplier",
+	"shot_interval",
 ]
 
 
@@ -48,6 +59,13 @@ func _can_handle(object: Object) -> bool:
 
 func _parse_property(object: Object, type: Variant.Type, path: String, hint: PropertyHint,
 		hint_text: String, _usage: int, _wide: bool) -> bool:
+	if path == "fire_mode":
+		var editor := FireModeProperty.new()
+		editor.configure(hint_text, int(object.fire_mode))
+		add_property_editor(path, editor)
+		return true
+	if object.fire_mode == WeaponData.FireMode.MELEE and (path in FIREARM_FIELDS or PROBABILITY_FIELDS.has(path) or SPREAD_FIELDS.has(path)):
+		return true
 	var mode: int = _context_mode(object)
 	if (mode == 0 and SPREAD_FIELDS.has(path)) or (mode == 1 and PROBABILITY_FIELDS.has(path)):
 		return true
@@ -77,6 +95,42 @@ func _context_mode(weapon: Object) -> int:
 	if combat.get("weapon") != weapon:
 		return -1
 	return 0 if script_path == "res://scripts/enemy/enemy_actor.gd" else int(combat.get("aim_mode"))
+
+
+# 保留原资源字段与原生撤销；已打开资源热更新后可能漏发 setter 通知，
+# 因此选择结束及撤销／重做更新控件时，由检查器延迟请求一次面板重建。
+class FireModeProperty extends EditorProperty:
+	var option := OptionButton.new()
+	var shown_mode: int = -1
+
+	func _init() -> void:
+		option.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		add_child(option)
+		add_focusable(option)
+		option.item_selected.connect(_on_selected)
+
+	func configure(enum_hint: String, current_mode: int) -> void:
+		shown_mode = current_mode
+		for entry in enum_hint.split(","):
+			var parts := entry.rsplit(":", true, 1)
+			option.add_item(parts[0], int(parts[1]) if parts.size() == 2 else option.item_count)
+
+	func _update_property() -> void:
+		var weapon := get_edited_object()
+		var mode: int = int(weapon.get(get_edited_property()))
+		option.select(option.get_item_index(mode))
+		if mode != shown_mode:
+			shown_mode = mode
+			weapon.notify_property_list_changed.call_deferred()
+
+	func _set_read_only(read_only: bool) -> void:
+		option.disabled = read_only
+
+	func _on_selected(index: int) -> void:
+		var weapon := get_edited_object()
+		shown_mode = option.get_item_id(index)
+		emit_changed(get_edited_property(), shown_mode)
+		weapon.notify_property_list_changed.call_deferred()
 
 
 # 仍把修改交给原生资源 Inspector，因此撤销、资源脏标记和保存保持正常。

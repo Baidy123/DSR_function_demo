@@ -2,6 +2,12 @@
 
 游戏工程在 `movement_demo/`，说明文档集中在仓库的 `docs/`；仓库根目录仅保留 README 作为入口。脚本、场景与资源已按用途分类，移动时保留脚本 `.gd.uid` 和场景资源内的 UID。
 
+## 文档维护约束
+
+- 用户已确认的功能方向、职责分层和结构约束是实现依据。授权新增功能或维护 MD，不等于授权改变这些方向；不得为了迁就现有代码而倒改要求。
+- 明确区分“用户确认的要求”“当前实现与默认参数”“尚未确认的建议”。agent 的实现选择、推测和调参不能自行写成用户要求；实施记录及测试通过也不能代替用户对方向变更的确认。
+- 修改 MD 时只更新与任务有关的内容，保留原有约束及理由。发现文档、代码与用户指示不一致时，依据用户明确指示和原有设计核对纠正；不能仅因某份 agent 文档更新时间较新，就用它覆盖原方向。不得通过改写文档或降低测试要求来掩盖实现偏离。
+
 ```text
 movement_demo/
 ├── project.godot          Godot 工程入口
@@ -12,6 +18,8 @@ movement_demo/
 │   ├── player/            玩家战斗、生命与武器槽场景
 │   ├── world/             掩体、训练区域、墙体、交互物与门禁通道场景
 │   │   └── objects/       具体交互物：门禁卡、酒杯、终端、唱片机
+│   ├── presentation/      模型包装场景和独立接口演示
+│   ├── effects/           共用命中特效管理器和粒子场景
 │   └── ui/                对话界面场景
 ├── scripts/
 │   ├── enemy/             身体、AI 协调、装配与评分入口
@@ -25,6 +33,8 @@ movement_demo/
 │   ├── ui/                对话界面与锁定准星
 │   ├── debug/             调试开关、声音和攻击点预览
 │   └── systems/           公共游戏状态与声音数据
+│       ├── presentation/  模型挂载、动画配置与表现状态
+│       └── effects/       命中快照、表面配置与特效生命周期
 ├── resources/
 │   ├── enemy/
 │   │   ├── actions/       可配置动作 .tres
@@ -32,6 +42,8 @@ movement_demo/
 │   │   └── training/      训练配置 .tres
 │   ├── weapons/           玩家与敌人的武器 .tres
 │   ├── noise/             移动声、枪声配置
+│   ├── animations/        动画对应表
+│   ├── effects/           表面命中特效配置
 │   ├── navigation/        烘焙导航资源
 │   └── dialogue/          NPC 对话、导入元数据与原有剧情源文件
 ├── tests/
@@ -47,4 +59,10 @@ movement_demo/
 
 敌人配置与扩展见 [敌人 AI](enemy-ai.md)，验证入口见 [敌人测试](enemy-tests.md)，未完成方向见 [待办](TODO.md)。
 
+玩家、敌人和 NPC 的表现适配器放在各自脚本目录，掩体复用公共表现组件。美术素材接入与空配置回退见 [模型动画与命中特效](gameplay/PRESENTATION.md)。外部模型可按用途放入 `resources/models/`，不改玩法碰撞或导航几何。
+
 整理目录只改文件位置和引用，不重设场景布局、武器数值或训练参数。`player_combat_v3.gd` 是当前玩家战斗实现，保留原文件名；已无引用的更早版本已删除。
+
+玩家 V 近战直接扩展 `scripts/player/player_combat_v3.gd`，不另建玩家近战执行文件。纯表现剑光放在 `scripts/systems/effects/` 与 `scenes/effects/`；参数仍在 WeaponData。敌人由 `services/enemy_melee_controller.gd` 管请求与阶段，`enemy_actor.gd` 管实际命中、冷却及独立受击。近战与射击同属底层执行；现有 `actions/enemy_tactics.gd` 在远程接敌中提供近战推开方案，不新增独立挥击脚本／行为资源，不改默认行为、战术目录和训练选择。本轮不移动原模块，不与玩家共用攻击或受击函数，见 [近战说明](gameplay/MELEE.md)。
+
+敌人基础执行的条件查询与互斥规则继续放在身体／服务中；行为不读取近战控制器的阶段枚举，表现适配器读取状态快照。两种压制共同使用的环境推断参数属于 `config/selection_settings.gd`，由 `services/enemy_cover_selection.gd` 读取，不放在某个可选动作的专用配置中。接口见 [敌人 AI](enemy-ai.md#基础执行接口与冲突规则)。

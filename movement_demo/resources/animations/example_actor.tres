@@ -1,0 +1,17 @@
+[gd_resource type="Resource" script_class="PresentationAnimationProfile" format=3]
+
+[ext_resource type="Script" path="res://scripts/systems/presentation/animation_profile.gd" id="1_uceis"]
+
+[resource]
+script = ExtResource("1_uceis")
+idle = &"Idle"
+move = &"Walk"
+sprint = &"Run"
+aim = &"Aim"
+reload = &"Reload"
+dialogue = &"Talk"
+fire = &"Shoot"
+hit = &"Hit"
+dead = &"Death"
+impact = &"Impact"
+blend_seconds = 0.0

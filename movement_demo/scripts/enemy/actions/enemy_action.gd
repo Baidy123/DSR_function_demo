@@ -85,10 +85,10 @@ func on_shot_fired() -> void:
 func state_label() -> String:
 	return definition.display_name if definition != null else String(action_id)
 
-func motion(direction: Vector3, multiplier: float = 1.0, facing: Vector3 = Vector3.INF, fire_request: Dictionary = {}) -> Dictionary:
+func motion(direction: Vector3, multiplier: float = 1.0, facing: Vector3 = Vector3.INF, fire_request: Dictionary = {}, melee_request: Dictionary = {}) -> Dictionary:
 	if not facing.is_finite():
 		facing = context.last_known_position - actor.global_position if context.is_alerted else direction
-	return {"direction": direction, "multiplier": multiplier, "facing": facing, "fire": fire_request, "running": _running}
+	return {"direction": direction, "multiplier": multiplier, "facing": facing, "fire": fire_request, "melee": melee_request, "running": _running}
 
 func option(destination: Dictionary, unavailable: float, exposure: float, information: float = 0.0, variant: StringName = &"") -> Dictionary:
 	return {"id": action_id, "destination": destination, "plan": variant,

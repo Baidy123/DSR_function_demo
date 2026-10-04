@@ -10,7 +10,7 @@ extends CharacterBody3D
 @export_range(0.1, 30.0, 0.1) var sprint_duration: float = 5.0
 ## 耐力从空恢复到满需要的秒数。
 @export_range(0.1, 30.0, 0.1) var stamina_recovery_duration: float = 3.0
-## 停止奔跑后，等待多少秒才恢复耐力。
+## 停止奔跑或近战扣除体力后，等待多少秒才恢复耐力。
 @export_range(0.0, 5.0, 0.1) var stamina_recovery_delay: float = 0.5
 ## 从静止加速到走路速度需要的时间。
 @export_range(0.01, 2.0, 0.01) var acceleration_time: float = 0.3
@@ -37,6 +37,9 @@ var is_facing_npc: bool = false
 var npc_direction: Vector3 = Vector3.ZERO
 var current_speed: float = 0.0
 var is_in_dialogue: bool = false
+var _melee_push_velocity := Vector3.ZERO
+var _melee_push_remaining := 0.0
+var _melee_push_duration := 0.0
 
 @onready var visual: Node3D = $"."
 @onready var combat = get_node_or_null("Combat")
@@ -51,6 +54,10 @@ func _physics_process(delta: float) -> void:
 		"move_left", "move_right", "move_up", "move_down"
 	)
 	var direction: Vector3 = Vector3(input_direction.x, 0.0, input_direction.y)
+	if combat != null and combat.is_melee_active() and not is_in_dialogue:
+		visual.global_rotation.y = atan2(-combat.melee_direction.x, -combat.melee_direction.z)
+		_move_while_locked(delta, direction, true)
+		return
 
 	if combat != null and is_instance_valid(combat.locked_target) and not is_in_dialogue:
 		_move_while_locked(delta, direction)
@@ -109,16 +116,23 @@ func _physics_process(delta: float) -> void:
 	else:
 		velocity.y = 0.0
 	var before_move: Vector3 = global_position
+	var own_horizontal := Vector2(velocity.x, velocity.z)
+	var push := _advance_melee_push(delta)
+	velocity += push
 	move_and_slide()
 	_update_movement_noise(delta, before_move)
 	if combat != null:
 		combat.end_frame(delta, Vector2(get_real_velocity().x, get_real_velocity().z).length() > 0.01)
+	# 下一帧可能进入锁定移动；只把主动移动惯性留给该分支。
+	if not push.is_zero_approx():
+		velocity.x = own_horizontal.x
+		velocity.z = own_horizontal.y
 
 
-# 锁定时朝向交给 Combat；移动方向独立于角色朝向。
-func _move_while_locked(delta: float, direction: Vector3) -> void:
+# 锁定和近战时朝向交给 Combat；移动方向独立于角色朝向。
+func _move_while_locked(delta: float, direction: Vector3, melee: bool = false) -> void:
 	is_sprinting = false
-	var speed: float = move_speed * combat.weapon.locked_move_multiplier
+	var speed: float = move_speed if melee else move_speed * combat.weapon.locked_move_multiplier
 	var desired: Vector3 = direction * speed
 	# 进入锁定时也限制惯性，不能带着奔跑速度横移。
 	var horizontal := Vector3(velocity.x, 0.0, velocity.z).limit_length(speed)
@@ -133,9 +147,30 @@ func _move_while_locked(delta: float, direction: Vector3) -> void:
 	else:
 		velocity.y = 0.0
 	var before_move: Vector3 = global_position
+	var push := _advance_melee_push(delta)
+	velocity += push
 	move_and_slide()
 	_update_movement_noise(delta, before_move)
 	combat.end_frame(delta, Vector2(get_real_velocity().x, get_real_velocity().z).length() > 0.01)
+	# 锁定移动下一帧以自己的惯性加速，不能把外力再次当作主动速度累积。
+	if not push.is_zero_approx():
+		velocity.x = horizontal.x
+		velocity.z = horizontal.z
+
+
+## 一次性体力开销由玩家自身处理；不足不扣除，0消耗不打断恢复。
+func try_consume_stamina(amount: float) -> bool:
+	if not is_finite(amount) or amount < 0.0 or stamina < amount:
+		return false
+	if amount == 0.0:
+		return true
+	stamina -= amount
+	stamina_recovery_timer = stamina_recovery_delay
+	if is_zero_approx(stamina):
+		stamina = 0.0
+		stamina_exhausted = true
+		is_sprinting = false
+	return true
 
 
 func _update_stamina(delta: float) -> void:
@@ -162,7 +197,9 @@ func _update_stamina(delta: float) -> void:
 func set_dialogue_active(active: bool) -> void:
 	is_in_dialogue = active
 	if active:
+		_clear_melee_push()
 		if combat != null:
+			combat.cancel_melee()
 			combat.cancel_aim()
 			combat.cancel_reload()
 		current_speed = 0.0
@@ -182,6 +219,37 @@ func face_npc(npc_position: Vector3) -> void:
 func receive_hit(damage: float = 25.0, _attacker_position: Vector3 = Vector3.ZERO) -> void:
 	if health != null:
 		health.receive_hit(damage)
+		if health.is_dead: _clear_melee_push()
+
+
+## 玩家自己的近战受击入口；与敌人受击实现分开，外力由原移动入口推进。
+func receive_melee_hit(damage: float, attacker_position: Vector3, distance: float,
+		duration: float, fallback_direction: Vector3 = Vector3.FORWARD) -> void:
+	if is_dead() or is_in_dialogue or get_tree().paused: return
+	receive_hit(damage, attacker_position)
+	if combat != null: combat.apply_melee_disruption()
+	if is_dead(): return
+	var direction := global_position - attacker_position
+	direction.y = 0.0
+	if direction.is_zero_approx(): direction = Vector3(fallback_direction.x, 0.0, fallback_direction.z)
+	_melee_push_duration = maxf(0.05, duration)
+	_melee_push_remaining = _melee_push_duration if distance > 0.0 else 0.0
+	_melee_push_velocity = direction.normalized() * (2.0 * maxf(0.0, distance) / _melee_push_duration)
+
+
+func _advance_melee_push(delta: float) -> Vector3:
+	if _melee_push_remaining <= 0.0 or delta <= 0.0: return Vector3.ZERO
+	var elapsed := minf(delta, _melee_push_remaining)
+	var before := _melee_push_remaining / _melee_push_duration
+	_melee_push_remaining = maxf(0.0, _melee_push_remaining - elapsed)
+	var after := _melee_push_remaining / _melee_push_duration
+	return _melee_push_velocity * (before + after) * 0.5 * elapsed / delta
+
+
+func _clear_melee_push() -> void:
+	_melee_push_velocity = Vector3.ZERO
+	_melee_push_remaining = 0.0
+	_melee_push_duration = 0.0
 
 
 func is_dead() -> bool:
