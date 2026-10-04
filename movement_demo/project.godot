@@ -111,7 +111,7 @@ reload={
 
 [internationalization]
 
-locale/translations_pot_files=PackedStringArray("res://resources/dialogue/test.dialogue", "res://resources/dialogue/npc_a.dialogue", "res://resources/dialogue/npc_b.dialogue")
+locale/translations_pot_files=PackedStringArray("res://resources/dialogue/test.dialogue", "res://resources/dialogue/npc_a.dialogue", "res://resources/dialogue/npc_b.dialogue", "res://resources/dialogue/wine_glass.dialogue", "res://resources/dialogue/terminal.dialogue")
 
 [rendering]
 
