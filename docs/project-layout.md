@@ -16,7 +16,8 @@ movement_demo/
 │   ├── arena.tscn         战斗区域与敌人实例
 │   ├── enemy/             可直接拖入竞技场的 enemy.tscn
 │   ├── player/            玩家战斗、生命与武器槽场景
-│   ├── world/             掩体、训练区域和墙体场景
+│   ├── world/             掩体、训练区域、墙体、交互物与门禁通道场景
+│   │   └── objects/       具体交互物：门禁卡、酒杯、终端、唱片机
 │   ├── presentation/      模型包装场景和独立接口演示
 │   ├── effects/           共用命中特效管理器和粒子场景
 │   └── ui/                对话界面场景
@@ -27,7 +28,8 @@ movement_demo/
 │   │   └── services/      感知、记忆、上下文、射击、搜索提示/覆盖和空间查询
 │   ├── player/            玩家移动、战斗、生命和武器槽
 │   ├── weapons/           武器数据与弹药执行
-│   ├── world/             掩体、训练靶、区域、门和 NPC
+│   ├── world/             掩体、训练靶、区域、门、NPC、交互物与屏障
+│   │   └── interactions/  交互效果基类、注入上下文与各效果实现
 │   ├── ui/                对话界面与锁定准星
 │   ├── debug/             调试开关、声音和攻击点预览
 │   └── systems/           公共游戏状态与声音数据
@@ -51,7 +53,7 @@ movement_demo/
 └── logs/                  运行日志与验证输出，Git 忽略
 ```
 
-新增运行脚本按职责放入对应目录；新增敌人动作实现放 `scripts/enemy/actions/`，其定义资源放 `resources/enemy/actions/`。测试或临时诊断不要放回工程根目录，也不要混入运行脚本目录。
+新增运行脚本按职责放入对应目录；新增敌人动作实现放 `scripts/enemy/actions/`，其定义资源放 `resources/enemy/actions/`。新增交互效果放 `scripts/world/interactions/`，具体交互物场景放 `scenes/world/objects/`；交互物与效果只通过 `InteractionContext` 使用注入的状态，不直接查找全局节点。测试或临时诊断不要放回工程根目录，也不要混入运行脚本目录。
 
 `docs/enemy-ai.md` 是敌人结构、维护和使用部署说明；`docs/gameplay/` 保留移动、武器、掩体等专项说明，`docs/TODO.md` 记录后续方向，`docs/superpowers/` 保存仍有价值的设计与验收记录。第三方插件自带文档留在插件目录，以保留其使用说明和许可。
 

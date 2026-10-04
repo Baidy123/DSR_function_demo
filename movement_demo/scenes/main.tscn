@@ -13,6 +13,12 @@
 [ext_resource type="PackedScene" uid="uid://blgostylso8me" path="res://scenes/arena.tscn" id="11_efxa6"]
 [ext_resource type="PackedScene" path="res://scenes/player/player_health.tscn" id="12_health"]
 [ext_resource type="PackedScene" path="res://scenes/player/player_weapon_slots.tscn" id="13_slots"]
+[ext_resource type="PackedScene" path="res://scenes/ui/game_state_debug.tscn" id="16_state_debug"]
+[ext_resource type="PackedScene" path="res://scenes/world/objects/keycard.tscn" id="17_keycard"]
+[ext_resource type="PackedScene" path="res://scenes/world/objects/wine_glass.tscn" id="18_wine_glass"]
+[ext_resource type="PackedScene" path="res://scenes/world/objects/terminal.tscn" id="19_terminal"]
+[ext_resource type="PackedScene" path="res://scenes/world/objects/record_player.tscn" id="20_record_player"]
+[ext_resource type="PackedScene" path="res://scenes/world/access_gate.tscn" id="21_access_gate"]
 [ext_resource type="PackedScene" path="res://scenes/effects/impact_effects.tscn" id="impact_effects"]
 [ext_resource type="Script" uid="uid://dw52opl8k324b" path="res://scripts/systems/effects/impact_receiver.gd" id="impact_receiver"]
 [ext_resource type="Script" uid="uid://bumxb08uysksl" path="res://scripts/world/npc_presentation.gd" id="npc_presentation"]
@@ -297,5 +303,24 @@ script = ExtResource("impact_receiver")
 
 [node name="Arena" parent="." unique_id=930605498 instance=ExtResource("11_efxa6")]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 20, 0, 0)
+
+[node name="GameStateDebug" parent="." instance=ExtResource("16_state_debug")]
+
+[node name="Interactables" type="Node3D" parent="."]
+
+[node name="Keycard" parent="Interactables" instance=ExtResource("17_keycard")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -6.0, 0, 1.6)
+
+[node name="WineGlass" parent="Interactables" instance=ExtResource("18_wine_glass")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 3.0, 0, 4.6)
+
+[node name="Terminal" parent="Interactables" instance=ExtResource("19_terminal")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 7.2, 0, 3.2)
+
+[node name="RecordPlayer" parent="Interactables" instance=ExtResource("20_record_player")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 5.4, 0, 4.1)
+
+[node name="AccessGate" parent="Interactables" instance=ExtResource("21_access_gate")]
+transform = Transform3D(0, 0, -1, 0, 1, 0, 1, 0, 0, 9.125, 0, 0)
 
 [node name="ImpactEffects" parent="." unique_id=157028740 instance=ExtResource("impact_effects")]

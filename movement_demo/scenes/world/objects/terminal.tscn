@@ -1,0 +1,33 @@
+[gd_scene format=3]
+
+[ext_resource type="PackedScene" path="res://scenes/world/interactable.tscn" id="1_interactable"]
+[ext_resource type="Script" path="res://scripts/world/interactions/show_dialogue_effect.gd" id="2_show_dialogue"]
+[ext_resource type="Script" path="res://scripts/world/interactions/set_flag_effect.gd" id="3_set_flag"]
+[ext_resource type="Script" path="res://scripts/world/interactions/interaction_effect.gd" id="4_effect"]
+[ext_resource type="Resource" path="res://resources/dialogue/terminal.dialogue" id="5_dialogue"]
+
+[sub_resource type="Resource" id="Effect_terminal_dialogue"]
+script = ExtResource("2_show_dialogue")
+dialogue_resource = ExtResource("5_dialogue")
+
+[sub_resource type="Resource" id="Effect_terminal_flag"]
+script = ExtResource("3_set_flag")
+flag = &"terminal_read"
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_terminal"]
+albedo_color = Color(0.16, 0.18, 0.22, 1)
+
+[sub_resource type="BoxMesh" id="BoxMesh_terminal"]
+material = SubResource("StandardMaterial3D_terminal")
+size = Vector3(0.7, 1.1, 0.4)
+
+[node name="Terminal" instance=ExtResource("1_interactable")]
+display_name = "终端"
+verb = "使用"
+one_shot = true
+used_hint = "终端已熄屏"
+effects = Array[ExtResource("4_effect")]([SubResource("Effect_terminal_dialogue"), SubResource("Effect_terminal_flag")])
+
+[node name="Body" parent="." index="1"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.55, 0)
+mesh = SubResource("BoxMesh_terminal")

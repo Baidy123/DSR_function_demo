@@ -1,0 +1,34 @@
+[gd_scene format=3]
+
+[ext_resource type="PackedScene" path="res://scenes/world/interactable.tscn" id="1_interactable"]
+[ext_resource type="Script" path="res://scripts/world/interactions/give_item_effect.gd" id="2_give_item"]
+[ext_resource type="Script" path="res://scripts/world/interactions/set_flag_effect.gd" id="3_set_flag"]
+[ext_resource type="Script" path="res://scripts/world/interactions/interaction_effect.gd" id="4_effect"]
+
+[sub_resource type="Resource" id="Effect_give_keycard"]
+script = ExtResource("2_give_item")
+item_id = &"keycard"
+display_name = "门禁卡"
+
+[sub_resource type="Resource" id="Effect_keycard_flag"]
+script = ExtResource("3_set_flag")
+flag = &"has_keycard"
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_keycard"]
+albedo_color = Color(0.82, 0.88, 0.95, 1)
+
+[sub_resource type="BoxMesh" id="BoxMesh_keycard"]
+material = SubResource("StandardMaterial3D_keycard")
+size = Vector3(0.4, 0.03, 0.28)
+
+[node name="Keycard" instance=ExtResource("1_interactable")]
+display_name = "门禁卡"
+verb = "拾取"
+one_shot = true
+hide_on_interact = true
+used_hint = "门禁卡已拾取"
+effects = Array[ExtResource("4_effect")]([SubResource("Effect_give_keycard"), SubResource("Effect_keycard_flag")])
+
+[node name="Body" parent="." index="1"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.9, 0)
+mesh = SubResource("BoxMesh_keycard")

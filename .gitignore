@@ -7,6 +7,7 @@
 .godot_ai_update/
 *.tmp
 *.log
+.DS_Store
 /movement_demo/logs/*
 !/movement_demo/logs/.gdignore
 export_credentials.cfg
@@ -15,3 +16,6 @@ export_credentials.cfg
 .env
 .env.*
 !.env.example
+
+# agent 工作流的计划与设计文档（仅本地参考，不进仓库）
+docs/superpowers/

@@ -35,7 +35,11 @@ window/stretch/mode="canvas_items"
 
 [editor_plugins]
 
-enabled=PackedStringArray("res://addons/dialogue_manager/plugin.cfg", "res://addons/godot_ai/plugin.cfg", "res://addons/phantom_camera/plugin.cfg", "res://addons/weapon_mode_inspector/plugin.cfg", "res://addons/enemy_training_inspector/plugin.cfg")
+enabled=PackedStringArray("res://addons/dialogue_manager/plugin.cfg", "res://addons/enemy_training_inspector/plugin.cfg", "res://addons/godot_ai/plugin.cfg", "res://addons/phantom_camera/plugin.cfg", "res://addons/weapon_mode_inspector/plugin.cfg")
+
+[gui]
+
+theme/custom_font="res://resources/fonts/NotoSansSC-Medium.ttf"
 
 [input]
 
@@ -112,7 +116,7 @@ melee={
 
 [internationalization]
 
-locale/translations_pot_files=PackedStringArray("res://resources/dialogue/test.dialogue", "res://resources/dialogue/npc_a.dialogue", "res://resources/dialogue/npc_b.dialogue")
+locale/translations_pot_files=PackedStringArray("res://resources/dialogue/test.dialogue", "res://resources/dialogue/npc_a.dialogue", "res://resources/dialogue/npc_b.dialogue", "res://resources/dialogue/wine_glass.dialogue", "res://resources/dialogue/terminal.dialogue")
 
 [rendering]
 

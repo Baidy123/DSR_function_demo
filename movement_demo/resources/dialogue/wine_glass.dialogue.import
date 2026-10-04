@@ -1,0 +1,16 @@
+[remap]
+
+importer="dialogue_manager"
+importer_version=18
+type="Resource"
+uid="uid://rbf6ieny70b0"
+path="res://.godot/imported/wine_glass.dialogue-1f845ccd114f82d1961e5065807060d8.tres"
+
+[deps]
+
+source_file="res://resources/dialogue/wine_glass.dialogue"
+dest_files=["res://.godot/imported/wine_glass.dialogue-1f845ccd114f82d1961e5065807060d8.tres"]
+
+[params]
+
+defaults=true

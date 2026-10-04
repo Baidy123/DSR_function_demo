@@ -17,6 +17,8 @@ var _announced: bool = false
 
 
 func _ready() -> void:
+	# 交互物通过这个组打开对话，不需要知道界面在场景里的位置。
+	add_to_group(&"dialogue_ui")
 	dialogue_panel.hide()
 
 
