@@ -10,5 +10,5 @@ display_name = "掩体躲藏与探头"
 category = 1
 implementation = ExtResource("2")
 config_section = &"cover"
-required_capabilities = Array[StringName]([&"firearms"])
+required_capabilities = Array[StringName]([&"locomotion"])
 includes = Array[StringName]([])

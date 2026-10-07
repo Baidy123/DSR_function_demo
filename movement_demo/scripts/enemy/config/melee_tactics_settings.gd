@@ -14,6 +14,21 @@ func _init() -> void:
 	set(value):
 		cover_memory_seconds = value
 		mark_override(&"cover_memory_seconds")
+## 绕出掩体及重新目击后的接敌奔跑倍率；普通掩体探头速度仍由 Cover 单独控制。
+@export_range(0.1, 3.0, 0.1) var cover_exit_speed_multiplier: float = 2.0:
+	set(value):
+		cover_exit_speed_multiplier = value
+		mark_override(&"cover_exit_speed_multiplier")
+## 绕出重新发现玩家后最多继续奔跑多久；贴脸、失视或受阻时提前交回共同决策。
+@export_range(0.0, 4.0, 0.1) var cover_charge_seconds: float = 2.0:
+	set(value):
+		cover_charge_seconds = value
+		mark_override(&"cover_charge_seconds")
+## 两出口的接敌时间及共同代价相近时，允许为换侧多花的时间；不是强制绕远。
+@export_range(0.0, 1.0, 0.05) var cover_exit_side_tolerance_seconds: float = 0.25:
+	set(value):
+		cover_exit_side_tolerance_seconds = value
+		mark_override(&"cover_exit_side_tolerance_seconds")
 ## 没有换弹证据时，可突然突进的最大目标距离；有证据时仍受持续时间约束。
 @export_range(0.5, 8.0, 0.1) var rush_distance: float = 3.5:
 	set(value):

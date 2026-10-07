@@ -59,7 +59,8 @@ func _run() -> void:
 			saw_disruption = saw_disruption or is_zero_approx(player.combat.accuracy)
 			saw_push = saw_push or player._melee_push_remaining > 0.0)
 	for frame in 4: await physics_frame
-	check(ai.actions.size() == 3 and ai.actions.has(&"melee_engage") and not ai.actions.has(&"melee_strike"), "沿用近战兵原三个默认行为")
+	var defaults: Array = ai.actions.values().filter(func(action): return action.definition.category == EnemyActionDefinition.Category.DEFAULT).map(func(action): return action.action_id)
+	check(defaults.size() == 3 and defaults.has(&"melee_engage") and defaults.has(&"patrol") and defaults.has(&"search") and not ai.actions.has(&"melee_strike"), "沿用近战兵原三个默认行为，另行解锁的共享掩体不算默认行为")
 	# 保留实际地图、训练和评分；只配置既有兵种与武器，不调用挥击或强选动作。
 	for frame in 360:
 		await physics_frame

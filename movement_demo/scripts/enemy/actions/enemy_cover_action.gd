@@ -33,9 +33,16 @@ func collect_candidates(visible: bool) -> Array[Dictionary]:
 	var threat: Vector3 = context._known_reload_threat()
 	if not threat.is_finite() or context.noise_search_origin.is_finite() or actor.move_speed <= 0.0:
 		return options
+	var defensive_melee: bool = context.combat_type == context.CombatType.MELEE
+	if defensive_melee and context.melee.can_request(visible): return options
+	var under_pressure: bool = context.recent_damage_pressure > 0.0 or context.nearby_shot_pressure > 0.0
 	var horizon: float = context.utility_horizon_seconds
 	var information: float = 0.0 if visible else horizon
 	for destination in transfer_candidates():
+		# 近战的基础躲藏用于缓解新压力；低血量本身不能使其永久躲藏。
+		# 压力途中消退仍完成当前转移，到位后保留探出／搜索／接敌的共同选择。
+		var continuing: bool = _running and transfer.phase == transfer.Phase.RUN_TO_COVER and destination.body == transfer.active_cover_body and destination.hide.is_equal_approx(transfer.hide_position)
+		if defensive_melee and not under_pressure and not continuing: continue
 		if not _valid_cover(destination):
 			continue
 		destination.path = selection._path_to(actor.global_position, destination.hide)

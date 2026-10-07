@@ -11,3 +11,4 @@ category = 1
 implementation = ExtResource("implementation")
 config_section = &"melee_tactics"
 required_capabilities = Array[StringName]([&"locomotion", &"melee_weapons"])
+includes = Array[StringName]([&"cover"])

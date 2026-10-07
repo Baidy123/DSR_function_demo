@@ -61,6 +61,8 @@ var timer: float = 0.0
 var active_cover_body: StaticBody3D = null
 ## 本次 RUN_TO_COVER 是否采用面向威胁的掩护撤退。
 var covering_retreat: bool = false
+## 本次绕出的动作级速度；负数沿用普通探头训练，不写回共享资源。
+var _peek_speed_override := -1.0
 
 ## RUN_TO_COVER 的“朝当前路径点靠近”监测与临时绕行状态。
 var cover_progress_waypoint: Vector3 = Vector3.ZERO
@@ -82,6 +84,7 @@ func reset() -> void:
 	threat_origin = enemy.global_position
 	active_cover_body = null
 	covering_retreat = false
+	_peek_speed_override = -1.0
 	cover_progress_waypoint = enemy.global_position
 	cover_progress_best_distance = INF
 	cover_stuck_timer = 0.0
@@ -242,7 +245,7 @@ func movement_multiplier() -> float:
 			return covering_retreat_speed_multiplier
 		return run_speed_multiplier
 	if phase == Phase.PEEK_OUT:
-		return peek_speed_multiplier
+		return _peek_speed_override if _peek_speed_override >= 0.0 else peek_speed_multiplier
 	return 1.0
 
 
@@ -265,8 +268,9 @@ func start_reload_transfer(destination: Dictionary, known_position: Vector3, ret
 	_refresh_move_timer(hide_position)
 
 
-func start_utility_peek(destination: Dictionary, known_position: Vector3) -> void:
+func start_utility_peek(destination: Dictionary, known_position: Vector3, speed_multiplier: float = -1.0) -> void:
 	reset()
+	_peek_speed_override = speed_multiplier
 	hide_position = destination.hide
 	peek_position = destination.position
 	active_cover_body = destination.body

@@ -24,13 +24,16 @@ func _run() -> void:
 	ai.training.profile.selected_tactics.assign([&"melee_cover"])
 	enemy.equip_weapon(load("res://resources/weapons/enemy_test_melee.tres").duplicate(true))
 	ai.refresh_configuration(true)
-	enemy.global_position = Vector3(22, 0, 4)
-	player.global_position = Vector3(24, 0, -4.5)
+	enemy.global_position = Vector3(28, 0, 1)
+	player.global_position = Vector3(24, 0, -2.5)
 	enemy.look_at(player.global_position)
 	for frame in 5: await physics_frame
 	check(ai.perception.can_see_player(), "掩体推进起点真实目击玩家")
 	# 用真实受击建立避险需求；不指定赢家、不篡改统一权重或掩体几何。
-	enemy.receive_hit(65.0, player.global_position)
+	enemy.receive_hit(5.0, player.global_position)
+	# 重伤时现允许基础躲藏胜出；推进专项用真实目击换弹建立进攻机会。
+	# 基础躲藏单独由 enemy_melee_shelter_test 验证，不强选升级动作或改变权重。
+	await observe_reload(ai, player)
 	var initial_distance: float = enemy.global_position.distance_to(player.global_position)
 	var saw_cover := false
 	var reached_shelter := false
@@ -46,6 +49,7 @@ func _run() -> void:
 	var budget_ok := true
 	var peak_query_usec := 0
 	var peak_cover_execution_usec := 0
+	var ran_after_exit := false
 	for frame in 600:
 		await physics_frame
 		var previous_id: StringName = ai.utility_current.get("id", &"")
@@ -55,6 +59,7 @@ func _run() -> void:
 		if previous_id == &"melee_cover" or ai.utility_current.get("id") == &"melee_cover":
 			peak_cover_execution_usec = maxi(peak_cover_execution_usec, ai.frame_costs.execution)
 		if ai.utility_current.get("id") == &"melee_cover":
+			ran_after_exit = ran_after_exit or (ai.current_action.state_label() == "出掩体奔跑接敌" and Vector2(enemy.velocity.x, enemy.velocity.z).length() > enemy.move_speed * 1.1)
 			if not saw_cover:
 				selected_point = ai.utility_current.destination.hide
 				selected_origin = enemy.global_position
@@ -75,7 +80,7 @@ func _run() -> void:
 		if previous_id == &"melee_cover" and ai.utility_current.get("id") != &"melee_cover":
 			completed = true
 		if player.health.health < initial_player_health: break
-	check(saw_cover, "真实受击后原Utility自主选中掩体接近")
+	check(saw_cover, "真实受击并目击换弹后原Utility自主选中掩体接近")
 	check(selected_point.is_finite() and selected_point.distance_to(player.global_position) < selected_origin.distance_to(player.global_position), "选中掩体落点确实缩短接敌距离")
 	check(reached_shelter, "实际走到遮挡后方并拉近与玩家的距离")
 	check(completed, "掩体推进完成后释放动作，不永久原地躲藏")
@@ -85,6 +90,7 @@ func _run() -> void:
 	if player.health.health >= initial_player_health:
 		print("CONTACT DIAGNOSTIC action=", ai.utility_current.get("id"), " position=", enemy.global_position, " visible=", ai.context.sees_player, " melee_count=", enemy.melee_count)
 	check(enemy.melee_count > 0 and player.health.health < initial_player_health, "掩体逼近后自主接续原基础挥击并实际伤害玩家")
+	check(ran_after_exit, "绕出重新目击后实际奔跑接敌，再交回原挥击")
 	check(budget_ok, "近战掩体几何仍通过共享分帧点数预算")
 	check(peak_query_usec < 20000, "近战掩体空间评估保留20毫秒验收门槛")
 	check(peak_cover_execution_usec < 20000, "掩体到绕出阶段的执行也在20毫秒预算内")
@@ -93,12 +99,13 @@ func _run() -> void:
 	check(action.collect_candidates(false).is_empty(), "旧目击超时后掩体推进退出并交回搜索")
 	# 动态堵住已选落点：导航仍是原地图，执行前的真实身体检查必须拒绝旧点。
 	player.combat.cancel_reload()
-	player.global_position = Vector3(24, 0, -4.5)
+	player.global_position = Vector3(24, 0, -2.5)
 	enemy.reset_target()
-	enemy.global_position = Vector3(22, 0, 4)
+	enemy.global_position = Vector3(28, 0, 1)
 	enemy.look_at(player.global_position)
 	for frame in 4: await physics_frame
-	enemy.receive_hit(65.0, player.global_position)
+	enemy.receive_hit(5.0, player.global_position)
+	await observe_reload(ai, player)
 	await prepare_geometry(ai)
 	var blocked_plan: Dictionary = {}
 	for frame in 60:
@@ -125,7 +132,7 @@ func _run() -> void:
 		var after: Array = action.collect_candidates(false)
 		check(before == after and ai.context.last_known_position == remembered, "移动隐藏玩家并换弹不改变有效掩体候选")
 		player.combat.cancel_reload()
-		player.global_position = Vector3(24, 0, -4.5)
+		player.global_position = Vector3(24, 0, -2.5)
 		await physics_frame
 		ai.context.update_evidence(0.0, ai.perception.can_see_player())
 		var blocker := StaticBody3D.new()
@@ -200,7 +207,6 @@ func _run() -> void:
 		check(ai.current_action != action or action.transfer.phase != action.transfer.Phase.PEEK_OUT or action.transfer.peek_position.distance_to(blocked_exit) > 0.5, "出口受阻时实际取消或改走其他路线")
 		blocker.queue_free()
 		await physics_frame
-	ai.training.profile.set_setting(&"perception", &"reload_memory_seconds", 1.5)
 	reacquiring = await reach_reacquire(enemy, player, true)
 	check(reacquiring and ai.context.observed_reload_window() > 0.0, "仅训练掩体时带已观察换弹证据进入绕出阶段")
 	if reacquiring:
@@ -211,7 +217,6 @@ func _run() -> void:
 			ai._physics_process(1.0 / 60.0)
 			premature_search = premature_search or ai.utility_current.get("id") == &"search"
 		check(not premature_search, "没有可用突进时换弹记忆不会把有效掩体推进交给搜索")
-	ai.training.profile.set_setting(&"perception", &"reload_memory_seconds", 0.8)
 	reacquiring = await reach_reacquire(enemy, player)
 	check(reacquiring, "时限用例从真实掩体绕出阶段开始")
 	if reacquiring:
@@ -241,27 +246,17 @@ func _run() -> void:
 	print("Melee cover: %d/%d passed; peak query %d us; peak cover execution %d us" % [checks - failures, checks, peak_query_usec, peak_cover_execution_usec])
 	quit(0 if failures == 0 else 1)
 
-func reach_reacquire(enemy, player, observe_reload: bool = false) -> bool:
+func reach_reacquire(enemy, player, with_reload: bool = true) -> bool:
 	var ai = enemy.get_node("AI")
 	player.combat.cancel_reload()
 	player.health.debug_invincible = true
-	player.global_position = Vector3(24, 0, -4.5)
+	player.global_position = Vector3(24, 0, -2.5)
 	enemy.reset_target()
-	enemy.global_position = Vector3(22, 0, 4)
+	enemy.global_position = Vector3(28, 0, 1)
 	enemy.look_at(player.global_position)
 	for frame in 4: await physics_frame
-	enemy.receive_hit(65.0, player.global_position)
-	if observe_reload:
-		var gun := WeaponData.new()
-		gun.reload_seconds = 4.0
-		player.combat.equip_weapon(gun)
-		player.combat.ammo.infinite_reserve = true
-		player.combat.ammo.magazine_rounds = 0
-		player.combat.request_reload()
-		# 先真实观察到换弹；随后较长的合法记忆窗口覆盖整个绕出阶段。
-		for frame in 12:
-			await physics_frame
-			ai.context.update_evidence(1.0 / 60.0, ai.perception.can_see_player())
+	enemy.receive_hit(5.0, player.global_position)
+	if with_reload: await observe_reload(ai, player)
 	await prepare_geometry(ai)
 	for frame in 180:
 		await physics_frame
@@ -270,6 +265,17 @@ func reach_reacquire(enemy, player, observe_reload: bool = false) -> bool:
 		if ai.current_action == action and action != null and action.transfer.phase == action.transfer.Phase.PEEK_OUT and not ai.context.sees_player:
 			return true
 	return false
+
+func observe_reload(ai, player) -> void:
+	var gun := WeaponData.new()
+	gun.reload_seconds = 4.0
+	player.combat.equip_weapon(gun)
+	player.combat.ammo.infinite_reserve = true
+	player.combat.ammo.magazine_rounds = 0
+	player.combat.request_reload()
+	for frame in 12:
+		await physics_frame
+		ai.context.update_evidence(1.0 / 60.0, ai.perception.can_see_player())
 
 func prepare_geometry(ai) -> void:
 	# 边界用例等待原分帧扫描完成一轮，不指定动作、不放宽预算或执行时限。
