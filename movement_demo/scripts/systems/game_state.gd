@@ -1,9 +1,23 @@
 extends Node
 
+## 对话字段被写入时通知监听者（例如任务控制器按表同步任务状态）；
+## 值没有变化时不发信号，避免同一结果反复刷新。旗标与物品另有专用信号。
+signal value_changed(key: StringName, value: Variant)
+
 # 本次运行共享的对话状态；重新运行游戏会重置。
-var talked_to_a: bool = false
+var talked_to_a: bool = false:
+	set(value):
+		if talked_to_a == value:
+			return
+		talked_to_a = value
+		value_changed.emit(&"talked_to_a", value)
 # 空字符串：尚未选择；accepted：答应；refused：拒绝。
-var help_choice: String = ""
+var help_choice: String = "":
+	set(value):
+		if help_choice == value:
+			return
+		help_choice = value
+		value_changed.emit(&"help_choice", value)
 
 ## 交互产生的物品与旗标；与对话状态一样，重新运行游戏才重置，死亡重开场景保留。
 signal item_gained(item_id: StringName, display_name: String, total: int)

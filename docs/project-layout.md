@@ -33,6 +33,7 @@ movement_demo/
 │   ├── ui/                对话界面与锁定准星
 │   ├── debug/             调试开关、声音和攻击点预览
 │   └── systems/           公共游戏状态与声音数据
+│       ├── stage/         阶段、任务与 NPC 状态控制器
 │       ├── presentation/  模型挂载、动画配置与表现状态
 │       └── effects/       命中快照、表面配置与特效生命周期
 ├── resources/
@@ -45,6 +46,7 @@ movement_demo/
 │   ├── animations/        动画对应表
 │   ├── effects/           表面命中特效配置
 │   ├── navigation/        烘焙导航资源
+│   ├── stages/            阶段／任务／NPC 状态规则配置表
 │   └── dialogue/          NPC 对话、导入元数据与原有剧情源文件
 ├── tests/
 │   ├── enemy/             敌人测试、公共辅助和回归运行器
@@ -54,6 +56,8 @@ movement_demo/
 ```
 
 新增运行脚本按职责放入对应目录；新增敌人动作实现放 `scripts/enemy/actions/`，其定义资源放 `resources/enemy/actions/`。新增交互效果放 `scripts/world/interactions/`，具体交互物场景放 `scenes/world/objects/`；交互物与效果只通过 `InteractionContext` 使用注入的状态，不直接查找全局节点。测试或临时诊断不要放回工程根目录，也不要混入运行脚本目录。
+
+阶段、任务与 NPC 状态规则集中在 `scripts/systems/stage/`：阶段判定、任务状态与状态解析各一个控制器，配置表资源脚本与 `resources/stages/` 下的 `.tres` 配套维护。控制器挂在 `main.tscn`、按 group 互相查找，不新增全局单例；NPC 只按 `npc_id` 与接收接口被驱动，不反向依赖控制器。见 [阶段与任务](gameplay/STAGE_STATE.md)。
 
 `docs/enemy-ai.md` 是敌人结构、维护和使用部署说明；`docs/gameplay/` 保留移动、武器、掩体等专项说明，`docs/TODO.md` 记录后续方向，`docs/superpowers/` 保存仍有价值的设计与验收记录。第三方插件自带文档留在插件目录，以保留其使用说明和许可。
 
