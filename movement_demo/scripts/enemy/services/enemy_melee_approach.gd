@@ -12,6 +12,19 @@ static func contact_path(context) -> PackedVector3Array:
 	var target: Vector3 = context.last_known_position
 	var path: PackedVector3Array = context.cover_selection._path_to(context.actor.global_position, target).duplicate()
 	if path.is_empty():
+		# 贴墙玩家可能在烘焙导航边界外。实际 Agent 也会靠向这个导航点，
+		# 但只有停靠误差内仍能挥击、身体能站稳且不隔墙时，才认可这条接敌路线。
+		var contact: Vector3 = NavigationServer3D.region_get_closest_point(context.navigation_region.get_rid(), target)
+		var reach := stopping_distance(context)
+		var height := 0.5
+		if context.actor.weapon != null and context.actor.weapon.melee_enabled:
+			reach = maxf(0.0, context.actor.weapon.melee_range - context.agent.target_desired_distance - 0.05)
+			height = maxf(0.0, context.actor.weapon.melee_height_tolerance)
+		if absf(contact.y - context.actor.global_position.y) <= 0.5 and absf(target.y - context.actor.global_position.y) <= height:
+			contact.y = context.actor.global_position.y
+			if context._horizontal_distance_between(contact, target) <= reach and context.is_position_free(contact) and context.cover_selection.has_clear_line(contact + Vector3.UP * 0.8, target + Vector3.UP * 0.8):
+				path = context.cover_selection._path_to(context.actor.global_position, contact).duplicate()
+	if path.is_empty():
 		# 玩家能站在导航边缘外；用可出手的近侧落点求路，不要求站到玩家脚下。
 		if context._horizontal_distance(target) <= stopping_distance(context):
 			return PackedVector3Array([context.actor.global_position])
@@ -27,7 +40,9 @@ static func contact_path(context) -> PackedVector3Array:
 		var endpoint: Vector3 = path[path.size() - 1]
 		var length := previous.distance_to(endpoint)
 		if length > 0.01:
-			path[path.size() - 1] = endpoint.move_toward(previous, minf(stopping_distance(context), maxf(0.0, length - 0.05)))
+			# 导航停靠点与玩家可能并不重合，不能在已有偏移上再退完整停止距离。
+			var retreat := maxf(0.0, stopping_distance(context) - context._horizontal_distance_between(endpoint, target))
+			path[path.size() - 1] = endpoint.move_toward(previous, minf(retreat, maxf(0.0, length - 0.05)))
 	return path
 
 static func contact_outcome(context, path: PackedVector3Array, multiplier: float = 1.0, fast_seconds: float = INF) -> Dictionary:
