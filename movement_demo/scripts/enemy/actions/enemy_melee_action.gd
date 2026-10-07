@@ -1,7 +1,14 @@
 extends "res://scripts/enemy/actions/enemy_action.gd"
 
+const Approach = preload("res://scripts/enemy/services/enemy_melee_approach.gd")
+
 func collect_candidates(visible: bool) -> Array[Dictionary]:
-	return [option({}, context.utility_horizon_seconds, 0.0)] if visible else []
+	if not visible: return []
+	var path: PackedVector3Array = Approach.contact_path(context)
+	if path.is_empty(): return []
+	var candidate := option({}, 0.0, 0.0)
+	candidate.outcome = Approach.contact_outcome(context, path)
+	return [candidate]
 
 func validate(_candidate: Dictionary, visible: bool) -> bool:
 	return is_enabled() and visible

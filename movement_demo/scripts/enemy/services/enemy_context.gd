@@ -147,6 +147,8 @@ func _known_reload_threat() -> Vector3:
 
 func update_evidence(delta: float, visible: bool) -> void:
 	sees_player = visible
+	evidence_elapsed_seconds += maxf(0.0, delta)
+	_update_reload_observation(delta, visible)
 	recent_damage_pressure = maxf(0.0, recent_damage_pressure - delta * 0.5)
 	nearby_shot_pressure = maxf(0.0, nearby_shot_pressure - delta * 0.5)
 	utility_threat_age_seconds += delta
@@ -176,6 +178,27 @@ func update_evidence(delta: float, visible: bool) -> void:
 	was_seeing_player = visible
 	if state == State.IDLE:
 		patrol_pause_timer = maxf(0.0, patrol_pause_timer - delta)
+
+## 已观察事实的短期推断，不是玩家剩余换弹时间。
+func observed_reload_window() -> float:
+	return observed_reload_remaining
+
+func _update_reload_observation(delta: float, visible: bool) -> void:
+	var had_opportunity := observed_reload_remaining > 0.0
+	observed_reload_remaining = maxf(0.0, observed_reload_remaining - maxf(0.0, delta))
+	if visible:
+		if perception.observes_reload(true):
+			reload_observation_elapsed += maxf(0.0, delta)
+			if reload_observation_elapsed >= maxf(0.0, float(setting(&"perception", &"reload_observation_seconds", 0.15))):
+				observed_reload_remaining = maxf(0.0, float(setting(&"perception", &"reload_memory_seconds", 0.8)))
+		else:
+			reload_observation_elapsed = 0.0
+			observed_reload_remaining = 0.0
+	else:
+		reload_observation_elapsed = 0.0
+	if had_opportunity != (observed_reload_remaining > 0.0):
+		event_received.emit(&"reload_observation", {"available": observed_reload_remaining > 0.0})
+		invalidate_utility()
 
 func _investigate_attack(position: Vector3) -> void:
 	if not is_arena_active():
@@ -218,6 +241,10 @@ func is_utility_destination_blocked(point: Vector3) -> bool:
 	return blocked_destinations.any(func(entry): return _horizontal_distance_between(entry.position, point) < 0.75)
 
 func reset_memory() -> void:
+	evidence_elapsed_seconds = 0.0
+	memory_generation += 1
+	reload_observation_elapsed = 0.0
+	observed_reload_remaining = 0.0
 	investigation_hint_allowed = true
 	state = State.IDLE
 	is_alerted = false

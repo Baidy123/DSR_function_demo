@@ -62,6 +62,13 @@ func _set_training_setting(key: StringName, value: Variant) -> void:
 	if ai.training != null: ai.training.set_setting(&"perception", key, value)
 
 
+## 由已完成的视觉检测授权读取，只提供正在换弹这一外部可观察事实。
+func observes_reload(visible: bool) -> bool:
+	if not visible or not is_instance_valid(ai.player): return false
+	var combat = ai.player.get_node_or_null("Combat")
+	return combat != null and combat.ammo != null and combat.ammo.is_reloading
+
+
 func _ready() -> void:
 	add_to_group("hearing_listener")
 

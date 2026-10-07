@@ -48,14 +48,17 @@
 | 感知和空间查询 | `scripts/enemy/services/enemy_perception.gd`、`scripts/enemy/services/enemy_cover_selection.gd`、`scripts/enemy/services/enemy_spatial_evaluator.gd` |
 | 射击节奏与稳枪/开火选择 | `scripts/enemy/services/enemy_fire_controller.gd`、`scripts/enemy/services/enemy_fire_decision.gd` |
 | 近战请求与动作阶段 | `scripts/enemy/services/enemy_melee_controller.gd`；身体负责实际命中与冷却 |
+| 近战接敌的共用路径与结果估计 | `scripts/enemy/services/enemy_melee_approach.gd`，只读导航与已观察证据 |
 | 搜索提示与区域覆盖 | `scripts/enemy/services/enemy_search_hints.gd`、`scripts/enemy/services/enemy_search_coverage.gd` |
 | 竞技场接入与复位 | `scripts/world/shooting_range.gd`、`scenes/enemy/enemy.tscn` |
 | 基础执行能力 | `scripts/enemy/enemy_actor.gd`、武器和弹药组件 |
 
-当前默认行为入口为 `scripts/enemy/actions/enemy_patrol_action.gd`、`scripts/enemy/actions/enemy_search.gd`、`scripts/enemy/actions/enemy_tactics.gd`（远程接敌）、`scripts/enemy/actions/enemy_melee_action.gd`（近战接近）和 `scripts/enemy/actions/enemy_reload_action.gd`。远程模板仍装配巡逻、搜索、接敌、换弹四个默认行为；近战模板保持原装配。
+当前默认行为入口为 `scripts/enemy/actions/enemy_patrol_action.gd`、`scripts/enemy/actions/enemy_search.gd`、`scripts/enemy/actions/enemy_tactics.gd`（远程接敌）、`scripts/enemy/actions/enemy_melee_action.gd`（近战接近）和 `scripts/enemy/actions/enemy_reload_action.gd`。远程模板仍装配巡逻、搜索、接敌、换弹四个默认行为；近战模板保留巡逻、搜索、接近三个默认行为。
 射击、移动、近战挥击是底层执行能力，本身不登记为默认行为或战术行为。现有行为组织这些能力并可提供多个方案；远程接敌的站定射击、移动退让和近战推开共享 `engage` 行为 ID，近战方案由 `plan = melee` 区分，仍由 Utility 统一选择，不另建装配项或训练开关。
 
 战术入口为 `scripts/enemy/actions/enemy_cover_action.gd`、`scripts/enemy/actions/enemy_covering_retreat_action.gd`、`scripts/enemy/actions/enemy_attack_position_action.gd`、`scripts/enemy/actions/enemy_suppression_action.gd`、`scripts/enemy/actions/enemy_exit_suppression_action.gd`。掩体、撤离与换弹各自拥有 `scripts/enemy/actions/enemy_cover_motion.gd` 的移动执行实例，不访问另一个可选动作的运行实例。
+
+近战战术为 `actions/enemy_melee_cover_action.gd`（掩体接近）与 `actions/enemy_melee_rush_action.gd`（短程突进），分别通过 `melee_cover`、`melee_rush` 定义加入近战兵的战术目录。前者复用掩体动作协议并拥有自己的移动组件；后者复用近战接近的路径估计，通过原 `motion` 请求短时加速。两者独立由训练解锁，不借另一个动作实例执行。预设、参数和玩法边界见 [近战兵接敌](gameplay/MELEE.md#近战兵的掩体接近与突进)。
 
 `resources/enemy/actions/*.tres` 中两个脚本引用各有用途：`script` 指向资源结构 `EnemyActionDefinition`，`implementation` 指向动作实现。多个参数版本可以共用同一个实现，公共几何和移动算法也可以使用辅助脚本。这不代表一个动作同时运行两套逻辑。
 
@@ -165,7 +168,17 @@ flowchart TD
 
 新增参数字段的 setter 调用 `mark_override`，以区分“采用动作默认参数”和“训练明确覆盖”。动作定义的 `parameters` 可为兵种的某个行为提供数值变体；需要不同流程时替换实现。复用模板时，可复制某个动作定义再修改其参数，不必复制其他行为。
 
-霰弹枪、狙击枪等细分兵种后续可以作为新的兵种配置和接敌实现加入。能力标识、行为列表和动作协议不限制将来有哪些兵种、基础执行能力或战术。远程接敌与现有近战接近行为均可提交底层挥击请求；近战兵本次只补到达范围后的攻击，不优化行为逻辑或调整 Utility 评分。将现有 `units/melee.tres` 与 `weapons/enemy_test_melee.tres` 分别配置到 UnitType 和 Weapon 即可使用；详见 [近战装备说明](gameplay/MELEE.md#近战兵装备近战武器)。
+霰弹枪、狙击枪等细分兵种后续可以作为新的兵种配置和接敌实现加入。能力标识、行为列表和动作协议不限制将来有哪些兵种、基础执行能力或战术。远程接敌与现有近战接近行为均可提交底层挥击请求。将现有 `units/melee.tres` 与 `weapons/enemy_test_melee.tres` 分别配置到 UnitType 和 Weapon 即可使用；可选近战战术在 Training 中勾选，详见 [近战装备与战术说明](gameplay/MELEE.md#近战兵装备近战武器)。
+
+### 近战战术的证据与估计边界
+
+2026-10-07 按用户确认的有界扩展接入掩体接近和短程突进，保留协调器、动作装配器、选择器与统一代价公式。默认近战接近现在提供到达可攻击位置、冷却和前摇的实际时间估计，与可选方案比较；没有武器时不预支攻击收益。玩家能站在导航边缘外，接敌路径允许以可出手的近侧落点求路，最终命中仍由基础控制器复核。
+
+`enemy_perception.observes_reload(visible)` 只在真实视觉允许时读取正在换弹这一事实；上下文累计观察反应并维护短时证据。看到结束／取消时撤销，失视时只衰减，不订阅墙后状态或读取实时位置。动作只查询 `context.observed_reload_window()`，将机会折算为短期暴露变化；该窗口不是已知的精确剩余换弹时间。现有远程候选不使用这个新估计。
+
+掩体落点必须有推进意义且通过原可达、遮挡和身体空间检查，采用独立查询通道 `melee_cover_geometry`，仍受原空间预算调度。到位后交回共同决策；旧目击超时后由原搜索接管。突进拥有自己的持续时间和截止冷却，使用上下文的活跃证据时钟，普通切换不清空冷却；区域复位通过记忆代际使旧截止时间失效。运行时撤销战术按原装配协议取消并销毁实例，再授权会创建新实例。
+
+突进候选的到达时间只计剩余加速时长，之后按普通移动估计；暴露用相应等效速度近似。持续追逐不会获得无限加速收益。身体、基础近战控制器与表现适配器继续维护原执行和动画边界，行为不读取近战阶段枚举。
 
 ## 迁移与回归
 

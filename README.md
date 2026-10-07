@@ -17,7 +17,7 @@
 - [后续总待办](docs/TODO.md)
 - [操作与移动说明](docs/gameplay/MOVEMENT.md)
 - [战斗说明](docs/gameplay/COMBAT.md)
-- [玩家 V 近战与枪械近战参数](docs/gameplay/MELEE.md)
+- [玩家近战、近战兵战术与武器参数](docs/gameplay/MELEE.md)
 - [竞技场说明](docs/gameplay/ARENA.md)
 - [场景交互物说明](docs/gameplay/INTERACTION.md)
 - [模型、动画与命中特效接入](docs/gameplay/PRESENTATION.md)

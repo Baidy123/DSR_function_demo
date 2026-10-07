@@ -1,0 +1,13 @@
+[gd_resource type="Resource" script_class="EnemyActionDefinition" format=3]
+
+[ext_resource type="Script" path="res://scripts/enemy/config/enemy_action_definition.gd" id="definition"]
+[ext_resource type="Script" path="res://scripts/enemy/actions/enemy_melee_cover_action.gd" id="implementation"]
+
+[resource]
+script = ExtResource("definition")
+action_id = &"melee_cover"
+display_name = "掩体接近"
+category = 1
+implementation = ExtResource("implementation")
+config_section = &"melee_tactics"
+required_capabilities = Array[StringName]([&"locomotion", &"melee_weapons"])

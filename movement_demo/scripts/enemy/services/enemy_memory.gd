@@ -21,3 +21,8 @@ var utility_rejected_attack_points: Array[Vector3] = []
 var blocked_destinations: Array[Dictionary] = []
 var patrol_pause_timer := 0.0
 var investigation_hint_allowed := false
+## 活跃决策时间只在证据更新中推进；供动作保存自己的截止时间，暂停不推进。
+var evidence_elapsed_seconds := 0.0
+var memory_generation := 0
+var reload_observation_elapsed := 0.0
+var observed_reload_remaining := 0.0
