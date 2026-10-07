@@ -25,9 +25,27 @@ var ai:
 func can_see_player() -> bool:
 	if not ai.is_arena_active():
 		return false
+	if not _position_in_sight(ai.player.global_position):
+		return false
 
-	var offset: Vector3 = ai.player.global_position - actor.global_position
+	var query = PhysicsRayQueryParameters3D.create(
+		actor.global_position + Vector3.UP * 0.8,
+		ai.player.global_position + Vector3.UP * 0.8,
+		1,
+		[actor.get_rid()]
+	)
+	var hit: Dictionary = actor.get_world_3d().direct_space_state.intersect_ray(query)
+	return not hit.is_empty() and hit.collider == ai.player
 
+
+## 查询地面样本是否在当前实际站位的视野内；不探测或更新隐藏玩家位置。
+func can_observe_position(position: Vector3) -> bool:
+	return _position_in_sight(position) and ai.cover_selection.has_clear_line(
+		actor.global_position + Vector3.UP * 0.8, position + Vector3.UP * 0.8)
+
+
+func _position_in_sight(position: Vector3) -> bool:
+	var offset: Vector3 = position - actor.global_position
 	if offset.length() > maxf(sight_distance, close_awareness_radius):
 		return false
 
@@ -44,14 +62,7 @@ func can_see_player() -> bool:
 		if alignment < cos(deg_to_rad(current_sight_angle * 0.5)):
 			return false
 
-	var query = PhysicsRayQueryParameters3D.create(
-		actor.global_position + Vector3.UP * 0.8,
-		ai.player.global_position + Vector3.UP * 0.8,
-		1,
-		[actor.get_rid()]
-	)
-	var hit: Dictionary = actor.get_world_3d().direct_space_state.intersect_ray(query)
-	return not hit.is_empty() and hit.collider == ai.player
+	return true
 
 # 原属性名转发至Training，避免维护两份配置。
 func _training_setting(key: StringName, fallback: Variant) -> Variant:

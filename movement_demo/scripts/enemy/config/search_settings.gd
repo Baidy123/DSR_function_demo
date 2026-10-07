@@ -116,7 +116,7 @@ func _init() -> void:
 	set(value):
 		track_arrival_distance = value
 		mark_override(&"track_arrival_distance")
-## 小圆的假想覆盖半径；仅用于搜索进度，不改变真实视野，也不考虑墙壁遮挡。
+## 到达调查点后记录覆盖的半径；只有实际视角、距离及遮挡允许观察的样本才计入，不扩大真实视野。
 @export_range(0.5, 6.0, 0.25) var search_coverage_radius: float = 2.0:
 	set(value):
 		search_coverage_radius = value

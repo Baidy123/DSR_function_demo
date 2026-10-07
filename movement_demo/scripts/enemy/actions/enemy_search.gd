@@ -95,7 +95,7 @@ var track_nav_probe_tolerance: float:
 var track_arrival_distance: float:
 	get: return _setting(&"track_arrival_distance", 0.45)
 	set(value): _set_setting(&"track_arrival_distance", value)
-## 小圆的假想覆盖半径；仅用于搜索进度，不改变真实视野，也不考虑墙壁遮挡。
+## 到达调查点后记录覆盖的半径；只有实际视角、距离及遮挡允许观察的样本才计入，不扩大真实视野。
 var search_coverage_radius: float:
 	get: return _setting(&"search_coverage_radius", 2.0)
 	set(value): _set_setting(&"search_coverage_radius", value)
@@ -274,14 +274,21 @@ func begin_tracking_or_search(allow_hint: bool = true) -> void:
 		return
 
 	# 第二优先：不用作弊，只根据玩家最后真正被看到时的移动方向进行推断。
-	if not context.last_seen_direction.is_zero_approx():
+	if context.has_visual_memory and not context.last_seen_direction.is_zero_approx():
 		search_direction = context.last_seen_direction.normalized()
 		var raw_target: Vector3 = predicted_position()
 		if _set_suspected_position_from_raw(raw_target, 2.0):
 			_start_track_to_suspected()
 			return
 
-	# 连最后移动方向都没有，就在最后已知位置进入警戒搜索。
+	# 没有运动轨迹或预测不可达，仍有真实的目击/受击记忆可调查。
+	# 先接近已知位置，避免尚未检查藏身处就直接开始周围的区域覆盖。
+	var known: Vector3 = context.last_seen_position if context.has_visual_memory else context.last_known_position
+	if known.is_finite() and _set_suspected_position_from_raw(known, 2.0):
+		_start_track_to_suspected()
+		return
+
+	# 已知位置也不可达时，继续搜索附近可达区域，不借用隐藏玩家坐标。
 	has_suspected_position = false
 	begin_search(context.last_known_position)
 

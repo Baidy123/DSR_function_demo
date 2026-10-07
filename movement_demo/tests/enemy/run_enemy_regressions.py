@@ -10,6 +10,7 @@ TESTS = [
     "enemy_scene_test",
     "search_components_test",
     "search_area_coverage_test",
+    "search_reacquisition_test",
     "enemy_firing_lane_test",
     "enemy_basic_capabilities_test",
     "enemy_execution_contract_test",

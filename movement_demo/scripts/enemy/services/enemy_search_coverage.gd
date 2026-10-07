@@ -1,6 +1,6 @@
 extends RefCounted
 
-## 每个搜索动作独有的覆盖进度。只处理采样、排序与可达性，不改变动作和导航目标。
+## 每个搜索动作独有的覆盖进度。处理采样、排序、可达性和覆盖遮挡，不改变动作和导航目标。
 var pending: Array[Vector3] = []
 var uncovered: Array[Vector3] = []
 var sample_count := 0
@@ -74,12 +74,17 @@ func fraction() -> float:
 
 
 func mark(point: Vector3) -> void:
-	# 目标点的假想小圆，与真实视野分开，按用户规则不检测墙壁遮挡。
+	# 仍只在到达调查点时计数；用实际站位检查遮挡，不能隔墙排除藏身处。
+	# 复用感知的视角、距离和环境射线，不以隐藏玩家身体作为覆盖探针。
+	var covered: Dictionary = {}
 	for index in range(uncovered.size() - 1, -1, -1):
-		if context._horizontal_distance_between(point, uncovered[index]) <= search_coverage_radius:
+		var sample: Vector3 = uncovered[index]
+		if context._horizontal_distance_between(point, sample) <= search_coverage_radius \
+			and context.perception.can_observe_position(sample):
+			covered[sample] = true
 			uncovered.remove_at(index)
 	for index in range(pending.size() - 1, -1, -1):
-		if context._horizontal_distance_between(point, pending[index]) <= search_coverage_radius:
+		if covered.has(pending[index]):
 			pending.remove_at(index)
 
 
