@@ -9,7 +9,7 @@ func _init() -> void:
 	set(value):
 		cover_minimum_progress = value
 		mark_override(&"cover_minimum_progress")
-## 掩体推进只沿用这么久的最后目击信息，之后交回原搜索。
+## 最后目击允许新掩体推进的期限；已开始的绕出／观察按原路段时限结束，不刷新目击记忆。
 @export_range(0.5, 10.0, 0.5) var cover_memory_seconds: float = 5.0:
 	set(value):
 		cover_memory_seconds = value

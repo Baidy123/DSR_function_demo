@@ -18,18 +18,22 @@ func evaluate_point(point: Variant) -> Dictionary:
 
 func collect_candidates(visible: bool) -> Array[Dictionary]:
 	var candidates: Array[Dictionary] = []
-	if not _has_recent_target() or context.melee.can_request(visible): return candidates
+	if not _has_recent_target(true) or context.melee.can_request(visible): return candidates
 	for destination in transfer_candidates():
 		var continuing: bool = _running and transfer.is_active() and destination.body == transfer.active_cover_body and destination.hide.is_equal_approx(transfer.hide_position)
 		var candidate := _advance_candidate(destination, continuing)
 		if not candidate.is_empty(): candidates.append(candidate)
 	return candidates
 
-func _has_recent_target() -> bool:
-	return is_enabled() and context.has_visual_memory and context.is_alerted and not context.noise_search_origin.is_finite() and context.utility_unseen_seconds <= maxf(0.0, float(_setting(&"cover_memory_seconds", 5.0)))
+func _has_recent_target(continuing: bool = false) -> bool:
+	if not is_enabled() or not context.has_visual_memory or not context.is_alerted or context.noise_search_origin.is_finite(): return false
+	if context.utility_unseen_seconds <= maxf(0.0, float(_setting(&"cover_memory_seconds", 5.0))): return true
+	# 旧证据不能开始新推进；已开始的绕出／观察按移动组件的剩余时限完成。
+	# 不刷新目击时间，不重选出口，也不延长原路线或观察计时。
+	return continuing and _running and transfer.phase in [transfer.Phase.PEEK_OUT, transfer.Phase.WATCH] and transfer.timer > 0.0
 
 func _advance_candidate(destination: Dictionary, continuing: bool) -> Dictionary:
-	if not _has_recent_target() or actor.move_speed <= 0.0 or not _valid_cover(destination): return {}
+	if not _has_recent_target(continuing) or actor.move_speed <= 0.0 or not _valid_cover(destination): return {}
 	if not continuing and _recently_advanced(destination.body): return {}
 	if continuing and transfer.phase in [transfer.Phase.PEEK_OUT, transfer.Phase.WATCH]:
 		return _reacquire_candidate(destination)
@@ -70,7 +74,7 @@ func begin(candidate: Dictionary, visible: bool) -> bool:
 	return true
 
 func valid(visible: bool) -> bool:
-	return _has_recent_target() and is_instance_valid(transfer.active_cover_body) and super.valid(visible)
+	return _has_recent_target(true) and is_instance_valid(transfer.active_cover_body) and super.valid(visible)
 
 func tick(delta: float, visible: bool) -> Dictionary:
 	var output := super.tick(delta, visible)
@@ -106,7 +110,7 @@ func can_interrupt(next: Dictionary, visible: bool) -> bool:
 	# 换弹证据只为能更早接敌的方案放行，不能单凭机会让搜索打断有效推进。
 	var exploits_reload: bool = context.observed_reload_window() > 0.0 and (visible or float(outcome.get("unavailable_seconds", context.utility_horizon_seconds)) < context.utility_horizon_seconds)
 	if transfer.phase in [transfer.Phase.PEEK_OUT, transfer.Phase.WATCH]:
-		# 延续原转移的中断边界；失视超时仍由 valid 退出，新线索可触发重评。
+		# 当前绕出／观察受原路段时限约束；新线索仍可触发重评。
 		return visible or next.get("urgent", false) or _transfer_reconsider or exploits_reload
 	return exploits_reload or context.melee.can_request(visible) or super.can_interrupt(next, visible)
 

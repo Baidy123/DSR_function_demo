@@ -181,6 +181,7 @@ func _run() -> void:
 	reacquiring = await reach_reacquire(enemy, player)
 	check(reacquiring, "出口受阻用例由真实推进进入绕出阶段")
 	if reacquiring:
+		ai.context.utility_unseen_seconds = 6.0
 		var blocked_exit: Vector3 = action.transfer.peek_position
 		var blocker := StaticBody3D.new()
 		var collision := CollisionShape3D.new()
@@ -215,10 +216,16 @@ func _run() -> void:
 	check(reacquiring, "时限用例从真实掩体绕出阶段开始")
 	if reacquiring:
 		ai.context.utility_unseen_seconds = 6.0
-		check(not action.valid(false) and action.collect_candidates(false).is_empty(), "旧目击过期会同时取消正在执行的绕出与候选")
+		var continuing: Array = action.collect_candidates(false)
+		check(action.valid(false) and not continuing.is_empty() and continuing.all(func(candidate): return ai.action_selector.same_option(candidate, ai.utility_current) and not action.validate(candidate, false)), "旧目击过期只允许继续已开始的绕出，不放行新推进")
 		await physics_frame
 		ai._physics_process(1.0 / 60.0)
-		check(ai.utility_current.get("id") == &"search", "信息过期后实际由原搜索接管")
+		check(ai.current_action == action and ai.context.utility_unseen_seconds > 6.0, "原选择器保留当前绕出，且不会续写真实目击时间")
+		action.transfer.timer = 0.0
+		check(not action.valid(false) and action.collect_candidates(false).is_empty(), "目击过期且绕出路段超时后，执行与候选同时失效")
+		await physics_frame
+		ai._physics_process(1.0 / 60.0)
+		check(ai.utility_current.get("id") == &"search", "原路段时限结束后实际由搜索接管")
 	reacquiring = await reach_reacquire(enemy, player)
 	check(reacquiring, "撤销训练用例在绕出执行期间进行")
 	ai.training.profile.selected_tactics.clear()

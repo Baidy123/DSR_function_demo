@@ -1,0 +1,105 @@
+extends SceneTree
+
+var checks := 0
+var failures := 0
+
+func _initialize() -> void:
+	_run.call_deferred()
+
+func _run() -> void:
+	var scene = load("res://scenes/main.tscn").instantiate()
+	root.add_child(scene)
+	current_scene = scene
+	var enemy = scene.get_node("Arena/Enemy")
+	var ai = enemy.get_node("AI")
+	var player = scene.get_node("Player")
+	ai.set_physics_process(false)
+	player.set_physics_process(false)
+	player.combat.set_physics_process(false)
+	player.health.debug_invincible = false
+	enemy.get_node("UnitType").profile = load("res://resources/enemy/units/melee.tres").duplicate(true)
+	ai.training.profile = load("res://resources/enemy/training/arena.tres").duplicate(true)
+	ai.training.profile.selected_tactics.assign([&"melee_cover", &"melee_rush"])
+	ai.training.profile.set_setting(&"search", &"tracking_cheat_enabled", false)
+	ai.training.profile.set_setting(&"perception", &"hearing_enabled", false)
+	enemy.equip_weapon(load("res://resources/weapons/enemy_test_melee.tres").duplicate(true))
+	ai.refresh_configuration(true)
+	ai.cover_selection.debug_cover_selection = false
+	await _check_case(enemy, ai, player, false)
+	await _check_case(enemy, ai, player, true)
+	print("COVER CONTINUITY: %d/%d passed" % [checks - failures, checks])
+	quit(1 if failures else 0)
+
+func _check_case(enemy, ai, player, leave: bool) -> void:
+	seed(20261007)
+	enemy.reset_target()
+	# 采用训练允许的较慢绕出速度，稳定跨越失视期限；不改保存的资源。
+	ai.training.profile.set_setting(&"cover", &"peek_speed_multiplier", 0.2)
+	enemy.global_position = Vector3(22, 0, 4)
+	player.global_position = Vector3(24, 0, -4.5)
+	enemy.look_at(player.global_position)
+	for frame in 5: await physics_frame
+	enemy.receive_hit(65.0, player.global_position)
+	var action = ai.actions[&"melee_cover"]
+	var saw_target := false
+	var entered_exit := false
+	var crossed_memory_limit := false
+	var premature_search := false
+	var reacquired := false
+	var old_evidence_rejected := false
+	var peak_usec := 0
+	var health: float = player.health.health
+	var previous := ""
+	var departed := false
+	var search_returned := false
+	var remembered := Vector3.INF
+	var finish_deadline := INF
+	var evidence_preserved := true
+	for frame in 1100:
+		await physics_frame
+		var was_exiting: bool = ai.current_action == action and action.transfer.phase == action.transfer.Phase.PEEK_OUT
+		var timer: float = action.transfer.timer
+		ai._physics_process(1.0 / 60.0)
+		var state := str(ai.utility_current.get("id"), "/", action.transfer.phase, "/", ai.context.sees_player)
+		if state != previous:
+			print("CONTINUITY leave=", leave, " frame=", frame, " state=", state, " unseen=", ai.context.utility_unseen_seconds, " timer=", timer, " position=", enemy.global_position)
+			previous = state
+		saw_target = saw_target or ai.context.sees_player
+		if was_exiting or ai.current_action == action:
+			peak_usec = maxi(peak_usec, ai.frame_costs.decision + ai.frame_costs.execution)
+		if ai.current_action == action and action.transfer.phase == action.transfer.Phase.PEEK_OUT and not ai.context.sees_player:
+			entered_exit = true
+		if entered_exit and ai.context.sees_player: reacquired = true
+		if entered_exit and not reacquired:
+			premature_search = premature_search or (not departed and ai.utility_current.get("id") == &"search")
+			if ai.context.utility_unseen_seconds > float(ai.context.setting(&"melee_tactics", &"cover_memory_seconds", 5.0)):
+				if was_exiting and timer > 0.0: crossed_memory_limit = true
+				if ai.current_action == action:
+					var candidates: Array = action.collect_candidates(false)
+					old_evidence_rejected = not candidates.is_empty() and candidates.all(func(candidate): return ai.action_selector.same_option(candidate, ai.utility_current) and not action.validate(candidate, false))
+					if leave and not departed:
+						remembered = ai.context.last_known_position
+						finish_deadline = ai.context.evidence_elapsed_seconds + action.transfer.timer + action.transfer.watch_seconds + 0.1
+						player.global_position = Vector3(12, 0, 8)
+						departed = true
+		if departed:
+			evidence_preserved = evidence_preserved and ai.context.last_known_position == remembered and not ai.context.sees_player
+			if ai.utility_current.get("id") == &"search":
+				search_returned = ai.context.evidence_elapsed_seconds <= finish_deadline
+				break
+		if premature_search or player.health.health < health: break
+	check(saw_target and entered_exit, "真实目击、受压后自主选择掩体并进入绕出，不强选动作")
+	check(crossed_memory_limit, "配置允许的实际绕出路线跨越原五秒失视期限")
+	check(not premature_search, "正在推进的绕出路线不因目击刚过期提前切为调查搜索")
+	check(old_evidence_rejected, "过期证据只保留当前绕出候选，不能启动新的掩体推进")
+	if leave:
+		check(departed and search_returned and evidence_preserved and enemy.melee_count == 0 and player.health.health == health, "玩家真正离开后按原路线与观察时限返回搜索，不更新隐藏位置或攻击")
+	else:
+		check(reacquired and enemy.melee_count > 0 and player.health.health < health, "绕出后重新目击、自主接续近战并实际扣血")
+	check(peak_usec < 20000, "掩体连续接敌决策与执行保留20毫秒门槛")
+	print("CONTINUITY leave=", leave, " peak_usec=", peak_usec)
+
+func check(ok: bool, label: String) -> void:
+	checks += 1
+	if not ok: failures += 1
+	print("PASS " if ok else "FAIL ", label)
