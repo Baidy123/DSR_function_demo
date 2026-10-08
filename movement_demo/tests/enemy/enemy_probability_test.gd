@@ -34,8 +34,9 @@ func _run() -> void:
 	check(is_equal_approx(enemy.weapon_stability, 0.4), "装备读取初始中心概率")
 	for frame in range(4):
 		await physics_frame
-	var target: Vector3 = player.global_position + Vector3.UP * 0.8
-	enemy.update_weapon(0.0, target)
+	var target: Vector3 = player.get_torso_position()
+	# 真实枪口到身体点有俯仰差，给予合法跟枪时间后再开始固定概率抽样。
+	enemy.update_weapon(0.1, target)
 	enemy.weapon_stability = 1.0
 	enemy.try_fire()
 	check(enemy.last_shot_direction.is_equal_approx(enemy.aim_direction), "100%沿实际枪口中心发射")

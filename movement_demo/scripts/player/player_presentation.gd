@@ -34,6 +34,9 @@ func _sync() -> void:
 	state.dead = actor.is_dead()
 	state.in_dialogue = actor.is_in_dialogue
 	state.sprinting = actor.is_sprinting and state.local_velocity.length() > 0.02
+	state.crouch_amount = actor.crouch_amount
+	state.vaulting = actor.is_vaulting()
+	state.vault_progress = actor.get_vault_progress()
 	var combat = actor.get_node_or_null("Combat")
 	if combat != null:
 		state.aiming = combat.is_aiming

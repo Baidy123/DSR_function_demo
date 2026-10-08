@@ -5,6 +5,12 @@ from pathlib import Path
 import subprocess
 
 TESTS = [
+    "enemy_half_cover_test",
+    "low_cover_band_test",
+    "enemy_low_cover_loss_test",
+    "enemy_low_cover_behavior_test",
+    "enemy_vault_utility_test",
+    "enemy_posture_lifecycle_test",
     "enemy_modular_contract_test",
     "enemy_configuration_cleanup_test",
     "enemy_scene_test",
@@ -30,6 +36,7 @@ TESTS = [
     "enemy_melee_navigation_test",
     "enemy_melee_tactics_lifecycle_test",
     "enemy_reload_test",
+    "enemy_reload_cover_test",
     "attack_hold_regression_test",
     "attack_points_test",
     "enemy_weapon_test",
@@ -54,6 +61,7 @@ TESTS = [
     "suppression_lane_test",
     "utility_suppression_blocked_test",
     "exit_suppression_geometry_test",
+    "exit_suppression_ownership_test",
     "utility_suppression_trigger_test",
     "enemy_fire_timing_test",
     "enemy_fire_decision_test",

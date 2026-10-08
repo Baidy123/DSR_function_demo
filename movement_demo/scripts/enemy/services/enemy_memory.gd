@@ -26,3 +26,9 @@ var evidence_elapsed_seconds := 0.0
 var memory_generation := 0
 var reload_observation_elapsed := 0.0
 var observed_reload_remaining := 0.0
+
+## Evidence only: action timers and execution remain in action instances.
+var suppression_evidence: Dictionary = {}
+var exact_cover_clue: Dictionary = {}
+var _evidence_serial := 0
+var suppression_consumed_id := -1

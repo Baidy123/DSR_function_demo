@@ -4,6 +4,35 @@ extends "res://scripts/enemy/config/module_settings.gd"
 func _init() -> void:
 	section = &"cover"
 
+## 换弹时依托附近安全掩体的软偏好；按真实遮蔽收益与路线距离折减，0仅关闭偏好。
+## 不改变基础换弹进度、移动限速、暴露估计或原有三种换弹安排。
+@export_range(0.0, 20.0, 0.25) var reload_cover_preference: float = 6.0:
+	set(value):
+		reload_cover_preference = maxf(0.0, value)
+		mark_override(&"reload_cover_preference")
+## 按实际行走路线长度计算，前半段保留完整偏好，后半段衰减至0；不扩大查询范围。
+@export_range(0.5, 10.0, 0.25) var reload_cover_preference_distance: float = 4.0:
+	set(value):
+		reload_cover_preference_distance = maxf(0.1, value)
+		mark_override(&"reload_cover_preference_distance")
+
+## 附近半身掩体的一轮蹲藏/起身射击方案在共同总代价中扣除的分值；0关闭偏好。
+## 不改变实际暴露、路径或开火收益；其他更优方案仍可获选。
+@export_range(0.0, 20.0, 0.25) var low_cover_preference: float = 8.0:
+	set(value):
+		low_cover_preference = maxf(0.0, value)
+		mark_override(&"low_cover_preference")
+## 此距离内半径的前半段保留完整偏好，后半段线性衰减到0；不扩大查询范围。
+@export_range(0.5, 10.0, 0.25) var low_cover_preference_distance: float = 4.0:
+	set(value):
+		low_cover_preference_distance = maxf(0.1, value)
+		mark_override(&"low_cover_preference_distance")
+## 一轮起身射击前，实际完成蹲姿后在低墙后停留的秒数。
+@export_range(0.0, 3.0, 0.1) var low_cover_hide_seconds: float = 0.6:
+	set(value):
+		low_cover_hide_seconds = maxf(0.0, value)
+		mark_override(&"low_cover_hide_seconds")
+
 ## 敌人胸部到实际弹道线段的警戒半径（米）；墙挡住来弹时不会隔墙触发。
 @export_range(0.1, 5.0, 0.1) var shot_radius: float = 1.5:
 	set(value):

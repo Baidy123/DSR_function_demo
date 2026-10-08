@@ -6,7 +6,7 @@ albedo_color = Color(0.2, 0.65, 0.95, 1)
 [sub_resource type="CapsuleMesh" id="CapsuleMesh_n8nal"]
 material = SubResource("StandardMaterial3D_mee2q")
 radius = 0.28
-height = 1.6
+height = 1.75
 
 [sub_resource type="BoxMesh" id="BoxMesh_a37kb"]
 material = SubResource("StandardMaterial3D_mee2q")
@@ -23,7 +23,7 @@ tracks/0/keys = {
 "times": PackedFloat32Array(0, 0.5, 1),
 "transitions": PackedFloat32Array(1, 1, 1),
 "update": 0,
-"values": [Vector3(0, 0.8, 0), Vector3(0.03, 0.835, 0), Vector3(0, 0.8, 0)]
+"values": [Vector3(0, 0.875, 0), Vector3(0.03, 0.91, 0), Vector3(0, 0.875, 0)]
 }
 tracks/1/type = "value"
 tracks/1/imported = false
@@ -49,7 +49,7 @@ tracks/0/keys = {
 "times": PackedFloat32Array(0, 0.5, 1),
 "transitions": PackedFloat32Array(1, 1, 1),
 "update": 0,
-"values": [Vector3(0, 0.8, 0), Vector3(0.08, 0.86, 0), Vector3(0, 0.8, 0)]
+"values": [Vector3(0, 0.875, 0), Vector3(0.08, 0.935, 0), Vector3(0, 0.875, 0)]
 }
 tracks/1/type = "value"
 tracks/1/imported = false
@@ -87,7 +87,7 @@ tracks/0/keys = {
 "times": PackedFloat32Array(0, 0.5, 1),
 "transitions": PackedFloat32Array(1, 1, 1),
 "update": 0,
-"values": [Vector3(0, 0.8, 0), Vector3(0.07, 0.855, 0), Vector3(0, 0.8, 0)]
+"values": [Vector3(0, 0.875, 0), Vector3(0.07, 0.93, 0), Vector3(0, 0.875, 0)]
 }
 tracks/1/type = "value"
 tracks/1/imported = false
@@ -113,7 +113,7 @@ tracks/0/keys = {
 "times": PackedFloat32Array(0, 0.5, 1),
 "transitions": PackedFloat32Array(1, 1, 1),
 "update": 0,
-"values": [Vector3(0, 0.8, 0), Vector3(0, 0.82, 0), Vector3(0, 0.8, 0)]
+"values": [Vector3(0, 0.875, 0), Vector3(0, 0.895, 0), Vector3(0, 0.875, 0)]
 }
 tracks/1/type = "value"
 tracks/1/imported = false
@@ -139,7 +139,7 @@ tracks/0/keys = {
 "times": PackedFloat32Array(0, 0.5, 1),
 "transitions": PackedFloat32Array(1, 1, 1),
 "update": 0,
-"values": [Vector3(0, 0.8, 0), Vector3(0.09, 0.865, 0), Vector3(0, 0.8, 0)]
+"values": [Vector3(0, 0.875, 0), Vector3(0.09, 0.94, 0), Vector3(0, 0.875, 0)]
 }
 tracks/1/type = "value"
 tracks/1/imported = false
@@ -165,7 +165,7 @@ tracks/0/keys = {
 "times": PackedFloat32Array(0, 0.5, 1),
 "transitions": PackedFloat32Array(1, 1, 1),
 "update": 0,
-"values": [Vector3(0, 0.8, 0), Vector3(0.04, 0.84, 0), Vector3(0, 0.8, 0)]
+"values": [Vector3(0, 0.875, 0), Vector3(0.04, 0.915, 0), Vector3(0, 0.875, 0)]
 }
 tracks/1/type = "value"
 tracks/1/imported = false
@@ -191,7 +191,7 @@ tracks/0/keys = {
 "times": PackedFloat32Array(0, 0.5, 1),
 "transitions": PackedFloat32Array(1, 1, 1),
 "update": 0,
-"values": [Vector3(0, 0.8, 0), Vector3(0.02, 0.83, 0), Vector3(0, 0.8, 0)]
+"values": [Vector3(0, 0.875, 0), Vector3(0.02, 0.905, 0), Vector3(0, 0.875, 0)]
 }
 tracks/1/type = "value"
 tracks/1/imported = false
@@ -217,7 +217,7 @@ tracks/0/keys = {
 "times": PackedFloat32Array(0, 0.5, 1),
 "transitions": PackedFloat32Array(1, 1, 1),
 "update": 0,
-"values": [Vector3(0, 0.8, 0), Vector3(0.06, 0.85, 0), Vector3(0, 0.8, 0)]
+"values": [Vector3(0, 0.875, 0), Vector3(0.06, 0.925, 0), Vector3(0, 0.875, 0)]
 }
 tracks/1/type = "value"
 tracks/1/imported = false
@@ -243,7 +243,7 @@ tracks/0/keys = {
 "times": PackedFloat32Array(0, 0.5, 1),
 "transitions": PackedFloat32Array(1, 1, 1),
 "update": 0,
-"values": [Vector3(0, 0.8, 0), Vector3(0.05, 0.845, 0), Vector3(0, 0.8, 0)]
+"values": [Vector3(0, 0.875, 0), Vector3(0.05, 0.92, 0), Vector3(0, 0.875, 0)]
 }
 tracks/1/type = "value"
 tracks/1/imported = false
@@ -269,7 +269,7 @@ tracks/0/keys = {
 "times": PackedFloat32Array(0, 0.5, 1),
 "transitions": PackedFloat32Array(1, 1, 1),
 "update": 0,
-"values": [Vector3(0, 0.8, 0), Vector3(0.01, 0.825, 0), Vector3(0, 0.8, 0)]
+"values": [Vector3(0, 0.875, 0), Vector3(0.01, 0.9, 0), Vector3(0, 0.875, 0)]
 }
 tracks/1/type = "value"
 tracks/1/imported = false
@@ -301,11 +301,11 @@ _data = {
 [node name="ExampleModel" type="Node3D" unique_id=1479734886]
 
 [node name="Torso" type="MeshInstance3D" parent="." unique_id=558624231]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.8, 0)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.875, 0)
 mesh = SubResource("CapsuleMesh_n8nal")
 
 [node name="Arm" type="MeshInstance3D" parent="." unique_id=988098312]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.35, 1.1, -0.12)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.35, 1.175, -0.12)
 mesh = SubResource("BoxMesh_a37kb")
 
 [node name="AnimationPlayer" type="AnimationPlayer" parent="." unique_id=769291001]

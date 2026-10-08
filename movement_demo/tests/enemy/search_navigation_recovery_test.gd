@@ -1,6 +1,6 @@
 extends SceneTree
 
-const LIVE_POSITION := Vector3(16.5115585, 0.0008413, 4.9022946)
+const LIVE_POSITION_SEED := Vector3(16.5115585, 0.0008413, 4.9022946)
 const INVALID_MEMORY := Vector3(15.7548351, 0.0008413, -1.690755)
 var checks := 0
 var failures := 0
@@ -25,7 +25,7 @@ func _run() -> void:
 	ai.perception.sight_distance = 0.0
 	ai.perception.close_awareness_radius = 0.0
 	player.global_position = Vector3(16.49831, 0, -2.924036)
-	enemy.global_position = LIVE_POSITION
+	enemy.global_position = LIVE_POSITION_SEED
 	ai.is_alerted = true
 	ai.has_visual_memory = true
 	ai.last_seen_position = Vector3(18.867762, 0, -2.588767)
@@ -35,10 +35,20 @@ func _run() -> void:
 	for frame in range(5): await physics_frame
 	# 等竞技场连通路径实际就绪；map已有一次同步不代表本场景区域已提交。
 	for frame in range(120):
-		if not NavigationServer3D.map_get_path(ai.agent.get_navigation_map(), LIVE_POSITION, Vector3(18,0,0),true).is_empty(): break
+		if not NavigationServer3D.map_get_path(ai.agent.get_navigation_map(), LIVE_POSITION_SEED, Vector3(18,0,0),true).is_empty(): break
 		await physics_frame
+	# 从当前烘焙导航的真实边缘构造同类现场，不依赖旧地图恰好偏出0.098米的坐标。
+	var live_position := _off_navigation_position(ai, LIVE_POSITION_SEED)
+	check(live_position.is_finite(), "当前导航存在身体可站立且轻微偏出的真实边缘")
+	if not live_position.is_finite():
+		quit(1)
+		return
+	enemy.global_position = live_position
+	await physics_frame
 	check(ai.is_arena_active(), "复现时玩家实际位于竞技场")
-	check(ai.cover_selection._path_to(LIVE_POSITION, LIVE_POSITION).is_empty(), "现场脚下偏出导航约0.098米，严格路径检查失败")
+	var nearest := NavigationServer3D.region_get_closest_point(ai.navigation_region.get_rid(), live_position)
+	var off_distance: float = Vector2(nearest.x, nearest.z).distance_to(Vector2(live_position.x, live_position.z))
+	check(off_distance >= 0.08 and off_distance <= 0.15 and ai.cover_selection._path_to(live_position, live_position).is_empty(), "现场脚下真实偏出导航8至15厘米，严格路径检查失败")
 	ai.actions[&"search"].begin_search()
 	ai.actions[&"search"].search_pause_timer = 0.183333
 	var remaining: int = ai.actions[&"search"].coverage.pending.size()
@@ -73,7 +83,7 @@ func _run() -> void:
 	ai.last_seen_direction = Vector3.ZERO
 	ai.utility_unseen_seconds = 100.0
 	ai.utility_threat_age_seconds = 100.0
-	check(ai.cover_selection._path_to(LIVE_POSITION, INVALID_MEMORY).is_empty(), "现场新记忆点偏离导航约0.5米")
+	check(ai.cover_selection._path_to(live_position, INVALID_MEMORY).is_empty(), "现场新记忆点偏离导航约0.5米")
 	option = search_option(ai)
 	check(not option.is_empty(), "没有已建搜索区域时，非法记忆点仍允许重新规划搜索")
 	check(ai.actions[&"search"].investigation_phase == -1, "评估重规划候选不私自启动搜索")
@@ -149,6 +159,19 @@ func search_option(ai: Node) -> Dictionary:
 	for option: Dictionary in ai.action_selector.assess_options(ai, false):
 		if option.id == &"search": return option
 	return {}
+
+func _off_navigation_position(ai: Node, seed_position: Vector3) -> Vector3:
+	for ring in range(0, 31):
+		for sector in range(24):
+			var angle := TAU * sector / 24.0
+			var point := seed_position + Vector3(cos(angle), 0.0, sin(angle)) * (ring * 0.05)
+			var nearest := NavigationServer3D.region_get_closest_point(ai.navigation_region.get_rid(), point)
+			var gap := Vector2(point.x, point.z).distance_to(Vector2(nearest.x, nearest.z))
+			if gap < 0.08 or gap > 0.15 or not ai.context.is_position_free(point): continue
+			if not ai.cover_selection._path_to(point, point).is_empty(): continue
+			if ai.cover_selection._path_to(point, Vector3(18, 0, 0)).is_empty(): continue
+			return point
+	return Vector3.INF
 
 func check(ok: bool, label: String) -> void:
 	checks += 1

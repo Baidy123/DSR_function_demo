@@ -50,7 +50,7 @@ func _prepare_cover_exits() -> void:
 func information_retention() -> float:
 	# 封住越多可信出口，等待时目标可能移动的范围越小；并非固定战术优先级。
 	var coverage := (float(not first_exit.is_empty()) + float(not second_exit.is_empty())) * 0.5
-	var freshness := pow(0.5, context.utility_unseen_seconds / maxf(0.5, context.utility_threat_half_life_seconds))
+	var freshness := _freshness()
 	var balance: float = _exit_geometry.get("balance", 0.0)
 	var passage_fraction := float(_exit_geometry.get("open_sides", 0)) * 0.5
 	return 0.65 * _inference_confidence * coverage * freshness * balance * passage_fraction
@@ -63,6 +63,9 @@ func _can_reach_target(target: Vector3) -> bool:
 
 func _targets_available() -> bool:
 	if not is_instance_valid(target_cover):
+		return false
+	# 本轮只属于启动时确认的墙；新前景遮挡、叠墙或未知归属均结束，不能换压另一面墙。
+	if context.cover_selection.confirmed_suppression_cover(_exit_memory) != target_cover:
 		return false
 	# 动态障碍可封住通道而不挡射线；每次执行同时复核身体通行和实际射界。
 	_prepare_cover_exits()
@@ -103,3 +106,6 @@ func on_shot_fired() -> void:
 
 func state_label() -> String:
 	return "掩体出口压制"
+
+func preference_credit() -> float:
+	return 0.0

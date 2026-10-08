@@ -5,6 +5,7 @@ var context
 var definition: EnemyActionDefinition
 var action_id: StringName
 var config_section: StringName
+var route_motion = preload("res://scripts/enemy/actions/enemy_route_motion.gd").new()
 var plan: Dictionary = {}
 var _running := false
 var _standalone_settings: Dictionary = {}
@@ -49,10 +50,11 @@ func validate(candidate: Dictionary, _visible: bool) -> bool:
 	if destination.is_empty():
 		return true
 	var point: Vector3 = destination.get("position", destination.get("hide", Vector3.INF))
-	return point.is_finite() and context.is_position_free(point) and not selection._path_to(actor.global_position, point).is_empty()
+	return point.is_finite() and context.is_position_free(point) and not context.routes.planning_path(actor.global_position, point).is_empty()
 
 func begin(candidate: Dictionary, _visible: bool) -> bool:
 	plan = candidate
+	route_motion.begin(candidate.get("route", {}))
 	_running = true
 	return true
 
@@ -64,6 +66,7 @@ func tick(_delta: float, _visible: bool) -> Dictionary:
 
 func cancel(_reason: StringName = &"switch") -> void:
 	_running = false
+	route_motion.reset()
 	plan = {}
 	reset()
 
@@ -109,3 +112,56 @@ func evaluation_priority_count() -> int:
 
 func evaluation_channel() -> StringName:
 	return action_id
+
+
+func execute_tick(delta: float, visible: bool) -> Dictionary:
+	var output := tick(delta, visible) if route_motion.route.is_empty() else route_tick(delta, visible)
+	if not _running:
+		route_motion.reset()
+		return output
+	return route_motion.apply(context, output, delta)
+
+func route_multiplier() -> float:
+	return 1.0
+
+func expand_route_candidates(candidates: Array[Dictionary]) -> Array[Dictionary]:
+	var result: Array[Dictionary] = []
+	for candidate in candidates:
+		var destination: Dictionary = candidate.get("destination", {})
+		var point: Vector3 = candidate.get("route_target", destination.get("position", destination.get("hide", Vector3.INF)))
+		# Action collection has already validated the ordinary destination under its
+		# own spatial budget. Never repeat every path query in synchronous scoring.
+		if not context.routes.requires_vault(point) or not candidate.get("route", {}).is_empty(): result.append(candidate)
+		if not point.is_finite() or not candidate.get("route", {}).is_empty(): continue
+		var alternatives: Array[Dictionary] = context.routes.alternatives(point)
+		if alternatives.is_empty(): continue
+		var path: PackedVector3Array = destination.get("path", PackedVector3Array())
+		if path.is_empty(): path = context.routes.planning_path(actor.global_position, point)
+		if path.is_empty(): continue
+		var threat: Vector3 = context._known_reload_threat()
+		if not threat.is_finite(): continue
+		var multiplier := route_multiplier()
+		var wait: float = context.spatial._reload_seconds(context) if actor.ammo.is_reloading else 0.0
+		var original: Dictionary = context.spatial.assess_route(context, path, threat, multiplier, wait)
+		for route in alternatives:
+			var assessment: Dictionary = context.routes.assessment(route, multiplier, threat, wait)
+			var alternative := candidate.duplicate(true)
+			alternative.route = route
+			var outcome: Dictionary = alternative.outcome
+			var horizon: float = context.utility_horizon_seconds
+			var time_change: float = assessment.seconds - original.seconds
+			if float(outcome.unavailable_seconds) < horizon:
+				outcome.unavailable_seconds = clampf(float(outcome.unavailable_seconds) + time_change, 0.0, horizon)
+			# Vault interrupts fire and reload, even if the ordinary approach could shoot.
+			outcome.unavailable_seconds = maxf(float(outcome.unavailable_seconds), minf(horizon, assessment.vault_seconds + wait))
+			var at_destination: float = context._reload_exposure(point, threat, -1.0, destination.get("crouch", false))
+			outcome.exposed_seconds = maxf(0.0, float(outcome.exposed_seconds) + assessment.exposure - original.exposure + at_destination * (maxf(0.0, horizon - assessment.seconds) - maxf(0.0, horizon - original.seconds)))
+			outcome.information_loss = minf(horizon, maxf(0.0, float(outcome.information_loss) + time_change) + minf(horizon, assessment.vault_seconds))
+			result.append(alternative)
+	if _running and not route_motion.route.is_empty() and valid(context.sees_player):
+		var continuing := plan.duplicate(true)
+		result.append(continuing)
+	return result
+
+func route_tick(_delta: float, _visible: bool) -> Dictionary:
+	return motion(Vector3.ZERO, route_multiplier())

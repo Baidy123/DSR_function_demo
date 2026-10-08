@@ -1,9 +1,9 @@
 @tool
 extends StaticBody3D
 
-## 长边面可用于躲藏的长度比例；0.75 对应“长 20，中间 15”，两端留空。
+## 高掩体长边面可用于躲藏的长度比例；低墙改用完整外围带。
 @export_range(0.1, 1.0, 0.05) var hide_length_ratio: float = 0.75
-## 短边端面可用于躲藏的长度比例；默认中间 25%，减少靠近墙角时身体露出。
+## 高掩体短边端面可用于躲藏的长度比例；默认中间 25%。
 @export_range(0.1, 1.0, 0.05) var short_hide_length_ratio: float = 0.25
 ## 躲藏区域内沿离墙方向的宽度（米，随节点缩放）。
 @export_range(0.1, 2.0, 0.05) var hide_depth: float = 0.4
@@ -15,13 +15,13 @@ extends StaticBody3D
 @export_range(0.25, 2.0, 0.05) var sample_spacing: float = 0.75
 ## 仅在编辑器显示青色四面候选区域和黄色 Peek 十字；实际可用性由导航和碰撞过滤。
 @export var show_regions_in_editor: bool = true
-## 墙角到攻击候选区域内侧的半径（米，随节点缩放）；不是到墙面的距离，身体空间仍需过滤。
+## 高掩体墙角攻击区内半径；低墙使用 Wall Gap 与 Hide Depth 定义外围带。
 @export_range(0.2, 2.0, 0.05) var attack_inner_radius: float = 0.55
 ## 墙角到区域外侧的半径；实际至少比内半径大0.05米。四角各为墙外270度连续扇环。
 @export_range(0.25, 3.0, 0.05) var attack_outer_radius: float = 1.5
 ## 区域内径向及圆弧采样的最大间距（米，随节点缩放）；越小越密，也增加运行检查量。
 @export_range(0.2, 1.0, 0.05) var attack_sample_spacing: float = 0.4
-## 仅在编辑器显示橙色连续扇环；运行时再检查站立空间、射界、遮挡和可达性。
+## 编辑器显示攻击区：高墙为橙色角扇环，低墙为青色外围站／蹲共用带。
 @export var show_attack_points_in_editor: bool = true
 @export_group("半身掩体")
 ## 明确标记为低掩体，实际高度仍依据碰撞盒校验；旧高墙默认关闭。
@@ -101,6 +101,7 @@ func get_candidates(threat: Vector3, from: Vector3) -> Array[Dictionary]:
 	var candidates: Array[Dictionary] = []
 	if _dimensions().is_zero_approx():
 		return candidates
+	if is_low_cover(): return _low_cover_candidates(threat, from)
 	var collision := _collision()
 	for end_face in [false, true]:
 		var threat_local := _face_coordinates(threat, end_face)
@@ -134,6 +135,76 @@ func get_candidates(threat: Vector3, from: Vector3) -> Array[Dictionary]:
 	return candidates
 
 
+## Low walls use one continuous band for both standing fire and crouching.
+## Four trapezoids tile a rectangular ring; they are not corner attack sectors.
+func _low_cover_quad(axis: int, side: float, start: float, end: float, inner: float, outer: float) -> PackedVector3Array:
+	var half: Vector3 = _collision().shape.size * 0.5
+	var other: int = 2 if axis == 0 else 0
+	var corners := PackedVector3Array()
+	for uv: Vector2 in [Vector2(start, inner), Vector2(end, inner), Vector2(end, outer), Vector2(start, outer)]:
+		var gap := wall_gap + hide_depth * uv.y
+		var point := Vector3(0.0, -half.y, 0.0)
+		point[axis] = side * (half[axis] + gap)
+		point[other] = uv.x * (half[other] + gap)
+		corners.append(point)
+	return corners
+
+
+func _low_cover_cell(corners: PackedVector3Array, depth: int, axis: int, side: float) -> Dictionary:
+	var polygon := PackedVector3Array()
+	var center := Vector3.ZERO
+	for point in corners:
+		polygon.append(_collision().to_global(point))
+		center += point * 0.25
+	var position := _collision().to_global(center)
+	return {"kind": &"low_cover_band", "corners_local": corners, "depth": depth,
+		"band_axis": axis, "band_side": side, "position": position, "polygon": polygon,
+		"body": self, "cover": self, "crouch": true, "stand": position}
+
+
+func _low_cover_cells() -> Array[Dictionary]:
+	var cells: Array[Dictionary] = []
+	var half: Vector3 = _collision().shape.size * 0.5
+	var spacing := maxf(0.2, attack_sample_spacing)
+	var depths := maxi(1, ceili(hide_depth / spacing))
+	for axis in [0, 2]:
+		var other: int = 2 if axis == 0 else 0
+		var steps := maxi(1, ceili(2.0 * (half[other] + wall_gap + hide_depth) / spacing))
+		for side in [-1.0, 1.0]:
+			for index in steps:
+				for layer in depths:
+					var corners := _low_cover_quad(axis, side, lerpf(-1.0, 1.0, float(index) / steps),
+						lerpf(-1.0, 1.0, float(index + 1) / steps), float(layer) / depths, float(layer + 1) / depths)
+					cells.append(_low_cover_cell(corners, 0, axis, side))
+	return cells
+
+
+func _low_cover_candidates(threat: Vector3, from: Vector3) -> Array[Dictionary]:
+	var candidates: Array[Dictionary] = []
+	var collision := _collision()
+	var target := collision.to_local(threat)
+	var origin := collision.to_local(from)
+	var half: Vector3 = collision.shape.size * 0.5
+	var points: Array[Vector3] = []
+	# Preserve the closest legal band position instead of making the actor hop
+	# between a finite set of cell centres while already standing behind a wall.
+	for axis in [0, 2]:
+		if absf(target[axis]) < 0.001: continue
+		var side := -signf(target[axis])
+		var gap := clampf(origin[axis] * side - half[axis], wall_gap, wall_gap + hide_depth)
+		var other: int = 2 if axis == 0 else 0
+		var point := Vector3(0.0, -half.y, 0.0)
+		point[axis] = side * (half[axis] + gap)
+		point[other] = clampf(origin[other], -half[other] - gap, half[other] + gap)
+		points.append(collision.to_global(point))
+	for cell in get_attack_cells():
+		if target[cell.band_axis] * cell.band_side < -0.001 and not points.has(cell.position): points.append(cell.position)
+	for point in points:
+		var peeks: Array[Vector3] = []
+		candidates.append({"hide": point, "stand": point, "crouch": true, "peeks": peeks, "cover": self})
+	return candidates
+
+
 # 每对相向面共用两端外的 Peek，向墙厚中线探出，避免斜射线仍穿墙。
 func _local_peeks(end_face: bool = false) -> Array[Vector3]:
 	var half_length := _face_dimensions(end_face).x * 0.5 + peek_outset
@@ -143,7 +214,7 @@ func _local_peeks(end_face: bool = false) -> Array[Vector3]:
 # 在碰撞盒局部XZ平面定义四角，各排除朝墙内的90度；保留墙外相连的270度。
 func _attack_sectors() -> Array[Dictionary]:
 	var sectors: Array[Dictionary] = []
-	if _dimensions().is_zero_approx():
+	if _dimensions().is_zero_approx() or is_low_cover():
 		return sectors
 	var half: Vector3 = _collision().shape.size * 0.5
 	var corners := [Vector2(-1, 1), Vector2(1, 1), Vector2(1, -1), Vector2(-1, -1)]
@@ -166,6 +237,9 @@ func _attack_offset(angle: float, radius: float) -> Vector3:
 # 区域保持连续定义，查询时才采样；相邻墙角完全重合的样本不重复检查。
 func _local_attack_points() -> Array[Vector3]:
 	var points: Array[Vector3] = []
+	if is_low_cover():
+		for cell in get_attack_cells(): points.append(_collision().to_local(cell.position))
+		return points
 	var seen := {}
 	var radii := _attack_radii()
 	var spacing := maxf(0.2, attack_sample_spacing)
@@ -197,9 +271,12 @@ var _attack_cells_cache: Array[Dictionary] = []
 
 func get_attack_cells() -> Array[Dictionary]:
 	var collision := _collision()
-	var signature := [collision.global_transform, collision.shape.size, attack_inner_radius, attack_outer_radius, attack_sample_spacing]
+	var signature := [collision.global_transform, collision.shape.size, attack_inner_radius, attack_outer_radius, attack_sample_spacing, is_low_cover(), wall_gap, hide_depth]
 	if signature == _attack_cells_signature: return _attack_cells_cache.duplicate()
 	_attack_cells_signature = signature
+	if is_low_cover():
+		_attack_cells_cache = _low_cover_cells()
+		return _attack_cells_cache.duplicate()
 	var cells: Array[Dictionary] = []
 	var radii := _attack_radii()
 	var spacing := maxf(0.2, attack_sample_spacing)
@@ -216,6 +293,13 @@ func get_attack_cells() -> Array[Dictionary]:
 
 func subdivide_attack_cell(cell: Dictionary) -> Array[Dictionary]:
 	var cells: Array[Dictionary] = []
+	if cell.get("kind") == &"low_cover_band":
+		var corners: PackedVector3Array = cell.corners_local
+		var center := (corners[0] + corners[1] + corners[2] + corners[3]) * 0.25
+		for index in 4:
+			cells.append(_low_cover_cell(PackedVector3Array([corners[index], (corners[index] + corners[(index + 1) % 4]) * 0.5,
+				center, (corners[index] + corners[(index + 3) % 4]) * 0.5]), cell.depth + 1, cell.band_axis, cell.band_side))
+		return cells
 	var middle: float = (cell.inner + cell.outer) * 0.5
 	for radii in [Vector2(cell.inner, middle), Vector2(middle, cell.outer)]:
 		for index in 2:
@@ -232,6 +316,7 @@ func _attack_cell(center: Vector3, inner: float, outer: float, angle: float, swe
 
 func get_attack_exclusion_polygons() -> Array[PackedVector3Array]:
 	var polygons: Array[PackedVector3Array] = []
+	if is_low_cover(): return polygons
 	for sector in _attack_sectors():
 		for index in 36:
 			var a: float = sector.start + PI * 1.5 * index / 36.0
@@ -244,6 +329,16 @@ func get_attack_exclusion_polygons() -> Array[PackedVector3Array]:
 
 func is_hiding_position(point: Vector3, threat: Vector3) -> bool:
 	if _dimensions().is_zero_approx():
+		return false
+	if is_low_cover():
+		var local := _collision().to_local(point)
+		var target := _collision().to_local(threat)
+		var half: Vector3 = _collision().shape.size * 0.5
+		for axis in [0, 2]:
+			var side := -signf(target[axis])
+			var offset: float = local[axis] * side - half[axis]
+			var other: int = 2 if axis == 0 else 0
+			if side != 0.0 and offset >= wall_gap - 0.02 and offset <= wall_gap + hide_depth + 0.02 and absf(local[other]) <= half[other] + offset + 0.02: return true
 		return false
 	for end_face in [false, true]:
 		var threat_local := _face_coordinates(threat, end_face)
@@ -265,7 +360,7 @@ func _process(_delta: float) -> void:
 	var collision := _collision()
 	if collision == null or not collision.shape is BoxShape3D:
 		return
-	var signature := str(collision.shape.size, hide_length_ratio, short_hide_length_ratio, hide_depth, wall_gap, peek_outset, show_regions_in_editor,
+	var signature := str(collision.shape.size, collision.global_transform, hide_length_ratio, short_hide_length_ratio, hide_depth, wall_gap, peek_outset, show_regions_in_editor,
 		attack_inner_radius, attack_outer_radius, attack_sample_spacing, show_attack_points_in_editor, low_cover, vault_enabled)
 	if signature == _preview_signature:
 		return
@@ -282,7 +377,7 @@ func _process(_delta: float) -> void:
 	var mesh := ImmediateMesh.new()
 	mesh.surface_begin(Mesh.PRIMITIVE_LINES)
 	for end_face in [false, true]:
-		if not show_regions_in_editor:
+		if not show_regions_in_editor or is_low_cover():
 			continue
 		var dimensions := _face_dimensions(end_face)
 		var half_length := _hide_half_length(end_face)
@@ -299,7 +394,7 @@ func _process(_delta: float) -> void:
 		for center in _local_peeks(end_face):
 			_preview_line(mesh, center - Vector3.RIGHT * 0.18, center + Vector3.RIGHT * 0.18, Color.YELLOW)
 			_preview_line(mesh, center - Vector3.FORWARD * 0.18, center + Vector3.FORWARD * 0.18, Color.YELLOW)
-	if show_attack_points_in_editor:
+	if show_attack_points_in_editor or (is_low_cover() and show_regions_in_editor):
 		_preview_attack_regions(mesh, false)
 	if is_low_cover() and show_regions_in_editor:
 		# 绿色竖线：同落点蹲藏/站起；紫色跨墙箭头只标示可尝试方向。
@@ -330,6 +425,19 @@ func _process(_delta: float) -> void:
 
 # 预览和采样共用四角与半径；轮廓表示整片范围，不随采样密度改变形状。
 func _preview_attack_regions(mesh: ImmediateMesh, filled: bool) -> void:
+	if is_low_cover():
+		for axis in [0, 2]:
+			for side in [-1.0, 1.0]:
+				var corners := _low_cover_quad(axis, side, -1.0, 1.0, 0.0, 1.0)
+				if filled:
+					for index in [0, 1, 2, 0, 2, 3]:
+						mesh.surface_set_color(Color(0.15, 0.8, 0.55, 0.16))
+						mesh.surface_add_vertex(corners[index] + Vector3.UP * 0.025)
+				else:
+					# The four trapezoids form one band, without corner attack fans.
+					_preview_line(mesh, corners[0], corners[1], Color.CYAN)
+					_preview_line(mesh, corners[2], corners[3], Color.CYAN)
+		return
 	var radii := _attack_radii()
 	for sector in _attack_sectors():
 		for index in range(36):

@@ -166,6 +166,9 @@ func _run() -> void:
 	ai.is_alerted = true
 	ai.has_visual_memory = true
 	ai.last_seen_position = threat - Vector3.UP * 0.8
+	# 预览与直接查询都消费同一份已知身体快照，不能再用旧固定0.8米目标比较。
+	var preview_target: Vector3 = ai.context.known_target_point(ai.last_seen_position)
+	var preview_samples: PackedVector3Array = ai.context.known_target_points(ai.last_seen_position)
 	preview.set_physics_process(false)
 	preview.clear()
 	preview._physics_process(1.0 / 60.0)
@@ -174,7 +177,7 @@ func _run() -> void:
 		if preview.assessments.size() == expected_count:
 			break
 		preview._physics_process(1.0 / 60.0)
-	_check("分帧检查完整结果与直接查询一致", preview.assessments == selection.get_attack_assessments(threat, threat))
+	_check("分帧检查完整结果与直接查询一致", preview.assessments == selection.get_attack_assessments(preview_target, preview_target, preview_samples))
 	preview.clear()
 	preview._physics_process(1.0 / 60.0)
 	selection.debug_attack_points = false
@@ -183,7 +186,12 @@ func _run() -> void:
 	selection.debug_attack_points = true
 	preview.refresh()
 	_check("运行显示为所有候选给出评估", preview.assessments.size() == expected_count)
-	_check("大量样本共用网格且每个掩体只有一个标签", preview.get_children().size() == 7)
+	var preview_regions: Array = get_nodes_in_group("cover_region").filter(func(region): return ai.navigation_region.is_ancestor_of(region))
+	var labels: Array = preview.get_children().filter(func(node): return node is Label3D)
+	var meshes: Array = preview.get_children().filter(func(node): return node is MeshInstance3D)
+	var one_label_per_region := preview_regions.all(func(region):
+		return labels.filter(func(label): return label.visible and label.text.begins_with(str(region.name) + "\n")).size() == 1)
+	_check("大量样本共用网格且每个掩体只有一个标签", meshes.size() == 1 and meshes[0].mesh is ImmediateMesh and labels.size() == preview_regions.size() and one_label_per_region)
 	debug_settings.enabled = false
 	_check("总开关关闭立即清空攻击点并停止查询", not preview.is_physics_processing() and preview.assessments.is_empty() and preview.get_children().all(func(node): return not node.visible))
 	preview.refresh()
@@ -234,6 +242,8 @@ func _check_actual_fire(enemy, player, ai, candidate: Dictionary, threat: Vector
 	var old_position: Vector3 = enemy.global_position
 	var old_player: Vector3 = player.global_position
 	var old_seen: Vector3 = ai.last_seen_position
+	var old_visible: bool = ai.context.sees_player
+	var old_was_visible: bool = ai.context.was_seeing_player
 	enemy.global_position = candidate.destination.position
 	player.global_position = threat - Vector3.UP * 0.8
 	player.get_node("Health").debug_invincible = true
@@ -241,14 +251,20 @@ func _check_actual_fire(enemy, player, ai, candidate: Dictionary, threat: Vector
 	enemy.shooting_enabled = true
 	enemy.face_direction(player.global_position - enemy.global_position, 10.0)
 	for frame in range(3): await physics_frame
-	ai._start_utility_option(candidate, true)
+	var visible: bool = ai.perception.can_see_player()
+	ai.context.update_evidence(0.0, visible)
+	_check("攻击点到位后的真实感知看见玩家", visible)
+	ai._start_utility_option(candidate, visible)
 	var shots: int = enemy.shot_count
 	for frame in range(180):
 		await physics_frame
 		if ai.current_action == null: break
-		var output: Dictionary = ai.current_action.tick(1.0 / 60.0, true)
+		# 与实际协调器一致，先完成本帧视觉证据更新，再由射击服务读取合法可见点。
+		visible = ai.perception.can_see_player()
+		ai.context.update_evidence(1.0 / 60.0, visible)
+		var output: Dictionary = ai.current_action.tick(1.0 / 60.0, visible)
 		enemy.face_direction(output.facing, 1.0 / 60.0)
-		ai.context.fire.update(1.0 / 60.0, true, false, output.fire)
+		ai.context.fire.update(1.0 / 60.0, visible, false, output.fire)
 		if enemy.shot_count > shots: break
 	_check("部分遮身的绿色点到位后实际开火，不堵枪口", enemy.shot_count > shots)
 	ai._cancel_utility_execution()
@@ -256,6 +272,8 @@ func _check_actual_fire(enemy, player, ai, candidate: Dictionary, threat: Vector
 	enemy.global_position = old_position
 	player.global_position = old_player
 	ai.last_seen_position = old_seen
+	ai.context.sees_player = old_visible
+	ai.context.was_seeing_player = old_was_visible
 	for frame in range(3): await physics_frame
 
 

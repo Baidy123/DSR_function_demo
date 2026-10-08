@@ -20,11 +20,11 @@ albedo_color = Color(0.85, 0.16, 0.3, 1)
 [sub_resource type="CapsuleMesh" id="EnemyMesh"]
 material = SubResource("EnemyMaterial")
 radius = 0.35
-height = 1.6
+height = 1.75
 
 [sub_resource type="CapsuleShape3D" id="EnemyShape"]
 radius = 0.35
-height = 1.6
+height = 1.75
 
 [sub_resource type="StandardMaterial3D" id="FrontMaterial"]
 albedo_color = Color(1, 0.8, 0.1, 1)
@@ -55,11 +55,11 @@ script = ExtResource("9_perception")
 script = ExtResource("10_selection")
 
 [node name="Body" type="MeshInstance3D" parent="." unique_id=1631920254]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.8, 0)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.875, 0)
 mesh = SubResource("EnemyMesh")
 
 [node name="CollisionShape3D" type="CollisionShape3D" parent="." unique_id=765207616]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.8, 0)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.875, 0)
 shape = SubResource("EnemyShape")
 
 [node name="FrontMarker" type="MeshInstance3D" parent="." unique_id=1729030179]
@@ -77,7 +77,7 @@ path_desired_distance = 0.4
 target_desired_distance = 0.4
 path_height_offset = 0.5
 path_max_distance = 1.01
-height = 1.6
+height = 1.75
 radius = 0.35
 
 [node name="Presentation" type="Node3D" parent="."]

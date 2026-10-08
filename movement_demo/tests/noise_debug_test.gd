@@ -31,9 +31,22 @@ func _run() -> void:
 	ai.perception.close_awareness_radius = 0.0
 	player.get_node("Health").debug_mode = false
 	player.global_position = enemy.global_position + Vector3(0, 0, 4.8)
+	await settle()
+	# 在加入树前选合法出生点，让环境登记拿到最终位置；不与原敌人重叠。
+	var peer_position := Vector3.INF
+	var navigation: NavigationRegion3D = ai.context.navigation_region
+	for offset in [Vector3.LEFT * 2.0, Vector3.RIGHT * 2.0, Vector3.FORWARD * 2.0, Vector3.BACK * 2.0]:
+		var point := NavigationServer3D.region_get_closest_point(navigation.get_rid(), enemy.global_position + offset)
+		if point.distance_to(enemy.global_position) > 1.0 and ai.context.is_position_free(point):
+			peer_position = point
+			break
+	check(peer_position.is_finite(), "同伴在合法导航地面生成")
+	if not peer_position.is_finite():
+		finish()
+		return
 	var peer = enemy.duplicate()
+	peer.position = enemy.get_parent().to_local(peer_position)
 	enemy.get_parent().add_child(peer)
-	peer.global_position = enemy.global_position + Vector3.LEFT * 2.0
 	peer.get_node("AI").set_physics_process(false)
 	var recorder := Recorder.new()
 	root.add_child(recorder)
@@ -96,7 +109,8 @@ func _run() -> void:
 	enemy.equip_weapon(weapon)
 	combat.equip_weapon(weapon)
 	enemy.look_at(player.global_position)
-	enemy.update_weapon(0.0, player.global_position + Vector3.UP * 0.8)
+	# 真正从当前枪口向玩家身体点完成瞄准；不能依赖旧0.8米枪口恰好水平。
+	enemy.update_weapon(1.0, player.get_torso_position())
 	enemy.shot_cooldown = 0.0
 	check(enemy.try_fire(), "敌人确实成功开枪")
 	await settle()

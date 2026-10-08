@@ -117,7 +117,7 @@ func _run() -> void:
 	var visible_options: Array = ai.action_selector.assess_options(ai, true)
 	# 该方向未必有部分遮身的优质点；正例由 attack_point_validation_test 的真实几何覆盖。
 	var attack_options: Array = visible_options.filter(func(o): return o.id == &"attack_position")
-	check(attack_options.all(func(o): return ai.cover_selection.assess_attack_point(o.destination.position, o.destination.body, ai.last_known_position + Vector3.UP * 0.8, ai.last_known_position + Vector3.UP * 0.8).protection >= 0.2), "目击攻击候选必须满足部分遮身，不能强行加入无遮身点")
+	check(attack_options.all(func(o): return ai.cover_selection.assess_attack_point(o.destination.position, o.destination.body, ai.context.known_target_point(ai.last_known_position), ai.context.known_target_point(ai.last_known_position)).protection >= 0.2), "目击攻击候选必须满足部分遮身，不能强行加入无遮身点")
 	var hidden_options: Array = ai.action_selector.assess_options(ai, false)
 	check(not hidden_options.any(func(o): return o.id == &"attack_position"), "失视后的怀疑位置不能直接产生攻击占位")
 	var covers: Array = visible_options.filter(func(o): return o.id == &"cover")

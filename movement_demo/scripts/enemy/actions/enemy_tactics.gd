@@ -70,7 +70,7 @@ func assess_engagement_point(point: Vector3, threat: Vector3) -> Dictionary:
 	var band: Vector2 = _ranged_distance_band()
 	if not _engagement_point_valid(point, band, threat):
 		return {}
-	var path: PackedVector3Array = context.cover_selection._path_to(actor.global_position, point)
+	var path: PackedVector3Array = context.routes.planning_path(actor.global_position, point)
 	if path.is_empty():
 		return {}
 	var current_distance: float = context._horizontal_distance(threat)
@@ -91,8 +91,8 @@ func _engagement_point_valid(point: Vector3, band: Vector2, threat: Vector3 = Ve
 		return false
 	if point.distance_to(threat) > maxf(context.perception.sight_distance, context.perception.close_awareness_radius):
 		return false
-	var shot_origin: Vector3 = point + actor.get_shot_origin() - actor.global_position
-	var target: Vector3 = threat + Vector3.UP * 0.8
+	var shot_origin: Vector3 = actor.get_posture_muzzle_position(false, point)
+	var target: Vector3 = context.known_target_point(threat)
 	return (shot_origin.distance_to(target) <= actor.weapon.fire_range
 		and context.is_position_free(point)
 		and context.fire.has_clear_firing_lane(shot_origin, target - shot_origin, shot_origin.distance_to(target)))
@@ -106,7 +106,7 @@ func is_engagement_destination_valid(destination: Dictionary, check_path: bool =
 		return false
 	if not check_path:
 		return true
-	var path: PackedVector3Array = context.cover_selection._path_to(actor.global_position, destination.position)
+	var path: PackedVector3Array = context.routes.planning_path(actor.global_position, destination.position)
 	if path.is_empty():
 		return false
 	var distance: float = context._horizontal_distance(context.last_known_position)
@@ -233,7 +233,7 @@ func collect_candidates(visible: bool) -> Array[Dictionary]:
 		return result
 	var threat: Vector3 = context.last_known_position
 	var horizon: float = context.utility_horizon_seconds
-	var target := threat + Vector3.UP * 0.8
+	var target: Vector3 = context.known_target_point(threat)
 	var origin: Vector3 = actor.get_shot_origin()
 	var wait: float = context.spatial._ammo_wait(context)
 	if origin.distance_to(target) > actor.weapon.fire_range or not context.fire.has_clear_firing_lane(origin, target - origin, origin.distance_to(target)):

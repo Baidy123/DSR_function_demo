@@ -89,6 +89,7 @@ func _equip_slot(slot: int) -> void:
 			"weapon": combat.weapon,
 			"accuracy": combat.accuracy,
 			"delay": combat.accuracy_recovery_timer,
+			"crouch_bonus_blocked": combat.crouch_bonus_blocked_until_recovery,
 		}
 	active_slot = slot
 	var data: WeaponData = _weapon_at(slot)
@@ -101,6 +102,7 @@ func _equip_slot(slot: int) -> void:
 		# 拔枪至多回到初始精度；已有更差的精度和恢复等待继续保留。
 		combat.accuracy = minf(combat.accuracy, saved.accuracy)
 		combat.accuracy_recovery_timer = saved.delay
+		combat.crouch_bonus_blocked_until_recovery = combat.crouch_bonus_blocked_until_recovery or saved.get("crouch_bonus_blocked", false)
 
 func _weapon_at(slot: int) -> WeaponData:
 	var data: WeaponData = primary_weapon if slot == 0 else secondary_weapon
@@ -112,7 +114,7 @@ func apply_melee_disruption() -> void:
 	for slot in range(2):
 		var data := _weapon_at(slot)
 		if data == null: continue
-		_aim_states[slot] = {"weapon": data, "accuracy": 0.0,
+		_aim_states[slot] = {"weapon": data, "accuracy": 0.0, "crouch_bonus_blocked": true,
 			"delay": maxf(float(_aim_states[slot].get("delay", 0.0)), data.get_aim_settings(combat.is_using_spread_cone()).delay)}
 
 func _update_display() -> void:

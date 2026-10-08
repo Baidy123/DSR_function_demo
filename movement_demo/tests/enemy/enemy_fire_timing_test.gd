@@ -93,6 +93,9 @@ func _run() -> void:
 	ai.training.profile.set_setting(&"tactics", &"burst_shot_count", 1)
 	ai.training.profile.set_setting(&"tactics", &"burst_pause_seconds", 0.2)
 	e.weapon.shot_interval = 2.0
+	# Reset clears the weapon pose. Acquire the actual torso before testing
+	# zero-reaction fire; aim motion does not advance the fire-controller clock.
+	e.update_weapon(0.1, p.get_torso_position())
 	ai.context.fire.update(0.0, true, false, {"owner": &"engage", "mode": &"visible"})
 	ai.context.fire.update(0.3, true, false, {"owner": &"engage", "mode": &"visible"})
 	_check("停顿结束不会缩短慢枪冷却", e.shot_count == 1)
@@ -104,6 +107,7 @@ func _run() -> void:
 	ai.state = ai.State.HOLD_POSITION
 	ai.training.profile.set_setting(&"tactics", &"burst_pause_seconds", 0.0)
 	e.weapon.shot_interval = 0.8
+	e.update_weapon(0.1, p.get_torso_position())
 	ai.context.fire.update(0.0, true, false, {"owner": &"engage", "mode": &"visible"})
 	_check("零反应可恢复立即开枪", e.shot_count == 1)
 	ai.context.fire.update(0.81, true, false, {"owner": &"engage", "mode": &"visible"})

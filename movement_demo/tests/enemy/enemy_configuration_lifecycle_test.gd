@@ -1,6 +1,16 @@
 extends SceneTree
 
 const Library = preload("res://scripts/enemy/enemy_action_library.gd")
+class CoverQueue extends RefCounted:
+	var spatial
+	var channel: StringName
+	func is_enabled() -> bool: return true
+	func evaluation_channel() -> StringName: return channel
+	func evaluation_points() -> Array: return spatial.cover_points()
+	func evaluation_priority_count() -> int: return 0
+	func evaluation_weight() -> int: return 1
+	func evaluate_point(_point: Variant) -> Dictionary: return {}
+
 var checks := 0
 var failures := 0
 
@@ -55,6 +65,29 @@ func _run() -> void:
 	ai.context.spatial.advance_evaluation()
 	var attack_jobs: Array = ai.context.spatial.jobs.filter(func(job): return job.channel == &"attack_position")
 	check(attack_jobs.size() == 1 and attack_jobs[0].owners.size() == 1 and attack_jobs[0].owner.get_ref() == ai.actions[&"attack_position"] and attack_jobs[0].owner.get_ref() != removed_attack, "同帧撤销再恢复时空间任务不得复用旧实例")
+	# 两个消费者同轮读取同一真实几何；清理任一队列不能清理另一队列。
+	var geometry = load("res://scripts/enemy/services/enemy_spatial_evaluator.gd").new()
+	geometry.context = ai.context
+	var first := CoverQueue.new()
+	first.spatial = geometry
+	first.channel = &"ownership_first"
+	var second := CoverQueue.new()
+	second.spatial = geometry
+	second.channel = &"ownership_second"
+	geometry.register(first)
+	geometry.register(second)
+	geometry.advance_evaluation()
+	var point_count: int = geometry.jobs[1].points.size()
+	check(point_count > 0 and geometry.jobs[0].points == geometry.jobs[1].points, "同轮几何消费者获得一致的有效掩体列表")
+	geometry.jobs[0].points.clear()
+	check(geometry.jobs[1].points.size() == point_count, "清理一个消费者的队列不清空其他消费者的候选")
+	var wall = geometry.regions()[0]
+	var old_position: Vector3 = wall.global_position
+	var before: Array = geometry.cover_points()
+	wall.global_position += Vector3.RIGHT * 0.5
+	var after: Array = geometry.cover_points()
+	check(before != after and geometry.jobs[1].points.size() == point_count, "初始化结束后同帧几何改变立即重算且不修改已有队列")
+	wall.global_position = old_position
 	# 同一份资源供两个敌人引用，ready后必须成为互相隔离的运行快照。
 	var source: EnemyTrainingProfile = load("res://resources/enemy/training/arena.tres")
 	var source_fingerprint := source.fingerprint()

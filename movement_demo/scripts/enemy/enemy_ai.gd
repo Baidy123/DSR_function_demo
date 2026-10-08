@@ -134,7 +134,8 @@ func _physics_process(delta: float) -> void:
 		_enabled_last_frame = false
 		actor.cancel_reload()
 		context.melee.cancel()
-		actor.velocity = Vector3.ZERO
+		if not actor.is_vaulting(): actor.velocity = Vector3.ZERO
+		else: actor.body_motion.interrupt()
 		context.fire.update(delta, false, false, {})
 		return
 	_enabled_last_frame = true
@@ -151,8 +152,10 @@ func _physics_process(delta: float) -> void:
 	stamp = Time.get_ticks_usec()
 	var output: Dictionary = {}
 	if current_action != null:
-		output = current_action.tick(delta, visible)
+		output = current_action.execute_tick(delta, visible)
 	var direction: Vector3 = output.get("direction", Vector3.ZERO)
+	actor.request_crouch(output.get("crouch", false))
+	if not output.get("vault", {}).is_empty(): actor.begin_vault(output.vault)
 	actor.face_direction(output.get("facing", Vector3.ZERO), delta)
 	# 先登记近战执行占用，再消费移动／射击意图；新行为同帧提交冲突请求也受身体约束。
 	context.melee.update(delta, visible, output.get("melee", {}))
@@ -168,6 +171,7 @@ func _physics_process(delta: float) -> void:
 func _update_utility_decision(delta: float, visible: bool) -> void:
 	_utility_elapsed += delta
 	_utility_timer -= delta
+	if actor.is_vaulting(): return
 	var valid: bool = current_action != null and current_action.valid(visible)
 	if _utility_timer > 0.0 and (valid or current_action == null): return
 	_utility_timer = utility_recheck_seconds
@@ -186,7 +190,15 @@ func _update_utility_decision(delta: float, visible: bool) -> void:
 		return
 	if valid and action_selector.same_option(best, utility_current): return
 	if valid and not current_action.can_interrupt(best, visible): return
-	if valid and not current_action.hold_released() and (_utility_elapsed < utility_hold_seconds or best.cost + utility_switch_advantage >= cost): return
+	if valid and not current_action.hold_released():
+		if _utility_elapsed < utility_hold_seconds:
+			# A useful asynchronously prepared route may arrive just before the
+			# hold expires. Recheck at that boundary instead of waiting another
+			# full interval while the moving actor invalidates the new route.
+			if not best.get("route", {}).is_empty() and best.cost + utility_switch_advantage < cost:
+				_utility_timer = minf(_utility_timer, utility_hold_seconds - _utility_elapsed)
+			return
+		if best.cost + utility_switch_advantage >= cost: return
 	_start_utility_option(best, visible)
 
 func _start_utility_option(candidate: Dictionary, visible: bool) -> void:
@@ -232,6 +244,7 @@ func reset_actions() -> void:
 	for action in actions.values():
 		action._running = false
 		action.plan = {}
+		action.route_motion.reset()
 		action.reset()
 	context.fire.request = {}
 	context.fire.reset_fire_timing()
@@ -294,6 +307,7 @@ func _exit_tree() -> void:
 		action.cancel(&"exit_tree")
 		context.spatial.unregister(action)
 	if context.spatial != null: context.spatial.context = null
+	context.routes.context = null
 	current_action = null
 	actions.clear()
 
@@ -310,6 +324,7 @@ func _resume_after_reparent() -> void:
 	context.fire.setup(context)
 	context.melee.setup(context)
 	context.spatial.context = context
+	context.routes.context = context
 	refresh_configuration(true)
 	_reset_decisions()
 	_restoring_environment = false

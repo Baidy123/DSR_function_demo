@@ -90,7 +90,7 @@ func _run() -> void:
 	cover_collision.shape = cover_collision.shape.duplicate()
 	cover_collision.shape.size = Vector3(0.8, 2.2, 3)
 	enemy.global_position = Vector3(24.5, 0, -2)
-	ai.last_seen_position = Vector3(22.8, 0, -4.05)
+	ai.last_seen_position = Vector3(20.8, 0, -2)
 	var exit_resource = load("res://resources/enemy/actions/exit_suppression.tres")
 
 	preload("res://tests/enemy/enemy_fire_fixture.gd").set_training_action(ai, exit_resource.action_id, true)
@@ -124,10 +124,11 @@ func _run() -> void:
 		ai.context.fire.update(1.0 / 60.0, false, false, output.fire)
 	check(enemy.shot_count > shots, "选中的出口压制实际打出子弹")
 	var fresh: float = exits.information_retention()
-	ai.utility_unseen_seconds = 20.0
+	# 已执行方案持有冻结证据；真实记忆计时同时推进失视年龄与该证据的年龄。
+	ai.context.update_evidence(20.0, false)
 	check(exits.information_retention() < fresh * 0.1, "出口推断随失视时间衰减，不永久压制旧位置")
 	ai._cancel_utility_execution()
-	# 最近的小掩体被前景墙遮住，较远的原掩体仍有一端可射。
+	# 冻结线索实际归属的墙必须仍提供掩体语义，不能借用其他邻墙出口。
 	var nearer = load("res://scenes/world/cover.tscn").instantiate()
 	ai.navigation_region.add_child(nearer)
 	nearer.global_position = Vector3(22.8, 1.1, -4.35)
@@ -142,9 +143,9 @@ func _run() -> void:
 	cover.remove_from_group("cover_region")
 	for frame in range(3): await physics_frame
 	var center: Vector3 = ai.last_seen_position + Vector3.UP * 0.8
-	check(not exits._prepare_targets(center), "最近掩体的两个出口确实被前景障碍挡住")
+	check(not exits._prepare_targets(center), "实际遮挡墙不再提供掩体语义时不会改认邻墙")
 	cover.add_to_group("cover_region")
-	check(exits._prepare_targets(center) and exits.target_cover == cover, "最近掩体不可射时继续选择其他可信邻近掩体")
+	check(exits._prepare_targets(center) and exits.target_cover == cover, "恢复实际遮挡墙后仅选择该归属墙的合法出口")
 	check(exits.first_exit.is_empty() != exits.second_exit.is_empty(), "只露出一侧出口时仍保留封锁方案")
 	var original_range: float = enemy.weapon.fire_range
 	# 新出口取身体能绕出的入口，射程仍位于真实出口与记忆中心之间。

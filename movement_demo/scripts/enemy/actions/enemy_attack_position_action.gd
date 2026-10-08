@@ -13,6 +13,8 @@ var _remaining: float = 0.0
 var _waypoint: Vector3
 var _best_distance: float = INF
 var _stuck: float = 0.0
+var _cells_signature := -1
+var _cells: Array = []
 
 
 
@@ -113,7 +115,7 @@ func start_evaluated(candidate: Dictionary, known_position: Vector3) -> bool:
 	reset()
 	destination = candidate.position
 	active_cover = candidate.body
-	_query_target = known_position + Vector3.UP * 0.8
+	_query_target = known_position
 	_using_hit_memory = true
 	if not _usable(destination):
 		reset()
@@ -137,13 +139,16 @@ func _unusable_reason(point: Vector3) -> String:
 		return "所属掩体失效"
 	if not _within_sight_range(point, _known_position()):
 		return "超过感知距离"
-	var target: Vector3 = _known_position() + Vector3.UP * 0.8
+	var target: Vector3 = context.known_target_point(_known_position())
+	if active_cover.is_low_cover():
+		target = selection.low_cover_attack_target(point, context.known_target_points(_known_position()))
+		if not target.is_finite(): return "射界受阻"
 	var result: Dictionary = selection.assess_attack_point(point, active_cover, target, target)
 	return "" if result.usable else result.reason
 
 
 func _known_position() -> Vector3:
-	return _query_target - Vector3.UP * 0.8 if _using_hit_memory else context.last_seen_position
+	return _query_target if _using_hit_memory else context.last_seen_position
 
 
 # 射程够但感知距离不够的点，到位仍不能发现／攻击目标，不作为主动占位目的地。
@@ -171,15 +176,21 @@ func _finish(sees_player: bool, reason: String = "结束行动") -> void:
 
 
 func state_label() -> String:
+	if is_instance_valid(active_cover) and active_cover.is_low_cover():
+		return ["", "前往半身掩体", "半身掩体后架枪"][phase]
 	return ["", "前往墙角攻击位置", "墙角占位射击"][phase]
 
 
 func evaluation_points() -> Array:
-	var points: Array = []
-	if not context._known_reload_threat().is_finite() or actor.move_speed <= 0.0: return points
-	for region in context.spatial.regions():
-		points.append_array(region.get_attack_cells())
-	return points
+	if not context._known_reload_threat().is_finite() or actor.move_speed <= 0.0: return []
+	if _cells_signature != context.spatial._geometry:
+		_cells_signature = context.spatial._geometry
+		_cells = []
+		for region in context.spatial.regions():
+			_cells.append_array(region.get_attack_cells())
+	# The evaluator owns and clears its work queue during action/lifecycle resets.
+	# Share immutable cell dictionaries, never the mutable queue array itself.
+	return _cells.duplicate()
 
 func evaluation_weight() -> int:
 	return 6
@@ -189,7 +200,7 @@ func evaluate_point(point: Variant) -> Dictionary:
 		# 调度单位保持固定，细分在本区域的预算查询内完成，目标移动不重排扫描队列。
 		var source: Array[Dictionary] = [point]
 		var best: Dictionary = {}
-		for cell in selection.attack_geometry.refine(context, point.body, context.last_known_position + Vector3.UP * 0.8, source):
+		for cell in selection.attack_geometry.refine(context, point.body, context.known_target_point(context.last_known_position), source):
 			var result := _assess_position(cell)
 			if not result.is_empty() and (best.is_empty() or result.cost < best.cost): best = result
 		return best
@@ -198,10 +209,13 @@ func evaluate_point(point: Variant) -> Dictionary:
 func _assess_position(point: Dictionary) -> Dictionary:
 	var threat: Vector3 = context.last_known_position
 	if not is_instance_valid(point.body) or point.position.distance_to(threat) > maxf(context.perception.sight_distance, context.perception.close_awareness_radius): return {}
-	var target := threat + Vector3.UP * 0.8
-	var checked: Dictionary = selection.assess_attack_point(point.position, point.body, target, target)
+	var target: Vector3 = context.known_target_point(threat)
+	if point.body.is_low_cover():
+		target = selection.low_cover_attack_target(point.position, context.known_target_points(threat))
+		if not target.is_finite(): return {}
+	var checked: Dictionary = selection.assess_attack_point(point.position, point.body, target, target, false)
 	if not checked.usable: return {}
-	var path: PackedVector3Array = selection._path_to(actor.global_position, point.position)
+	var path: PackedVector3Array = context.routes.planning_path(actor.global_position, point.position)
 	if path.is_empty(): return {}
 	var route: Dictionary = context.spatial.assess_route(context, path, threat, 1.0, context.spatial._reload_seconds(context), context.sees_player)
 	var remaining: float = maxf(0.0, context.utility_horizon_seconds - route.seconds)
@@ -238,3 +252,8 @@ func tick(delta: float, visible: bool) -> Dictionary:
 	context.state = context.State.HOLD_POSITION if phase == Phase.HOLD else context.State.REPOSITION
 	_running = is_active()
 	return motion(direction, 1.0, Vector3.INF, {"owner": action_id, "mode": &"visible"})
+
+func route_tick(delta: float, visible: bool) -> Dictionary:
+	_remaining = maxf(0.0, _remaining - delta)
+	if _remaining <= 0.0 or not valid(visible): _running = false
+	return motion(Vector3.ZERO)

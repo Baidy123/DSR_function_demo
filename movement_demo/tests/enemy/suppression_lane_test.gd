@@ -66,6 +66,7 @@ func _run() -> void:
 	enemy.global_position = Vector3(15.281994,0.0009416,1.8143523)
 	ai.last_seen_position = Vector3(15.788537,0.0008406,4.672626)
 	ai.last_known_position = ai.last_seen_position
+	ai.context.publish_suppression_evidence(&"visual_loss", ai.last_seen_position) # A new scenario supplies a new observed-loss event.
 	ai.is_alerted = true
 	ai.has_visual_memory = true
 	enemy.cancel_reload()
@@ -74,7 +75,15 @@ func _run() -> void:
 	check(action.utility_available(), "用户现场普通压制不再被最大散布整体否决")
 	preload("res://tests/enemy/enemy_fire_fixture.gd").set_training_action(ai,&"exit_suppression",true)
 	var exits = ai.actions[&"exit_suppression"]
-	check(exits.utility_available(), "用户现场出口不再因散布擦墙而整体失效")
+	check(not exits.utility_available(), "现场线索仅在墙端附近且无可靠遮挡归属时不误压出口")
+	# 单端执行仍在同一原场景验证，但新线索必须真实处于 CoverA 背侧。
+	var actual_cover = ai.navigation_region.get_node("Environment/CoverA")
+	var actual_box: CollisionShape3D = actual_cover.get_node("CollisionShape3D")
+	var half: Vector3 = actual_box.shape.size * 0.5
+	ai.last_seen_position = actual_box.to_global(Vector3(half.x + 0.6, -half.y, 0.0))
+	ai.last_known_position = ai.last_seen_position
+	ai.context.publish_suppression_evidence(&"visual_loss", ai.last_seen_position)
+	check(ai.cover_selection.confirmed_suppression_cover(ai.last_seen_position) == actual_cover and exits.utility_available(), "实际遮挡明确后出口仍不因最大散布擦墙而失效")
 	# 横墙只隔住负Z端；通过真实碰撞制造单端，而非只清空候选数组。
 	var end_wall := StaticBody3D.new()
 	var end_collision := CollisionShape3D.new()

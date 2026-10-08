@@ -76,8 +76,8 @@ func update_shooting(delta: float, sees_player: bool, movement_requested: bool) 
 		fire_decision.reset()
 		actor.update_weapon(delta)
 		return
-	var point: Vector3 = context.player.global_position + Vector3.UP * 0.8
-	if actor.get_shot_origin().distance_to(point) > actor.weapon.fire_range:
+	var point: Vector3 = context.perception.visible_aim_position(visible_target)
+	if not point.is_finite() or actor.get_shot_origin().distance_to(point) > actor.weapon.fire_range:
 		fire_reaction_elapsed = 0.0
 		fire_decision.reset()
 		actor.update_weapon(delta)

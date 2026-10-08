@@ -16,6 +16,8 @@ var _pending: Array[Dictionary] = []
 var _results: Array[Dictionary] = []
 var _cursor: int = 0
 var _known_target: Vector3
+var _last_known_feet: Vector3
+var _known_target_points := PackedVector3Array()
 @onready var selection = get_parent()
 
 
@@ -44,7 +46,7 @@ func _physics_process(delta: float) -> void:
 		if _elapsed > 0.0:
 			return
 		# 整轮使用同一份目击信息，避免玩家移动时混合不同方向的评估。
-		_known_target = ai.last_seen_position + Vector3.UP * 0.8
+		_capture_observation(ai)
 		for region in get_tree().get_nodes_in_group("cover_region"):
 			if ai.navigation_region.is_ancestor_of(region):
 				_pending.append_array(selection.attack_cells(region, _known_target))
@@ -58,7 +60,7 @@ func _physics_process(delta: float) -> void:
 		if not is_instance_valid(candidate.cover):
 			clear()
 			return
-		_results.append(selection.assess_attack_cell(candidate, _known_target, _known_target))
+		_results.append(selection.assess_attack_cell(candidate, _known_target, _known_target, _known_target_points))
 		_cursor += 1
 		if Time.get_ticks_usec() - started >= 2500:
 			break
@@ -81,15 +83,21 @@ func refresh() -> void:
 	if not debug_settings.enabled or not selection.debug_attack_points or selection.enemy.is_dead or not ai.is_arena_active() or not ai.is_alerted or not ai.has_visual_memory:
 		clear()
 		return
-	# 身体中心高度与现有玩家瞄准点一致；失去视野后冻结在最后目击位置。
-	var known_target: Vector3 = ai.last_seen_position + Vector3.UP * 0.8
-	assessments = selection.get_attack_assessments(known_target, known_target)
+	# 与实际攻击点评估使用同一已知目标语义；失视后不查询隐藏玩家实时姿态。
+	_capture_observation(ai)
+	assessments = selection.get_attack_assessments(_known_target, _known_target, _known_target_points)
 	_draw_results()
 	_elapsed = 0.25
 
 
+func _capture_observation(ai) -> void:
+	_last_known_feet = ai.last_seen_position
+	_known_target = ai.known_target_point(_last_known_feet)
+	_known_target_points = ai.known_target_points(_last_known_feet)
+
+
 func _draw_results() -> void:
-	# 同一网格填充扇环小区域；绿色是合格区域，暗红是内圈禁用区，橙色是其余候选区。
+	# 同一网格填充高墙扇环或低墙外围环带；低墙不绘制墙角禁用区。
 	var summaries := {}
 	var mesh := ImmediateMesh.new()
 	if not assessments.is_empty():
@@ -155,6 +163,7 @@ func clear() -> void:
 	assessments.clear()
 	_pending.clear()
 	_results.clear()
+	_known_target_points.clear()
 	_cursor = 0
 	_elapsed = 0.0
 	if is_instance_valid(_markers):

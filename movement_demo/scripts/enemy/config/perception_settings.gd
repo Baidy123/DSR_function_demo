@@ -35,3 +35,17 @@ func _init() -> void:
 	set(value):
 		reload_memory_seconds = value
 		mark_override(&"reload_memory_seconds")
+
+## Optional non-visual exact clue, separately authorized for finite suppression.
+@export var close_cover_intelligence_enabled := true:
+	set(value):
+		close_cover_intelligence_enabled = value
+		mark_override(&"close_cover_intelligence_enabled")
+@export_range(0.5, 5.0, 0.1) var close_cover_intelligence_distance := 2.0:
+	set(value):
+		close_cover_intelligence_distance = value
+		mark_override(&"close_cover_intelligence_distance")
+@export_range(0.5, 20.0, 0.5) var close_cover_intelligence_cooldown := 4.0:
+	set(value):
+		close_cover_intelligence_cooldown = value
+		mark_override(&"close_cover_intelligence_cooldown")

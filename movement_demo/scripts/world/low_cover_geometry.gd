@@ -56,6 +56,8 @@ static func query_vault_at(actor: CollisionObject3D, cover: Node3D, from: Vector
 	var scale_axis: float = basis[axis].length()
 	var scale_along: float = basis[along].length()
 	var radius := _radius(actor)
+	var vault_height: float = actor.get_posture_body_height(true) if actor.has_method("get_posture_body_height") else VAULT_HEIGHT
+	var standing_height: float = actor.get_posture_body_height(false) if actor.has_method("get_posture_body_height") else STANDING_HEIGHT
 	var side := signf(point[axis])
 	if side == 0.0 or absf(point[axis]) < half[axis]: return _failure("inside_wall")
 	var normal: Vector3 = basis[axis].normalized() * side
@@ -76,14 +78,14 @@ static func query_vault_at(actor: CollisionObject3D, cover: Node3D, from: Vector
 	if absf(landing.y - from.y) > 0.35: return _failure("landing_height")
 	var start_ground := _ray(actor, from + Vector3.UP * 0.1, from - Vector3.UP * 0.15, ignore_characters)
 	if start_ground.is_empty() or start_ground.normal.dot(Vector3.UP) < 0.8: return _failure("entry_ground")
-	if not Geometry.can_occupy(actor, landing, STANDING_HEIGHT, radius, ignore_characters): return _failure("landing_space")
+	if not Geometry.can_occupy(actor, landing, standing_height, radius, ignore_characters): return _failure("landing_space")
 	var lift: float = top + 0.06
 	var points := PackedVector3Array([from, Vector3(from.x, lift, from.z), Vector3(landing.x, lift, landing.z), landing])
 	for index in 3:
-		if not Geometry.can_sweep(actor, points[index], points[index + 1], VAULT_HEIGHT, radius, ignore_characters): return _failure("blocked_arc")
+		if not Geometry.can_sweep(actor, points[index], points[index + 1], vault_height, radius, ignore_characters): return _failure("blocked_arc")
 	var distance := from.distance_to(points[1]) + points[1].distance_to(points[2]) + points[2].distance_to(landing)
 	return {"valid": true, "reason": "", "cover": cover, "entry": from, "exit": landing, "points": points,
-		"duration": maxf(maxf(duration, 0.2), distance / 8.0), "height": VAULT_HEIGHT}
+		"duration": maxf(maxf(duration, 0.2), distance / 8.0), "height": vault_height}
 
 static func sample_vault(plan: Dictionary, progress: float) -> Vector3:
 	var points: PackedVector3Array = plan.get("points", PackedVector3Array())
@@ -110,9 +112,13 @@ static func proximity_cover(actor: CollisionObject3D, target: CollisionObject3D,
 	for axis in [0, 2]:
 		var other: int = 2 if axis == 0 else 0
 		var scale_axis: float = collision.global_basis[axis].length()
+		var scale_along: float = collision.global_basis[other].length()
 		if a[axis] * b[axis] >= 0.0: continue
 		if absf(a[axis]) < half[axis] or absf(b[axis]) < half[axis]: continue
-		if absf(a[other]) > half[other] or absf(b[other]) > half[other]: continue
+		# A capsule can still be hidden at the wall end while its centre lies
+		# just beyond the box. Keep the real intervening-wall ray above, but
+		# measure end overlap using each body's physical horizontal radius.
+		if absf(a[other]) > half[other] + _radius(actor) / scale_along or absf(b[other]) > half[other] + _radius(target) / scale_along: continue
 		if maxf(absf(a[axis]) - half[axis], absf(b[axis]) - half[axis]) * scale_axis > 1.1: continue
 		same_wall = true
 	if not same_wall: return {}

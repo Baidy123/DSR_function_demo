@@ -42,7 +42,8 @@ func _run() -> void:
 	player.global_position = Vector3(20.8, 0, -2)
 	ai.is_alerted = true
 	ai.has_visual_memory = true
-	ai.last_seen_position = Vector3(22.8, 0, -5.5)
+	# 新归属规则要求冻结线索确实在墙后，不能仅靠近端部。
+	ai.last_seen_position = Vector3(20.8, 0, -2)
 	ai.last_known_position = ai.last_seen_position
 	ai.utility_unseen_seconds = 0.0
 	exits = ai.actions[&"exit_suppression"]
@@ -114,7 +115,7 @@ func _run() -> void:
 	ai.last_seen_position = Vector3(22.8, 0, -2)
 	await _sync()
 	check(not exits.utility_available(), "记忆位于墙正面中部时不推断为墙后玩家出口")
-	ai.last_seen_position = Vector3(22.8, 0, -5.5)
+	ai.last_seen_position = Vector3(20.8, 0, -2)
 	# 无关掩体虽靠近记忆，但被其他实体遮住，不能取代可信目标掩体。
 	var irrelevant = load("res://scenes/world/cover.tscn").instantiate()
 	ai.navigation_region.add_child(irrelevant)
@@ -125,7 +126,7 @@ func _run() -> void:
 	wall.get_node("CollisionShape3D").shape.size = Vector3(0.7, 2.2, 0.7)
 	wall.collision_layer = 1
 	await _sync()
-	check(exits._prepare_targets(ai.last_seen_position + Vector3.UP * 0.8) and exits.target_cover == cover, "无关近墙不遮挡推断藏身点时跳过并继续检查可信掩体")
+	check(exits._prepare_targets(ai.last_seen_position + Vector3.UP * 0.8) and exits.target_cover == cover, "无关近墙不遮挡冻结线索时只保留实际遮挡掩体")
 	irrelevant.collision_layer = 0
 	irrelevant.remove_from_group("cover_region")
 	wall.collision_layer = 0
@@ -134,7 +135,7 @@ func _run() -> void:
 	cover.scale = Vector3(1.3, 1, 0.8)
 	var box = cover.get_node("CollisionShape3D")
 	enemy.global_position = box.to_global(Vector3(2.5, -1.1, 0))
-	ai.last_seen_position = box.to_global(Vector3(0.8, -1.1, -3.5))
+	ai.last_seen_position = box.to_global(Vector3(-1.2, -1.1, 0))
 	await _sync()
 	check(exits._prepare_targets(ai.last_seen_position + Vector3.UP * 0.8) and not exits.first_exit.is_empty() and not exits.second_exit.is_empty(), "旋转和非均匀缩放后两端通道仍可用")
 	all_at_exits = true
@@ -145,7 +146,7 @@ func _run() -> void:
 	cover.rotation = Vector3.ZERO
 	cover.scale = Vector3.ONE
 	enemy.global_position = Vector3(22, 0, -7)
-	ai.last_seen_position = Vector3(22.8, 0, -5.2)
+	ai.last_seen_position = Vector3(22, 0, 1.8)
 	await _sync()
 	check(exits._prepare_targets(ai.last_seen_position + Vector3.UP * 0.8), "从短边观察时也能推断出口")
 	all_at_exits = true
@@ -164,7 +165,7 @@ func _run() -> void:
 
 func _check_turning() -> void:
 	enemy.global_position = Vector3(24.5, 0, -2)
-	ai.last_seen_position = Vector3(22.8, 0, -5.5)
+	ai.last_seen_position = Vector3(20.8, 0, -2)
 	player.global_position = Vector3(20.8, 0, -2)
 	await _sync()
 	exits.reset()

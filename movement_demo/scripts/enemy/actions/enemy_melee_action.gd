@@ -8,6 +8,7 @@ func collect_candidates(visible: bool) -> Array[Dictionary]:
 	if path.is_empty(): return []
 	var candidate := option({}, 0.0, 0.0)
 	candidate.outcome = Approach.contact_outcome(context, path)
+	candidate.route_target = path[path.size() - 1]
 	return [candidate]
 
 func validate(_candidate: Dictionary, visible: bool) -> bool:

@@ -49,6 +49,7 @@ func _run() -> void:
 	player.combat.request_reload()
 	context.update_evidence(0.5, false)
 	check(context.observed_reload_window() == 0.0, "未目击的墙后换弹不会生成机会")
+	await physics_frame # Synchronize the moved collider before checking actual torso visibility.
 	context.update_evidence(0.3, true)
 	check(context.observed_reload_window() > 0.0, "重新目击可以重新形成证据")
 	player.combat.cancel_reload()

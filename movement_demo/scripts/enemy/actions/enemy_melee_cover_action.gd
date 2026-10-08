@@ -29,7 +29,7 @@ func evaluation_priority_count() -> int:
 
 func evaluate_point(point: Variant) -> Dictionary:
 	if not _has_recent_target() or not _valid_cover(point): return {}
-	var incoming: PackedVector3Array = selection._path_to(actor.global_position, point.hide)
+	var incoming: PackedVector3Array = context.routes.planning_path(actor.global_position, point.hide)
 	var best := _choose_exit(_exit_options(point, incoming, actor.global_position))
 	if best.is_empty(): return {}
 	var destination: Dictionary = point.duplicate()
@@ -69,7 +69,7 @@ func _advance_candidate(destination: Dictionary, continuing: bool) -> Dictionary
 	var minimum := maxf(0.1, float(_setting(&"cover_minimum_progress", 0.6)))
 	var sheltered_start: bool = context._horizontal_distance(destination.hide) <= 0.6 and selection._center_hidden_by_cover(actor.global_position, target + Vector3.UP * 0.8, destination.body)
 	if not continuing and progress < minimum and not sheltered_start: return {}
-	var path: PackedVector3Array = selection._path_to(actor.global_position, destination.hide)
+	var path: PackedVector3Array = context.routes.planning_path(actor.global_position, destination.hide)
 	var exit_point: Vector3 = _planned_exit if continuing else destination.get("exit", Vector3.INF)
 	if not exit_point.is_finite(): return {}
 	# 可以从已到达的掩体继续进攻；仍要求出口能推进，不重新跑回原地躲藏。
@@ -89,7 +89,7 @@ func _reacquire_candidate(destination: Dictionary) -> Dictionary:
 		return _charge_candidate(destination, _charge_seconds(), true)
 	var point: Vector3 = transfer.peek_position
 	if context.is_utility_destination_blocked(point) or not context.is_position_free(point): return {}
-	var path: PackedVector3Array = selection._path_to(actor.global_position, point)
+	var path: PackedVector3Array = context.routes.planning_path(actor.global_position, point)
 	if path.is_empty() or not selection._peek_has_los(point, transfer.look_position): return {}
 	var route: Dictionary = context.spatial.assess_route(context, path, transfer.look_position, transfer.movement_multiplier() if transfer.phase == transfer.Phase.PEEK_OUT else _exit_speed(), 0.0)
 	var horizon: float = context.utility_horizon_seconds

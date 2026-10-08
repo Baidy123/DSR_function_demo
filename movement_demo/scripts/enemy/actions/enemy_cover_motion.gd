@@ -52,6 +52,8 @@ var cover_detour_arrival_distance: float:
 
 # 命中通知先于同一枪的近身来弹通知；本帧退出躲藏后不再被后者重新送回掩体。
 
+var standing_peek := false
+var crouch_hide := false
 var phase: Phase = Phase.NONE
 var hide_position: Vector3
 var peek_position: Vector3
@@ -76,6 +78,7 @@ var cover_detour_retries: int = 0
 
 
 func reset() -> void:
+	standing_peek = false
 	phase = Phase.NONE
 	timer = 0.0
 	hide_position = enemy.global_position
@@ -121,6 +124,10 @@ func step(delta: float, sees_player: bool) -> Vector3:
 	timer = maxf(0.0, timer - timer_delta)
 
 	if phase == Phase.HIDE:
+		return Vector3.ZERO
+
+	if standing_peek and enemy.body_motion.amount > 0.0001:
+		if timer <= 0.0: _finish(sees_player)
 		return Vector3.ZERO
 
 	if phase == Phase.WATCH:
@@ -262,20 +269,23 @@ func start_reload_transfer(destination: Dictionary, known_position: Vector3, ret
 	reset()
 	hide_position = destination.hide
 	active_cover_body = destination.body
+	crouch_hide = destination.get("crouch", false)
 	look_position = known_position
-	threat_origin = known_position + Vector3.UP * 0.8
+	threat_origin = enemy.get_posture_eye_position(false, known_position)
 	_start_move(Phase.RUN_TO_COVER, hide_position, retreat)
 	_refresh_move_timer(hide_position)
 
 
 func start_utility_peek(destination: Dictionary, known_position: Vector3, speed_multiplier: float = -1.0) -> void:
 	reset()
+	standing_peek = destination.get("stand_peek", false)
 	_peek_speed_override = speed_multiplier
 	hide_position = destination.hide
 	peek_position = destination.position
 	active_cover_body = destination.body
+	crouch_hide = destination.get("crouch", false)
 	look_position = known_position
-	threat_origin = known_position + Vector3.UP * 0.8
+	threat_origin = enemy.get_posture_eye_position(false, known_position)
 	_start_move(Phase.PEEK_OUT, peek_position)
 
 
@@ -529,7 +539,7 @@ func _peek_has_los(point: Vector3) -> bool:
 
 
 func _selected_cover_blocks(point: Vector3, origin: Vector3) -> bool:
-	return selection._selected_cover_blocks(point, origin, active_cover_body)
+	return selection._selected_cover_blocks(point, origin, active_cover_body, crouch_hide)
 
 
 var context
@@ -551,3 +561,6 @@ func _setting(key: StringName, fallback: Variant) -> Variant:
 
 func _set_setting(key: StringName, value: Variant) -> void:
 	context.training.set_setting(&"cover", key, value)
+
+func wants_crouch() -> bool:
+	return crouch_hide and phase in [Phase.RUN_TO_COVER, Phase.HIDE] and context._horizontal_distance(hide_position) <= 0.75

@@ -2,6 +2,12 @@ extends SceneTree
 
 class Body extends Node3D:
 	var move_speed: float = 1.0
+	func get_posture_eye_position(crouched: bool, feet: Vector3 = Vector3.INF) -> Vector3:
+		return (global_position if not feet.is_finite() else feet) + Vector3.UP * (0.88 if crouched else 1.55)
+	func get_posture_muzzle_position(crouched: bool, feet: Vector3 = Vector3.INF) -> Vector3:
+		return (global_position if not feet.is_finite() else feet) + Vector3.UP * (0.72 if crouched else 1.30)
+	func get_posture_body_height(crouched: bool) -> float:
+		return 1.0 if crouched else 1.75
 
 class Context extends Node:
 	var utility_horizon_seconds: float = 4.0

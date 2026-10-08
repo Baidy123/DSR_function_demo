@@ -18,6 +18,7 @@ var cover_selection: Node
 var fire
 var melee
 var spatial
+var routes = preload("res://scripts/enemy/services/enemy_route_planner.gd").new()
 var training: EnemyTrainingProfile
 var unit: EnemyUnitProfile
 var permitted: Dictionary = {}
@@ -28,6 +29,7 @@ var utility_risk_weight := 3.0
 var utility_information_weight := 1.0
 var utility_threat_half_life_seconds := 4.0
 var avoid_position := Vector3.INF
+var _posture_shapes: Dictionary = {}
 var _exposure_frame := -1
 var _exposure_cache: Dictionary = {}
 var _exposure_safe_distance := 3.0
@@ -42,6 +44,7 @@ var reload_risk_weight: float:
 
 func setup(body: CharacterBody3D, perception_node: Node, selection_node: Node) -> void:
 	actor = body
+	routes.context = self
 	agent = body.get_node("NavigationAgent3D")
 	refresh_environment()
 	player = body.get_tree().get_first_node_in_group("player")
@@ -113,7 +116,7 @@ func environment_ready() -> bool:
 		var shape := arena_zone.get_node_or_null("CollisionShape3D") as CollisionShape3D
 		var inside := false
 		if shape != null and not shape.disabled and shape.shape is BoxShape3D:
-			inside = AABB(-shape.shape.size * 0.5, shape.shape.size).has_point(shape.to_local(_spawn_position + Vector3.UP * 0.8))
+			inside = AABB(-shape.shape.size * 0.5, shape.shape.size).has_point(shape.to_local(_spawn_position + Vector3.UP * actor.get_posture_body_height(false) * 0.5))
 		var point := NavigationServer3D.region_get_closest_point(navigation_region.get_rid(), _spawn_position)
 		_spawn_valid = inside and _horizontal_distance_between(point, _spawn_position) <= 0.05 and absf(point.y - _spawn_position.y) <= 0.5 and is_position_free(_spawn_position)
 		_spawn_checked = true
@@ -172,9 +175,11 @@ func update_evidence(delta: float, visible: bool) -> void:
 		utility_unseen_seconds += delta
 	if visible != was_seeing_player:
 		if not visible:
+			publish_suppression_evidence(&"visual_loss", last_seen_position, perception.last_observed_cover(last_seen_position))
 			utility_suppression_pending = not is_executing_cover_plan()
 		event_received.emit(&"visibility", {"visible": visible})
 		invalidate_utility()
+	perception.update_close_cover(delta)
 	was_seeing_player = visible
 	if state == State.IDLE:
 		patrol_pause_timer = maxf(0.0, patrol_pause_timer - delta)
@@ -216,11 +221,11 @@ func _investigate_attack(position: Vector3) -> void:
 func notice_shot(origin: Vector3, endpoint: Vector3) -> void:
 	if not is_arena_active() or actor.is_dead:
 		return
-	var chest := actor.global_position + Vector3.UP * 0.8
+	var chest: Vector3 = actor.get_torso_position()
 	var closest := Geometry3D.get_closest_point_to_segment(chest, origin, endpoint)
 	if chest.distance_to(closest) > float(setting(&"cover", &"shot_radius", 1.5)) or not cover_selection.has_clear_line(chest, closest):
 		return
-	_investigate_attack(origin - Vector3.UP * 0.8)
+	_investigate_attack(Vector3(origin.x, actor.global_position.y, origin.z))
 	nearby_shot_pressure = minf(1.0, nearby_shot_pressure + 0.15)
 	event_received.emit(&"near_shot", {})
 	invalidate_utility()
@@ -243,6 +248,10 @@ func is_utility_destination_blocked(point: Vector3) -> bool:
 func reset_memory() -> void:
 	evidence_elapsed_seconds = 0.0
 	memory_generation += 1
+	suppression_evidence = {}
+	exact_cover_clue = {}
+	suppression_consumed_id = -1
+	if perception != null: perception.reset_contact()
 	reload_observation_elapsed = 0.0
 	observed_reload_remaining = 0.0
 	investigation_hint_allowed = true
@@ -273,12 +282,19 @@ func _horizontal_distance(point: Vector3) -> float:
 func _horizontal_distance_between(a: Vector3, b: Vector3) -> float:
 	return Vector2(a.x - b.x, a.z - b.z).length()
 
-func is_position_free(point: Vector3, include_player: bool = false) -> bool:
+func is_position_free(point: Vector3, include_player: bool = false, crouched: bool = false) -> bool:
 	var collision: CollisionShape3D = actor.get_node("CollisionShape3D")
-	var query = PhysicsShapeQueryParameters3D.new()
-	query.shape = collision.shape
+	var height: float = actor.get_posture_body_height(crouched)
+	var key := Vector2(height, collision.shape.radius)
+	if not _posture_shapes.has(key):
+		var shape := CapsuleShape3D.new()
+		shape.radius = collision.shape.radius
+		shape.height = height
+		_posture_shapes[key] = shape
+	var query := PhysicsShapeQueryParameters3D.new()
+	query.shape = _posture_shapes[key]
 	# 略高于地面，避免把正常接触地板误判成被墙堵住。
-	query.transform = Transform3D(Basis.IDENTITY, point + collision.position + Vector3.UP * 0.05)
+	query.transform = Transform3D(Basis.IDENTITY, point + Vector3.UP * (actor.get_posture_body_height(crouched) * 0.5 + 0.05))
 	query.collision_mask = actor.collision_mask
 	query.exclude = [actor.get_rid()]
 	# 候选点评估排除玩家，不能借碰撞查询感知墙后位置；短段实际避障可包含身体。
@@ -286,13 +302,13 @@ func is_position_free(point: Vector3, include_player: bool = false) -> bool:
 		query.exclude = [actor.get_rid(), player.get_rid()]
 	return actor.get_world_3d().direct_space_state.intersect_shape(query, 1).is_empty()
 
-func _reload_exposure(point: Vector3, threat: Vector3, body_protection: float = -1.0) -> float:
+func _reload_exposure(point: Vector3, threat: Vector3, body_protection: float = -1.0, crouched: bool = false) -> float:
 	var frame := Engine.get_physics_frames()
 	if _exposure_frame != frame:
 		_exposure_frame = frame
 		_exposure_cache.clear()
 		_exposure_safe_distance = maxf(1.0, float(setting(&"tactics", &"ranged_min_distance", 4.0))) if combat_type == CombatType.RANGED else 3.0
-	var key := [point, threat, body_protection]
+	var key := [point, threat, body_protection, crouched]
 	if _exposure_cache.has(key): return _exposure_cache[key]
 	var direction: Vector3 = point - threat
 	direction.y = 0.0
@@ -300,10 +316,10 @@ func _reload_exposure(point: Vector3, threat: Vector3, body_protection: float = 
 	var exposed: float = 1.0 - clampf(body_protection, 0.0, 1.0)
 	if body_protection < 0.0:
 		exposed = 0.0
-		var query: PhysicsRayQueryParameters3D = cover_selection._ray_query(threat + Vector3.UP * 0.8, point + Vector3.UP * 0.8)
+		var query: PhysicsRayQueryParameters3D = cover_selection._ray_query(actor.get_posture_muzzle_position(false, threat), actor.get_posture_eye_position(crouched, point))
 		var space := actor.get_world_3d().direct_space_state
 		for offset: Vector3 in [Vector3.ZERO, side, -side]:
-			query.to = point + Vector3.UP * 0.8 + offset
+			query.to = actor.get_posture_eye_position(crouched, point) + offset
 			if space.intersect_ray(query).is_empty():
 				exposed += 1.0 / 3.0
 	var result := exposed * (1.0 + clampf(1.0 - direction.length() / _exposure_safe_distance, 0.0, 1.0))
@@ -323,3 +339,51 @@ func _reload_risk_aversion() -> float:
 
 
 ## 旧换弹评分接口复用共同窗口；转移期间恢复火力需等到抵达。
+
+
+func publish_suppression_evidence(source: StringName, position: Vector3, cover: Object = null) -> Dictionary:
+	_evidence_serial += 1
+	var duration := maxf(float(setting(&"suppression", &"duration_max", 5.0)), float(setting(&"exit_suppression", &"duration_max", 5.0)))
+	suppression_evidence = {"source": source, "position": position, "captured_at": evidence_elapsed_seconds, "valid_until": evidence_elapsed_seconds + maxf(duration, 0.1), "id": _evidence_serial, "low_cover_context": is_instance_valid(cover) and cover.has_method("is_low_cover") and cover.is_low_cover()}
+	utility_suppression_pending = true
+	return suppression_evidence.duplicate()
+
+func receive_exact_cover_clue(position: Vector3, cover: Object = null) -> void:
+	if not position.is_finite() or sees_player: return
+	exact_cover_clue = publish_suppression_evidence(&"close_cover_exact", position, cover)
+	last_known_position = position
+	is_alerted = true
+	noise_search_origin = Vector3.INF
+	utility_threat_age_seconds = 0.0
+	event_received.emit(&"exact_cover_clue", exact_cover_clue.duplicate())
+	invalidate_utility()
+
+func suppression_basis() -> Dictionary:
+	if not suppression_evidence.is_empty():
+		return suppression_evidence.duplicate() if evidence_elapsed_seconds < float(suppression_evidence.valid_until) else {}
+	# Legacy inspection/test API: visual memory alone never creates a new pending event.
+	if has_visual_memory:
+		return {"source": &"visual_loss", "position": last_seen_position, "captured_at": evidence_elapsed_seconds - utility_unseen_seconds, "valid_until": INF, "id": 0}
+	return {}
+
+func suppression_available(basis: Dictionary) -> bool:
+	return not basis.is_empty() and evidence_elapsed_seconds < float(basis.valid_until) and int(basis.id) != suppression_consumed_id
+
+func consume_suppression(basis: Dictionary) -> void:
+	if int(basis.get("id", 0)) > 0: suppression_consumed_id = int(basis.id)
+	utility_suppression_pending = false
+
+func known_target_point(feet: Vector3) -> Vector3:
+	if sees_player and feet.distance_to(last_known_position) < 0.1 and player.has_method("get_torso_position"):
+		return feet + Vector3.UP * (player.get_torso_position().y - player.global_position.y)
+	return actor.get_posture_eye_position(true, feet)
+
+## Callers may retain this value as one observation snapshot for a preview batch.
+## Hidden targets use a stated standing-height hypothesis, never their live pose.
+func known_target_points(feet: Vector3) -> PackedVector3Array:
+	if sees_player and feet.distance_to(last_known_position) < 0.1 and player.has_method("get_visibility_points"):
+		var points := PackedVector3Array()
+		for point: Vector3 in player.get_visibility_points():
+			if perception._sees_point(point): points.append(point)
+		return points
+	return PackedVector3Array([actor.get_posture_eye_position(false, feet)])

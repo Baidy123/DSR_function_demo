@@ -9,10 +9,10 @@ func assess_options(ai, sees_player: bool) -> Array[Dictionary]:
 	for action in ai.actions.values():
 		if not action.is_enabled(): continue
 		var started := Time.get_ticks_usec()
-		for candidate in action.collect_candidates(sees_player):
+		for candidate in action.expand_route_candidates(action.collect_candidates(sees_player)):
 			var outcome: Dictionary = candidate.get("outcome", {})
 			if candidate.get("id") != action.action_id or outcome.is_empty(): continue
-			var breakdown := score_outcome(ai.context, outcome.get("unavailable_seconds", 0.0), outcome.get("exposed_seconds", 0.0), outcome.get("information_loss", 0.0))
+			var breakdown := score_outcome(ai.context, outcome.get("unavailable_seconds", 0.0), outcome.get("exposed_seconds", 0.0), outcome.get("information_loss", 0.0), outcome.get("preference_credit", 0.0))
 			candidate.cost = breakdown.cost
 			candidate.breakdown = breakdown
 			options.append(candidate)
@@ -28,8 +28,8 @@ func choose_option(options: Array, current: Dictionary = {}) -> Dictionary:
 	return best
 
 
-func score_outcome(context, unavailable_seconds: float, exposed_seconds: float, information_loss: float = 0.0) -> Dictionary:
-	return preload("res://scripts/enemy/enemy_utility_score.gd").score_outcome(context, unavailable_seconds, exposed_seconds, information_loss)
+func score_outcome(context, unavailable_seconds: float, exposed_seconds: float, information_loss: float = 0.0, preference_credit: float = 0.0) -> Dictionary:
+	return preload("res://scripts/enemy/enemy_utility_score.gd").score_outcome(context, unavailable_seconds, exposed_seconds, information_loss, preference_credit)
 
 
 func same_option(a: Dictionary, b: Dictionary) -> bool:
@@ -37,6 +37,7 @@ func same_option(a: Dictionary, b: Dictionary) -> bool:
 		return a.is_empty() and b.is_empty()
 	if a.get("id", &"") != b.get("id", &"") or a.get("plan", &"") != b.get("plan", &"") or a.get("mode", &"") != b.get("mode", &""):
 		return false
+	if a.get("route", {}).get("vault", {}).get("cover") != b.get("route", {}).get("vault", {}).get("cover"): return false
 	var first: Dictionary = a.get("destination", {})
 	var second: Dictionary = b.get("destination", {})
 	if first.is_empty() or second.is_empty():

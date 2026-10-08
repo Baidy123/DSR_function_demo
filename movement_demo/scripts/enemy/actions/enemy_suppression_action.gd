@@ -20,6 +20,19 @@ var target_center: Vector3
 var aim_point: Vector3
 var _clear_targets: Array[Vector3] = []
 var _preview_information_retention: float = 0.0
+var _evidence: Dictionary = {}
+
+func _basis() -> Dictionary:
+	return _evidence if active and not _evidence.is_empty() else context.suppression_basis()
+
+func _evidence_position() -> Vector3:
+	return _basis().get("position", Vector3.INF)
+
+func _freshness() -> float:
+	var basis := _basis()
+	var age := maxf(0.0, context.evidence_elapsed_seconds - float(basis.get("captured_at", 0.0)))
+	return pow(0.5, age / maxf(0.5, context.utility_threat_half_life_seconds))
+
 
 
 
@@ -31,30 +44,34 @@ func is_active() -> bool:
 func utility_available() -> bool:
 	if not is_enabled() or not actor.can_use_firearms():
 		return false
-	if not context.has_visual_memory or actor.ammo.magazine_rounds <= 0 or actor.ammo.is_reloading:
+	if _basis().is_empty() or actor.ammo.magazine_rounds <= 0 or actor.ammo.is_reloading:
 		return false
-	var center: Vector3 = context.last_seen_position + Vector3.UP * 0.8
+	var center: Vector3 = _evidence_position() + Vector3.UP * 0.8
 	# 范围由实际射击样本判断：记忆中心超距时，近侧出口仍可能在射程内。
 	var preview = get_script().new()
 	preview.action_id = action_id
 	preview.definition = definition
 	preview.setup(context, config_section)
+	preview._evidence = _basis()
+	preview.active = true
 	var available: bool = preview._prepare_targets(center)
+	preview._evidence = _basis()
+	preview.active = true
 	_preview_information_retention = preview.information_retention() if available else 0.0
 	return available
 
 ## 近侧出口明显更近、或另一端身体无法通过时，集中压制记忆区域更有效。
 func information_retention() -> float:
-	var geometry: Dictionary = context.cover_selection.suppression_geometry(context.last_seen_position)
+	var geometry: Dictionary = context.cover_selection.suppression_geometry(_evidence_position())
 	if geometry.is_empty(): return 0.0
 	var focus := maxf(1.0 - float(geometry.balance), 1.0 - float(geometry.open_sides) * 0.5)
-	var freshness := pow(0.5, context.utility_unseen_seconds / maxf(0.5, context.utility_threat_half_life_seconds))
+	var freshness := _freshness()
 	return 0.65 * float(geometry.confidence) * focus * freshness
 
 
 ## 执行会把全部射击分配到可射样本，不能再按未被使用的遮挡样本扣除射击时间。
 func utility_fire_fraction() -> float:
-	var center: Vector3 = context.last_seen_position + Vector3.UP * 0.8
+	var center: Vector3 = _evidence_position() + Vector3.UP * 0.8
 	for offset: Vector3 in [Vector3.ZERO, Vector3.RIGHT, Vector3.LEFT, Vector3.FORWARD, Vector3.BACK]:
 		var target: Vector3 = center + offset * target_radius
 		if _can_reach_target(target):
@@ -64,6 +81,7 @@ func utility_fire_fraction() -> float:
 
 func reset() -> void:
 	active = false
+	_evidence = {}
 	remaining = 0.0
 	_clear_targets.clear()
 
@@ -76,13 +94,18 @@ func on_target_lost() -> void:
 		return
 	if not actor.can_use_firearms() or not context.is_arena_active():
 		return
-	if not context.has_visual_memory or context.player.is_dead() or context.player.is_in_dialogue:
+	if _basis().is_empty() or context.player.is_dead() or context.player.is_in_dialogue:
 		return
-	var center: Vector3 = context.last_seen_position + Vector3.UP * 0.8
+	var basis := _basis().duplicate()
+	if not context.suppression_available(basis): return
+	var center: Vector3 = basis.position + Vector3.UP * 0.8
 	if not _prepare_targets(center):
 		return
+	_evidence = basis
+	context.consume_suppression(basis)
 	target_center = center
 	remaining = randf_range(maxf(0.1, duration_min), maxf(maxf(0.1, duration_min), duration_max))
+	remaining = minf(remaining, float(basis.valid_until) - context.evidence_elapsed_seconds)
 	active = true
 	context.state = context.State.HOLD_POSITION
 	actor.agent.target_position = actor.global_position
@@ -97,7 +120,7 @@ func step(delta: float, sees_player: bool) -> Vector3:
 	if sees_player:
 		finish(true)
 		return Vector3.ZERO
-	if not is_enabled() or not actor.can_use_firearms() or not _targets_available():
+	if not is_enabled() or not actor.can_use_firearms() or context.evidence_elapsed_seconds >= float(_evidence.get("valid_until", INF)) or not _targets_available():
 		finish(false)
 		return Vector3.ZERO
 	remaining = maxf(0.0, remaining - maxf(delta, 0.0))
@@ -144,6 +167,7 @@ func _select_aim_point() -> void:
 	var angle := randf() * TAU
 	var radius := sqrt(randf()) * maxf(0.0, target_radius)
 	aim_point = target_center + Vector3(cos(angle), 0.0, sin(angle)) * radius
+	if not _clear_targets.is_empty() and randf() < 0.5: aim_point = _clear_targets.pick_random()
 	# 允许打在远处目标掩体上；只有近处堵枪口才改用核实过的方向。
 	if not _can_reach_target(aim_point) and not _clear_targets.is_empty():
 		aim_point = _clear_targets.pick_random()
@@ -158,21 +182,24 @@ func finish(sees_player: bool) -> void:
 
 
 func collect_candidates(visible: bool) -> Array[Dictionary]:
-	if visible or context.is_executing_cover_plan() or (not active and not context.utility_suppression_pending) or not utility_available():
+	if visible or context.is_executing_cover_plan() or (not active and not context.utility_suppression_pending) or not utility_available() or (not active and not context.suppression_available(_basis())):
 		return []
 	var duration: float = remaining if active else maxf(0.1, duration_min)
 	var horizon: float = context.utility_horizon_seconds
 	var available: float = maxf(0.0, minf(horizon, duration) - context.spatial._ammo_wait(context)) * utility_fire_fraction()
 	var threat: Vector3 = context._known_reload_threat()
 	var information := minf(horizon, duration) * (1.0 - _preview_information_retention)
-	return [option({}, horizon - available, context.spatial._exposure(context, actor.global_position, threat) * horizon, information)]
+	var candidate := option({}, horizon - available, context.spatial._exposure(context, actor.global_position, threat) * horizon, information)
+	candidate["suppression_evidence"] = _basis().duplicate()
+	candidate.outcome.preference_credit = preference_credit()
+	return [candidate]
 
-func validate(_candidate: Dictionary, visible: bool) -> bool:
-	return not visible and is_enabled() and utility_available()
+func validate(candidate: Dictionary, visible: bool) -> bool:
+	var basis: Dictionary = candidate.get("suppression_evidence", _basis())
+	return not visible and is_enabled() and utility_available() and (active or context.suppression_available(basis))
 
 func begin(candidate: Dictionary, visible: bool) -> bool:
 	super.begin(candidate, visible)
-	context.utility_suppression_pending = false
 	on_target_lost()
 	_running = active
 	return active
@@ -189,3 +216,6 @@ func on_event(event: StringName, _data: Dictionary) -> void:
 	if event == &"damage" and _running:
 		reset()
 		_running = false
+
+func preference_credit() -> float:
+	return maxf(0.0, float(context.setting(&"suppression", &"low_cover_point_preference", 1.0))) if _basis().get("low_cover_context", false) else 0.0

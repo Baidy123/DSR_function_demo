@@ -26,6 +26,7 @@ func collect_candidates(visible: bool) -> Array[Dictionary]:
 	if not _running and length > actor.move_speed * multiplier * duration: return []
 	var candidate := option({}, 0.0, 0.0, 0.0, &"burst")
 	candidate.outcome = Approach.contact_outcome(context, path, multiplier, _burst_remaining if _running else duration)
+	candidate.route_target = path[path.size() - 1]
 	return [candidate]
 
 func validate(_candidate: Dictionary, visible: bool) -> bool:
@@ -63,3 +64,11 @@ func reset() -> void:
 
 func state_label() -> String:
 	return "抓住换弹突进" if context.observed_reload_window() > 0.0 else "短程突进"
+
+func route_multiplier() -> float:
+	return maxf(1.0, float(_setting(&"rush_speed_multiplier", 2.5)))
+
+func route_tick(delta: float, visible: bool) -> Dictionary:
+	_burst_remaining = maxf(0.0, _burst_remaining - delta)
+	if not valid(visible): _running = false
+	return motion(Vector3.ZERO, route_multiplier())

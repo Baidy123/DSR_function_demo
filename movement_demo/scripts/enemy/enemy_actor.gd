@@ -2,6 +2,18 @@ extends CharacterBody3D
 
 @onready var debug_settings = get_node("/root/DebugSettings")
 
+const BodyMotion = preload("res://scripts/enemy/services/enemy_body_motion.gd")
+var body_motion = BodyMotion.new()
+@export_group("Posture")
+const standing_height := 1.75
+@export var crouching_height := 1.0
+@export var standing_eye_height := 1.55
+@export var crouching_eye_height := 0.88
+@export var standing_muzzle_height := 1.30
+@export var crouching_muzzle_height := 0.72
+@export var posture_seconds := 0.20
+@export var crouching_speed_multiplier := 0.5
+
 const Ammo = preload("res://scripts/weapons/weapon_ammo.gd")
 const ImpactEffects = preload("res://scripts/systems/effects/impact_effects.gd")
 var ammo = Ammo.new()
@@ -31,8 +43,23 @@ var _melee_hit_used := false
 ## 实际水平移动时发声，0关闭；敌人听觉会忽略自己及队友的声音。
 @export_range(0.0, 100.0, 0.5) var movement_noise_radius: float = 3.0
 ## 执行移动的速度倍率大于 1 时使用，普通移动和慢走使用普通半径。
-@export_range(0.0, 100.0, 0.5) var fast_movement_noise_radius: float = 6.0
+var _legacy_fast_radius := -1.0
+var _fast_multiplier_explicit := false
+@export_storage var fast_movement_noise_radius: float = -1.0:
+	get: return _legacy_fast_radius if _legacy_fast_radius >= 0.0 else movement_noise_radius * fast_noise_multiplier
+	set(value):
+		if not is_finite(value): return
+		if is_node_ready(): _fast_multiplier_explicit = false
+		elif _fast_multiplier_explicit: return
+		_legacy_fast_radius = maxf(0.0, value)
+		if is_node_ready(): _normalize_legacy_noise_radius()
 ## 隔墙衰减与预留音频，留空关闭移动声。
+@export_range(0.0, 4.0, 0.05) var crouching_noise_multiplier := 0.5
+@export_range(0.0, 4.0, 0.05) var fast_noise_multiplier := 2.0:
+	set(value):
+		fast_noise_multiplier = maxf(0.0, value) if is_finite(value) else 0.0
+		_fast_multiplier_explicit = true
+		_legacy_fast_radius = -1.0
 @export var movement_noise: NoiseData = preload("res://resources/noise/movement_noise.tres")
 ## 持续移动时的发声间隔（秒）；刚开始移动立即发声。
 @export_range(0.05, 2.0, 0.05) var movement_noise_interval: float = 0.4
@@ -90,6 +117,8 @@ func _ready() -> void:
 	_shot_rng.randomize()
 	initial_transform = transform
 	initial_body_transform = $Body.transform
+	_normalize_legacy_noise_radius()
+	body_motion.setup(self)
 	reset_target()
 
 
@@ -97,6 +126,10 @@ func _physics_process(delta: float) -> void:
 	if weapon != null and not can_equip_weapon(weapon):
 		push_warning("当前兵种不能装备专用近战武器，已取消攻击并卸下武器。")
 		equip_weapon(null)
+	body_motion.update_posture(delta)
+	if body_motion.active() and _last_move_physics_frame != Engine.get_physics_frames():
+		_last_move_physics_frame = Engine.get_physics_frames()
+		body_motion.advance(delta)
 	melee_cooldown = maxf(0.0, melee_cooldown - maxf(0.0, delta))
 	if is_zero_approx(melee_cooldown): melee_cooldown = 0.0
 	# 未激活或暂停 AI 时仍能承受物理击退；正常移动过的帧不会重复移动。
@@ -106,8 +139,13 @@ func _physics_process(delta: float) -> void:
 
 ## 执行方向与速度；调用者负责决定目的地。
 func move_character(direction: Vector3, delta: float, speed_multiplier: float = 1.0) -> void:
-	if is_dead or get_tree().paused:
+	if get_tree().paused: return
+	if body_motion.active():
+		if _last_move_physics_frame == Engine.get_physics_frames(): return
+		_last_move_physics_frame = Engine.get_physics_frames()
+		body_motion.advance(delta)
 		return
+	if is_dead: return
 	# 自主移动与受击外力分开：任何行为都不能绕过前摇限制。
 	if not can_move(): direction = Vector3.ZERO
 	speed_multiplier = get_effective_movement_multiplier(speed_multiplier)
@@ -127,17 +165,18 @@ func move_character(direction: Vector3, delta: float, speed_multiplier: float = 
 
 ## 条件查询与实际执行共用；不读取 AI、行为 ID 或控制器阶段。
 func can_move() -> bool:
-	return not is_dead and not get_tree().paused and (not melee_active or _melee_hit_used)
+	return not is_dead and not is_vaulting() and not get_tree().paused and (not melee_active or _melee_hit_used)
 
 
 func can_turn() -> bool:
-	return not is_dead and not get_tree().paused and not melee_active
+	return not is_dead and not is_vaulting() and not get_tree().paused and not melee_active
 
 
 ## 换弹可走可转，但快速移动最多按普通速度执行；慢走保持原倍率。
 ## 行动层估算移动时限时也使用同一限制。
 func get_effective_movement_multiplier(requested: float) -> float:
-	return minf(requested, 1.0) if ammo.is_reloading or melee_active else requested
+	var effective := minf(requested, 1.0) if ammo.is_reloading or melee_active else requested
+	return effective * lerpf(1.0, crouching_speed_multiplier, body_motion.amount)
 
 
 func _update_movement_noise(delta: float, before_move: Vector3, fast_movement: bool = false) -> void:
@@ -148,7 +187,7 @@ func _update_movement_noise(delta: float, before_move: Vector3, fast_movement: b
 	_movement_noise_timer = maxf(0.0, _movement_noise_timer - delta)
 	if _movement_noise_timer <= 0.0:
 		if movement_noise != null:
-			movement_noise.emit_from(self, fast_movement_noise_radius if fast_movement else movement_noise_radius)
+			movement_noise.emit_from(self, get_movement_noise_radius(fast_movement))
 		_movement_noise_timer = maxf(0.05, movement_noise_interval)
 
 
@@ -179,7 +218,8 @@ func receive_hit(damage: float, attacker_position: Vector3 = Vector3.INF) -> voi
 		clear_aim()
 		velocity = Vector3.ZERO
 		remove_from_group("combat_target")
-		$CollisionShape3D.set_deferred("disabled", true)
+		if is_vaulting(): body_motion.interrupt()
+		else: $CollisionShape3D.set_deferred("disabled", true)
 		$FrontMarker.hide()
 		var presentation := get_node_or_null("Presentation")
 		if presentation == null or not presentation.has_method("has_model") or not presentation.has_model():
@@ -200,6 +240,7 @@ func receive_melee_hit(damage: float, attacker_position: Vector3, distance: floa
 	weapon_recovery_timer = maxf(0.0, weapon.get_aim_settings(false).delay) if weapon != null else 0.0
 	_melee_accuracy_frame = Engine.get_physics_frames()
 	if is_dead: return
+	if is_vaulting(): body_motion.interrupt()
 	var direction := global_position - attacker_position
 	direction.y = 0.0
 	if direction.is_zero_approx():
@@ -226,6 +267,7 @@ func _clear_hit_push() -> void:
 
 
 func reset_target() -> void:
+	body_motion.reset()
 	cancel_melee()
 	melee_cooldown = 0.0
 	melee_count = 0
@@ -288,9 +330,9 @@ func update_weapon(delta: float, visible_point: Vector3 = Vector3.INF) -> void:
 	if not can_use_firearms():
 		cancel_reload()
 	var was_reloading: bool = ammo.is_reloading
-	ammo.advance_reload(elapsed)
+	if not is_vaulting(): ammo.advance_reload(elapsed)
 	_refresh_status_label()
-	var can_aim: bool = can_use_firearms() and visible_point.is_finite()
+	var can_aim: bool = not is_vaulting() and can_use_firearms() and visible_point.is_finite()
 	if was_reloading:
 		_hold_reload_accuracy()
 		_weapon_move_distance = 0.0
@@ -354,7 +396,7 @@ func can_equip_weapon(data: WeaponData) -> bool:
 
 ## 查询身体／武器执行条件，不决定换弹时机。敌人备弹无限、弹匣有限。
 func can_reload() -> bool:
-	return not melee_active and can_use_firearms() and not get_tree().paused and ammo.can_reload()
+	return not is_vaulting() and not melee_active and can_use_firearms() and not get_tree().paused and ammo.can_reload()
 
 
 func request_reload() -> bool:
@@ -419,7 +461,7 @@ func _update_weapon_stability(delta: float, visible_point: Vector3) -> void:
 
 
 func get_shot_origin() -> Vector3:
-	return global_position + Vector3.UP * 0.8
+	return get_muzzle_position()
 
 
 ## AI选择与基础执行共用枪械资格；不依赖AI、Training或战术动作清单。
@@ -433,6 +475,7 @@ func can_use_firearms() -> bool:
 
 ## 纯查询执行条件；让评分只在枪械确实能发射时积累主动等待时间。
 func can_fire() -> bool:
+	if is_vaulting(): return false
 	if get_tree().paused or melee_active or not can_use_firearms() or not ammo.can_fire():
 		return false
 	if not has_aim or not aim_acquired or shot_cooldown > 0.0:
@@ -447,6 +490,7 @@ func can_fire() -> bool:
 
 ## 敌人基础近战能力，不查找玩家、读取 AI 或决定何时使用。
 func can_melee() -> bool:
+	if is_vaulting() or body_motion.amount > 0.0001: return false
 	return not is_dead and not get_tree().paused and weapon != null and can_equip_weapon(weapon) and weapon.melee_enabled and not melee_active and melee_cooldown <= 0.0
 
 
@@ -477,7 +521,7 @@ func melee_target_reachable(target: Node3D, settings: Dictionary, direction: Vec
 	offset.y = 0.0
 	if offset.length() > float(settings.range): return false
 	if not offset.is_zero_approx() and direction.dot(offset.normalized()) < cos(deg_to_rad(float(settings.angle) * 0.5)): return false
-	var query := PhysicsRayQueryParameters3D.create(global_position + Vector3.UP * 0.8, target.global_position + Vector3.UP * 0.8, 1, [get_rid()])
+	var query := PhysicsRayQueryParameters3D.create(get_torso_position(), target.get_torso_position() if target.has_method("get_torso_position") else target.global_position + Vector3.UP * 0.8, 1, [get_rid()])
 	query.hit_from_inside = true
 	var hit := get_world_3d().direct_space_state.intersect_ray(query)
 	return not hit.is_empty() and (hit.collider == target or target.is_ancestor_of(hit.collider))
@@ -563,3 +607,57 @@ func _draw_shot(origin: Vector3, endpoint: Vector3, hit_player: bool) -> void:
 	line.material_override = material
 	get_tree().current_scene.add_child(line)
 	get_tree().create_timer(0.12, false).timeout.connect(line.queue_free)
+
+
+func request_crouch(value: bool) -> void:
+	body_motion.request_crouch(value)
+
+func begin_vault(plan: Dictionary) -> bool:
+	return body_motion.begin(plan)
+
+func is_vaulting() -> bool:
+	return body_motion.active()
+
+func is_crouching() -> bool:
+	return not is_vaulting() and body_motion.amount >= 0.9999
+
+func get_body_height() -> float:
+	return body_motion.height()
+
+func get_posture_eye_position(crouched: bool, feet: Vector3 = Vector3.INF) -> Vector3:
+	return (global_position if not feet.is_finite() else feet) + Vector3.UP * (crouching_eye_height if crouched else standing_eye_height)
+
+func get_posture_muzzle_position(crouched: bool, feet: Vector3 = Vector3.INF) -> Vector3:
+	return (global_position if not feet.is_finite() else feet) + Vector3.UP * (crouching_muzzle_height if crouched else standing_muzzle_height)
+
+func get_eye_position() -> Vector3:
+	return global_position + Vector3.UP * lerpf(standing_eye_height, crouching_eye_height, body_motion.amount)
+
+func get_muzzle_position() -> Vector3:
+	return global_position + Vector3.UP * lerpf(standing_muzzle_height, crouching_muzzle_height, body_motion.amount)
+
+func get_torso_position() -> Vector3:
+	return global_position + Vector3.UP * get_body_height() * 0.6
+
+func get_visibility_points() -> PackedVector3Array:
+	var shoulder := get_eye_position() - Vector3.UP * 0.12
+	return PackedVector3Array([get_eye_position(), shoulder + global_basis.x * 0.22, shoulder - global_basis.x * 0.22, get_torso_position()])
+
+func get_movement_noise_radius(fast: bool = false) -> float:
+	if is_crouching(): return movement_noise_radius * crouching_noise_multiplier
+	# Explicit legacy radii remain valid; the default radius follows the new multiplier.
+	if fast: return fast_movement_noise_radius
+	return movement_noise_radius
+
+func get_posture_body_height(crouched: bool) -> float:
+	return maxf(crouching_height, $CollisionShape3D.shape.radius * 2.0) if crouched else standing_height
+
+func _normalize_legacy_noise_radius() -> void:
+	if _legacy_fast_radius < 0.0: return
+	if movement_noise_radius > 0.0:
+		fast_noise_multiplier = _legacy_fast_radius / movement_noise_radius
+	elif is_zero_approx(_legacy_fast_radius): fast_noise_multiplier = 0.0
+
+func _validate_property(property: Dictionary) -> void:
+	if property.name == "fast_movement_noise_radius" and _legacy_fast_radius < 0.0:
+		property.usage &= ~PROPERTY_USAGE_STORAGE

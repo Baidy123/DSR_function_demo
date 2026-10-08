@@ -661,6 +661,21 @@ func _finish_tracking(failed: bool = false) -> void:
 	context.invalidate_utility()
 
 
+var _exact_search_origin := Vector3.INF
+var _exact_clue_id := -1
+var _exact_clue_generation := -1
+
+func _take_exact_clue() -> bool:
+	if _exact_clue_generation != context.memory_generation:
+		_exact_clue_generation = context.memory_generation
+		_exact_clue_id = -1
+	var clue: Dictionary = context.exact_cover_clue
+	if clue.is_empty() or int(clue.id) == _exact_clue_id: return false
+	_exact_clue_id = int(clue.id)
+	_exact_search_origin = clue.position
+	investigate_known_threat(clue.position)
+	return true
+
 func begin_search(center: Vector3 = Vector3.INF) -> void:
 	if not is_enabled():
 		context.state = context.State.IDLE
@@ -677,6 +692,7 @@ func begin_search(center: Vector3 = Vector3.INF) -> void:
 	search_origin = context.last_seen_position if context.has_visual_memory else (center if center.is_finite() else context.last_known_position)
 	if noise_search_origin.is_finite():
 		search_origin = noise_search_origin
+	if _exact_search_origin.is_finite(): search_origin = _exact_search_origin
 	search_origin.y = actor.global_position.y
 
 	# SEARCH 主方向优先使用玩家最后真实移动方向。
@@ -951,6 +967,8 @@ func _end_search() -> void:
 
 
 func reset() -> void:
+	_exact_search_origin = Vector3.INF
+	route_motion.reset()
 	_segment_speed = -1.0
 	_trail_pending.clear()
 	_checked_trail.clear()
@@ -1047,7 +1065,7 @@ func collect_candidates(visible: bool) -> Array[Dictionary]:
 		return []
 	var horizon: float = context.utility_horizon_seconds
 	var point := utility_destination()
-	var path: PackedVector3Array = PackedVector3Array() if is_observing() else selection._path_to(actor.global_position, point)
+	var path: PackedVector3Array = PackedVector3Array() if is_observing() else context.routes.planning_path(actor.global_position, point)
 	if is_observing() or path.is_empty():
 		var candidate := option({}, horizon, context._reload_exposure(actor.global_position, threat) * horizon)
 		candidate.accepts_noise = true
@@ -1056,13 +1074,16 @@ func collect_candidates(visible: bool) -> Array[Dictionary]:
 	var route: Dictionary = context.spatial.assess_route(context, path, threat, movement_multiplier(), context.spatial._reload_seconds(context) if actor.ammo.is_reloading else 0.0)
 	var candidate := option({}, horizon, route.exposure + context._reload_exposure(point, threat) * maxf(0.0, horizon - route.seconds))
 	candidate.accepts_noise = true
+	candidate.route_target = point
 	return [candidate]
 
 func begin(candidate: Dictionary, visible: bool) -> bool:
 	candidate.accepts_noise = true
 	super.begin(candidate, visible)
 	context.utility_suppression_pending = false
-	if noise_search_origin.is_finite() and investigation_phase < 0:
+	if _take_exact_clue():
+		pass
+	elif noise_search_origin.is_finite() and investigation_phase < 0:
 		var position := noise_search_origin
 		investigate_noise(position)
 	elif investigation_phase >= 0:
@@ -1079,7 +1100,7 @@ func valid(visible: bool) -> bool:
 func tick(delta: float, _visible: bool) -> Dictionary:
 	if plan.get("search_recovery", false):
 		plan.erase("search_recovery")
-		if not is_observing() and selection._path_to(actor.global_position, utility_destination()).is_empty():
+		if not is_observing() and context.routes.planning_path(actor.global_position, utility_destination()).is_empty():
 			recover_unreachable_destination()
 	if not context.is_alerted and not noise_search_origin.is_finite():
 		_running = false
@@ -1091,6 +1112,7 @@ func tick(delta: float, _visible: bool) -> Dictionary:
 func cancel(reason: StringName = &"switch") -> void:
 	# 暂时被其他行动接管时保留搜索覆盖和已承诺的调查段；死亡/复位调用 reset。
 	_running = false
+	route_motion.reset()
 	plan = {}
 	if reason != &"switch": reset()
 
@@ -1107,7 +1129,16 @@ func hold_released() -> bool:
 
 func on_event(event: StringName, data: Dictionary) -> void:
 	if event == &"visibility" and data.visible:
+		_exact_search_origin = Vector3.INF
 		reset()
+	elif event == &"exact_cover_clue":
+		# The new frozen clue supersedes an old selected movement route. An airborne
+		# body still finishes safely, but cannot resume that obsolete request.
+		route_motion.reset()
+		plan.erase("route")
+		plan.erase("route_target")
+		if _running: _take_exact_clue()
+		else: investigation_phase = -1
 	elif event == &"damage":
 		release_segment()
 	elif event == &"threat":
@@ -1118,3 +1149,19 @@ func on_event(event: StringName, data: Dictionary) -> void:
 	elif event == &"noise":
 		if _running: investigate_noise(data.position, true)
 		else: investigation_phase = -1
+
+func route_multiplier() -> float:
+	return movement_multiplier()
+
+func route_tick(delta: float, visible: bool) -> Dictionary:
+	search_elapsed_seconds += maxf(0.0, delta)
+	search_hint_timer = maxf(0.0, search_hint_timer - delta)
+	if investigation_phase == context.State.TRACK:
+		track_timer = maxf(0.0, track_timer - delta)
+		if track_timer <= 0.0: _running = false
+	elif investigation_phase == context.State.SEARCH:
+		search_target_timer = maxf(0.0, search_target_timer - delta)
+		if not context.has_visual_memory: search_timer = maxf(0.0, search_timer - delta)
+		if search_target_timer <= 0.0 or (not context.has_visual_memory and search_timer <= 0.0): _running = false
+	if visible: _running = false
+	return motion(Vector3.ZERO, movement_multiplier())

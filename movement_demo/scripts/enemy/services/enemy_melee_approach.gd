@@ -11,7 +11,7 @@ static func stopping_distance(context) -> float:
 static func contact_path(context, origin: Vector3 = Vector3.INF) -> PackedVector3Array:
 	if not origin.is_finite(): origin = context.actor.global_position
 	var target: Vector3 = context.last_known_position
-	var path: PackedVector3Array = context.cover_selection._path_to(origin, target).duplicate()
+	var path: PackedVector3Array = context.routes.planning_path(origin, target).duplicate()
 	if path.is_empty():
 		# 贴墙玩家可能在烘焙导航边界外。实际 Agent 也会靠向这个导航点，
 		# 但只有停靠误差内仍能挥击、身体能站稳且不隔墙时，才认可这条接敌路线。
@@ -24,7 +24,7 @@ static func contact_path(context, origin: Vector3 = Vector3.INF) -> PackedVector
 		if absf(contact.y - origin.y) <= 0.5 and absf(target.y - origin.y) <= height:
 			contact.y = origin.y
 			if context._horizontal_distance_between(contact, target) <= reach and context.is_position_free(contact) and context.cover_selection.has_clear_line(contact + Vector3.UP * 0.8, target + Vector3.UP * 0.8):
-				path = context.cover_selection._path_to(origin, contact).duplicate()
+				path = context.routes.planning_path(origin, contact).duplicate()
 	if path.is_empty():
 		# 玩家能站在导航边缘外；用可出手的近侧落点求路，不要求站到玩家脚下。
 		if context._horizontal_distance_between(origin, target) <= stopping_distance(context):
@@ -32,7 +32,7 @@ static func contact_path(context, origin: Vector3 = Vector3.INF) -> PackedVector
 		var near_target: Vector3 = target.move_toward(origin, stopping_distance(context))
 		near_target.y = origin.y
 		if context.cover_selection.has_clear_line(near_target + Vector3.UP * 0.8, target + Vector3.UP * 0.8):
-			return context.cover_selection._path_to(origin, near_target).duplicate()
+			return context.routes.planning_path(origin, near_target).duplicate()
 		return path
 	for index in path.size(): path[index].y = origin.y
 	# 只缩短最后一段，不跨过寻路拐点；避免把墙另一侧当成可出手位置。

@@ -19,3 +19,9 @@ func _init() -> void:
 	set(value):
 		target_radius = value
 		mark_override(&"target_radius")
+
+## Transparent Utility credit for directly suppressing a frozen low-cover disappearance/clue point.
+@export_range(0.0, 5.0, 0.1) var low_cover_point_preference: float = 1.0:
+	set(value):
+		low_cover_point_preference = value
+		mark_override(&"low_cover_point_preference")

@@ -38,26 +38,37 @@ func _ready() -> void:
 
 ## 保留所有候选的评估结果，供查看淘汰原因；不改变状态、导航目的地或射击请求。
 ## threat_origin / target_point 均为调用者已有的信息，不在此读取玩家实时位置。
-func get_attack_assessments(threat_origin: Vector3, target_point: Vector3) -> Array[Dictionary]:
+func get_attack_assessments(threat_origin: Vector3, target_point: Vector3, known_samples: Variant = null) -> Array[Dictionary]:
 	var results: Array[Dictionary] = []
 	for region in get_tree().get_nodes_in_group("cover_region"):
 		if not ai.navigation_region.is_ancestor_of(region):
 			continue
 		for cell in attack_cells(region, threat_origin):
-			results.append(assess_attack_cell(cell, threat_origin, target_point))
+			results.append(assess_attack_cell(cell, threat_origin, target_point, known_samples))
 	return results
 
 
 func attack_cells(region: StaticBody3D, threat: Vector3) -> Array[Dictionary]:
 	return attack_geometry.cells(ai, region, threat)
 
-func assess_attack_cell(cell: Dictionary, threat: Vector3, target: Vector3) -> Dictionary:
+func assess_attack_cell(cell: Dictionary, threat: Vector3, target: Vector3, known_samples: Variant = null) -> Dictionary:
+	if cell.body.is_low_cover() and known_samples != null:
+		target = low_cover_attack_target(cell.position, known_samples)
 	var result := assess_attack_point(cell.position, cell.body, threat, target)
 	result.polygon = cell.polygon
 	return result
 
+## A future standing muzzle may see a head/shoulder while the torso is blocked.
+## All samples are supplied by the caller's observation snapshot.
+func low_cover_attack_target(feet: Vector3, known_samples: PackedVector3Array) -> Vector3:
+	var origin: Vector3 = enemy.get_posture_muzzle_position(false, feet)
+	for point: Vector3 in known_samples:
+		if enemy.weapon != null and origin.distance_to(point) <= enemy.weapon.fire_range and has_clear_line(origin, point) and ai.fire.has_clear_firing_lane(origin, point - origin, origin.distance_to(point)):
+			return point
+	return Vector3.INF
 
-func assess_attack_point(point: Vector3, region: StaticBody3D, threat_origin: Vector3, target_point: Vector3) -> Dictionary:
+
+func assess_attack_point(point: Vector3, region: StaticBody3D, threat_origin: Vector3, target_point: Vector3, require_all_metrics: bool = true) -> Dictionary:
 	var result := {"position": point, "cover": region, "space_free": false,
 		"reachable": false, "clear_shot": false, "in_range": false,
 		"protection": 0.0, "fire_quality": 0.0, "usable": false, "reason": "导航未就绪"}
@@ -70,9 +81,13 @@ func assess_attack_point(point: Vector3, region: StaticBody3D, threat_origin: Ve
 	var path := _path_to(enemy.global_position, point)
 	# 不能把截止在另一侧导航边缘的部分路径当成到达。
 	result.reachable = not path.is_empty() and ai._horizontal_distance_between(path[path.size() - 1], point) <= 0.05
-	var shot_origin: Vector3 = point + (enemy.get_shot_origin() - enemy.global_position)
+	var shot_origin: Vector3 = enemy.get_posture_muzzle_position(false, point)
 	result.clear_shot = shot_origin.distance_squared_to(target_point) > 0.000001 and has_clear_line(shot_origin, target_point)
 	result.in_range = enemy.weapon != null and shot_origin.distance_to(target_point) <= enemy.weapon.fire_range
+	# Budgeted action collection only needs viable destinations; the preview keeps
+	# all original diagnostics. Rejected geometry cannot benefit from 35 more rays.
+	if not require_all_metrics and (not result.space_free or not result.reachable or not result.clear_shot or not result.in_range):
+		return result
 	result.protection = _attack_body_protection(point, threat_origin, region)
 	if not result.space_free:
 		result.reason = "空间被占"
@@ -86,13 +101,13 @@ func assess_attack_point(point: Vector3, region: StaticBody3D, threat_origin: Ve
 		result.reason = "射界受阻"
 	elif result.protection < 0.0:
 		result.reason = "身体形状不支持"
-	elif result.protection < float(_training_setting(&"attack_minimum_protection", 0.2)):
+	elif not region.is_low_cover() and result.protection < float(_training_setting(&"attack_minimum_protection", 0.2)):
 		result.reason = "身体缺少掩护"
-	elif result.protection > float(_training_setting(&"attack_maximum_protection", 0.65)):
+	elif not region.is_low_cover() and result.protection > float(_training_setting(&"attack_maximum_protection", 0.65)):
 		result.reason = "身体遮挡过多"
 	elif not _attack_wall_clearance(point, region):
 		result.reason = "过于贴近墙角"
-	elif point.distance_to(target_point - Vector3.UP * 0.8) > maxf(ai.perception.sight_distance, ai.perception.close_awareness_radius):
+	elif point.distance_to(Vector3(target_point.x, point.y, target_point.z)) > maxf(ai.perception.sight_distance, ai.perception.close_awareness_radius):
 		result.reason = "超感知距离"
 	elif not ai.fire.has_clear_firing_lane(shot_origin, target_point - shot_origin, shot_origin.distance_to(target_point)):
 		result.reason = "枪口空间受阻"
@@ -112,10 +127,11 @@ func _attack_wall_clearance(point: Vector3, region: StaticBody3D) -> bool:
 	var local := wall.to_local(point)
 	var half: Vector3 = wall.shape.size * 0.5
 	# 相邻墙角的扇环可能重叠，不能借另一个扇环绕过任何墙角的禁用内圈。
-	for x in [-half.x, half.x]:
-		for z in [-half.z, half.z]:
-			if Vector2(local.x - x, local.z - z).length() < region.attack_inner_radius:
-				return false
+	if not region.is_low_cover():
+		for x in [-half.x, half.x]:
+			for z in [-half.z, half.z]:
+				if Vector2(local.x - x, local.z - z).length() < region.attack_inner_radius:
+					return false
 	var nearest := wall.to_global(Vector3(clampf(local.x, -half.x, half.x), local.y, clampf(local.z, -half.z, half.z)))
 	var radius: float = body.shape.radius * maxf(body.global_basis.x.length(), body.global_basis.z.length())
 	return ai._horizontal_distance_between(point, nearest) >= radius + 0.1
@@ -127,7 +143,7 @@ func _attack_body_protection(point: Vector3, threat_origin: Vector3, region: Sta
 
 ## 用已知威胁位置检测探头射界，不读取墙后玩家的新坐标。
 func _peek_has_los(point: Vector3, look_position: Vector3) -> bool:
-	return has_clear_line(point + Vector3.UP * 0.8, look_position + Vector3.UP * 0.8)
+	return has_clear_line(enemy.get_posture_eye_position(false, point), enemy.get_posture_eye_position(false, look_position))
 
 
 var _path_frame := -1
@@ -182,13 +198,13 @@ func _path_length(from: Vector3, to: Vector3) -> float:
 	return _path_length_from_path(path)
 
 
-func _selected_cover_blocks(point: Vector3, origin: Vector3, active_cover_body: StaticBody3D) -> bool:
+func _selected_cover_blocks(point: Vector3, origin: Vector3, active_cover_body: StaticBody3D, crouched: bool = false) -> bool:
 	if not is_instance_valid(active_cover_body) or not active_cover_body.is_hiding_position(point, origin):
 		return false
 	if require_assigned_cover:
 		return (
 			is_instance_valid(active_cover_body)
-			and _center_hidden_by_cover(point, origin, active_cover_body)
+			and _center_hidden_by_cover(point, origin, active_cover_body, crouched)
 		)
 	return is_hidden_at(point, origin)
 
@@ -196,14 +212,15 @@ func _selected_cover_blocks(point: Vector3, origin: Vector3, active_cover_body: 
 func _center_hidden_by_cover(
 	point: Vector3,
 	origin: Vector3,
-	expected_cover: StaticBody3D
+	expected_cover: StaticBody3D,
+	crouched: bool = false
 ) -> bool:
 	if not is_instance_valid(expected_cover):
 		return false
 
 	var query: PhysicsRayQueryParameters3D = _ray_query(
 		origin,
-		point + Vector3.UP * 0.8
+		enemy.get_posture_eye_position(crouched, point)
 	)
 	var hit: Dictionary = enemy.get_world_3d().direct_space_state.intersect_ray(query)
 	return not hit.is_empty() and hit.collider == expected_cover
@@ -212,12 +229,13 @@ func _center_hidden_by_cover(
 func _cover_quality(
 	point: Vector3,
 	origin: Vector3,
-	expected_cover: StaticBody3D
+	expected_cover: StaticBody3D,
+	crouched: bool = false
 ) -> float:
 	if not is_instance_valid(expected_cover):
 		return 0.0
 
-	var target_center: Vector3 = point + Vector3.UP * 0.8
+	var target_center: Vector3 = enemy.get_posture_eye_position(crouched, point)
 	var direction: Vector3 = target_center - origin
 	direction.y = 0.0
 	if direction.is_zero_approx():
@@ -258,12 +276,12 @@ func _cover_quality(
 
 func is_hidden_at(point: Vector3, origin: Vector3) -> bool:
 	# 中心和身体两侧都应被墙挡住，避免停在墙角时半个身子仍暴露。
-	var direction: Vector3 = point + Vector3.UP * 0.8 - origin
+	var direction: Vector3 = enemy.get_posture_eye_position(false, point) - origin
 	direction.y = 0.0
 	var side: Vector3 = direction.normalized().cross(Vector3.UP) * 0.4
 	var body_offsets: Array[Vector3] = [Vector3.ZERO, side, -side]
 	for offset: Vector3 in body_offsets:
-		var query: PhysicsRayQueryParameters3D = _ray_query(origin, point + Vector3.UP * 0.8 + offset)
+		var query: PhysicsRayQueryParameters3D = _ray_query(origin, enemy.get_posture_eye_position(false, point) + offset)
 		var hit: Dictionary = enemy.get_world_3d().direct_space_state.intersect_ray(query)
 		if hit.is_empty() or not hit.collider is StaticBody3D:
 			return false
@@ -276,32 +294,51 @@ func has_clear_line(from: Vector3, to: Vector3) -> bool:
 	return enemy.get_world_3d().direct_space_state.intersect_ray(_ray_query(from, to)).is_empty()
 
 
-## 只用目击记忆推断掩体；射线可达和身体可通行分别返回，供两种压制共同估计。
+## 先确认冻结线索的实际遮挡归属，再评估该墙出口；不能因出口不可射改认邻墙。
 func suppression_geometry(known: Vector3) -> Dictionary:
+	var region := confirmed_suppression_cover(known)
+	if region == null: return {}
+	var geometry := _suppression_cover_geometry(region, known)
+	if geometry.is_empty(): return {}
+	var box := region.get_node("CollisionShape3D") as CollisionShape3D
+	var half: Vector3 = box.shape.size * 0.5
+	var local := box.to_local(known)
+	var surface := box.to_global(Vector3(clampf(local.x, -half.x, half.x), local.y, clampf(local.z, -half.z, half.z)))
 	var inference_distance: float = _training_setting(&"cover_inference_distance", 1.75)
-	var nearby: Array[Dictionary] = []
-	for region in get_tree().get_nodes_in_group("cover_region"):
-		if not ai.navigation_region.is_ancestor_of(region): continue
-		var box := region.get_node_or_null("CollisionShape3D") as CollisionShape3D
-		if box == null or box.disabled or not box.shape is BoxShape3D or (region.collision_layer & 1) == 0: continue
-		var half: Vector3 = box.shape.size * 0.5
-		var local := box.to_local(known)
-		var surface := box.to_global(Vector3(clampf(local.x, -half.x, half.x), local.y, clampf(local.z, -half.z, half.z)))
-		var distance: float = ai._horizontal_distance_between(known, surface)
-		if distance <= inference_distance:
-			nearby.append({"body": region, "distance": distance})
-	nearby.sort_custom(func(a, b): return a.distance < b.distance)
-	var blocked: Dictionary = {}
-	for candidate in nearby:
-		var geometry := _suppression_cover_geometry(candidate.body, known)
-		if geometry.is_empty(): continue
-		geometry.confidence = 1.0 - 0.5 * clampf(candidate.distance / maxf(0.1, inference_distance), 0.0, 1.0)
-		if not geometry.first.is_empty() or not geometry.second.is_empty(): return geometry
-		if blocked.is_empty(): blocked = geometry
-	return blocked
+	geometry.confidence = 1.0 - 0.5 * clampf(ai._horizontal_distance_between(known, surface) / maxf(0.1, inference_distance), 0.0, 1.0)
+	return geometry
+
+
+## 只读冻结脚底点与静态遮挡。正反射线必须指向同一墙，拒绝前后叠墙和身体采样的歧义。
+func confirmed_suppression_cover(known: Vector3) -> StaticBody3D:
+	if not known.is_finite(): return null
+	var origin: Vector3 = enemy.get_shot_origin()
+	var space: PhysicsDirectSpaceState3D = enemy.get_world_3d().direct_space_state
+	# 低墙可能挡腿而不挡眼睛；这里不读取目标当前是否蹲下。
+	var low_point := known + Vector3.UP * 0.15
+	var hit: Dictionary = space.intersect_ray(_ray_query(origin, low_point))
+	var region := hit.get("collider") as StaticBody3D
+	if region == null or not region.is_in_group("cover_region") or not ai.navigation_region.is_ancestor_of(region): return null
+	var box := region.get_node_or_null("CollisionShape3D") as CollisionShape3D
+	if box == null or box.disabled or not box.shape is BoxShape3D or (region.collision_layer & 1) == 0: return null
+	var half: Vector3 = box.shape.size * 0.5
+	var local := box.to_local(known)
+	var surface := box.to_global(Vector3(clampf(local.x, -half.x, half.x), local.y, clampf(local.z, -half.z, half.z)))
+	if ai._horizontal_distance_between(known, surface) > float(_training_setting(&"cover_inference_distance", 1.75)): return null
+	var direction: Vector3 = known - enemy.global_position
+	direction.y = 0.0
+	var radius: float = enemy.get_node("CollisionShape3D").shape.radius
+	var side: Vector3 = direction.normalized().cross(Vector3.UP) * radius * 0.75
+	for target: Vector3 in [low_point, low_point + side, low_point - side, known + Vector3.UP * enemy.get_posture_body_height(false) * 0.5]:
+		var forward: Dictionary = space.intersect_ray(_ray_query(origin, target))
+		var backward: Dictionary = space.intersect_ray(_ray_query(target, origin))
+		if forward.is_empty() and backward.is_empty(): continue
+		if forward.get("collider") != region or backward.get("collider") != region: return null
+	return region
 
 
 func _suppression_cover_geometry(region: StaticBody3D, known: Vector3) -> Dictionary:
+	if not is_instance_valid(region) or confirmed_suppression_cover(known) != region: return {}
 	var box := region.get_node_or_null("CollisionShape3D") as CollisionShape3D
 	var body := enemy.get_node("CollisionShape3D") as CollisionShape3D
 	if box == null or box.disabled or not box.shape is BoxShape3D or (region.collision_layer & 1) == 0: return {}
@@ -324,10 +361,6 @@ func _suppression_cover_geometry(region: StaticBody3D, known: Vector3) -> Dictio
 	var memory_across: float = memory.z if along_x else memory.x
 	# 正面中部的邻墙不代表玩家躲在墙后；记忆应在背侧或接近能绕出的端部。
 	if memory_across * side > half_across and absf(memory_along) < half_along - margin_along: return {}
-	var hidden_along := clampf(memory_along, -maxf(0.0, half_along - margin_along), maxf(0.0, half_along - margin_along))
-	var hidden := _suppression_point(box, along_x, hidden_along, -side * (half_across + margin_across))
-	var hit: Dictionary = enemy.get_world_3d().direct_space_state.intersect_ray(_ray_query(enemy.get_shot_origin(), hidden + Vector3.UP * 0.8))
-	if hit.get("collider") != region: return {}
 	var result := {"body": region, "first": [], "second": [], "open_sides": 0, "balance": 0.0}
 	var centers: Array[Vector3] = []
 	for end in [-1.0, 1.0]:
@@ -342,7 +375,7 @@ func _suppression_cover_geometry(region: StaticBody3D, known: Vector3) -> Dictio
 			if not suppression_passage_free(start, finish): continue
 			passable = true
 			# 瞄准身体绕出墙后的可见入口；墙厚中线在斜视角下仍可能被本墙遮住。
-			var target := finish + Vector3.UP * 0.8
+			var target: Vector3 = enemy.get_posture_eye_position(true, finish)
 			if enemy.weapon != null and enemy.get_shot_origin().distance_to(target) <= enemy.weapon.fire_range and has_clear_line(enemy.get_shot_origin(), target):
 				points.append(target)
 		result["first" if end < 0.0 else "second"] = points

@@ -35,6 +35,9 @@ func _physics_process(delta: float) -> void:
 
 func _sync() -> void:
 	if presentation == null: return
+	state.crouch_amount = actor.body_motion.amount
+	state.vaulting = actor.is_vaulting()
+	state.vault_progress = actor.body_motion.progress
 	state.dead = actor.is_dead
 	state.aiming = actor.has_aim
 	state.weapon = actor.weapon

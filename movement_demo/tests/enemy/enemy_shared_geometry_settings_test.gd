@@ -39,7 +39,7 @@ func _run() -> void:
 		player.global_position = Vector3(20.8, 0, -2)
 		ai.has_visual_memory = true
 		ai.is_alerted = true
-		ai.last_seen_position = Vector3(22.8, 0, -5.5)
+		ai.last_seen_position = Vector3(20.8, 0, -2)
 		ai.last_known_position = ai.last_seen_position
 		for index in 4:
 			await physics_frame

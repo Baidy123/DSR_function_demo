@@ -8,7 +8,9 @@ var world: Node3D
 
 class TestActor extends CharacterBody3D:
 	var crouching := true
+	var crouch_height := 1.0
 	func is_crouching() -> bool: return crouching
+	func get_posture_body_height(crouched: bool) -> float: return crouch_height if crouched else 1.75
 
 func _initialize() -> void:
 	_run.call_deferred()
@@ -33,6 +35,10 @@ func _run() -> void:
 		check(LowCover.sample_vault(plan, 0).is_equal_approx(actor.position), "轨迹从真实身体位置开始")
 		check(LowCover.sample_vault(plan, 1).is_equal_approx(plan.exit) and plan.exit.z < -0.6, "轨迹落点位于墙另一侧")
 		check(LowCover.sample_vault(plan, 0.5).y > cover.get_top_height(), "整个身体脚底高于墙顶")
+	actor.crouch_height = 1.2
+	var configured_plan := LowCover.query_vault(actor, Vector3.FORWARD)
+	check(configured_plan.get("valid", false) and is_equal_approx(configured_plan.get("height", 0.0), 1.2), "翻越校验采用角色配置的实际执行高度")
+	actor.crouch_height = 1.0
 	var before: Transform3D = actor.transform
 	for candidate in cover.get_candidates(Vector3(0, 0, -3), actor.position):
 		check(candidate.get("crouch", false) and candidate.get("stand") == candidate.hide, "低墙提供同落点站起与蹲藏")
