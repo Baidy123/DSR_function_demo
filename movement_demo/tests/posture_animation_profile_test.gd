@@ -181,8 +181,135 @@ func _run() -> void:
 	check(loaded != null and loaded.crouch_enter == profile.crouch_enter and loaded.crouch_reload == profile.crouch_reload and loaded.vault_fall == profile.vault_fall and loaded.crouch_land == profile.crouch_land, "new clips survive resource save and reload")
 	host.queue_free()
 	await process_frame
+	await _test_default_blend_progress()
 	print("POSTURE ANIMATION PROFILE: %d/%d passed" % [checks - failures, checks])
 	quit(1 if failures else 0)
+
+func _test_default_blend_progress() -> void:
+	# Fixture.profile deliberately disables blending for the older mapping checks.
+	# A newly created user profile keeps its real default crossfade instead.
+	var profile := PresentationAnimationProfile.new()
+	profile.idle = &"Idle"
+	profile.move = &"Walk"
+	profile.crouch_enter = &"CrouchEnter"
+	profile.crouch_exit = &"CrouchExit"
+	profile.crouch_reload = &"CrouchReload"
+	profile.reload = &"Reload"
+	profile.melee = &"Melee"
+	profile.vault = &"Vault"
+	check(is_equal_approx(profile.blend_seconds, 0.1), "new user profile retains its default 0.1-second transition blend")
+	var view := Visual.new()
+	view.model_scene = Fixture.model_scene()
+	view.animation_profile = profile
+	root.add_child(view)
+	view.set_process(false)
+	var torso: MeshInstance3D = view.model.get_node("Torso")
+	var arm: MeshInstance3D = view.model.get_node("Arm")
+	var state := State.new()
+	view.apply_state(state)
+	view._process(0.2)
+	state.crouch_amount = 0.4
+	state.posture_transition = &"crouch_enter"
+	view.apply_state(state)
+	check(view._clip == &"CrouchEnter" and is_equal_approx(_height(view), 1.45)
+		and torso.position.is_equal_approx(Vector3(0, 0.725, 0))
+		and arm.position.is_equal_approx(Vector3(0.35, 0.955, -0.12)),
+		"default blend cannot leave enter progress at the previous standing mesh and arm pose")
+	var blocked_torso := torso.transform
+	var blocked_arm := arm.transform
+	view._process(0.3)
+	view.apply_state(state)
+	check(is_equal_approx(_height(view), 1.45) and torso.transform.is_equal_approx(blocked_torso)
+		and arm.transform.is_equal_approx(blocked_arm),
+		"blocked entry keeps actual geometry frozen despite elapsed animation time")
+	state.posture_transition = &"crouch_exit"
+	view.apply_state(state)
+	check(view._clip == &"CrouchExit" and is_equal_approx(_height(view), 1.45)
+		and torso.position.is_equal_approx(Vector3(0, 0.725, 0))
+		and arm.position.is_equal_approx(Vector3(0.35, 0.955, -0.12)),
+		"default blend preserves actual height and arm placement when enter reverses to exit")
+	paused = true
+	view._process(0.5)
+	paused = false
+	check(is_equal_approx(_height(view), 1.45) and torso.transform.is_equal_approx(blocked_torso)
+		and arm.transform.is_equal_approx(blocked_arm),
+		"paused reversed posture cannot advance its geometry or finish a pending blend")
+	state.posture_transition = &""
+	state.crouch_amount = 1.0
+	state.reloading = true
+	state.reload_progress = 0.37
+	view.apply_state(state)
+	# Fixture CrouchReload reaches (0.9, 0, 0.35) at t=0.5.
+	check(view._clip == &"CrouchReload" and is_equal_approx(_height(view), 1.0)
+		and torso.position.is_equal_approx(Vector3(0, 0.5, 0))
+		and arm.rotation.is_equal_approx(Vector3(0.666, 0, 0.259)),
+		"default blend applies crouched reload geometry at the real ammo progress immediately")
+	var reload_arm := arm.transform
+	view._process(0.4)
+	check(is_equal_approx(_height(view), 1.0) and arm.transform.is_equal_approx(reload_arm),
+		"elapsed time does not advance the actual crouched reload arm pose")
+	paused = true
+	view._process(0.5)
+	paused = false
+	check(is_equal_approx(_height(view), 1.0) and arm.transform.is_equal_approx(reload_arm),
+		"paused reload retains actual crouch geometry with the default blend setting")
+	state.crouch_amount = 0.0
+	view.apply_state(state)
+	# Standing Reload reaches rotation.x=0.32 at t=0.5.
+	check(view._clip == &"Reload" and is_equal_approx(_height(view), 1.75)
+		and torso.position.is_equal_approx(Vector3(0.0296, 0.9046, 0))
+		and arm.rotation.is_equal_approx(Vector3(0.2368, 0, 0)),
+		"standing reload seeks real torso and arm tracks without retaining its previous crouched pose")
+	var standing_reload_arm := arm.transform
+	view._process(0.2)
+	check(is_equal_approx(_height(view), 1.75) and arm.transform.is_equal_approx(standing_reload_arm),
+		"standing reload geometry remains controlled by ammo rather than elapsed blend time")
+	state.reloading = false
+	state.melee_active = true
+	state.melee_progress = 0.162
+	view.apply_state(state)
+	# Halfway to the fixture's 0.324 contact key: y=-0.8 -> 0.9.
+	check(view._clip == &"Melee" and is_equal_approx(_height(view), 1.75)
+		and arm.rotation.is_equal_approx(Vector3(0, 0.05, -0.2)),
+		"melee progress immediately evaluates the real swing track under default blending")
+	var melee_arm := arm.transform
+	view._process(0.2)
+	check(arm.transform.is_equal_approx(melee_arm), "melee swing geometry cannot run ahead of the actual attack phase")
+	state.melee_active = false
+	state.vaulting = true
+	state.crouch_amount = 1.0
+	state.vault_progress = 0.25
+	view.apply_state(state)
+	check(view._clip == &"Vault" and is_equal_approx(_height(view), 1.0)
+		and torso.rotation.is_equal_approx(Vector3(-0.15, 0, 0))
+		and arm.rotation.is_equal_approx(Vector3(-0.4, 0, 0)),
+		"vault progress immediately evaluates low body and arm tracks instead of the previous melee pose")
+	var vault_torso := torso.transform
+	var vault_arm := arm.transform
+	view._process(0.2)
+	check(is_equal_approx(_height(view), 1.0) and torso.transform.is_equal_approx(vault_torso)
+		and arm.transform.is_equal_approx(vault_arm),
+		"vault geometry remains frozen until the body supplies new trajectory progress")
+	state.vaulting = false
+	state.reloading = true
+	view.apply_state(state)
+	state.reloading = false
+	state.crouch_amount = 0.0
+	state.local_velocity = Vector3.FORWARD * profile.move_reference_speed
+	view.apply_state(state)
+	check(view._clip == &"Walk" and _height(view) < 1.75,
+		"ordinary timed walk still starts with the configured blend from the previous low pose")
+	view._process(0.025)
+	view._process(0.025)
+	check(_height(view) > 1.0 and _height(view) < 1.75
+		and view.player.current_animation_position > 0.0,
+		"ordinary timed clip both blends its real mesh and advances animation time")
+	view._process(0.2)
+	check(is_equal_approx(_height(view), 1.75) and view.player.current_animation_position > 0.05
+		and arm.rotation.x > 0.0 and is_equal_approx(profile.blend_seconds, 0.1),
+		"ordinary timed animation finishes blending and keeps moving without changing profile configuration")
+	view.queue_free()
+	await process_frame
 
 func _height(view) -> float:
 	return float(view.model.get_node("Torso").mesh.height)

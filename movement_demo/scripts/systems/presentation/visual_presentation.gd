@@ -233,7 +233,8 @@ func _select_animation() -> void:
 		if player != null:
 			if next.is_empty(): player.stop()
 			else:
-				player.play(next, animation_profile.blend_seconds)
+				# 进度驱动的片段只 seek，不推进混合计时；切入时直接使用真实姿态。
+				player.play(next, 0.0 if _is_progress_driven() else animation_profile.blend_seconds)
 				player.seek(0.0, true)
 				player.advance(0.0)
 	if current_state in [&"reload", &"crouch_reload"] and _uses_mapped_clip(current_state):
@@ -257,6 +258,10 @@ func _uses_mapped_clip(key: StringName) -> bool:
 	return player != null and animation_profile != null and not _clip.is_empty() and _clip == animation_profile.clip(key)
 
 
+func _is_progress_driven() -> bool:
+	return current_state in [&"reload", &"crouch_reload", &"melee", &"vault", &"crouch_enter", &"crouch_exit"] and _uses_mapped_clip(current_state)
+
+
 func _update_weapon() -> void:
 	if Engine.is_editor_hint(): return
 	if not is_instance_valid(_weapon_view):
@@ -278,8 +283,7 @@ func _process(delta: float) -> void:
 	_update_weapon()
 	if Engine.is_editor_hint() or player == null or _clip.is_empty(): return
 	if get_tree().paused and not (state.dead and death_during_pause): return
-	if current_state in [&"reload", &"crouch_reload", &"melee", &"crouch_enter", &"crouch_exit"] and _uses_mapped_clip(current_state): return
-	if current_state == &"vault": return
+	if _is_progress_driven(): return
 	var animation := player.get_animation(_clip)
 	var length := maxf(0.001, animation.length)
 	var rate := 1.0
