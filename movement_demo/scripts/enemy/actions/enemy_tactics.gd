@@ -228,6 +228,9 @@ func collect_candidates(visible: bool) -> Array[Dictionary]:
 	var can_melee: bool = context.melee.can_request(visible)
 	if can_melee:
 		result.append(_melee_option())
+	# 空装备、兵种切换卸装或关闭射击时不评估枪械方案；有效近战方案仍保留。
+	if not actor.can_use_firearms():
+		return result
 	var threat: Vector3 = context.last_known_position
 	var horizon: float = context.utility_horizon_seconds
 	var target := threat + Vector3.UP * 0.8
@@ -252,7 +255,7 @@ func collect_candidates(visible: bool) -> Array[Dictionary]:
 func validate(candidate: Dictionary, visible: bool) -> bool:
 	if candidate.get("plan") == &"melee":
 		return is_enabled() and context.melee.can_request(visible)
-	return is_enabled() and visible and (candidate.destination.is_empty() or is_engagement_destination_valid(candidate.destination))
+	return is_enabled() and visible and actor.can_use_firearms() and (candidate.destination.is_empty() or is_engagement_destination_valid(candidate.destination))
 
 func begin(candidate: Dictionary, visible: bool) -> bool:
 	super.begin(candidate, visible)
@@ -264,7 +267,7 @@ func begin(candidate: Dictionary, visible: bool) -> bool:
 func valid(visible: bool) -> bool:
 	if _running and is_enabled() and visible and plan.get("plan") == &"melee":
 		return context.melee.is_active_for(action_id) if _melee_requested else context.melee.can_request(visible)
-	return _running and is_enabled() and visible
+	return _running and is_enabled() and visible and actor.can_use_firearms()
 
 func tick(delta: float, visible: bool) -> Dictionary:
 	if plan.get("plan") == &"melee":

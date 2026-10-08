@@ -32,6 +32,7 @@ TESTS = [
     "attack_hold_regression_test",
     "attack_points_test",
     "enemy_weapon_test",
+    "enemy_ranged_equipment_test",
     "enemy_probability_test",
     "enemy_optional_removal_test",
     "enemy_configuration_lifecycle_test",
