@@ -293,7 +293,7 @@ func _update_stamina(delta: float) -> void:
 func set_dialogue_active(active: bool) -> void:
 	is_in_dialogue = active
 	if active:
-		if is_vaulting(): _vault_falling = true
+		_begin_vault_fall()
 		_aim_cover.clear()
 		_clear_melee_push()
 		if combat != null:
@@ -327,7 +327,7 @@ func receive_melee_hit(damage: float, attacker_position: Vector3, distance: floa
 	receive_hit(damage, attacker_position)
 	if combat != null: combat.apply_melee_disruption()
 	if is_dead(): return
-	if is_vaulting(): _vault_falling = true
+	_begin_vault_fall()
 	var direction := global_position - attacker_position
 	direction.y = 0.0
 	if direction.is_zero_approx(): direction = Vector3(fallback_direction.x, 0.0, fallback_direction.z)
@@ -527,7 +527,7 @@ func _advance_vault(delta: float) -> void:
 		_advance_vault_fall(delta)
 		return
 	if not is_instance_valid(_vault_plan.get("cover")):
-		_vault_falling = true
+		_begin_vault_fall()
 		_advance_vault_fall(delta)
 		return
 	_vault_elapsed += maxf(0.0, delta)
@@ -537,9 +537,16 @@ func _advance_vault(delta: float) -> void:
 	velocity = motion / maxf(delta, 0.0001)
 	var collision := move_and_collide(motion, false, 0.001)
 	if collision != null or _vault_progress >= 1.0:
-		_vault_falling = true
-		velocity = Vector3.ZERO
+		_begin_vault_fall()
 		_advance_vault_fall(delta)
+
+
+func _begin_vault_fall() -> void:
+	if not is_vaulting() or _vault_falling: return
+	_vault_falling = true
+	# 轨迹的帧位移不是物理冲量；交回重力前清掉合成速度。
+	# 重复中断保留已积累的下落速度，真实近战推力仍由独立外力推进。
+	velocity = Vector3.ZERO
 
 
 func _advance_vault_fall(delta: float) -> void:
@@ -577,7 +584,7 @@ func _finish_vault() -> void:
 
 func _on_vault_region_reset(region: Node) -> void:
 	if _vault_region != null and _vault_region.get_ref() == region:
-		_vault_falling = true
+		_begin_vault_fall()
 		if combat != null: combat.clear_target_lock()
 
 
