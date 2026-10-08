@@ -99,11 +99,11 @@ var track_arrival_distance: float:
 var search_coverage_radius: float:
 	get: return _setting(&"search_coverage_radius", 2.0)
 	set(value): _set_setting(&"search_coverage_radius", value)
-## 达到这个可达区域覆盖比例后结束本轮搜索。
+## 达到这个可达区域覆盖比例后结束本轮搜索；视觉接敌后开始下一轮并保持警戒。
 var search_coverage_goal: float:
 	get: return _setting(&"search_coverage_goal", 0.95)
 	set(value): _set_setting(&"search_coverage_goal", value)
-## SEARCH 的可选保险超时。0 = 按覆盖比例结束，当前场景使用 0。
+## 未目击玩家的普通调查可选超时；0 = 按覆盖比例结束。视觉接敌后的搜索忽略此时限。
 var search_seconds: float:
 	get: return _setting(&"search_seconds", 0.0)
 	set(value): _set_setting(&"search_seconds", value)
@@ -595,7 +595,7 @@ func _process_track(delta: float) -> Vector3:
 	track_timer = maxf(0.0, track_timer - delta)
 	if _return_to_area_search:
 		search_elapsed_seconds += delta
-		if search_seconds > 0.0:
+		if not context.has_visual_memory and search_seconds > 0.0:
 			search_timer = maxf(0.0, search_timer - delta)
 
 	var reached_track_target: bool = (
@@ -633,7 +633,8 @@ func _process_track(delta: float) -> Vector3:
 
 
 func _finish_tracking(failed: bool = false) -> void:
-	if not failed: _checked_trail.append(suspected_position)
+	# 只为首次沿线调查记录已核实位置；区域搜索中的提示支线不无限累积旧轨迹。
+	if not failed and not _return_to_area_search: _checked_trail.append(suspected_position)
 	has_suspected_position = false
 	if not _return_to_area_search and not failed and _focused_evidence() and _start_next_trail():
 		context.invalidate_utility()
@@ -700,8 +701,8 @@ func begin_search(center: Vector3 = Vector3.INF) -> void:
 
 	search_direction = forward.normalized()
 
-	# 0 = 没有时间限制，直到小圆大约覆盖完可达区域。
-	search_timer = search_seconds if search_seconds > 0.0 else INF
+	# 真实接敌后不因总时间放弃；短路段和卡住计时仍各自生效。
+	search_timer = search_seconds if not context.has_visual_memory and search_seconds > 0.0 else INF
 	search_elapsed_seconds = 0.0
 	search_hint_timer = maxf(0.25, search_hint_interval_seconds)
 	search_pause_timer = _observation_seconds()
@@ -733,7 +734,7 @@ func _process_search(delta: float) -> Vector3:
 	search_elapsed_seconds += delta
 	search_hint_timer = maxf(0.0, search_hint_timer - delta)
 
-	if search_seconds > 0.0:
+	if not context.has_visual_memory and search_seconds > 0.0:
 		search_timer = maxf(0.0, search_timer - delta)
 		if search_timer <= 0.0:
 			if debug_systematic_search:
@@ -870,7 +871,7 @@ func _advance_systematic_search_target() -> bool:
 		if debug_systematic_search:
 			print("[AI][搜索] 轨迹调查目标=", destination, " 已覆盖=", snappedf(get_search_coverage() * 100.0, 0.1), "%")
 		return true
-	# 动态障碍使所有剩余目标失败时退出，不把失败点当作已覆盖。
+	# 动态障碍使剩余目标失败时结束本轮，不把失败点当作已覆盖。
 	search_current_target_active = false
 	agent.target_position = actor.global_position
 	if debug_systematic_search:
@@ -902,13 +903,28 @@ func _skip_current_search_point() -> void:
 
 
 func _end_search() -> void:
+	if context.has_visual_memory and is_enabled():
+		# 搜完一轮或暂时无路可走都不解除交战警戒，也不刷新证据和提示衰减。
+		var elapsed := search_elapsed_seconds
+		var hint_remaining := search_hint_timer
+		_trail_pending.clear()
+		_checked_trail.clear()
+		has_suspected_position = false
+		track_timer = 0.0
+		begin_search(search_origin)
+		search_elapsed_seconds = elapsed
+		search_hint_timer = hint_remaining
+		# 空区域也要先观察再重试，避免每帧重建不可达搜索网格。
+		search_pause_timer = maxf(0.5, search_pause_timer)
+		context.invalidate_utility()
+		return
 	_segment_speed = -1.0
 	_trail_pending.clear()
 	_checked_trail.clear()
 	investigation_phase = -1
 	_return_to_area_search = false
 	noise_search_origin = Vector3.INF
-	# 搜索完整结束后，才退出“知道玩家”状态并恢复正常巡逻。
+	# 没有真实目击的普通调查结束后仍可恢复巡逻。
 	context.is_alerted = false
 	search_timer = 0.0
 	search_pause_timer = 0.0

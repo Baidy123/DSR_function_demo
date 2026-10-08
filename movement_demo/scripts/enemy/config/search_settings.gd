@@ -146,12 +146,12 @@ func _init() -> void:
 	set(value):
 		search_coverage_radius = value
 		mark_override(&"search_coverage_radius")
-## 达到这个可达区域覆盖比例后结束本轮搜索。
+## 达到这个可达区域覆盖比例后结束本轮搜索；视觉接敌后继续下一轮，不解除警戒。
 @export_range(0.8, 1.0, 0.01) var search_coverage_goal: float = 0.95:
 	set(value):
 		search_coverage_goal = value
 		mark_override(&"search_coverage_goal")
-## SEARCH 的可选保险超时。0 = 按覆盖比例结束，当前场景使用 0。
+## 未目击玩家的普通调查可选超时；0 = 按覆盖比例结束。视觉接敌后忽略此时限，持续警戒搜索。
 @export_range(0.0, 120.0, 1.0) var search_seconds: float = 0.0:
 	set(value):
 		search_seconds = value

@@ -123,7 +123,7 @@ func _run() -> void:
 		await physics_frame
 		ai._physics_process(1.0 / 60.0)
 	check(enemy.global_position.distance_to(start) > 0.6, "完整AI从现场位置实际离开，继续寻找")
-	# 真正无区域可搜时应结束，而不是永久保留恢复动作。
+	# 本轮可用位置耗尽后保持交战警戒，观察后重建下一轮。
 	ai.actions[&"search"].begin_search()
 	ai.actions[&"search"].coverage.pending.clear()
 	ai.actions[&"search"].coverage.uncovered.assign([INVALID_MEMORY])
@@ -135,7 +135,9 @@ func _run() -> void:
 	if not option.is_empty():
 		ai.utility_current = option
 		preload("res://tests/enemy/enemy_fire_fixture.gd").tick_selected(ai, 0.01, false)
-	check(not ai.is_alerted and ai.state == ai.State.IDLE, "无剩余可达位置时正常结束搜索，不无限恢复")
+	check(ai.is_alerted and ai.has_visual_memory and ai.state == ai.State.SEARCH
+		and ai.actions[&"search"].is_observing() and ai.actions[&"search"].search_pause_timer >= 0.45,
+		"无剩余可达位置时保持警戒并间隔重试，不每帧循环恢复")
 	ai.is_alerted = true
 	ai.unit_type.profile.default_behaviors = ai.unit_type.profile.default_behaviors.filter(func(a): return a.action_id != &"search")
 	ai.refresh_configuration(true)

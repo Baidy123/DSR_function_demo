@@ -12,6 +12,7 @@ TESTS = [
     "search_area_coverage_test",
     "search_reacquisition_test",
     "search_pursuit_test",
+    "search_persistence_test",
     "enemy_firing_lane_test",
     "enemy_basic_capabilities_test",
     "enemy_execution_contract_test",

@@ -141,6 +141,8 @@ func _check_area_observation(enemy, ai, player, search) -> void:
 	var sample_count := samples.size()
 	var covered := 0
 	var visited := 0
+	var completed_round := false
+	var next_round_started := false
 	var peak_usec := 0
 	var previous_scale := Engine.time_scale
 	Engine.time_scale = 4.0
@@ -152,6 +154,11 @@ func _check_area_observation(enemy, ai, player, search) -> void:
 		var direction: Vector3 = search._process_search(delta)
 		peak_usec = maxi(peak_usec, Time.get_ticks_usec() - started)
 		if ai.state != ai.State.SEARCH: break
+		if before >= search.search_coverage_goal and search.get_search_coverage() < before:
+			completed_round = true
+		if completed_round and search.search_current_target_active:
+			next_round_started = true
+			break
 		if search.get_search_coverage() > before:
 			visited += 1
 			for index in range(samples.size() - 1, -1, -1):
@@ -165,7 +172,8 @@ func _check_area_observation(enemy, ai, player, search) -> void:
 	var ratio := float(covered) / maxi(1, sample_count)
 	check(sample_count > 30 and visited > 1, "区域搜索验证包含实际导航与独立地面采样")
 	check(ratio >= 0.9, "绕原地图墙体搜寻后，独立无遮挡覆盖超过90%")
-	check(ai.state == ai.State.IDLE and not ai.is_alerted, "没有新线索时仍完成有限搜索并退出警戒")
+	check(completed_round and next_round_started and ai.state == ai.State.SEARCH and ai.is_alerted,
+		"没有新线索时完成一轮后继续下一轮搜索，保持交战警戒")
 	check(peak_usec < 20000, "加入遮挡复核后搜索单步仍低于20毫秒")
 	print("[SearchArea] samples=", sample_count, " observed=", ratio, " visits=", visited, " peak_usec=", peak_usec)
 	search.search_radius = previous_radius
