@@ -48,9 +48,13 @@ func _check_case(enemy, ai, player, leave: bool) -> void:
 	player.combat.ammo.infinite_reserve = true
 	player.combat.ammo.magazine_rounds = 0
 	player.combat.request_reload()
+	ai.refresh_configuration()
+	# 手动观察期间也按原分帧预算准备空间候选；否则第二例可能在首次
+	# 扫描尚未完成时先选普通接敌，根本没有进入本用例要验证的绕出阶段。
 	for frame in 12:
 		await physics_frame
 		ai.context.update_evidence(1.0 / 60.0, ai.perception.can_see_player())
+		ai.context.spatial.advance_evaluation()
 	var action = ai.actions[&"melee_cover"]
 	var saw_target := false
 	var entered_exit := false

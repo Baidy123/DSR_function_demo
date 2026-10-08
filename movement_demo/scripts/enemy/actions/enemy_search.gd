@@ -173,6 +173,10 @@ var _segment_boundary_pending := false
 var _track_waypoint := Vector3.INF
 var _track_best_distance := INF
 var _track_stuck_seconds := 0.0
+## 本搜索实例的已承诺路段与待核实轨迹，不写入公共记忆或其他动作。
+var _segment_speed := -1.0
+var _trail_pending: Array[Vector3] = []
+var _checked_trail: Array[Vector3] = []
 
 const Actor = preload("res://scripts/enemy/enemy_actor.gd")
 
@@ -203,6 +207,8 @@ func investigate_known_threat(position: Vector3) -> void:
 	investigation_phase = -1
 	_return_to_area_search = false
 	has_suspected_position = false
+	_trail_pending.clear()
+	_checked_trail.clear()
 	if _set_suspected_position_from_raw(position, 2.0):
 		_start_track_to_suspected()
 	else:
@@ -261,6 +267,8 @@ func begin_tracking_or_search(allow_hint: bool = true) -> void:
 	context.is_alerted = true
 	investigation_phase = -1
 	_return_to_area_search = false
+	_trail_pending.clear()
+	_checked_trail.clear()
 
 
 	search_timer = 0.0
@@ -273,24 +281,52 @@ func begin_tracking_or_search(allow_hint: bool = true) -> void:
 		_start_track_to_suspected()
 		return
 
-	# 第二优先：不用作弊，只根据玩家最后真正被看到时的移动方向进行推断。
+	# 先确认失视附近，再沿最后可见方向查下一段；不会一步跨过藏身处。
+	var known: Vector3 = context.last_seen_position if context.has_visual_memory else context.last_known_position
+	if known.is_finite(): _trail_pending.append(known)
 	if context.has_visual_memory and not context.last_seen_direction.is_zero_approx():
 		search_direction = context.last_seen_direction.normalized()
-		var raw_target: Vector3 = predicted_position()
-		if _set_suspected_position_from_raw(raw_target, 2.0):
-			_start_track_to_suspected()
-			return
-
-	# 没有运动轨迹或预测不可达，仍有真实的目击/受击记忆可调查。
-	# 先接近已知位置，避免尚未检查藏身处就直接开始周围的区域覆盖。
-	var known: Vector3 = context.last_seen_position if context.has_visual_memory else context.last_known_position
-	if known.is_finite() and _set_suspected_position_from_raw(known, 2.0):
-		_start_track_to_suspected()
-		return
+		var prediction := predicted_position()
+		if context._horizontal_distance_between(prediction, known) > track_arrival_distance * 2.0:
+			_trail_pending.append(prediction)
+	if _start_next_trail(): return
 
 	# 已知位置也不可达时，继续搜索附近可达区域，不借用隐藏玩家坐标。
 	has_suspected_position = false
 	begin_search(context.last_known_position)
+
+
+func _start_next_trail() -> bool:
+	while not _trail_pending.is_empty():
+		var point: Vector3 = _trail_pending.pop_front()
+		if not _set_suspected_position_from_raw(point, 2.0): continue
+		_start_track_to_suspected()
+		return true
+	return false
+
+
+func _focused_evidence() -> bool:
+	return context.has_visual_memory and not noise_search_origin.is_finite() and context.utility_unseen_seconds < maxf(0.0, float(_setting(&"focused_search_seconds", 8.0)))
+
+
+func _fresh_pursuit() -> bool:
+	return context.has_visual_memory and not noise_search_origin.is_finite() and context.utility_unseen_seconds < maxf(0.0, float(_setting(&"combat_pursuit_seconds", 4.0)))
+
+
+func _next_segment_speed() -> float:
+	var base := search_move_speed_multiplier if investigation_phase == context.State.SEARCH else track_move_speed_multiplier
+	if _fresh_pursuit(): return maxf(base, float(_setting(&"combat_pursuit_speed_multiplier", 1.8)))
+	if _focused_evidence(): return maxf(base, float(_setting(&"focused_search_speed_multiplier", 1.0)))
+	return base
+
+
+func _observation_seconds() -> float:
+	return minf(search_pause_seconds, maxf(0.0, float(_setting(&"focused_search_pause_seconds", 0.25)))) if _focused_evidence() or _fresh_pursuit() else maxf(0.0, search_pause_seconds)
+
+
+func _bound_fast_segment(seconds: float) -> float:
+	# 已承诺短段不因跨过目击阈值中途减速，也不能无限续期。
+	return minf(seconds, maxf(0.5, float(_setting(&"combat_pursuit_seconds", 4.0)))) if _fresh_pursuit() else seconds
 
 
 ## SEARCH 当前实际使用的“外挂”概率。
@@ -544,6 +580,8 @@ func _start_track_to_suspected() -> void:
 	track_timer = track_seconds
 	_return_to_area_search = investigation_phase == context.State.SEARCH and coverage.sample_count > 0
 	investigation_phase = context.State.TRACK
+	_segment_speed = _next_segment_speed()
+	track_timer = _bound_fast_segment(track_timer)
 	_begin_segment()
 	_segment_boundary_pending = false
 	_track_waypoint = Vector3.INF
@@ -595,7 +633,12 @@ func _process_track(delta: float) -> Vector3:
 
 
 func _finish_tracking(failed: bool = false) -> void:
+	if not failed: _checked_trail.append(suspected_position)
 	has_suspected_position = false
+	if not _return_to_area_search and not failed and _focused_evidence() and _start_next_trail():
+		context.invalidate_utility()
+		return
+	_trail_pending.clear()
 	if not _return_to_area_search:
 		begin_search(context.last_known_position)
 		if failed:
@@ -608,7 +651,8 @@ func _finish_tracking(failed: bool = false) -> void:
 	# 概率提示只是本轮搜索的一次支线，不重抽区域、不恢复已消耗的计时。
 	search_current_target_active = false
 	search_is_pausing = true
-	search_pause_timer = maxf(0.0, search_pause_seconds)
+	search_pause_timer = _observation_seconds()
+	_segment_speed = _next_segment_speed()
 	search_hint_timer = maxf(0.25, search_hint_interval_seconds)
 	if failed:
 		release_segment()
@@ -622,6 +666,7 @@ func begin_search(center: Vector3 = Vector3.INF) -> void:
 		return
 	context.state = context.State.SEARCH
 	investigation_phase = context.State.SEARCH
+	_segment_speed = _next_segment_speed()
 	_return_to_area_search = false
 	_begin_segment()
 	_segment_boundary_pending = false
@@ -659,7 +704,7 @@ func begin_search(center: Vector3 = Vector3.INF) -> void:
 	search_timer = search_seconds if search_seconds > 0.0 else INF
 	search_elapsed_seconds = 0.0
 	search_hint_timer = maxf(0.25, search_hint_interval_seconds)
-	search_pause_timer = maxf(0.0, search_pause_seconds)
+	search_pause_timer = _observation_seconds()
 	search_is_pausing = true
 
 	search_sweep_index = 0
@@ -783,6 +828,7 @@ func _process_search(delta: float) -> Vector3:
 
 func _build_systematic_area_search() -> void:
 	coverage.build(context, search_origin, search_radius, search_coverage_radius, search_nav_snap_tolerance)
+	if _focused_evidence(): coverage.prepare_focus(_checked_trail)
 
 
 func get_search_coverage() -> float:
@@ -800,13 +846,14 @@ func _search_point_cost(point: Vector3) -> float:
 func _advance_systematic_search_target() -> bool:
 	if get_search_coverage() >= search_coverage_goal:
 		return false
-	var next: Dictionary = coverage.take_next(predicted_position())
+	var next: Dictionary = coverage.take_next(predicted_position(), _focused_evidence())
 	if not next.is_empty():
 		var destination: Vector3 = next.position
 		var path: PackedVector3Array = next.path
 		search_sweep_index += 1
 		search_current_target = destination
 		search_current_target_active = true
+		_segment_speed = _next_segment_speed()
 		_begin_segment()
 		var planned_direction: Vector3 = destination - actor.global_position
 		planned_direction.y = 0.0
@@ -818,7 +865,7 @@ func _advance_systematic_search_target() -> bool:
 		var path_length: float = 0.0
 		for index in range(1, path.size()):
 			path_length += path[index - 1].distance_to(path[index])
-		search_target_timer = path_length / maxf(0.1, actor.move_speed * search_move_speed_multiplier) + 3.0
+		search_target_timer = _bound_fast_segment(path_length / maxf(0.1, actor.move_speed * movement_multiplier()) + 3.0)
 		agent.target_position = destination
 		if debug_systematic_search:
 			print("[AI][搜索] 轨迹调查目标=", destination, " 已覆盖=", snappedf(get_search_coverage() * 100.0, 0.1), "%")
@@ -839,7 +886,7 @@ func _finish_current_search_point() -> void:
 	search_stuck_timer = 0.0
 	agent.target_position = actor.global_position
 	search_is_pausing = true
-	search_pause_timer = maxf(0.0, search_pause_seconds)
+	search_pause_timer = _observation_seconds()
 
 
 func _skip_current_search_point() -> void:
@@ -855,6 +902,9 @@ func _skip_current_search_point() -> void:
 
 
 func _end_search() -> void:
+	_segment_speed = -1.0
+	_trail_pending.clear()
+	_checked_trail.clear()
 	investigation_phase = -1
 	_return_to_area_search = false
 	noise_search_origin = Vector3.INF
@@ -885,6 +935,9 @@ func _end_search() -> void:
 
 
 func reset() -> void:
+	_segment_speed = -1.0
+	_trail_pending.clear()
+	_checked_trail.clear()
 	investigation_phase = -1
 	_return_to_area_search = false
 	_segment_released = false
@@ -927,11 +980,15 @@ func step(delta: float) -> Vector3:
 
 
 func movement_multiplier() -> float:
-	if context.state == context.State.TRACK:
-		return track_move_speed_multiplier
-	if context.state == context.State.SEARCH:
-		return search_move_speed_multiplier
-	return 1.0
+	return _segment_speed if _segment_speed >= 0.0 else _next_segment_speed()
+
+
+func state_label() -> String:
+	if investigation_phase == context.State.TRACK:
+		return "快速追查" if movement_multiplier() > 1.0 else "沿线调查"
+	if investigation_phase == context.State.SEARCH:
+		return "重点查找" if movement_multiplier() >= 1.0 else "区域搜索"
+	return super.state_label()
 
 
 func facing_direction(direction: Vector3) -> Vector3:

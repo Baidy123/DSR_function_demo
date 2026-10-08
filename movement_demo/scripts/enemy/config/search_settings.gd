@@ -84,11 +84,36 @@ func _init() -> void:
 	set(value):
 		track_seconds = value
 		mark_override(&"track_seconds")
-## 架枪追踪时的移动速度倍率。
+## 普通调查的移动倍率；近期视觉交战可在短路段内使用下方的快速／重点追查速度。
 @export_range(0.1, 1.0, 0.05) var track_move_speed_multiplier: float = 0.55:
 	set(value):
 		track_move_speed_multiplier = value
 		mark_override(&"track_move_speed_multiplier")
+## 近期真实目击允许快速追查的时窗；0关闭加速，提示和到点不刷新目击时间。
+@export_range(0.0, 8.0, 0.5) var combat_pursuit_seconds: float = 4.0:
+	set(value):
+		combat_pursuit_seconds = value
+		mark_override(&"combat_pursuit_seconds")
+## 快速追查倍率；只用于已有视觉交战记忆，普通声音调查仍用原速度。
+@export_range(1.0, 3.0, 0.1) var combat_pursuit_speed_multiplier: float = 1.8:
+	set(value):
+		combat_pursuit_speed_multiplier = value
+		mark_override(&"combat_pursuit_speed_multiplier")
+## 优先检查轨迹和掩体出口的总时窗，从最后真实目击开始计算。
+@export_range(0.0, 20.0, 0.5) var focused_search_seconds: float = 8.0:
+	set(value):
+		focused_search_seconds = value
+		mark_override(&"focused_search_seconds")
+## 重点查找移动倍率；已承诺路段结束后才降到原调查／区域搜索速度。
+@export_range(0.1, 2.0, 0.1) var focused_search_speed_multiplier: float = 1.0:
+	set(value):
+		focused_search_speed_multiplier = value
+		mark_override(&"focused_search_speed_multiplier")
+## 新鲜线索阶段到点观察时长上限，不延长原来的短停留设置。
+@export_range(0.0, 1.0, 0.05) var focused_search_pause_seconds: float = 0.25:
+	set(value):
+		focused_search_pause_seconds = value
+		mark_override(&"focused_search_pause_seconds")
 ## TRACK 时身体朝向对“怀疑方向”的关注权重。1=完全锁定怀疑方向，0=完全朝实际移动方向。
 ## 推荐 0.65~0.85：明显注意怀疑区域，但绕路时身体也会自然跟随一些移动方向。
 @export_range(0.0, 1.0, 0.05) var track_attention_weight: float = 0.75:
@@ -151,7 +176,7 @@ func _init() -> void:
 	set(value):
 		search_nav_snap_tolerance = value
 		mark_override(&"search_nav_snap_tolerance")
-## SEARCH 搜索期间的移动速度倍率。
+## 线索变旧后的区域搜索移动倍率；声音调查沿用此值，近期视觉交战另有重点搜索速度。
 @export_range(0.1, 1.0, 0.05) var search_move_speed_multiplier: float = 0.45:
 	set(value):
 		search_move_speed_multiplier = value

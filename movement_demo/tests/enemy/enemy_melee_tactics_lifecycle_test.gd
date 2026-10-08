@@ -31,11 +31,18 @@ func _run() -> void:
 	var fast_frames := 0
 	var previous_fast := false
 	var paused_once := false
+	var fast_search_after_rush := false
+	var search_preserved_cooldown := true
 	for frame in 120:
 		await physics_frame
 		player.global_position.x += 4.0 / 60.0
 		ai._physics_process(1.0 / 60.0)
-		var fast: bool = Vector2(enemy.velocity.x, enemy.velocity.z).length() > enemy.move_speed * 1.1
+		var moving_fast: bool = Vector2(enemy.velocity.x, enemy.velocity.z).length() > enemy.move_speed * 1.1
+		# 失视后的快速追查是独立动作，不能把它计作第二次突进或突进续时。
+		var fast: bool = moving_fast and ai.current_action == rush
+		if moving_fast and ai.utility_current.get("id") == &"search":
+			fast_search_after_rush = true
+			search_preserved_cooldown = search_preserved_cooldown and rush._burst_remaining == 0.0 and rush.cooldown_remaining() > 0.0
 		if fast:
 			fast_frames += 1
 			if not previous_fast: bursts += 1
@@ -52,7 +59,8 @@ func _run() -> void:
 			ai.set_physics_process(false)
 	check(bursts == 1 and fast_frames > 0, "无需玩家换弹也可在近距离自主突然突进")
 	check(fast_frames <= 61 and enemy.melee_count == 0, "玩家持续逃跑时突进按时结束，不无限加速追踪")
-	check(rush.cooldown_remaining() > 0.0, "突进结束后在普通接近期间继续保留冷却")
+	check(rush.cooldown_remaining() > 0.0, "突进结束后在其他动作执行期间继续保留冷却")
+	check(fast_search_after_rush and search_preserved_cooldown, "失视后独立快速追查，不恢复突进时限或返还冷却")
 	var second = load("res://scenes/enemy/enemy.tscn").instantiate()
 	second.position = Vector3(2, 0, 5)
 	second.get_node("UnitType").profile = load("res://resources/enemy/units/melee.tres").duplicate(true)
