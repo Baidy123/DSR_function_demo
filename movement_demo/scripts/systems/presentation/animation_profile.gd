@@ -13,7 +13,20 @@ extends Resource
 ## 缺少蹲姿／翻越素材时使用角色的胶囊占位表现。
 @export var crouch: StringName = &""
 @export var crouch_move: StringName = &""
+## 蹲起按真实身体高度定位；动作被头顶阻挡时表现也暂停。
+@export var crouch_enter: StringName = &""
+@export var crouch_exit: StringName = &""
+## 姿态专用素材可选；缺失时保持蹲姿，不播放站姿射击／换弹。
+@export var crouch_aim: StringName = &""
+@export var crouch_fire: StringName = &""
+@export var crouch_reload: StringName = &""
+@export var crouch_hit: StringName = &""
 @export var vault: StringName = &""
+## 翻越中断或末段实际下落；不再冻结正常翻越片段。
+@export var vault_fall: StringName = &""
+## 实际翻越落地的一次性表现，不延迟攻击或决定碰撞。
+@export var land: StringName = &""
+@export var crouch_land: StringName = &""
 @export var dialogue: StringName = &""
 @export var fire: StringName = &""
 @export var hit: StringName = &""
@@ -24,11 +37,12 @@ extends Resource
 ## 走路素材对应的实际速度；冲刺素材使用下方独立参考速度。
 @export_range(0.1, 20.0, 0.1) var move_reference_speed: float = 3.0
 @export_range(0.1, 30.0, 0.1) var sprint_reference_speed: float = 6.0
+@export_range(0.1, 20.0, 0.1) var crouch_move_reference_speed: float = 1.5
 @export_range(0.1, 3.0, 0.05) var minimum_rate: float = 0.5
 @export_range(0.1, 5.0, 0.05) var maximum_rate: float = 2.0
 
 
 func clip(state: StringName) -> StringName:
-	if state in [&"idle", &"move", &"sprint", &"aim", &"reload", &"melee", &"crouch", &"crouch_move", &"vault", &"dialogue", &"fire", &"hit", &"dead", &"impact"]:
+	if state in [&"idle", &"move", &"sprint", &"aim", &"reload", &"melee", &"crouch", &"crouch_move", &"crouch_enter", &"crouch_exit", &"crouch_aim", &"crouch_fire", &"crouch_reload", &"crouch_hit", &"vault", &"vault_fall", &"land", &"crouch_land", &"dialogue", &"fire", &"hit", &"dead", &"impact"]:
 		return get(state)
 	return &""

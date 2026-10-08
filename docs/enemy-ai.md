@@ -309,6 +309,8 @@ python movement_demo/tests/enemy/run_enemy_regressions.py --godot E:/Godot/Godot
 
 模型、动画和子弹命中特效由独立表现组件接入，见 [接入说明](gameplay/PRESENTATION.md)。EnemyPresentation 读取身体的实际移动、瞄准和 Ammo 进度，并响应实际开火、死亡及复位通知；普通移动和冲刺分别映射。AI、训练与动作模块不操作动画播放器。空模型继续保留原 Body 倒地和复位效果。
 
+2026-10-09 补齐姿态与装备外观接口：EnemyPresentation 通过身体的 `get_posture_presentation_state()` 取得独立姿态快照，BodyMotion 记录真实蹲起方向、翻越进度及下落状态；活体实际翻越落地只发一次 `vault_landed`。后端支持蹲姿瞄准／射击／换弹／受击、蹲起过渡、下落及落地片段，缺素材时保留安全蹲姿或胶囊，不用站姿换弹覆盖真实蹲藏。实际蹲起优先于单播放器的一次性事件。装备资源提供可选武器模型和偏移，留空显示方块，挂点跟随外部模型或实际枪口高度；外观不参与感知、弹道、近战或 Utility。原战术装配与评分不变，压制共用真实开火通知，动画不负责攻击解锁或换弹完成。
+
 ### 改动应放在哪里
 
 | 要改的内容 | 修改位置 |

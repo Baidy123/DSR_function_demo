@@ -28,6 +28,8 @@
 
 身体执行仍在 `scripts/player/player.gd`；Combat 执行枪械、近战和换弹。`character_geometry.gd`／`low_cover_geometry.gd` 只读查询空间，不控制身体或战斗。`get_eye_position()`、`get_muzzle_position()`、`get_torso_position()`、`get_visibility_points()`、`get_body_height()`、`is_crouching()`、`is_vaulting()` 向原感知和表现提供实际身体信息；`get_posture_*_position()` 仅用于假定姿态查询。
 
+动作素材读取 `get_posture_presentation_state()` 的独立快照，按真实高度播放蹲起，翻越轨迹与物理下落分开表现；活体完成翻越时发出一次 `vault_landed`，死亡／复位不伪造落地。玩家原手动姿态、右键辅助起身、落地朝向与攻击许可仍由身体和 Combat 决定。武器模型跟随指定手部挂点或实际枪口高度，不改变射线起点。配置与空素材回退见 [美术接入](PRESENTATION.md)。
+
 专项验证：`tests/player_half_cover_test.gd` 使用真实玩家子树、地面、低墙和实体目标，覆盖过渡、方向限定起身、头顶空间、可见头部／枪口遮挡、精度、脚步、近战等待、翻越及中断。自动验证与用户手感验收分别记录，最终结果见本次实施记录。以下保留早期阶段记录，当前移动已包含加减速与沿朝向的惯性。
 
 `tests/player_vault_hit_reset_test.gd` 通过真实敌人近战前摇和命中覆盖上升、无敌、下降阶段，核对击退、落地占用、场景身份、区域及敌人复位次数，并保留正常水平离场复位检查。原实现上升受击后从约0.68米继续抛升到3.28米，越过战斗区域上沿，触发敌人复位但未重载场景；修复后新增39项全部通过，错误离场与敌人复位均为0。

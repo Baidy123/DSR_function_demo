@@ -2,6 +2,7 @@
 extends Node3D
 
 const State = preload("res://scripts/systems/presentation/presentation_state.gd")
+const WeaponView = preload("res://scripts/systems/presentation/weapon_presentation.gd")
 ## 只包含外观的 Node3D 场景。留空完全保留旧外观和玩法。
 @export var model_scene: PackedScene:
 	set(value):
@@ -13,6 +14,12 @@ const State = preload("res://scripts/systems/presentation/presentation_state.gd"
 		animation_player_path = value
 		_schedule_rebuild()
 @export var animation_profile: PresentationAnimationProfile
+## 相对于外部角色模型；可填写手部 BoneAttachment3D，不影响真实枪口与弹道。
+@export var weapon_socket_path: NodePath = ^"WeaponSocket"
+## 胶囊或缺少挂点时，相对实际枪口高度的外观偏移。
+@export var weapon_mount_offset: Vector3 = Vector3(0.3, -0.1, 0.15)
+## 模型已自带武器时可关闭，避免重复显示；不改变实际装备。
+@export var show_weapon: bool = true
 ## 相对于本节点，只指定旧 Mesh；禁止填写角色根、碰撞或交互节点。
 @export var placeholder_paths: Array[NodePath] = []
 ## 玩家死亡时只允许本表现分支在暂停中播完，其他情况遵循世界暂停。
@@ -32,6 +39,7 @@ var _death_started: bool = false
 var _death_tween: Tween
 var _rest_pose: Array[Dictionary] = []
 var _rest_values: Array[Dictionary] = []
+var _weapon_view: WeaponView
 
 
 func _ready() -> void:
@@ -166,7 +174,6 @@ func _restore_pose() -> void:
 
 func apply_state(value) -> void:
 	state = value
-	_update_posture_fallback()
 	if state.dead and not _death_started and has_model():
 		_death_started = true
 		_event = &""
@@ -176,6 +183,11 @@ func apply_state(value) -> void:
 			_death_tween.tween_property(_pivot, "rotation:x", PI / 2.0, 0.3)
 			_death_tween.tween_property(_pivot, "position:y", 0.35, 0.3)
 	if state.dead or state.in_dialogue or state.reloading or state.melee_active or state.vaulting: _event = &""
+	# 单播放器的一次性动作不能盖住实际身体高度变化。
+	if state.posture_transition in [&"crouch_enter", &"crouch_exit"]: _event = &""
+	# 姿态改变后不让上一姿态的一次性动作继续把模型拉回站立。
+	if not _event.is_empty() and _event in [&"fire", &"hit", &"land", &"crouch_fire", &"crouch_hit", &"crouch_land"]:
+		if String(_event).begins_with("crouch_") != (state.crouch_amount > 0.01): _event = &""
 	_select_animation()
 
 
@@ -183,8 +195,9 @@ func _update_posture_fallback() -> void:
 	if not has_model() or Engine.is_editor_hint(): return
 	var missing := false
 	if not state.dead:
-		if state.vaulting: missing = _resolve(&"vault").is_empty()
-		elif state.crouch_amount > 0.01: missing = _resolve(&"crouch").is_empty()
+		if state.vaulting: missing = _resolve(state.base_state()).is_empty()
+		elif state.crouch_amount > 0.01:
+			missing = not String(current_state).begins_with("crouch") or _resolve(current_state).is_empty()
 	model.visible = not missing
 	if missing: _restore_placeholders()
 	else: _hide_placeholders()
@@ -192,6 +205,9 @@ func _update_posture_fallback() -> void:
 
 func play_event(event_id: StringName) -> void:
 	if not has_model() or state.dead or state.in_dialogue or state.reloading or state.melee_active or state.vaulting: return
+	if state.posture_transition in [&"crouch_enter", &"crouch_exit"]: return
+	if state.crouch_amount > 0.01 and event_id in [&"fire", &"hit", &"land"]:
+		event_id = StringName("crouch_" + String(event_id))
 	if _resolve(event_id).is_empty(): return
 	_event = event_id
 	_clip = &"" # 每一次实际发射都可以重新开始一次性动作。
@@ -203,7 +219,7 @@ func _resolve(key: StringName) -> StringName:
 	var name := animation_profile.clip(key)
 	if not name.is_empty() and player.has_animation(name): return name
 	if key == &"sprint": return _resolve(&"move")
-	if key == &"crouch_move": return _resolve(&"crouch")
+	if key in [&"crouch_move", &"crouch_enter", &"crouch_exit", &"crouch_aim", &"crouch_reload"]: return _resolve(&"crouch")
 	if key in [&"move", &"aim", &"dialogue", &"reload", &"melee"]: return _resolve(&"idle")
 	return &""
 
@@ -220,32 +236,61 @@ func _select_animation() -> void:
 				player.play(next, animation_profile.blend_seconds)
 				player.seek(0.0, true)
 				player.advance(0.0)
-	if current_state == &"reload" and player != null and animation_profile != null and _clip == animation_profile.reload and not _clip.is_empty():
+	if current_state in [&"reload", &"crouch_reload"] and _uses_mapped_clip(current_state):
 		_time = clampf(state.reload_progress, 0.0, 1.0) * player.get_animation(_clip).length
 		player.seek(_time, true)
-	if current_state == &"melee" and player != null and animation_profile != null and _clip == animation_profile.melee and not _clip.is_empty():
+	if current_state == &"melee" and _uses_mapped_clip(current_state):
 		_time = clampf(state.melee_progress, 0.0, 1.0) * player.get_animation(_clip).length
 		player.seek(_time, true)
 	if current_state == &"vault" and player != null and not _clip.is_empty():
 		_time = clampf(state.vault_progress, 0.0, 1.0) * player.get_animation(_clip).length
 		player.seek(_time, true)
+	if current_state in [&"crouch_enter", &"crouch_exit"] and _uses_mapped_clip(current_state):
+		var progress: float = state.crouch_amount if current_state == &"crouch_enter" else 1.0 - state.crouch_amount
+		_time = clampf(progress, 0.0, 1.0) * player.get_animation(_clip).length
+		player.seek(_time, true)
+	_update_posture_fallback()
+	_update_weapon()
+
+
+func _uses_mapped_clip(key: StringName) -> bool:
+	return player != null and animation_profile != null and not _clip.is_empty() and _clip == animation_profile.clip(key)
+
+
+func _update_weapon() -> void:
+	if Engine.is_editor_hint(): return
+	if not is_instance_valid(_weapon_view):
+		if not show_weapon or state.weapon == null: return
+		_weapon_view = WeaponView.new()
+		_weapon_view.name = "_WeaponPresentation"
+		add_child(_weapon_view, false, Node.INTERNAL_MODE_BACK)
+	var socket: Node3D
+	if has_model() and model.visible and not weapon_socket_path.is_empty():
+		socket = model.get_node_or_null(weapon_socket_path) as Node3D
+		if socket != null and socket != model and not model.is_ancestor_of(socket): socket = null
+		if socket != null and not socket.is_visible_in_tree(): socket = null
+	# 无手部挂点的占位角色倒地后不留下悬空武器；真实骨骼挂点仍可持有。
+	var visible_weapon: Resource = state.weapon if show_weapon and (not state.dead or socket != null) else null
+	_weapon_view.apply_weapon(visible_weapon, socket, state.weapon_mount_position + weapon_mount_offset)
 
 
 func _process(delta: float) -> void:
+	_update_weapon()
 	if Engine.is_editor_hint() or player == null or _clip.is_empty(): return
 	if get_tree().paused and not (state.dead and death_during_pause): return
-	if current_state == &"reload" and animation_profile != null and _clip == animation_profile.reload: return
-	if current_state == &"melee" and animation_profile != null and _clip == animation_profile.melee: return
+	if current_state in [&"reload", &"crouch_reload", &"melee", &"crouch_enter", &"crouch_exit"] and _uses_mapped_clip(current_state): return
 	if current_state == &"vault": return
 	var animation := player.get_animation(_clip)
 	var length := maxf(0.001, animation.length)
 	var rate := 1.0
-	if current_state in [&"move", &"sprint"] and animation_profile != null:
+	if current_state in [&"move", &"sprint", &"crouch_move"] and animation_profile != null:
 		var reference := animation_profile.sprint_reference_speed if current_state == &"sprint" and _clip == animation_profile.sprint else animation_profile.move_reference_speed
+		if current_state == &"crouch_move": reference = animation_profile.crouch_move_reference_speed
 		rate = clampf(state.local_velocity.length() / maxf(0.1, reference), animation_profile.minimum_rate, maxf(animation_profile.minimum_rate, animation_profile.maximum_rate))
 	var step := delta * rate
 	# 自己约束循环与结束，避免共享动画资源的 loop_mode 被各实例改写。
 	player.advance(minf(step, maxf(0.0, length - _time)))
+	_update_weapon()
 	_time += step
 	if _time < length: return
 	if current_state == &"dead":
@@ -261,6 +306,7 @@ func _process(delta: float) -> void:
 
 
 func reset_presentation() -> void:
+	if is_instance_valid(_weapon_view): _weapon_view.clear()
 	if _death_tween != null and _death_tween.is_valid(): _death_tween.kill()
 	if is_instance_valid(_pivot): _pivot.transform = Transform3D.IDENTITY
 	if player != null:

@@ -4,6 +4,12 @@
 
 ## 当前回归
 
+2026-10-09 动作与武器素材接口补齐，新增 `posture_animation_profile_test`（49项）、`posture_animation_adapter_test`（49项）、`weapon_presentation_test`（52项），均通过。分别覆盖：真实进度驱动蹲起／换弹、姿态安全回退、开火／落地被实际起身接管、翻越与下落分离；双方真实身体到适配器的独立快照、顶阻、正常／中断落地只通知一次、暂停／死亡／复位；主副槽和敌人实际装备切换、空素材方块、挂点与模型重建、真实 Skeleton3D / BoneAttachment3D 动画的帧内跟随、实例隔离及弹药／冷却／碰撞保持。这三套注册在玩家战斗运行器，不放入 Utility 测试装配。
+
+最终源码的完整玩家战斗回归 **21/21** 通过；相关敌人选择性回归 **6/6** 通过：半身掩体、姿态生命周期、自主翻越、基础执行契约、近战执行、低墙依托射击；原表现接口／移动兼容／区域复位 **3/3** 通过。23状态预览以固定60 Hz运行2880帧，无脚本／资源错误。编辑器预览与保存专项9项检查通过（含原实例保存专项7项），退出仍出现已有的编辑器自定义 SceneTree RID／资源清理提示，单独记录，不计作干净退出。本轮未重跑完整64套敌人回归，也不撤销下文已有性能待办。
+
+验证使用 `cfc4ba4` 加本轮准确源码的独立提交候选，保留已提交资源与字体，排除用户未提交的场景／武器调参与字体删除；未修改用户工程资源或中断当前游戏。日志位于本地 `movement_demo/logs/presentation_completion_20261009/`，不提交。运行回归不替代正式骨骼素材接入后的美术与手感验收。
+
 2026-09-30 玩家近战初次接入后完整敌人回归35/35通过，记录见 [玩家阶段](superpowers/plans/2026-09-30-player-melee.md)。随后用户授权远程敌人阶段，新增 `enemy_melee_execution_test.gd`（24项）和 `enemy_melee_utility_test.gd`，完整敌人回归37/37通过。层级纠正后 Utility 专项扩展为15项，验证现有接敌的 `engage / melee` 方案、实际推开和退让接续、同一行为内方案区分与中断边界、武器关闭近战、兵种装配隔离；不新增独立挥击行为。执行专项继续验证独立执行、动画同步与生命周期。玩家侧另有 `tests/player_enemy_melee_hit_test.gd`（15项），验证两种准度模式、切枪、30／60／120 Hz 物理击退、瞄准切换和墙体阻挡。见 [远程敌人接入记录](superpowers/plans/2026-09-30-ranged-enemy-melee.md)。
 
 2026-09-30 增加 [表现接口验证](gameplay/PRESENTATION.md#维护与验证)。`utility_budget_test` 和 `attack_point_validation_test` 现在只在运行实例中明确启用其测试所需的攻击占位，避免依赖用户当前的训练勾选；不改保存的训练资源。涉及20毫秒预算的测试应避免与资源导入等高负载任务并行。
@@ -146,7 +152,7 @@ Fire Mode 阶段（`41edf9d`）本地工作区完整敌人回归41/41、玩家�
 
 `reload_approach_timing_test` 启用攻击站位后逐帧检查玩家靠近、实际动作切换与换弹计时，另外执行合法长路线的边走边换，检查弹匣尚有余弹时也不能在换弹过程中开枪。显示分别验证准备阶段、跨动作保留的实际进度、关闭Debug仍能看见进度，以及补满后继续转移的阶段，不能仅凭动作名称判断是否仍在换弹。
 
-玩家及双方准度验证使用 `python movement_demo/tests/run_combat_regressions.py --godot E:/Godot/Godot_v4.7.2-stable_win64_console.exe`，当前 14 套入口，日志在 `movement_demo/logs/combat_regressions/`。其中 `aim_disruption_test` 验证双方真实直击/擦身弹道、墙体遮挡、换弹最低准度及恢复、重复惩罚排除和移动火力缓存边界；兼容入口复用玩家瞄准模式、散布、移动惩罚、模式参数和第一碰撞物检查。`player_reload_checkpoint_test` 覆盖50%边界、重复奔跑中断、前半程取消后真实开火、后半程强制续换禁射、两槽隔离、慢速方式保留、共享备弹耗尽及死亡重开；原换弹测试继续驱动真实Shift输入。另覆盖弹药、生命与自动射击，以及玩家近战功能、表现、物理、战斗区域、体力和敌人近战受击。
+玩家及双方准度验证使用 `python movement_demo/tests/run_combat_regressions.py --godot E:/Godot/Godot_v4.7.2-stable_win64_console.exe`，当前 21 套入口，日志在 `movement_demo/logs/combat_regressions/`。其中 `aim_disruption_test` 验证双方真实直击/擦身弹道、墙体遮挡、换弹最低准度及恢复、重复惩罚排除和移动火力缓存边界；兼容入口复用玩家瞄准模式、散布、移动惩罚、模式参数和第一碰撞物检查。`player_reload_checkpoint_test` 覆盖50%边界、重复奔跑中断、前半程取消后真实开火、后半程强制续换禁射、两槽隔离、慢速方式保留、共享备弹耗尽及死亡重开；原换弹测试继续驱动真实Shift输入。另覆盖弹药、生命与自动射击，玩家近战功能、表现、物理、战斗区域、体力和敌人近战受击，以及半身掩体／翻越、姿态动画和武器外观接口。
 
 `enemy_fire_fixture.gd` 是公共辅助，`modular_probe_action.gd` 验证动态扩展；二者不单独运行。检查器使用编辑器模式：
 

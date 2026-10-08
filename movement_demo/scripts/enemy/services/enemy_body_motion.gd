@@ -6,6 +6,7 @@ const LowCover = preload("res://scripts/world/low_cover_geometry.gd")
 var actor: CharacterBody3D
 var crouch_requested := false
 var amount := 0.0
+var _presentation_transition: StringName = &""
 var vault: Dictionary = {}
 var progress := 0.0
 var falling := false
@@ -25,6 +26,7 @@ func setup(body: CharacterBody3D) -> void:
 func reset() -> void:
 	crouch_requested = false
 	amount = 0.0
+	_presentation_transition = &""
 	vault = {}
 	progress = 0.0
 	falling = false
@@ -36,6 +38,15 @@ func reset() -> void:
 func height() -> float:
 	return lerpf(actor.get_posture_body_height(false), actor.get_posture_body_height(true), amount)
 
+func presentation_state() -> Dictionary:
+	return {
+		"amount": amount,
+		"transition": &"" if actor.is_dead else _presentation_transition,
+		"vaulting": active(),
+		"vault_progress": progress if active() else 0.0,
+		"vault_falling": active() and falling,
+	}
+
 func request_crouch(value: bool) -> void:
 	crouch_requested = value
 
@@ -45,6 +56,10 @@ func update_posture(delta: float) -> void:
 	var next := move_toward(amount, target, maxf(delta, 0.0) / maxf(actor.posture_seconds, 0.01))
 	var next_height := lerpf(actor.get_posture_body_height(false), actor.get_posture_body_height(true), next)
 	if next < amount and not Geometry.can_occupy(actor, actor.global_position, next_height, radius()): return
+	# 只记录真实姿态变化；顶阻时保留过渡方向及其冻结的高度。
+	if next > amount: _presentation_transition = &"crouch_enter"
+	elif next < amount: _presentation_transition = &"crouch_exit"
+	if next <= 0.0 or next >= 1.0: _presentation_transition = &""
 	amount = next
 	_apply_height(next_height)
 
@@ -81,6 +96,7 @@ func begin(plan: Dictionary) -> bool:
 	actor.clear_aim()
 	actor.velocity = Vector3.ZERO
 	amount = 1.0
+	_presentation_transition = &""
 	_apply_height(float(vault.height))
 	return true
 
@@ -110,6 +126,7 @@ func advance(delta: float) -> void:
 			vault = {}
 			actor.velocity = Vector3.ZERO
 			if actor.is_dead: actor.get_node("CollisionShape3D").set_deferred("disabled", true)
+			else: actor.vault_landed.emit()
 
 func _landing_direction(delta: float) -> Vector3:
 	if not _landing_target.is_finite():

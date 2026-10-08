@@ -5,6 +5,14 @@ extends Resource
 enum FireMode { SEMI_AUTO, AUTOMATIC, MELEE }
 enum AmmoType { RIFLE, PISTOL, SMG, SHOTGUN }
 
+@export_group("武器外观")
+## 可选纯外观场景；留空显示方块占位，不参与弹道、命中或装备资格。
+@export var visual_model: PackedScene
+## 相对于角色武器挂点的模型偏移；同一资源可由多个持有者独立显示。
+@export var visual_position: Vector3 = Vector3.ZERO
+@export var visual_rotation_degrees: Vector3 = Vector3.ZERO
+@export var visual_scale: Vector3 = Vector3.ONE
+
 @export_group("弹匣与换弹")
 ## 玩家使用对应类型的共享备弹池；敌人仍使用有限弹匣、无限备弹。
 @export_enum("步枪弹药:0", "手枪弹药:1", "冲锋枪弹药:2", "霰弹枪弹药:3") var ammo_type: int = AmmoType.PISTOL

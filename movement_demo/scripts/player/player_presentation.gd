@@ -12,6 +12,7 @@ var motion = MotionSample.new()
 func _ready() -> void:
 	process_physics_priority = 100
 	motion.reset(actor)
+	actor.vault_landed.connect(_on_vault_landed)
 	var combat = actor.get_node_or_null("Combat")
 	var health = actor.get_node_or_null("Health")
 	if combat != null:
@@ -34,9 +35,13 @@ func _sync() -> void:
 	state.dead = actor.is_dead()
 	state.in_dialogue = actor.is_in_dialogue
 	state.sprinting = actor.is_sprinting and state.local_velocity.length() > 0.02
-	state.crouch_amount = actor.crouch_amount
-	state.vaulting = actor.is_vaulting()
-	state.vault_progress = actor.get_vault_progress()
+	var posture: Dictionary = actor.get_posture_presentation_state()
+	state.crouch_amount = posture.amount
+	state.posture_transition = posture.transition
+	state.vaulting = posture.vaulting
+	state.vault_progress = posture.vault_progress
+	state.vault_falling = posture.vault_falling
+	state.weapon_mount_position = presentation.to_local(actor.get_muzzle_position())
 	var combat = actor.get_node_or_null("Combat")
 	if combat != null:
 		state.aiming = combat.is_aiming
@@ -66,3 +71,8 @@ func _on_damage(_damage: float) -> void:
 
 func _on_death() -> void:
 	_sync() # 同步通知可在 Health 暂停世界的同一调用栈中播放死亡。
+
+
+func _on_vault_landed() -> void:
+	_sync()
+	if presentation != null: presentation.play_event(&"land")

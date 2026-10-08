@@ -5,6 +5,8 @@ const LowCoverGeometry = preload("res://scripts/world/low_cover_geometry.gd")
 const PostureCapsule = preload("res://resources/models/crouch_capsule.tres")
 const STANDING_HEIGHT: float = 1.75
 
+signal vault_landed
+
 @export_group("姿态与翻越")
 @export_range(0.7, 1.5, 0.01) var crouch_height: float = 1.0
 @export_range(0.05, 1.0, 0.01) var posture_transition_seconds: float = 0.2
@@ -17,6 +19,7 @@ const STANDING_HEIGHT: float = 1.75
 @export_range(0.5, 2.5, 0.05) var cover_interaction_distance: float = 1.5
 var manual_crouch: bool = false
 var crouch_amount: float = 0.0
+var _posture_presentation_transition: StringName = &""
 var _posture_wants_crouch: bool = false
 var _aim_cover: Dictionary = {}
 var _body_shape: CapsuleShape3D
@@ -407,6 +410,17 @@ func get_vault_progress() -> float:
 	return _vault_progress if is_vaulting() else 0.0
 
 
+## 独立只读快照；表现不得通过它改变碰撞、姿态请求或翻越进度。
+func get_posture_presentation_state() -> Dictionary:
+	return {
+		"amount": crouch_amount,
+		"transition": _posture_presentation_transition,
+		"vaulting": is_vaulting(),
+		"vault_progress": get_vault_progress(),
+		"vault_falling": is_vaulting() and _vault_falling,
+	}
+
+
 func get_posture_move_multiplier() -> float:
 	return lerpf(1.0, crouch_move_multiplier, crouch_amount)
 
@@ -472,6 +486,10 @@ func _update_posture(delta: float) -> void:
 	var next := move_toward(crouch_amount, 1.0 if _posture_wants_crouch else 0.0, maxf(0.0, delta) / maxf(0.001, posture_transition_seconds))
 	if next < crouch_amount:
 		if not CharacterGeometry.can_occupy(self, global_position, STANDING_HEIGHT, _body_radius()): return
+	# 只有真实高度改变才切换方向；中途顶阻时保留原方向和进度。
+	if next > crouch_amount: _posture_presentation_transition = &"crouch_enter"
+	elif next < crouch_amount: _posture_presentation_transition = &"crouch_exit"
+	if next <= 0.0 or next >= 1.0: _posture_presentation_transition = &""
 	crouch_amount = next
 	_apply_body_posture()
 
@@ -503,6 +521,7 @@ func request_vault(direction: Vector3) -> bool:
 	current_speed = 0.0
 	velocity = Vector3.ZERO
 	crouch_amount = 1.0
+	_posture_presentation_transition = &""
 	_apply_body_posture()
 	var heading: Vector3 = plan.exit - plan.entry
 	heading.y = 0.0
@@ -570,6 +589,7 @@ func _advance_vault_fall(delta: float) -> void:
 
 
 func _finish_vault() -> void:
+	var was_vaulting := is_vaulting()
 	_vault_plan.clear()
 	_vault_elapsed = 0.0
 	_vault_falling = false
@@ -580,6 +600,7 @@ func _finish_vault() -> void:
 	_aim_cover.clear()
 	# 保留手动选择，下一物理帧按落地方向重新评估辅助起身。
 	if combat != null: combat.clear_target_lock()
+	if was_vaulting and not is_dead(): vault_landed.emit()
 
 
 func _on_vault_region_reset(region: Node) -> void:
@@ -590,6 +611,7 @@ func _on_vault_region_reset(region: Node) -> void:
 
 func _on_posture_death() -> void:
 	_vault_plan.clear()
+	_posture_presentation_transition = &""
 	_vault_region = null
 	_aim_cover.clear()
 	_clear_melee_push()

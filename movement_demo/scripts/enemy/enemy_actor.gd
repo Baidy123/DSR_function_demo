@@ -22,6 +22,7 @@ signal hit_received(damage: float, attacker_position: Vector3)
 signal reset_completed
 signal shot_fired
 signal died
+signal vault_landed
 signal melee_started
 signal melee_struck(target: Node3D, settings: Dictionary, direction: Vector3)
 signal melee_finished(cancelled: bool)
@@ -617,6 +618,9 @@ func begin_vault(plan: Dictionary) -> bool:
 
 func is_vaulting() -> bool:
 	return body_motion.active()
+
+func get_posture_presentation_state() -> Dictionary:
+	return body_motion.presentation_state()
 
 func is_crouching() -> bool:
 	return not is_vaulting() and body_motion.amount >= 0.9999
