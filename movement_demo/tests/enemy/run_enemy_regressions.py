@@ -30,6 +30,7 @@ TESTS = [
     "enemy_reload_observation_test",
     "enemy_melee_tactics_test",
     "enemy_melee_cover_test",
+    "enemy_melee_low_cover_test",
     "enemy_melee_shelter_test",
     "enemy_melee_cover_exit_test",
     "enemy_melee_cover_continuity_test",
