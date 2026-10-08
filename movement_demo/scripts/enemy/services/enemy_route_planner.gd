@@ -2,6 +2,9 @@ extends RefCounted
 
 ## Read-only one-vault alternatives. No target reads, action state or navigation writes.
 const LowCover = preload("res://scripts/world/low_cover_geometry.gd")
+const Geometry = preload("res://scripts/systems/character_geometry.gd")
+# Bounded local adjustment of a generated entry, not a relaxed path tolerance.
+const MAX_ENTRY_PROJECTION := 0.35
 var context
 var _cache: Dictionary = {}
 var _pending: Array[Vector3] = []
@@ -54,6 +57,8 @@ func _evaluate(destination: Vector3) -> Array[Dictionary]:
 		crossing[axis] = signf(start[axis]) * (half[axis] + 0.6 / collision.global_basis[axis].length())
 		var entry := collision.to_global(crossing)
 		entry.y = actor.global_position.y
+		entry = _navigation_entry(entry, collision, axis, signf(start[axis]))
+		if not entry.is_finite(): continue
 		var vault := LowCover.query_vault_at(actor, cover, entry, -collision.global_basis[axis] * signf(start[axis]))
 		if not vault.get("valid", false): continue
 		var before: PackedVector3Array = context.cover_selection._path_to(actor.global_position, entry)
@@ -62,6 +67,20 @@ func _evaluate(destination: Vector3) -> Array[Dictionary]:
 		if context._horizontal_distance_between(before[before.size() - 1], entry) > 0.15 or context._horizontal_distance_between(after[0], vault.exit) > 0.3: continue
 		result.append({"vault": vault, "before": before, "after": after, "destination": destination})
 	return result
+
+func _navigation_entry(nominal: Vector3, collision: CollisionShape3D, axis: int, side: float) -> Vector3:
+	var projected: Vector3 = NavigationServer3D.region_get_closest_point(context.navigation_region.get_rid(), nominal)
+	if context._horizontal_distance_between(projected, nominal) > MAX_ENTRY_PROJECTION or absf(projected.y - nominal.y) > 0.5:
+		return Vector3.INF
+	# Baking raises the navigation surface; the vault still starts on the actual
+	# feet plane. Do not snap onto the other side of this wall or another floor.
+	projected.y = nominal.y
+	var local: Vector3 = collision.to_local(projected)
+	if local[axis] * side <= collision.shape.size[axis] * 0.5: return Vector3.INF
+	var actor = context.actor
+	if not Geometry.can_occupy(actor, projected, actor.get_posture_body_height(false), LowCover._radius(actor), true):
+		return Vector3.INF
+	return projected
 
 func assessment(route: Dictionary, multiplier: float, threat: Vector3, reload_seconds: float) -> Dictionary:
 	var before: Dictionary = context.spatial.assess_route(context, route.before, threat, multiplier, reload_seconds)

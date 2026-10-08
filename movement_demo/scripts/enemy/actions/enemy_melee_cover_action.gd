@@ -287,7 +287,7 @@ func _choose_exit(options: Array[Dictionary]) -> Dictionary:
 
 func _charge_candidate(destination: Dictionary, remaining: float, visible: bool) -> Dictionary:
 	if not _running or not is_enabled() or not visible or remaining <= 0.0 or not actor.can_move() or context.melee.can_request(visible): return {}
-	var path: PackedVector3Array = Approach.contact_path(context)
+	var path := _charge_path(destination)
 	if path.is_empty(): return {}
 	var candidate := option(destination, 0.0, 0.0, 0.0, &"advance")
 	candidate.outcome = Approach.contact_outcome(context, path, _exit_speed(), remaining)
@@ -296,6 +296,15 @@ func _charge_candidate(destination: Dictionary, remaining: float, visible: bool)
 	# route 候选仍参与同一次共同评分，并可随时接管有限奔跑。
 	if _is_low_cover(destination.body): candidate.route_target = Vector3.INF
 	return candidate
+
+func _charge_path(destination: Dictionary) -> PackedVector3Array:
+	var path: PackedVector3Array = Approach.contact_path(context)
+	if path.is_empty() or not _is_low_cover(destination.body): return path
+	# 接敌规划可能拼接一次翻越；本段只执行普通导航，必须真实可步行。
+	# 校验实际接敌落点，保留玩家在导航外时已有的近侧停靠回退。
+	var walk: PackedVector3Array = selection._path_to(actor.global_position, path[path.size() - 1]).duplicate()
+	for index in walk.size(): walk[index].y = actor.global_position.y
+	return walk
 
 func _start_charge(delta: float, visible: bool) -> Dictionary:
 	transfer.reset()
@@ -308,7 +317,7 @@ func _tick_charge(delta: float, visible: bool) -> Dictionary:
 	if _charge_candidate(plan.destination, _charge_remaining, visible).is_empty():
 		_running = false
 		return motion(Vector3.ZERO)
-	var path: PackedVector3Array = Approach.contact_path(context)
+	var path := _charge_path(plan.destination)
 	agent.target_position = path[path.size() - 1]
 	var next: Vector3 = agent.get_next_path_position()
 	if agent.is_navigation_finished():
