@@ -316,10 +316,11 @@ func _reload_exposure(point: Vector3, threat: Vector3, body_protection: float = 
 	var exposed: float = 1.0 - clampf(body_protection, 0.0, 1.0)
 	if body_protection < 0.0:
 		exposed = 0.0
-		var query: PhysicsRayQueryParameters3D = cover_selection._ray_query(actor.get_posture_muzzle_position(false, threat), actor.get_posture_eye_position(crouched, point))
+		var target_eye: Vector3 = actor.get_posture_eye_position(crouched, point)
+		var query: PhysicsRayQueryParameters3D = cover_selection._ray_query(actor.get_posture_muzzle_position(false, threat), target_eye)
 		var space := actor.get_world_3d().direct_space_state
 		for offset: Vector3 in [Vector3.ZERO, side, -side]:
-			query.to = actor.get_posture_eye_position(crouched, point) + offset
+			query.to = target_eye + offset
 			if space.intersect_ray(query).is_empty():
 				exposed += 1.0 / 3.0
 	var result := exposed * (1.0 + clampf(1.0 - direction.length() / _exposure_safe_distance, 0.0, 1.0))

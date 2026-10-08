@@ -310,6 +310,46 @@ func _check_disconnected_path(scene: Node, enemy: Node3D, ai: Node, selection: N
 	_check("测试确实产生未到达终点的部分路径", not raw_path.is_empty() and raw_path[raw_path.size() - 1].distance_to(projected) > 0.1)
 	var result: Dictionary = selection.assess_attack_point(destination, wall, Vector3(201, 0.8, 0), Vector3(201, 0.8, 0))
 	_check("候选在另一导航孤岛也不能靠部分路径通过", not result.usable and not result.reachable)
+	_check("共享路径拒绝距目标不足半米的断岛部分路径", selection._path_to(enemy.global_position, destination).is_empty())
+	ai.context.routes.reset()
+	_check("移动路线规划不把断岛部分路径当成普通通路", ai.context.routes.planning_path(enemy.global_position, destination).is_empty())
+	var reachable := Vector3(201.5, 0, 0)
+	var control: PackedVector3Array = selection._path_to(enemy.global_position, reachable)
+	_check("同岛完整路径保留并容许烘焙导航高于地面", not control.is_empty() and ai.context._horizontal_distance_between(control[control.size() - 1], reachable) <= 0.05 and absf(control[control.size() - 1].y - reachable.y) > 0.1)
+	# A genuine low wall conceals the second-island point. Its vault is disabled:
+	# this fixture isolates ordinary path completeness, not a legal off-mesh link.
+	var low := StaticBody3D.new()
+	low.set_script(preload("res://scripts/world/cover_region.gd"))
+	low.low_cover = true
+	low.vault_enabled = false
+	var collision := CollisionShape3D.new()
+	collision.name = "CollisionShape3D"
+	var shape := BoxShape3D.new()
+	shape.size = Vector3(0.2, 1.1, 3.0)
+	collision.shape = shape
+	low.add_child(collision)
+	fixture.add_child(low)
+	low.global_position = Vector3(203.05, 0.55, 0.0)
+	var old_known: Vector3 = ai.context.last_known_position
+	var old_alerted: bool = ai.context.is_alerted
+	ai.context.last_known_position = Vector3(204.8, 0.0, 0.0)
+	ai.context.is_alerted = true
+	preload("res://tests/enemy/enemy_fire_fixture.gd").set_training_action(ai, &"cover", true)
+	for frame in 3: await physics_frame
+	var hide := {"hide": destination, "body": low, "crouch": true, "stand": destination}
+	_check("断岛低墙落点本身有站立空间和真实蹲藏遮挡", ai.context.is_position_free(destination) and selection._center_hidden_by_cover(destination, enemy.get_posture_eye_position(false, ai.context.last_known_position), low, true))
+	ai.context.routes.reset()
+	_check("低墙躲藏资格拒绝断岛部分路径", not ai.context.spatial.cover_valid(hide))
+	_check("低墙空间候选不缓存断岛落点", ai.context.spatial.assess_cover_point(hide).is_empty())
+	var cover_action = ai.actions[&"cover"]
+	var candidate: Dictionary = cover_action.option(hide, 0.0, 0.0)
+	_check("动作提交重新拒绝断岛低墙落点", not cover_action.validate(candidate, false))
+	enemy.global_position = Vector3(202.5, 0.0, 1.0)
+	ai.context.routes.reset()
+	await physics_frame
+	_check("改从同一岛接近时低墙资格和提交正常通过", ai.context.spatial.cover_valid(hide) and cover_action.validate(candidate, false))
+	ai.context.last_known_position = old_known
+	ai.context.is_alerted = old_alerted
 	ai.context.navigation_region = original_region
 	enemy.agent.set_navigation_map(original_map)
 	enemy.global_position = original_position

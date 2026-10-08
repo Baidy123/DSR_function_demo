@@ -165,7 +165,9 @@ func _query_path_to(from: Vector3, to: Vector3) -> PackedVector3Array:
 		return PackedVector3Array()
 	var path: PackedVector3Array = NavigationServer3D.map_get_path(
 		enemy.agent.get_navigation_map(), from, nav_point, true, enemy.agent.navigation_layers)
-	if path.is_empty() or path[path.size() - 1].distance_to(nav_point) > 0.5:
+	# A partial path can end near a disconnected island. Vertical bake tolerance
+	# must not also permit half a metre of missing horizontal connectivity.
+	if path.is_empty() or ai._horizontal_distance_between(path[path.size() - 1], to) > 0.05 or absf(path[path.size() - 1].y - nav_point.y) > 0.5:
 		return PackedVector3Array()
 	return path
 
