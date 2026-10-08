@@ -23,6 +23,11 @@ extends StaticBody3D
 @export_range(0.2, 1.0, 0.05) var attack_sample_spacing: float = 0.4
 ## 仅在编辑器显示橙色连续扇环；运行时再检查站立空间、射界、遮挡和可达性。
 @export var show_attack_points_in_editor: bool = true
+@export_group("半身掩体")
+## 明确标记为低掩体，实际高度仍依据碰撞盒校验；旧高墙默认关闭。
+@export var low_cover: bool = false
+## 仅允许尝试翻越，入口、整段身体通道及落点仍需运行时检查。
+@export var vault_enabled: bool = false
 
 var _preview_signature: String = ""
 
@@ -36,6 +41,19 @@ func _ready() -> void:
 # 四面区域均基于碰撞盒的局部坐标，支持现有直立长方体的平移、旋转与缩放。
 func _collision() -> CollisionShape3D:
 	return get_node_or_null("CollisionShape3D") as CollisionShape3D
+
+
+func get_top_height() -> float:
+	var collision := _collision()
+	if collision == null or not collision.shape is BoxShape3D: return global_position.y
+	return collision.to_global(Vector3.UP * collision.shape.size.y * 0.5).y
+
+
+func is_low_cover() -> bool:
+	var collision := _collision()
+	if not low_cover or collision == null or not collision.shape is BoxShape3D: return false
+	var height: float = collision.shape.size.y * collision.global_basis.y.length()
+	return collision.global_basis.y.normalized().dot(Vector3.UP) > 0.999 and height >= 0.45 and height <= 1.3
 
 
 func _dimensions() -> Vector2:
@@ -107,10 +125,12 @@ func get_candidates(threat: Vector3, from: Vector3) -> Array[Dictionary]:
 		for point in _local_peeks(end_face):
 			peeks.append(collision.to_global(point))
 		for sample in samples:
-			candidates.append({
-				"hide": collision.to_global(_face_point(sample.x, side * sample.y, end_face)),
-				"peeks": peeks
-			})
+			var hide := collision.to_global(_face_point(sample.x, side * sample.y, end_face))
+			var candidate := {"hide": hide, "peeks": peeks, "cover": self}
+			if is_low_cover():
+				candidate["crouch"] = true
+				candidate["stand"] = hide
+			candidates.append(candidate)
 	return candidates
 
 
@@ -246,7 +266,7 @@ func _process(_delta: float) -> void:
 	if collision == null or not collision.shape is BoxShape3D:
 		return
 	var signature := str(collision.shape.size, hide_length_ratio, short_hide_length_ratio, hide_depth, wall_gap, peek_outset, show_regions_in_editor,
-		attack_inner_radius, attack_outer_radius, attack_sample_spacing, show_attack_points_in_editor)
+		attack_inner_radius, attack_outer_radius, attack_sample_spacing, show_attack_points_in_editor, low_cover, vault_enabled)
 	if signature == _preview_signature:
 		return
 	_preview_signature = signature
@@ -281,6 +301,18 @@ func _process(_delta: float) -> void:
 			_preview_line(mesh, center - Vector3.FORWARD * 0.18, center + Vector3.FORWARD * 0.18, Color.YELLOW)
 	if show_attack_points_in_editor:
 		_preview_attack_regions(mesh, false)
+	if is_low_cover() and show_regions_in_editor:
+		# 绿色竖线：同落点蹲藏/站起；紫色跨墙箭头只标示可尝试方向。
+		var size: Vector3 = collision.shape.size
+		for axis in [0, 2]:
+			for side in [-1.0, 1.0]:
+				var point := Vector3(0.0, -size.y * 0.5, 0.0)
+				point[axis] = side * (size[axis] * 0.5 + wall_gap)
+				_preview_line(mesh, point + Vector3.UP, point + Vector3.UP * 1.75, Color.GREEN)
+				if vault_enabled:
+					var other := point
+					other[axis] = -point[axis]
+					_preview_line(mesh, point + Vector3.UP * (size.y + 0.1), other + Vector3.UP * (size.y + 0.1), Color.MAGENTA)
 	mesh.surface_end()
 	if show_attack_points_in_editor:
 		mesh.surface_begin(Mesh.PRIMITIVE_TRIANGLES)

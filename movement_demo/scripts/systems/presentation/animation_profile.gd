@@ -10,6 +10,10 @@ extends Resource
 @export var reload: StringName = &""
 ## 可选近战动作；进度由玩法驱动，不能靠动画方法轨道造成伤害。
 @export var melee: StringName = &""
+## 缺少蹲姿／翻越素材时使用角色的胶囊占位表现。
+@export var crouch: StringName = &""
+@export var crouch_move: StringName = &""
+@export var vault: StringName = &""
 @export var dialogue: StringName = &""
 @export var fire: StringName = &""
 @export var hit: StringName = &""
@@ -25,6 +29,6 @@ extends Resource
 
 
 func clip(state: StringName) -> StringName:
-	if state in [&"idle", &"move", &"sprint", &"aim", &"reload", &"melee", &"dialogue", &"fire", &"hit", &"dead", &"impact"]:
+	if state in [&"idle", &"move", &"sprint", &"aim", &"reload", &"melee", &"crouch", &"crouch_move", &"vault", &"dialogue", &"fire", &"hit", &"dead", &"impact"]:
 		return get(state)
 	return &""

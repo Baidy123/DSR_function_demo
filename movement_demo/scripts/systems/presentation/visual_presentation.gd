@@ -166,6 +166,7 @@ func _restore_pose() -> void:
 
 func apply_state(value) -> void:
 	state = value
+	_update_posture_fallback()
 	if state.dead and not _death_started and has_model():
 		_death_started = true
 		_event = &""
@@ -174,12 +175,23 @@ func apply_state(value) -> void:
 			_death_tween = create_tween().set_parallel(true)
 			_death_tween.tween_property(_pivot, "rotation:x", PI / 2.0, 0.3)
 			_death_tween.tween_property(_pivot, "position:y", 0.35, 0.3)
-	if state.dead or state.in_dialogue or state.reloading or state.melee_active: _event = &""
+	if state.dead or state.in_dialogue or state.reloading or state.melee_active or state.vaulting: _event = &""
 	_select_animation()
 
 
+func _update_posture_fallback() -> void:
+	if not has_model() or Engine.is_editor_hint(): return
+	var missing := false
+	if not state.dead:
+		if state.vaulting: missing = _resolve(&"vault").is_empty()
+		elif state.crouch_amount > 0.01: missing = _resolve(&"crouch").is_empty()
+	model.visible = not missing
+	if missing: _restore_placeholders()
+	else: _hide_placeholders()
+
+
 func play_event(event_id: StringName) -> void:
-	if not has_model() or state.dead or state.in_dialogue or state.reloading or state.melee_active: return
+	if not has_model() or state.dead or state.in_dialogue or state.reloading or state.melee_active or state.vaulting: return
 	if _resolve(event_id).is_empty(): return
 	_event = event_id
 	_clip = &"" # 每一次实际发射都可以重新开始一次性动作。
@@ -191,6 +203,7 @@ func _resolve(key: StringName) -> StringName:
 	var name := animation_profile.clip(key)
 	if not name.is_empty() and player.has_animation(name): return name
 	if key == &"sprint": return _resolve(&"move")
+	if key == &"crouch_move": return _resolve(&"crouch")
 	if key in [&"move", &"aim", &"dialogue", &"reload", &"melee"]: return _resolve(&"idle")
 	return &""
 
@@ -213,6 +226,9 @@ func _select_animation() -> void:
 	if current_state == &"melee" and player != null and animation_profile != null and _clip == animation_profile.melee and not _clip.is_empty():
 		_time = clampf(state.melee_progress, 0.0, 1.0) * player.get_animation(_clip).length
 		player.seek(_time, true)
+	if current_state == &"vault" and player != null and not _clip.is_empty():
+		_time = clampf(state.vault_progress, 0.0, 1.0) * player.get_animation(_clip).length
+		player.seek(_time, true)
 
 
 func _process(delta: float) -> void:
@@ -220,6 +236,7 @@ func _process(delta: float) -> void:
 	if get_tree().paused and not (state.dead and death_during_pause): return
 	if current_state == &"reload" and animation_profile != null and _clip == animation_profile.reload: return
 	if current_state == &"melee" and animation_profile != null and _clip == animation_profile.melee: return
+	if current_state == &"vault": return
 	var animation := player.get_animation(_clip)
 	var length := maxf(0.001, animation.length)
 	var rate := 1.0
@@ -260,4 +277,5 @@ func reset_presentation() -> void:
 	_death_started = false
 	process_mode = Node.PROCESS_MODE_INHERIT
 	if has_model(): _hide_placeholders()
+	_update_posture_fallback()
 	_select_animation()

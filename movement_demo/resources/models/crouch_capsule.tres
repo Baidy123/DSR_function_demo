@@ -1,0 +1,8 @@
+[gd_resource type="CapsuleMesh" format=3]
+
+[resource]
+resource_local_to_scene = true
+radius = 0.35
+height = 1.0
+radial_segments = 32
+rings = 8
