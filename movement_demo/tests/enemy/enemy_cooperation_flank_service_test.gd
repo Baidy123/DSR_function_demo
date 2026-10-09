@@ -17,9 +17,15 @@ class TestWeapon extends RefCounted:
 	var shot_interval := 0.2
 
 class TestFire extends RefCounted:
+	var actor
 	var burst_shot_count := 40
 	var fire_burst_shots := 0
 	var fire_while_moving := true
+	func burst_window_seconds(_support_intent: bool = false) -> float:
+		# Preserve this protocol fixture's original 40-shot, 0.2-second cadence.
+		# Real cadence multipliers and support bursts belong to fire runtime tests.
+		if actor.ammo.is_reloading: return 0.0
+		return mini(actor.ammo.magazine_rounds, maxi(0, burst_shot_count - fire_burst_shots)) * actor.weapon.shot_interval
 
 class TestActor extends Node3D:
 	var move_speed := 2.0
@@ -75,6 +81,7 @@ func _team(count: int) -> void:
 		actor.position = Vector3(-6.0, 0.0, (index - (count - 1) * 0.5) * 1.5)
 		var member := TestContext.new()
 		member.actor = actor
+		member.fire.actor = actor
 		member.cooperation = board
 		members.append(member)
 		board.register(member)

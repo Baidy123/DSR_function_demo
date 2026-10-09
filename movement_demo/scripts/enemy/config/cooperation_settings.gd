@@ -62,3 +62,28 @@ func _init() -> void:
 	set(value):
 		search_claim_seconds = value
 		mark_override(&"search_claim_seconds")
+
+@export_range(1.0, 40.0, 0.5) var cover_inspection_seconds := 20.0:
+	set(value):
+		cover_inspection_seconds = value
+		mark_override(&"cover_inspection_seconds")
+
+@export_range(1.0, 30.0, 0.5) var cover_inspection_plan_seconds := 16.0:
+	set(value):
+		cover_inspection_plan_seconds = value
+		mark_override(&"cover_inspection_plan_seconds")
+
+@export_range(0.0, 5.0, 0.1) var cover_inspection_wait_seconds := 2.0:
+	set(value):
+		cover_inspection_wait_seconds = value
+		mark_override(&"cover_inspection_wait_seconds")
+
+@export_range(0.1, 3.0, 0.1) var cover_inspection_observe_seconds := 0.5:
+	set(value):
+		cover_inspection_observe_seconds = value
+		mark_override(&"cover_inspection_observe_seconds")
+
+@export_range(0.0, 1.0, 0.05) var spacing_margin := 0.45:
+	set(value):
+		spacing_margin = value
+		mark_override(&"spacing_margin")

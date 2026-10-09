@@ -99,23 +99,31 @@ func _face_point(along: float, across: float, end_face: bool) -> Vector3:
 
 func get_candidates(threat: Vector3, from: Vector3) -> Array[Dictionary]:
 	var candidates: Array[Dictionary] = []
-	if _dimensions().is_zero_approx():
-		return candidates
-	if is_low_cover(): return _low_cover_candidates(threat, from)
 	var collision := _collision()
+	if collision == null or not collision.shape is BoxShape3D: return candidates
+	var size: Vector3 = collision.shape.size
+	if Vector2(maxf(size.x, size.z), minf(size.x, size.z)).is_zero_approx(): return candidates
+	if is_low_cover(): return _low_cover_candidates(threat, from)
+	# This synchronous geometry query never mutates the box. Read its transform
+	# and dimensions once; retain every original face/sample in the same order.
+	var box_transform := collision.global_transform
+	var local_threat := collision.to_local(threat)
+	var local_from := collision.to_local(from)
+	var long_axis := 0 if size.x >= size.z else 2
+	var short_axis := 2 if long_axis == 0 else 0
 	for end_face in [false, true]:
-		var threat_local := _face_coordinates(threat, end_face)
+		var along_axis: int = short_axis if end_face else long_axis
+		var across_axis: int = long_axis if end_face else short_axis
 		# 只使用已知威胁；斜角可对应两个背向面，由 AI 的真实遮挡检查继续筛选。
-		if absf(threat_local.y) < 0.001:
+		if absf(local_threat[across_axis]) < 0.001:
 			continue
-		var side := -signf(threat_local.y)
-		var dimensions := _face_dimensions(end_face)
-		var half_length := _hide_half_length(end_face)
+		var side := -signf(local_threat[across_axis])
+		var dimensions := Vector2(size[along_axis], size[across_axis])
+		var half_length := dimensions.x * (short_hide_length_ratio if end_face else hide_length_ratio) * 0.5
 		var near_edge := dimensions.y * 0.5 + wall_gap
-		var from_local := _face_coordinates(from, end_face)
 		var samples: Array[Vector2] = [
-			Vector2(clampf(from_local.x, -half_length, half_length),
-				clampf(from_local.y * side, near_edge, near_edge + hide_depth))
+			Vector2(clampf(local_from[along_axis], -half_length, half_length),
+				clampf(local_from[across_axis] * side, near_edge, near_edge + hide_depth))
 		]
 		var steps := maxi(1, ceili(half_length * 2.0 / sample_spacing))
 		for index in range(steps + 1):
@@ -123,15 +131,16 @@ func get_candidates(threat: Vector3, from: Vector3) -> Array[Dictionary]:
 			for depth in [hide_depth * 0.25, hide_depth * 0.75]:
 				samples.append(Vector2(along, near_edge + depth))
 		var peeks: Array[Vector3] = []
-		for point in _local_peeks(end_face):
-			peeks.append(collision.to_global(point))
+		var peek_half_length := dimensions.x * 0.5 + peek_outset
+		for along in [-peek_half_length, peek_half_length]:
+			var local_peek := Vector3(0.0, -size.y * 0.5, 0.0)
+			local_peek[along_axis] = along
+			peeks.append(box_transform * local_peek)
 		for sample in samples:
-			var hide := collision.to_global(_face_point(sample.x, side * sample.y, end_face))
-			var candidate := {"hide": hide, "peeks": peeks, "cover": self}
-			if is_low_cover():
-				candidate["crouch"] = true
-				candidate["stand"] = hide
-			candidates.append(candidate)
+			var local_hide := Vector3(0.0, -size.y * 0.5, 0.0)
+			local_hide[along_axis] = sample.x
+			local_hide[across_axis] = side * sample.y
+			candidates.append({"hide": box_transform * local_hide, "peeks": peeks, "cover": self})
 	return candidates
 
 

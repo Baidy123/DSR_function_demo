@@ -34,6 +34,8 @@ var team_visual_contact := false
 var _shared_visual: Dictionary = {}
 var _shared_notification_position := Vector3.INF
 var _cooperation_identity: Array = []
+var _inspection_shared_report_id := -1
+var _inspection_notification_id := -1
 var avoid_position := Vector3.INF
 var _posture_shapes: Dictionary = {}
 var _geometry_evaluation_depth := 0
@@ -42,9 +44,10 @@ var position_free_queries := 0
 var _blocked_ally_paths: Array[Dictionary] = []
 const ALLY_PATH_BLOCK_SECONDS := 4.0
 const MAX_ALLY_PATH_BLOCKS := 6
-var _exposure_frame := -1
 var _exposure_cache: Dictionary = {}
-var _exposure_safe_distance := 3.0
+var _exposure_geometry_cache: Array = []
+var _risk_evaluation_cached := false
+var _risk_evaluation_value := 0.0
 var combat_type: int:
 	get: return CombatType.RANGED if unit != null and unit.capabilities.has(&"firearms") else CombatType.MELEE
 var patrol_pause_seconds: float:
@@ -108,7 +111,11 @@ func refresh_environment() -> bool:
 
 func detach_environment() -> void:
 	_blocked_ally_paths.clear()
+	if spatial != null: spatial.clear_cover_preparation()
 	actor.configure_local_navigation(null, null)
+	actor.configure_local_spacing(false)
+	_inspection_shared_report_id = -1
+	_inspection_notification_id = -1
 	if cooperation != null: cooperation.unregister(actor.get_instance_id())
 	cooperation = null
 	_shared_visual.clear()
@@ -176,6 +183,7 @@ func update_evidence(delta: float, visible: bool) -> void:
 	sees_player = visible
 	evidence_elapsed_seconds += maxf(0.0, delta)
 	_expire_ally_path_blocks()
+	actor.configure_local_spacing(cooperation != null and is_instance_valid(navigation_region) and not actor.is_dead, float(setting(&"cooperation", &"spacing_margin", 0.45)))
 	_update_reload_observation(delta, visible)
 	recent_damage_pressure = maxf(0.0, recent_damage_pressure - delta * 0.5)
 	nearby_shot_pressure = maxf(0.0, nearby_shot_pressure - delta * 0.5)
@@ -332,6 +340,9 @@ func is_ally_path_blocked(from: Vector3, path: PackedVector3Array) -> bool:
 
 func reset_memory() -> void:
 	_blocked_ally_paths.clear()
+	_inspection_shared_report_id = -1
+	_inspection_notification_id = -1
+	actor.configure_local_spacing(false)
 	if cooperation != null: cooperation.release_member(actor.get_instance_id())
 	_shared_visual.clear()
 	_shared_notification_position = Vector3.INF
@@ -376,17 +387,27 @@ func _horizontal_distance_between(a: Vector3, b: Vector3) -> float:
 
 ## A synchronous read-only candidate batch; committed movement always queries live physics.
 func begin_geometry_evaluation() -> void:
-	if _geometry_evaluation_depth == 0: _position_evaluation_cache.clear()
+	if _geometry_evaluation_depth == 0:
+		_position_evaluation_cache.clear()
+		_exposure_cache.clear()
+		_exposure_geometry_cache.clear()
+		_risk_evaluation_cached = false
 	_geometry_evaluation_depth += 1
 	cover_selection.begin_geometry_evaluation()
 	fire.begin_geometry_evaluation()
+	spatial.begin_geometry_evaluation()
 
 func end_geometry_evaluation() -> void:
 	assert(_geometry_evaluation_depth > 0)
 	_geometry_evaluation_depth -= 1
+	spatial.end_geometry_evaluation()
 	fire.end_geometry_evaluation()
 	cover_selection.end_geometry_evaluation()
-	if _geometry_evaluation_depth == 0: _position_evaluation_cache.clear()
+	if _geometry_evaluation_depth == 0:
+		_position_evaluation_cache.clear()
+		_exposure_cache.clear()
+		_exposure_geometry_cache.clear()
+		_risk_evaluation_cached = false
 
 func is_position_free(point: Vector3, include_player: bool = false, crouched: bool = false) -> bool:
 	var collision: CollisionShape3D = actor.get_node("CollisionShape3D")
@@ -413,30 +434,39 @@ func is_position_free(point: Vector3, include_player: bool = false, crouched: bo
 	if _geometry_evaluation_depth > 0: _position_evaluation_cache[evaluation_key] = free
 	return free
 
+## Posture and configuration stay fixed inside a synchronous read-only batch.
+## Outside that scope both offsets and physics are read again, even in one frame.
+func _exposure_geometry() -> Array:
+	if _geometry_evaluation_depth > 0 and not _exposure_geometry_cache.is_empty(): return _exposure_geometry_cache
+	var safe_distance := maxf(1.0, float(setting(&"tactics", &"ranged_min_distance", 4.0))) if combat_type == CombatType.RANGED else 3.0
+	var geometry: Array = [actor.get_posture_eye_position(false, Vector3.ZERO), actor.get_posture_eye_position(true, Vector3.ZERO), actor.get_posture_muzzle_position(false, Vector3.ZERO), safe_distance]
+	if _geometry_evaluation_depth > 0: _exposure_geometry_cache = geometry
+	return geometry
+
 func _reload_exposure(point: Vector3, threat: Vector3, body_protection: float = -1.0, crouched: bool = false) -> float:
-	var frame := Engine.get_physics_frames()
-	if _exposure_frame != frame:
-		_exposure_frame = frame
-		_exposure_cache.clear()
-		_exposure_safe_distance = maxf(1.0, float(setting(&"tactics", &"ranged_min_distance", 4.0))) if combat_type == CombatType.RANGED else 3.0
 	var key := [point, threat, body_protection, crouched]
-	if _exposure_cache.has(key): return _exposure_cache[key]
+	if _geometry_evaluation_depth > 0:
+		var cached: float = _exposure_cache.get(key, -1.0)
+		if cached >= 0.0: return cached
+	var geometry := _exposure_geometry()
 	var direction: Vector3 = point - threat
 	direction.y = 0.0
-	var side: Vector3 = direction.normalized().cross(Vector3.UP) * 0.35
 	var exposed: float = 1.0 - clampf(body_protection, 0.0, 1.0)
 	if body_protection < 0.0:
 		exposed = 0.0
-		var target_eye: Vector3 = actor.get_posture_eye_position(crouched, point)
-		var origin: Vector3 = actor.get_posture_muzzle_position(false, threat)
-		for offset: Vector3 in [Vector3.ZERO, side, -side]:
-			if cover_selection.environment_ray(origin, target_eye + offset).is_empty():
-				exposed += 1.0 / 3.0
-	var result := exposed * (1.0 + clampf(1.0 - direction.length() / _exposure_safe_distance, 0.0, 1.0))
-	_exposure_cache[key] = result
+		var side: Vector3 = direction.normalized().cross(Vector3.UP) * 0.35
+		var target_eye: Vector3 = point + geometry[1 if crouched else 0]
+		var origin: Vector3 = threat + geometry[2]
+		if cover_selection.environment_ray(origin, target_eye).is_empty(): exposed += 1.0 / 3.0
+		if cover_selection.environment_ray(origin, target_eye + side).is_empty(): exposed += 1.0 / 3.0
+		if cover_selection.environment_ray(origin, target_eye - side).is_empty(): exposed += 1.0 / 3.0
+	var result := exposed * (1.0 + clampf(1.0 - direction.length() / float(geometry[3]), 0.0, 1.0))
+	if _geometry_evaluation_depth > 0: _exposure_cache[key] = result
 	return result
 
 func _reload_risk_aversion() -> float:
+	# Health, known contact and pressure stay fixed during this read-only batch.
+	if _geometry_evaluation_depth > 0 and _risk_evaluation_cached: return _risk_evaluation_value
 	var missing_health: float = 1.0 - clampf(actor.health / maxf(actor.max_health, 1.0), 0.0, 1.0)
 	var confidence := pow(0.5, utility_threat_age_seconds / maxf(0.5, utility_threat_half_life_seconds))
 	# 看到/记得玩家都不等于正在受压，否则墙角每次重新目击都会立刻退回去。
@@ -445,7 +475,11 @@ func _reload_risk_aversion() -> float:
 	if sees_player and combat_type == CombatType.RANGED and last_known_position.is_finite():
 		var safe_distance: float = maxf(1.0, float(setting(&"tactics", &"ranged_min_distance", 4.0)))
 		close_pressure = 2.0 * clampf(1.0 - _horizontal_distance(last_known_position) / safe_distance, 0.0, 1.0)
-	return reload_risk_weight * (confidence * (missing_health + recent_damage_pressure + nearby_shot_pressure) + close_pressure)
+	var result: float = reload_risk_weight * (confidence * (missing_health + recent_damage_pressure + nearby_shot_pressure) + close_pressure)
+	if _geometry_evaluation_depth > 0:
+		_risk_evaluation_value = result
+		_risk_evaluation_cached = true
+	return result
 
 
 ## 旧换弹评分接口复用共同窗口；转移期间恢复火力需等到抵达。
@@ -462,6 +496,8 @@ func publish_suppression_evidence(source: StringName, position: Vector3, cover: 
 	if source == &"visual_loss" or not personal_live:
 		suppression_evidence = evidence
 		utility_suppression_pending = source == &"visual_loss"
+	if source in [&"visual_loss", &"close_cover_exact"]:
+		_record_cover_inspection(evidence, cover)
 	return evidence.duplicate()
 
 func receive_exact_cover_clue(position: Vector3, cover: Object = null) -> void:
@@ -503,6 +539,48 @@ func known_target_points(feet: Vector3) -> PackedVector3Array:
 			if perception._sees_point(point): points.append(point)
 		return points
 	return PackedVector3Array([actor.get_posture_eye_position(false, feet)])
+
+## Investigation keeps a frozen clue longer than precise shooting evidence.
+## Its lifetime never extends suppression authority or personal visibility.
+func _record_cover_inspection(evidence: Dictionary, cover: Object = null) -> void:
+	if not evidence.get("position", Vector3.INF).is_finite(): return
+	var captured: float = evidence.get("captured_at", evidence_elapsed_seconds)
+	var clue := {"target_id": cooperation_target_id(), "position": evidence.position,
+		"id": evidence.get("id", 0), "source": evidence.get("source", &""),
+		"captured_at": captured, "valid_until": captured + maxf(0.1, float(setting(&"cooperation", &"cover_inspection_seconds", 20.0))),
+		"observer_position": evidence.get("observer_position", actor.global_position),
+		"cover": weakref(cover) if is_instance_valid(cover) else null}
+	if clue.target_id == 0 or evidence_elapsed_seconds >= clue.valid_until: return
+	if cooperation != null: cooperation.publish_inspection(self, clue)
+
+func _receive_shared_inspection() -> void:
+	if not cooperation_enabled() or sees_player: return
+	var clue: Dictionary = cooperation.inspection_evidence(self, cooperation_target_id())
+	if clue.is_empty() or int(clue.id) == _inspection_notification_id: return
+	_inspection_notification_id = int(clue.id)
+	if int(clue.get("observer_id", 0)) == actor.get_instance_id(): return
+	# Investigation can be shared even when nobody has a current visual report.
+	# This event grants no body aim sample, personal visibility or firing right.
+	var offset: float = evidence_elapsed_seconds - cooperation.elapsed
+	clue.captured_at = float(clue.captured_at) + offset
+	clue.valid_until = float(clue.valid_until) + offset
+	if has_visual_memory and float(clue.captured_at) < evidence_elapsed_seconds - utility_unseen_seconds: return
+	last_known_position = clue.position
+	is_alerted = true
+	noise_search_origin = Vector3.INF
+	event_received.emit(&"exact_cover_clue", clue)
+	invalidate_utility()
+
+func cover_inspection_evidence() -> Dictionary:
+	if not cooperation_enabled() or sees_player: return {}
+	var clue: Dictionary = cooperation.inspection_evidence(self, cooperation_target_id())
+	if not clue.is_empty():
+		var offset: float = evidence_elapsed_seconds - cooperation.elapsed
+		clue.captured_at = float(clue.captured_at) + offset
+		clue.valid_until = float(clue.valid_until) + offset
+	# The board owns invalidation on newer sight, identity and expired rounds;
+	# a local fallback must not resurrect evidence it has revoked.
+	return clue if clue.get("target_id", 0) == cooperation_target_id() and evidence_elapsed_seconds < float(clue.get("valid_until", -INF)) else {}
 
 func cooperation_enabled() -> bool:
 	return cooperation != null and can_use_action(&"cooperate") and not actor.is_dead
@@ -556,15 +634,18 @@ func _update_cooperation_evidence() -> void:
 	if cooperation == null: return
 	var identity := [cooperation.get_instance_id(), actor.faction_id, actor.communication_group, cooperation_target_id(), cooperation.generation, cooperation.relation_revision]
 	if identity != _cooperation_identity:
-		if team_visual_contact and not has_visual_memory:
+		if (team_visual_contact or _inspection_notification_id >= 0) and not has_visual_memory:
 			last_known_position = noise_search_origin
 			is_alerted = noise_search_origin.is_finite()
 		_shared_visual.clear()
 		_shared_notification_position = Vector3.INF
 		team_visual_contact = false
+		_inspection_shared_report_id = -1
+		_inspection_notification_id = -1
 		_cooperation_identity = identity
 		cooperation.register(self)
 	if sees_player: cooperation.publish_visual(self)
+	_receive_shared_inspection()
 	var report: Dictionary = cooperation.evidence(self, cooperation_target_id())
 	if report.is_empty(): return
 	# Convert the common arena clock without rejuvenating the original observation.
@@ -577,6 +658,20 @@ func _update_cooperation_evidence() -> void:
 		_shared_visual = report # Re-map original timestamps if this individual was inactive.
 		return
 	_shared_visual = report
+	if cooperation_enabled() and cooperation.registered_member_count() > 1 and not sees_player and int(report.id) != _inspection_shared_report_id:
+		_inspection_shared_report_id = int(report.id)
+		var active: Dictionary = cooperation.inspection_evidence(self, cooperation_target_id())
+		# Alternating observers can publish every frame. A live frozen round
+		# already identifies this cover; do not repeat its geometry query.
+		if active.is_empty() or active.position.distance_to(report.position) >= 0.5:
+			var cover := cover_selection.confirmed_suppression_cover(report.position) as Object
+			if is_instance_valid(cover):
+				var clue := report.duplicate(true)
+				clue.source = &"shared_visual"
+				# The receiving observer defines the occluding face once. Target
+				# position/time still come exclusively from the frozen report.
+				clue.observer_position = actor.global_position
+				_record_cover_inspection(clue, cover)
 	var first_contact := not team_visual_contact
 	team_visual_contact = true
 	if sees_player: return
@@ -650,7 +745,7 @@ func cooperation_support_pressure() -> float:
 	return cooperation.support_pressure(self) if cooperation_enabled() else 0.0
 
 func cooperation_clear_execution() -> void:
-	if cooperation != null: cooperation.release_member(actor.get_instance_id())
+	if cooperation != null: cooperation.clear_execution(actor.get_instance_id())
 
 func cooperation_line_safe(origin: Vector3, endpoint: Vector3) -> bool:
 	if not _cooperation_preview_snapshot.is_empty():
@@ -685,8 +780,7 @@ func cooperation_publish_execution(output: Dictionary) -> void:
 			cycle_resume = fire.support_cycle_resume_seconds(intent, moving)
 			ready = false
 		if ready:
-			var burst_left: int = maxi(1, fire.burst_shot_count - fire.fire_burst_shots)
-			supported = minf(utility_horizon_seconds, mini(rounds, burst_left) * maxf(0.05, actor.weapon.shot_interval))
+			supported = minf(utility_horizon_seconds, fire.burst_window_seconds(intent.get("support_intent", false)))
 	var task: Dictionary = utility_current.get("cooperation", {})
 	cooperation.publish_status(self, {"position": actor.global_position, "target_id": cooperation_target_id(), "ready": ready,
 		"firearms": firearms, "reloading": actor.ammo.is_reloading, "rounds": rounds, "support_seconds": supported,

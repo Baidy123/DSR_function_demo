@@ -17,7 +17,7 @@ func reset() -> void:
 func begin(shared_context, hide_seconds: float) -> void:
 	context = shared_context
 	_hide_seconds = maxf(0.0, hide_seconds)
-	shots_left = maxi(1, context.fire.burst_shot_count - context.fire.fire_burst_shots)
+	shots_left = maxi(1, context.fire.burst_shots_remaining())
 	phase = Phase.APPROACH
 
 func active() -> bool:
@@ -45,8 +45,8 @@ func tick(delta: float, arrived: bool, visible: bool, watch_seconds: float) -> v
 		remaining -= delta
 		if actor.body_motion.amount <= 0.0001:
 			phase = Phase.FIRE
-			remaining = maxf(0.1, watch_seconds) + context.fire.fire_reaction_seconds + maxf(context.fire.fire_pause_remaining, actor.shot_cooldown)
-			remaining += maxf(0.0, shots_left - 1) * actor.weapon.shot_interval + actor.weapon.stabilize_seconds
+			remaining = maxf(0.1, watch_seconds) + context.fire.fire_reaction_seconds + maxf(context.fire.fire_pause_remaining, context.fire.shot_wait_seconds())
+			remaining += maxf(0.0, shots_left - 1) * context.fire.shot_interval_seconds() + actor.weapon.stabilize_seconds
 		elif remaining <= 0.0: phase = Phase.DUCK
 	elif phase == Phase.FIRE:
 		remaining -= delta

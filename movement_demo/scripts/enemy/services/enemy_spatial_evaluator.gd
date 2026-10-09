@@ -18,11 +18,15 @@ var _threat := Vector3.INF
 var _geometry := 0
 var _weapon: Resource
 var _reloading := false
-var _route_frame := -1
+var _geometry_evaluation_depth := 0
 var _route_cache: Dictionary = {}
+var _route_sample_cache: Dictionary = {}
+var _budget_evaluation_depth := 0
 var _preparing_cover_points := false
 var _prepared_cover_points_ready := false
 var _prepared_cover_points: Array = []
+var _cover_points_key: Array = []
+var _cover_points_cache: Array = []
 
 func register(action) -> void:
 	for job in jobs:
@@ -46,8 +50,9 @@ func unregister(action) -> void:
 
 func reset_evaluation() -> void:
 	if context != null: context.routes.reset()
-	_route_frame = -1
 	_route_cache.clear()
+	_route_sample_cache.clear()
+	clear_cover_preparation()
 	for job in jobs:
 		job.cache.clear()
 		job.points.clear()
@@ -60,6 +65,14 @@ func reset_evaluation() -> void:
 	last_evaluated_count = 0
 	total_evaluated_count = 0
 	completed_passes = 0
+
+## Only pure enumeration is retained; no path, visibility or score survives here.
+func clear_cover_preparation() -> void:
+	_preparing_cover_points = false
+	_prepared_cover_points_ready = false
+	_prepared_cover_points.clear()
+	_cover_points_key.clear()
+	_cover_points_cache.clear()
 
 func regions() -> Array:
 	return context.get_tree().get_nodes_in_group("cover_region").filter(func(region): return context.navigation_region.is_ancestor_of(region))
@@ -86,6 +99,7 @@ func advance_evaluation() -> void:
 	if frame == _frame:
 		return
 	_frame = frame
+	_budget_evaluation_depth += 1
 	context.begin_geometry_evaluation()
 	var started := Time.get_ticks_usec()
 	last_evaluated_count = 0
@@ -115,15 +129,15 @@ func advance_evaluation() -> void:
 		_threat = threat
 		_weapon = context.actor.weapon
 		_reloading = context.actor.ammo.is_reloading
-		# Reuse immutable cover geometry only while rebuilding this pass's jobs.
-		# Each job receives its own Array; clearing one queue cannot clear another.
+		# Each job receives its own point dictionaries. Reuse the previous pure
+		# enumeration only when every current geometry/face input still matches.
 		_preparing_cover_points = true
 		_prepared_cover_points_ready = false
 		for job in jobs:
 			_rebuild_job(job, initial)
 		_preparing_cover_points = false
 		_prepared_cover_points_ready = false
-		_prepared_cover_points.clear()
+		_prepared_cover_points = []
 	else:
 		for job in jobs:
 			if job.revision != job.owner.get_ref().evaluation_revision():
@@ -159,6 +173,7 @@ func advance_evaluation() -> void:
 		total_evaluated_count += 1
 	last_evaluation_usec = Time.get_ticks_usec() - started
 	context.end_geometry_evaluation()
+	_budget_evaluation_depth -= 1
 
 func destinations(action) -> Array:
 	for job in jobs:
@@ -220,20 +235,50 @@ func assess_cover_route(path: PackedVector3Array, threat: Vector3, multiplier: f
 	return route
 
 func cover_points() -> Array:
-	if _preparing_cover_points and _prepared_cover_points_ready:
-		return _prepared_cover_points.duplicate()
 	var threat: Vector3 = context._known_reload_threat()
 	var result: Array = []
 	if not threat.is_finite() or context.noise_search_origin.is_finite():
 		return result
-	for region in regions():
-		for candidate in region.get_candidates(context.actor.get_posture_eye_position(false, threat), context.actor.global_position):
+	if _preparing_cover_points and _prepared_cover_points_ready:
+		return _prepared_cover_points.duplicate(true)
+	var known_eye: Vector3 = context.actor.get_posture_eye_position(false, threat)
+	var origin: Vector3 = context.actor.global_position
+	var current_regions := regions()
+	var key: Array = []
+	if _preparing_cover_points:
+		key = _cover_enumeration_key(current_regions, known_eye, origin)
+		if key == _cover_points_key:
+			_prepared_cover_points = _cover_points_cache
+			_prepared_cover_points_ready = true
+			return _prepared_cover_points.duplicate(true)
+	for region in current_regions:
+		for candidate in region.get_candidates(known_eye, origin):
 			result.append({"hide": candidate.hide, "body": region, "crouch": candidate.get("crouch", false), "stand": candidate.get("stand", Vector3.INF)})
 	if _preparing_cover_points:
+		_cover_points_key = key
+		_cover_points_cache = result
 		_prepared_cover_points = result
 		_prepared_cover_points_ready = true
-		return result.duplicate()
+		return result.duplicate(true)
 	return result
+
+func _cover_enumeration_key(current_regions: Array, known_eye: Vector3, origin: Vector3) -> Array:
+	# These are fresh inputs for this preparation, not the last advance's hash.
+	# The actor eye is transformed before classifying each actual collision box.
+	var key: Array = [context.navigation_region.get_instance_id(), NavigationServer3D.map_get_iteration_id(context.agent.get_navigation_map()), origin]
+	for region in current_regions:
+		var collision := region.get_node_or_null("CollisionShape3D") as CollisionShape3D
+		if collision == null or not collision.shape is BoxShape3D:
+			key.append([region.get_instance_id(), collision.get_instance_id() if collision != null else 0, collision.shape.get_instance_id() if collision != null and collision.shape != null else 0, &"invalid_box"])
+			continue
+		var local_target := collision.to_local(known_eye)
+		var nearest := Vector2i(int(local_target.x >= 0.001) - int(local_target.x <= -0.001), int(local_target.z >= 0.001) - int(local_target.z <= -0.001))
+		# Low-wall nearest points include equality; its band cells exclude it.
+		var band := Vector2i(int(local_target.x > 0.001) - int(local_target.x < -0.001), int(local_target.z > 0.001) - int(local_target.z < -0.001))
+		key.append([region.get_instance_id(), collision.get_instance_id(), collision.shape.get_instance_id(), collision.global_transform, collision.shape.size,
+			region.hide_length_ratio, region.short_hide_length_ratio, region.hide_depth, region.wall_gap, region.sample_spacing, region.peek_outset,
+			region.attack_inner_radius, region.attack_outer_radius, region.attack_sample_spacing, region.low_cover, region.vault_enabled, collision.disabled, region.collision_layer, nearest, band])
+	return key
 
 func assess_cover_point(destination: Dictionary) -> Dictionary:
 	if not cover_valid(destination):
@@ -289,28 +334,67 @@ func _ammo_wait(ai) -> float:
 		return ai.utility_horizon_seconds
 	if ai.actor.ammo.is_reloading:
 		return _reload_seconds(ai)
-	return ai.fire.estimated_steady_wait() if ai.actor.ammo.magazine_rounds > 0 else ai.utility_horizon_seconds
+	return maxf(ai.fire.shot_wait_seconds(), ai.fire.fire_pause_remaining) + ai.fire.estimated_steady_wait() if ai.actor.ammo.magazine_rounds > 0 else ai.utility_horizon_seconds
 
 func _exposure(ai, point: Vector3, threat: Vector3) -> float:
 	return ai._reload_exposure(point, threat) if threat.is_finite() else 0.0
 
-func assess_route(ai, path: PackedVector3Array, threat: Vector3, multiplier: float, reload_seconds: float, evaluate_fire: bool = false, start_seconds: float = 0.0, start_position: Vector3 = Vector3.INF) -> Dictionary:
-	var frame := Engine.get_physics_frames()
-	if frame != _route_frame:
-		_route_frame = frame
+func begin_geometry_evaluation() -> void:
+	if _geometry_evaluation_depth == 0:
 		_route_cache.clear()
-	var fire_state: Array = [ai.fire.fire_reaction_elapsed, ai.fire.fire_reaction_seconds, ai.fire.fire_pause_remaining, ai.actor.shot_cooldown, ai.fire.fire_while_moving,
-		ai.perception.sight_distance, ai.perception.close_awareness_radius, ai.actor.weapon, ai.actor.weapon.fire_range if ai.actor.weapon != null else 0.0, ai.actor.can_use_firearms()] if evaluate_fire else []
-	var key := [path, threat, multiplier, reload_seconds, start_seconds, start_position, ai.actor.global_position, ai.actor.move_speed, ai.utility_horizon_seconds, evaluate_fire, fire_state]
-	if _route_cache.has(key): return _route_cache[key]
+		_route_sample_cache.clear()
+	_geometry_evaluation_depth += 1
+
+func end_geometry_evaluation() -> void:
+	assert(_geometry_evaluation_depth > 0)
+	_geometry_evaluation_depth -= 1
+	if _geometry_evaluation_depth == 0:
+		_route_cache.clear()
+		_route_sample_cache.clear()
+
+func _route_samples(ai, path: PackedVector3Array, threat: Vector3, start: Vector3) -> Dictionary:
+	# Timing variants share only fixed geometry within the existing read-only batch.
+	# No sample position or physical exposure is evaluated before it is observed.
+	var key: Array = [ai.get_instance_id(), path, start, threat, ai.actor.global_position.y, ai._exposure_geometry()]
+	if _route_sample_cache.has(key): return _route_sample_cache[key]
+	var counts := PackedInt32Array()
+	var distances := PackedFloat64Array()
+	var previous := start
+	var total := 0
+	for point: Vector3 in path:
+		var length: float = ai._horizontal_distance_between(previous, point)
+		var count: int = maxi(1, ceili(length / 0.5))
+		counts.append(count)
+		distances.append(length / count)
+		total += count
+		previous = point
+	var points: Array[Vector3] = []
+	var exposures: Array = []
+	points.resize(total)
+	exposures.resize(total) # null is uncomputed; a physical exposure of zero is valid.
+	var result := {"counts": counts, "distances": distances, "points": points, "exposures": exposures}
+	_route_sample_cache[key] = result
+	return result
+
+func assess_route(ai, path: PackedVector3Array, threat: Vector3, multiplier: float, reload_seconds: float, evaluate_fire: bool = false, start_seconds: float = 0.0, start_position: Vector3 = Vector3.INF) -> Dictionary:
+	# Geometry is immutable only during the synchronous read-only batch. The
+	# complete key still binds every timing, firing and posture input used below.
+	var key: Array = []
+	if _geometry_evaluation_depth > 0:
+		var fire_state: Array = [ai.fire.fire_reaction_elapsed, ai.fire.fire_reaction_seconds, ai.fire.fire_pause_remaining, ai.fire.shot_wait_seconds(), ai.fire.fire_while_moving,
+			ai.perception.sight_distance, ai.perception.close_awareness_radius, ai.actor.weapon, ai.actor.weapon.fire_range if ai.actor.weapon != null else 0.0, ai.actor.can_use_firearms()] if evaluate_fire else []
+		key = [ai.get_instance_id(), path, threat, multiplier, reload_seconds, start_seconds, start_position, ai.actor.global_position, ai.actor.move_speed, ai.utility_horizon_seconds, evaluate_fire, fire_state, ai._exposure_geometry()]
+		var cached: Variant = _route_cache.get(key)
+		if cached != null: return cached.duplicate()
 	var speed: float = maxf(0.01, ai.actor.move_speed * maxf(0.0, multiplier))
 	var walk_speed: float = minf(speed, maxf(0.01, ai.actor.move_speed))
 	# 组合方案可先执行一个阶段再移动；路径前的暴露由调用者提供，仍使用共同时间窗。
 	var seconds: float = maxf(0.0, start_seconds)
 	var exposure: float = 0.0
 	var fire_seconds: float = 0.0
-	var keep_sight: bool = evaluate_fire and threat.is_finite() and ai.actor.can_use_firearms() and ai.fire.fire_while_moving
-	var ready: float = maxf(ai.actor.shot_cooldown, maxf(ai.fire.fire_pause_remaining, ai.fire.fire_reaction_seconds - ai.fire.fire_reaction_elapsed)) if evaluate_fire else 0.0
+	var threat_valid := threat.is_finite()
+	var keep_sight: bool = evaluate_fire and threat_valid and ai.actor.can_use_firearms() and ai.fire.fire_while_moving
+	var ready: float = maxf(ai.fire.shot_wait_seconds(), maxf(ai.fire.fire_pause_remaining, ai.fire.fire_reaction_seconds - ai.fire.fire_reaction_elapsed)) if evaluate_fire else 0.0
 	ready = maxf(ready, reload_seconds)
 	var target: Vector3 = ai.actor.get_posture_eye_position(true, threat) if evaluate_fire else Vector3.ZERO
 	var previous: Vector3 = start_position if start_position.is_finite() else ai.actor.global_position
@@ -319,17 +403,46 @@ func assess_route(ai, path: PackedVector3Array, threat: Vector3, multiplier: flo
 	var shot_offset: Vector3 = ai.actor.get_posture_muzzle_position(false, Vector3.ZERO) if evaluate_fire else Vector3.ZERO
 	var sight_distance: float = maxf(ai.perception.sight_distance, ai.perception.close_awareness_radius) if evaluate_fire else 0.0
 	var fire_range: float = ai.actor.weapon.fire_range if keep_sight else 0.0
+	# A budget scan usually visits each path once. Only synchronous candidate
+	# comparison benefits from preparing the shared sample arrays. Keep the full
+	# result/exposure caches enabled in both scopes, including nested advances.
+	var reuse_geometry := _geometry_evaluation_depth > 0 and _budget_evaluation_depth == 0
+	var segment_counts: Variant = null
+	var segment_distances: Variant = null
+	var sample_points: Variant = null
+	var sample_exposures: Variant = null
+	if reuse_geometry:
+		var geometry := _route_samples(ai, path, threat, previous)
+		segment_counts = geometry.counts
+		segment_distances = geometry.distances
+		sample_points = geometry.points
+		sample_exposures = geometry.exposures
+	var segment_index := 0
+	var sample_index := 0
 	for point: Vector3 in path:
-		var length: float = ai._horizontal_distance_between(previous, point)
-		var samples: int = maxi(1, ceili(length / 0.5))
-		var distance: float = length / samples
-		for index: int in range(samples):
+		var samples: int
+		var distance: float
+		if not reuse_geometry:
+			var length: float = ai._horizontal_distance_between(previous, point)
+			samples = maxi(1, ceili(length / 0.5))
+			distance = length / samples
+		else:
+			samples = segment_counts[segment_index]
+			distance = segment_distances[segment_index]
+		for index: int in samples:
 			var slow_distance: float = minf(distance, maxf(0.0, reload_seconds - seconds) * walk_speed)
 			var duration: float = slow_distance / walk_speed + (distance - slow_distance) / speed
 			var observed: float = minf(duration, maxf(0.0, horizon - seconds))
 			if observed > 0.0:
-				var sample: Vector3 = previous.lerp(point, (float(index) + 0.5) / samples)
-				exposure += _exposure(ai, sample, threat) * observed
+				var cached: Variant = sample_exposures[sample_index] if reuse_geometry else null
+				var sample: Vector3 = sample_points[sample_index] if cached != null else previous.lerp(point, (float(index) + 0.5) / samples)
+				if threat_valid:
+					if cached == null:
+						cached = ai._reload_exposure(sample, threat)
+						if reuse_geometry:
+							sample_points[sample_index] = sample
+							sample_exposures[sample_index] = cached
+					exposure += float(cached) * observed
 				if keep_sight:
 					# 导航点悬在地面上方；射界必须按角色实际枪口高度检查。
 					sample.y = actor_height
@@ -340,9 +453,11 @@ func assess_route(ai, path: PackedVector3Array, threat: Vector3, multiplier: flo
 					if keep_sight and origin.distance_to(target) <= fire_range and ai.fire.has_clear_firing_lane(origin, target - origin, origin.distance_to(target)):
 						fire_seconds += maxf(0.0, seconds + observed - maxf(seconds, ready))
 			seconds += duration
+			sample_index += 1
 		previous = point
+		segment_index += 1
 	var result := {"seconds": seconds, "exposure": exposure, "fire_seconds": fire_seconds}
-	_route_cache[key] = result
+	if _geometry_evaluation_depth > 0: _route_cache[key] = result.duplicate()
 	return result
 
 

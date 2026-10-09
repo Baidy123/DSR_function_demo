@@ -193,6 +193,9 @@ func clear_local_movement() -> void:
 func configure_local_navigation(navigation: NavigationRegion3D, board) -> void:
 	local_motion.configure(self, navigation, board)
 
+func configure_local_spacing(enabled: bool, margin: float = 0.45) -> void:
+	local_motion.configure_spacing(enabled, margin)
+
 func _exit_tree() -> void:
 	local_motion.configure(self, null, null)
 

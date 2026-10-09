@@ -358,7 +358,10 @@ func _overwatch_candidate() -> Dictionary:
 	if not context.sees_player or not actor.can_use_firearms() or actor.ammo.is_reloading or actor.ammo.magazine_rounds <= 0: return {}
 	var requests: Array = context.cooperation_snapshot().get("requests", [])
 	if requests.is_empty(): return {}
-	var prediction := _hold_support_prediction(maxf(0.1, float(_setting(&"lane_hold_seconds", 1.2))))
+	var duration := maxf(float(_setting(&"lane_hold_seconds", 1.2)), context.fire.support_burst_duration())
+	if _running and phase == Phase.HOLD:
+		duration = minf(_remaining, _hold_remaining)
+	var prediction := _hold_support_prediction(duration)
 	if prediction.support_seconds <= 0.0: return {}
 	for request: Dictionary in requests:
 		if request.beneficiary_id == actor.get_instance_id() or request.get("lane_id", &"target") != &"target": continue
@@ -368,6 +371,7 @@ func _overwatch_candidate() -> Dictionary:
 		var candidate := option({}, wait, context._reload_exposure(actor.global_position, context.last_known_position) * context.utility_horizon_seconds, 0.0, &"overwatch")
 		candidate.target_id = context.cooperation_target_id()
 		candidate.known_position = _evidence().position
+		candidate.hold_seconds = minf(duration, float(request.get("remaining", 0.0)))
 		candidate.cooperation = {"kind": &"support", "target_id": candidate.target_id, "position": actor.global_position,
 			"lane_id": &"target", "request_id": request.request_id, "beneficiary_id": request.beneficiary_id,
 			"support_seconds": support, "estimated_start_seconds": wait, "quality": 1.0,
@@ -393,11 +397,10 @@ func _hold_support_prediction(duration: float) -> Dictionary:
 	if not horizontal_aim.is_zero_approx() and forward.angle_to(horizontal_aim) > actor.MAX_GUN_BODY_ANGLE: return result
 	if not context.fire.has_clear_firing_lane(origin, desired, desired.length()) or not context.cooperation_line_safe(origin, target): return result
 	if not actor.aim_direction.is_equal_approx(desired.normalized()) and not context.fire.has_clear_firing_lane(origin, actor.aim_direction, desired.length()): return result
-	var delay: float = maxf(context.fire.fire_pause_remaining, maxf(actor.shot_cooldown, maxf(0.0, context.fire.fire_reaction_seconds - context.fire.fire_reaction_elapsed)))
+	var delay: float = maxf(context.fire.fire_pause_remaining, maxf(context.fire.shot_wait_seconds(), maxf(0.0, context.fire.fire_reaction_seconds - context.fire.fire_reaction_elapsed)))
 	delay += context.fire.estimated_steady_wait(true)
-	var rounds: int = mini(actor.ammo.magazine_rounds, maxi(0, context.fire.burst_shot_count - context.fire.fire_burst_shots))
 	result.estimated_start_seconds = delay
-	result.support_seconds = minf(rounds * maxf(0.05, actor.weapon.shot_interval), maxf(0.0, minf(horizon, duration) - delay))
+	result.support_seconds = minf(context.fire.burst_window_seconds(true), maxf(0.0, minf(horizon, duration) - delay))
 	return result
 
 func validate(candidate: Dictionary, visible: bool) -> bool:
@@ -426,7 +429,7 @@ func begin(candidate: Dictionary, visible: bool) -> bool:
 		_known = candidate.known_position
 		_target_id = candidate.target_id
 		_remaining = task.duration
-		_hold_remaining = minf(task.duration, maxf(0.1, float(_setting(&"lane_hold_seconds", 1.2))))
+		_hold_remaining = minf(task.duration, maxf(0.0, float(candidate.get("hold_seconds", _setting(&"lane_hold_seconds", 1.2)))))
 		phase = Phase.HOLD
 		actor.agent.target_position = actor.global_position
 		return true

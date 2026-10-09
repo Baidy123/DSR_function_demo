@@ -67,6 +67,9 @@ static func _configure_common(enemy: Node) -> void:
 	training.profile.set_setting(&"tactics", &"fire_reaction_seconds", 0.5)
 	training.profile.set_setting(&"tactics", &"burst_shot_count", 3)
 	training.profile.set_setting(&"tactics", &"burst_pause_seconds", 1.0)
+	# These legacy timing fixtures describe the mechanical cadence explicitly.
+	# The slower production default and covering bursts have a separate runtime test.
+	training.profile.set_setting(&"tactics", &"shot_interval_multiplier", 1.0)
 	training.profile.set_setting(&"tactics", &"fire_stability_target", 0.7)
 	training.profile.set_setting(&"tactics", &"ranged_min_distance", 4.0)
 	training.profile.set_setting(&"tactics", &"ranged_max_distance", 6.0)

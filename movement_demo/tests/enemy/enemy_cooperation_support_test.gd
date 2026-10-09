@@ -224,6 +224,7 @@ func _hold_predictions() -> void:
 	var fire = context.fire
 	shooter.weapon_stability = 1.0
 	shooter.shot_cooldown = 0.0
+	fire.fire_interval_remaining = 0.0
 	fire.fire_pause_remaining = 0.0
 	fire.fire_reaction_elapsed = fire.fire_reaction_seconds
 	fire.fire_decision.reset()
@@ -232,7 +233,7 @@ func _hold_predictions() -> void:
 	partner_context.cooperation_publish_execution({})
 	var action = shooter.get_node("AI").actions[&"cooperate"]
 	var selected: Dictionary = action._overwatch_candidate()
-	check(not selected.is_empty() and selected.cooperation.support_seconds > 0.0 and selected.cooperation.support_seconds <= 1.2, "A legal overwatch candidate predicts fire only within its actual initial hold")
+	check(not selected.is_empty() and selected.cooperation.support_seconds > 0.0 and selected.cooperation.support_seconds <= float(selected.hold_seconds), "A legal overwatch candidate predicts fire only within its actual initial hold")
 	if selected.is_empty(): return
 	context.utility_current = selected
 	var began: bool = action.begin(selected, true)
@@ -264,10 +265,10 @@ func _hold_predictions() -> void:
 	check(action._overwatch_candidate().is_empty(), "An initial overwatch candidate also respects the real friendly firing line")
 	partner.global_position = partner_position
 	partner_context.cooperation_publish_execution({})
-	var before := [action._hold_remaining, action._remaining, action.plan.duplicate(true), fire.fire_pause_remaining, fire.fire_reaction_elapsed, fire.fire_burst_shots, fire.fire_decision.wait_seconds, shooter.shot_count]
+	var before := [action._hold_remaining, action._remaining, action.plan.duplicate(true), fire.fire_pause_remaining, fire.fire_reaction_elapsed, fire.fire_burst_shots, fire.fire_interval_remaining, fire.fire_decision.wait_seconds, shooter.shot_count]
 	var candidates: Array[Dictionary] = action.collect_candidates(true)
 	check(candidates.size() == 1 and candidates[0].cooperation.support_seconds > 0.0 and candidates[0].cooperation.support_seconds <= action._hold_remaining and context.cooperation_candidate_seconds(candidates[0]) > 0.0, "Restoring a legal gun restores credit bounded by the actual remaining hold")
-	check(before == [action._hold_remaining, action._remaining, action.plan, fire.fire_pause_remaining, fire.fire_reaction_elapsed, fire.fire_burst_shots, fire.fire_decision.wait_seconds, shooter.shot_count], "HOLD prediction leaves claims, timers, aim pressure and actual shots unchanged")
+	check(before == [action._hold_remaining, action._remaining, action.plan, fire.fire_pause_remaining, fire.fire_reaction_elapsed, fire.fire_burst_shots, fire.fire_interval_remaining, fire.fire_decision.wait_seconds, shooter.shot_count], "HOLD prediction leaves claims, timers, aim pressure and actual shots unchanged")
 	action.cancel(&"test_complete")
 	context.utility_current = {}
 	partner.cancel_reload()
@@ -275,6 +276,9 @@ func _hold_predictions() -> void:
 
 func _current_gun_lane(region: NavigationRegion3D) -> void:
 	var fire = context.fire
+	# This geometry fixture starts a fresh, fully ready gun, including AI cadence.
+	fire.fire_interval_remaining = 0.0
+	fire.fire_burst_shots = 0
 	fire.fire_pause_remaining = 0.0
 	fire.fire_reaction_elapsed = fire.fire_reaction_seconds
 	fire.fire_decision.reset()

@@ -44,7 +44,8 @@ func evaluation_points() -> Array:
 	# 常驻几何队列保证弹匣刚打空、尚未开始换弹时也能立刻评估。
 	# cover_points 在本轮空间准备中共享几何；满匣 evaluate_point 不做物理查询。
 	var points: Array = context.spatial.cover_points()
-	points.sort_custom(func(a, b): return actor.global_position.distance_squared_to(a.hide) < actor.global_position.distance_squared_to(b.hide))
+	var origin: Vector3 = actor.global_position
+	points.sort_custom(func(a, b): return origin.distance_squared_to(a.hide) < origin.distance_squared_to(b.hide))
 	return points
 
 func evaluate_point(point: Variant) -> Dictionary:
@@ -112,10 +113,11 @@ func _destination_candidates(destination: Dictionary, visible: bool, threat: Vec
 	var seconds := _reload_seconds()
 	destination = destination.duplicate()
 	destination.path = context.routes.planning_path(actor.global_position, destination.hide)
-	var moving: Dictionary = context.spatial.assess_cover_route(destination.path, threat, transfer.run_speed_multiplier, seconds if actor.ammo.is_reloading else 0.0)
-	var exposed: float = moving.exposure + _stationary_exposure(destination.hide, threat, maxf(0.0, horizon - moving.seconds), destination.get("crouch", false))
-	var information: float = horizon if not visible else maxf(0.0, horizon - moving.seconds)
-	if not actor.ammo.is_reloading: result.append(option(destination, moving.seconds + seconds, exposed, information, &"after_cover"))
+	if not actor.ammo.is_reloading:
+		var moving: Dictionary = context.spatial.assess_cover_route(destination.path, threat, transfer.run_speed_multiplier, 0.0)
+		var exposed: float = moving.exposure + _stationary_exposure(destination.hide, threat, maxf(0.0, horizon - moving.seconds), destination.get("crouch", false))
+		var information: float = horizon if not visible else maxf(0.0, horizon - moving.seconds)
+		result.append(option(destination, moving.seconds + seconds, exposed, information, &"after_cover"))
 	var walking: Dictionary = context.spatial.assess_cover_route(destination.path, threat, transfer.run_speed_multiplier, seconds)
 	var walking_exposure: float = walking.exposure + _stationary_exposure(destination.hide, threat, maxf(0.0, horizon - walking.seconds), destination.get("crouch", false))
 	result.append(option(destination, maxf(walking.seconds, seconds), walking_exposure, horizon if not visible else maxf(0.0, horizon - walking.seconds), &"on_way"))

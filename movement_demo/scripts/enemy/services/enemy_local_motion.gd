@@ -39,10 +39,12 @@ var _blocked_origin := Vector3.INF
 var _blocked_axis := Vector3.ZERO
 var _blocked_seconds := 0.0
 var _blocked_reported := false
+var _blocked_reported_at := -INF
 var _blocked_last_contact := -INF
 var _blocked_body_position := Vector3.INF
 const BLOCKED_PROGRESS_DISTANCE := 0.1
 const BLOCKED_REPORT_SECONDS := 1.25
+const BLOCKED_REPORT_COOLDOWN_SECONDS := 4.0
 const BLOCKED_MAX_GAP_SECONDS := 2.0
 var _navigation_return := Vector3.INF
 var _navigation_return_remaining := 0.0
@@ -50,6 +52,23 @@ var _navigation_blocker: WeakRef
 var _navigation_block_origin := Vector3.INF
 var _navigation_block_seconds := 0.0
 var _navigation_retry_at := 0.0
+var spacing_enabled := false
+var spacing_margin := 0.45
+var _spacing_retry_at := 0.0
+var _spacing_blocked_until := 0.0
+var _spacing_blocked_partner: WeakRef
+
+## The context supplies the basic spacing policy; physical collision recovery remains
+## available independently. Distances are extra clearance between actual bodies.
+func configure_spacing(enabled: bool, margin: float = 0.45) -> void:
+	spacing_enabled = enabled
+	spacing_margin = clampf(margin, 0.0, 1.5)
+	if not enabled and _point_kind == &"spacing":
+		_point = Vector3.INF
+		_next_point = Vector3.INF
+		_point_remaining = 0.0
+		_partner = null
+		_point_kind = &""
 
 func configure(body, navigation: NavigationRegion3D, board) -> void:
 	if actor == body and region == navigation and relations == board: return
@@ -96,6 +115,9 @@ func reset() -> void:
 	_navigation_return_remaining = 0.0
 	_clear_navigation_observation()
 	_navigation_retry_at = 0.0
+	_spacing_retry_at = 0.0
+	_spacing_blocked_until = 0.0
+	_spacing_blocked_partner = null
 
 func _clear_navigation_observation() -> void:
 	_navigation_blocker = null
@@ -147,6 +169,7 @@ func _clear_blocked_observation() -> void:
 	_blocked_axis = Vector3.ZERO
 	_blocked_seconds = 0.0
 	_blocked_reported = false
+	_blocked_reported_at = -INF
 	_blocked_last_contact = -INF
 	_blocked_body_position = Vector3.INF
 
@@ -186,9 +209,16 @@ func observe_motion(before: Vector3, delta: float) -> Dictionary:
 		_blocked_seconds = 0.0
 		_blocked_reported = false
 	_blocked_last_contact = _elapsed
+	if _blocked_reported:
+		if _elapsed - _blocked_reported_at < BLOCKED_REPORT_COOLDOWN_SECONDS: return {}
+		# Expired route evidence must be observable again. Only this new actual
+		# failure starts a fresh window; waiting and old accumulated time do not.
+		_blocked_reported = false
+		_blocked_seconds = 0.0
 	_blocked_seconds += maxf(0.0, delta)
-	if _blocked_reported or _blocked_seconds < BLOCKED_REPORT_SECONDS: return {}
+	if _blocked_seconds < BLOCKED_REPORT_SECONDS: return {}
 	_blocked_reported = true
+	_blocked_reported_at = _elapsed
 	return {"blocker": other, "position": other.global_position}
 
 func _friend(other) -> bool:
@@ -339,6 +369,77 @@ func _blocked_friend(neighbors: Array[WeakRef], desired: Vector3):
 	if not actor.test_move(actor.global_transform, axis * minf(1.15, nearest_distance), collision): return null
 	return nearest if collision.get_collider() == nearest else null
 
+func _spacing_clearance(point: Vector3, neighbors: Array[WeakRef]) -> float:
+	var clearance := INF
+	for ref in neighbors:
+		var other = _body(ref)
+		if not _friend(other) or absf(other.global_position.y - point.y) > 1.0: continue
+		var difference: Vector3 = point - other.global_position
+		difference.y = 0.0
+		clearance = minf(clearance, difference.length() - _radius(actor) - _radius(other))
+	return clearance
+
+## A single stable participant makes one bounded adjustment, then waits before
+## reconsidering. No goal/claim changes and no steering through a wall or body.
+func _start_spacing(neighbors: Array[WeakRef], desired: Vector3) -> bool:
+	if not spacing_enabled or spacing_margin <= 0.0 or _elapsed < _spacing_retry_at: return false
+	var partner = null
+	var nearest := INF
+	var moving := not desired.is_zero_approx()
+	for ref in neighbors:
+		var other = _body(ref)
+		if not _friend(other): continue
+		var away: Vector3 = actor.global_position - other.global_position
+		if absf(away.y) > 1.0: continue
+		away.y = 0.0
+		var clearance: float = away.length() - _radius(actor) - _radius(other)
+		if clearance >= spacing_margin - 0.06 or clearance >= nearest: continue
+		var other_intent: Vector3 = other.local_motion._desired if Engine.get_physics_frames() - other.local_motion._intent_frame <= 2 else Vector3.ZERO
+		# A passer already requests a physical yield when needed. Do not make a
+		# stationary shooter react twice to that same passing body.
+		if not moving and not other_intent.is_zero_approx(): continue
+		var other_failed: bool = other.local_motion._elapsed < other.local_motion._spacing_blocked_until and _body(other.local_motion._spacing_blocked_partner) == actor
+		if other.can_move() and other.local_motion.spacing_enabled and other.local_motion.spacing_margin > 0.0 and actor.get_instance_id() < other.get_instance_id() and not other_failed: continue
+		if moving:
+			var along := away.dot(desired.normalized())
+			if (away - desired.normalized() * along).length() < 0.15: continue
+		# A close ally across a solid wall is not sharing our available space.
+		var collision := KinematicCollision3D.new()
+		if not actor.test_move(actor.global_transform, -away, collision) or collision.get_collider() != other: continue
+		nearest = clearance
+		partner = other
+	if partner == null: return false
+	_spacing_retry_at = _elapsed + 0.6
+	var away: Vector3 = actor.global_position - partner.global_position
+	away.y = 0.0
+	if moving: away -= desired.normalized() * away.dot(desired.normalized())
+	if away.is_zero_approx(): return false
+	var length := clampf(spacing_margin - nearest + 0.08, 0.12, 0.6)
+	var baseline := _spacing_clearance(actor.global_position, neighbors)
+	var best := Vector3.INF
+	var best_clearance := baseline + 0.04
+	for degrees: float in [0.0, 45.0, -45.0, 90.0, -90.0]:
+		var point: Vector3 = actor.global_position + away.normalized().rotated(Vector3.UP, deg_to_rad(degrees)) * length
+		var clearance := _spacing_clearance(point, neighbors)
+		if clearance <= best_clearance or not _walkable(point): continue
+		best = point
+		best_clearance = clearance
+	if not best.is_finite():
+		# A stable priority is not a permanent veto when only the other body has
+		# room. Publish this pair's bounded physical failure, not a tactical order.
+		_spacing_blocked_partner = weakref(partner)
+		_spacing_blocked_until = _elapsed + 0.8
+		return false
+	_spacing_blocked_partner = null
+	_spacing_blocked_until = 0.0
+	_point = best
+	_next_point = Vector3.INF
+	_point_remaining = 1.0
+	_point_kind = &"spacing"
+	_partner = weakref(partner)
+	_return_point = Vector3.INF
+	return true
+
 func resolve(desired: Vector3, delta: float, speed_limit: float) -> Vector3:
 	_elapsed += maxf(0.0, delta)
 	_desired = desired
@@ -402,7 +503,9 @@ func resolve(desired: Vector3, delta: float, speed_limit: float) -> Vector3:
 	if _point.is_finite(): return Vector3.ZERO
 	_receive_pass()
 	if _point.is_finite(): return Vector3.ZERO
-	if desired.is_zero_approx(): return desired
+	if desired.is_zero_approx():
+		_start_spacing(_neighbors(), desired)
+		return desired
 	var failed = _body(_failed_partner)
 	if _elapsed < _failed_until and _friend(failed) and not _failed_direction.is_zero_approx() and desired.normalized().dot(_failed_direction) > 0.8:
 		var offset: Vector3 = failed.global_position - actor.global_position
@@ -412,7 +515,8 @@ func resolve(desired: Vector3, delta: float, speed_limit: float) -> Vector3:
 			return Vector3.ZERO
 	_failed_partner = null
 	var other = _blocked_friend(_neighbors(), desired)
-	if other == null: return desired
+	if other == null:
+		return Vector3.ZERO if _start_spacing(_neighbors(), desired) else desired
 	var other_intent: Vector3 = other.local_motion._desired
 	if Engine.get_physics_frames() - other.local_motion._intent_frame > 2:
 		if _observing_partner != other.get_instance_id():
@@ -428,10 +532,10 @@ func resolve(desired: Vector3, delta: float, speed_limit: float) -> Vector3:
 		_following_partner = weakref(other)
 		_following_axis = desired.normalized()
 		_following_wait = 0.0
-		var gap: float = actor.global_position.distance_to(other.global_position) - _radius(actor) - _radius(other) - 0.08
+		var gap: float = actor.global_position.distance_to(other.global_position) - _radius(actor) - _radius(other) - (spacing_margin if spacing_enabled else 0.08)
 		return desired.normalized() * minf(desired.length(), maxf(0.0, minf(other_intent.length(), gap / 0.25)))
 	if other_intent.is_zero_approx() and _body(_following_partner) == other and desired.normalized().dot(_following_axis) > 0.6:
-		var gap: float = actor.global_position.distance_to(other.global_position) - _radius(actor) - _radius(other) - 0.08
+		var gap: float = actor.global_position.distance_to(other.global_position) - _radius(actor) - _radius(other) - (spacing_margin if spacing_enabled else 0.08)
 		# The leader may simply have reached its destination. Use the remaining
 		# free gap first, so the follower can stop behind it without a detour.
 		if gap > 0.05: return desired.normalized() * minf(desired.length(), gap / 0.25)

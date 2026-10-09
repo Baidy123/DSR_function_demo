@@ -84,6 +84,33 @@ func _run() -> void:
 		blocker.move_character(Vector3.ZERO, STEP)
 		held = held and context.cover_selection._path_to(mover.global_position, destination).is_empty()
 	check(held and mover.global_position.x < blocker.global_position.x, "原动作重评期间堵路约束持续有效且身体没有穿透")
+	# Keep the same actual obstruction beyond its finite memory lifetime. Real
+	# new footsteps may legitimately select this passage again after expiry.
+	var first_deadline: float = context._blocked_ally_paths[0].valid_until if not context._blocked_ally_paths.is_empty() else -INF
+	var report_times: Array[float] = [mover.local_motion._blocked_reported_at]
+	var previous_reports: int = reports
+	var expired_seen := false
+	var fresh_attempt := false
+	var still_separated := true
+	for frame in 720:
+		await physics_frame
+		if frame % 90 == 0:
+			player.global_position = arena.to_global(Vector3(3.5 if (frame / 90) % 2 == 0 else 3.0, 0, 0))
+			noise.emit_from(player, 15.0)
+		ai._physics_process(STEP)
+		blocker.move_character(Vector3.ZERO, STEP)
+		if context.evidence_elapsed_seconds >= first_deadline and context._blocked_ally_paths.is_empty(): expired_seen = true
+		if expired_seen and not mover.local_motion._desired.is_zero_approx(): fresh_attempt = true
+		if reports > previous_reports: report_times.append(mover.local_motion._blocked_reported_at)
+		previous_reports = reports
+		still_separated = still_separated and mover.global_position.x < blocker.global_position.x and mover.global_position.distance_to(blocker.global_position) >= 0.68
+	var bounded_reports := true
+	for index in range(1, report_times.size()):
+		bounded_reports = bounded_reports and report_times[index] - report_times[index - 1] >= 5.2
+	check(expired_seen and fresh_attempt and reports >= 2, "Finite route evidence can expire and a new real autonomous failure reports the same blocked passage again")
+	check(bounded_reports, "Repeated blockage reports require cooldown and a fresh physical observation window")
+	check(still_separated, "Repeated investigation after expiry never crosses the stationary body")
+	print("AUTONOMOUS BLOCK EXPIRY reports=", reports, " times=", report_times, " expired=", expired_seen, " fresh_attempt=", fresh_attempt)
 	blocker.cancel_melee()
 	blocker.global_position = arena.to_global(Vector3(0, 0, 3))
 	# A new real sound at a distinct nearby point is a new observation, avoiding

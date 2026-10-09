@@ -87,9 +87,8 @@ func _low_cover_option(destination: Dictionary, route: Dictionary, threat: Vecto
 	var horizon: float = context.utility_horizon_seconds
 	var hide: float = maxf(0.0, float(_setting(&"low_cover_hide_seconds", 0.6)))
 	var transition: float = actor.posture_seconds * 3.0
-	var ready: float = route.seconds + hide + transition + maxf(context.fire.fire_reaction_seconds, context.fire.fire_pause_remaining)
-	var shots: int = maxi(1, context.fire.burst_shot_count - context.fire.fire_burst_shots)
-	var shooting: float = minf(maxf(0.0, horizon - ready), maxi(1, mini(shots, actor.ammo.magazine_rounds)) * actor.weapon.shot_interval)
+	var ready: float = route.seconds + hide + transition + maxf(context.fire.fire_reaction_seconds, maxf(context.fire.fire_pause_remaining, context.fire.shot_wait_seconds()))
+	var shooting: float = minf(maxf(0.0, horizon - ready), context.fire.burst_window_seconds())
 	var remaining: float = maxf(0.0, horizon - route.seconds)
 	var upright: float = minf(remaining, actor.posture_seconds * 2.0 + context.fire.fire_reaction_seconds + shooting)
 	var exposure: float = route.exposure + context._reload_exposure(point, threat, -1.0, true) * maxf(0.0, remaining - upright) + context._reload_exposure(point, threat) * upright

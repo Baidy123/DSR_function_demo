@@ -122,16 +122,16 @@ func information_retention() -> float:
 func utility_fire_fraction() -> float:
 	return 1.0 if utility_available() else 0.0
 
-func _support_prediction(mode: StringName, preview: Dictionary, duration: float) -> Dictionary:
+func _support_prediction(mode: StringName, preview: Dictionary, duration: float, supporting: bool = false) -> Dictionary:
 	var point: Vector3 = aim_point if active and mode == _current_mode() and mode == &"point" and aim_point.is_finite() else preview.targets[0]
 	var desired: Vector3 = point - actor.get_shot_origin()
 	var turning: float = 0.0 if desired.is_zero_approx() else maxf(0.0, actor.aim_direction.angle_to(desired) - actor.AIM_ACQUIRE_ANGLE) / maxf(0.01, deg_to_rad(actor.aim_turn_speed_degrees))
-	var delay: float = maxf(turning, maxf(actor.shot_cooldown, context.fire.fire_pause_remaining))
+	var delay: float = maxf(turning, maxf(context.fire.shot_wait_seconds(), context.fire.fire_pause_remaining))
 	if mode == &"visible":
 		delay = maxf(delay, maxf(0.0, context.fire.fire_reaction_seconds - context.fire.fire_reaction_elapsed))
 		delay += context.fire.estimated_steady_wait(true)
-	var rounds: int = _shots_remaining if active else maxi(0, context.fire.burst_shot_count - context.fire.fire_burst_shots)
-	var window: float = mini(rounds, actor.ammo.magazine_rounds) * maxf(0.05, actor.weapon.shot_interval)
+	var rounds: int = _shots_remaining if active else context.fire.burst_shots_remaining(supporting)
+	var window: float = mini(rounds, actor.ammo.magazine_rounds) * context.fire.shot_interval_seconds()
 	if actor.ammo.is_reloading: window = 0.0
 	return {"support_seconds": minf(window, maxf(0.0, minf(context.utility_horizon_seconds, duration) - delay)), "estimated_start_seconds": delay}
 
@@ -166,14 +166,14 @@ func preview_candidate(mode: StringName, basis: Dictionary = {}, duration: float
 	if preview.is_empty(): return {}
 	if duration < 0.0: duration = remaining if active else maxf(0.1, duration_min)
 	duration = minf(duration, maxf(0.0, float(basis.valid_until) - context.evidence_elapsed_seconds))
-	var prediction := _support_prediction(mode, preview, duration)
+	var purpose := _purpose(mode, basis, _request_id if active else 0)
+	var prediction := _support_prediction(mode, preview, duration, purpose.get("reason", &"") == &"support")
 	var horizon: float = context.utility_horizon_seconds
 	var available: float = float(prediction.support_seconds)
 	var candidate := option({}, horizon - available, context.spatial._exposure(context, actor.global_position, context._known_reload_threat()) * horizon, 0.0 if mode == &"visible" else minf(horizon, duration), mode)
 	candidate.suppression_evidence = basis.duplicate(true)
 	candidate.target_id = context.cooperation_target_id()
 	candidate.outcome.preference_credit = _point_preference(basis) if mode == &"point" else 0.0
-	var purpose := _purpose(mode, basis, _request_id if active else 0)
 	candidate.suppression_reason = purpose.get("reason", &"")
 	var task: Dictionary = plan.get("cooperation", {}).duplicate(true) if active else _cooperation(purpose)
 	if not task.is_empty():
@@ -218,7 +218,7 @@ func begin(candidate: Dictionary, visible: bool) -> bool:
 	if _reason == &"personal_loss": context.consume_suppression(basis)
 	if _reason == &"close": _close_available_at = context.evidence_elapsed_seconds + maxf(duration_min, context.fire.burst_pause_seconds)
 	remaining = minf(randf_range(maxf(0.1, duration_min), maxf(maxf(0.1, duration_min), duration_max)), float(basis.valid_until) - context.evidence_elapsed_seconds)
-	_shots_remaining = mini(actor.ammo.magazine_rounds, maxi(1, context.fire.burst_shot_count - context.fire.fire_burst_shots))
+	_shots_remaining = mini(actor.ammo.magazine_rounds, maxi(1, context.fire.burst_shots_remaining(_reason == &"support")))
 	target_center = preview.center
 	_clear_targets.assign(preview.targets)
 	active = true
@@ -270,7 +270,7 @@ func tick(delta: float, visible: bool) -> Dictionary:
 	_running = active
 	var fire: Dictionary = {}
 	if active:
-		fire = {"owner": action_id, "mode": &"visible", "support_intent": true} if mode_visible() else {"owner": action_id, "mode": &"memory", "point": aim_point}
+		fire = {"owner": action_id, "mode": &"visible", "support_intent": true} if mode_visible() else {"owner": action_id, "mode": &"memory", "point": aim_point, "support_intent": _reason == &"support"}
 	return motion(Vector3.ZERO, 1.0, aim_point - actor.global_position, fire)
 
 func on_shot_fired() -> void:

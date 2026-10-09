@@ -372,10 +372,14 @@ func _melee_facts() -> Dictionary:
 	var retained_distance := maxf(0.0, push_distance - closing_speed * settings.windup)
 	var pushed_threat: Vector3 = threat + away * retained_distance
 	var before: float = context._reload_exposure(actor.global_position, threat)
-	var reload_wait: float = context.spatial._ammo_wait(context)
+	# Melee consumes existing burst/shot waits, but clears reaction and aim.
+	# It cancels reload progress: only an empty magazine needs a new full reload.
+	var resume: float = occupied
 	if actor.ammo.magazine_rounds == 0 and actor.weapon != null:
-		reload_wait = maxf(reload_wait, actor.weapon.reload_seconds)
-	var ready: float = occupied + reload_wait
+		resume += maxf(0.1, actor.weapon.reload_seconds)
+	var ready: float = maxf(resume + maxf(0.0, context.fire.fire_reaction_seconds),
+		maxf(context.fire.pause_after_no_fire_seconds(), context.fire.shot_wait_seconds())) + context.fire.estimated_reset_steady_wait()
+	if not actor.can_use_firearms(): ready = horizon
 	var windup: float = minf(horizon, settings.windup)
 	return {"horizon": horizon, "before": before, "pushed_threat": pushed_threat, "ready": ready, "windup": windup}
 

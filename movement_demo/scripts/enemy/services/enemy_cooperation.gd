@@ -12,6 +12,7 @@ var _claims: Dictionary = {}
 var _checked: Dictionary = {}
 var _relations: Dictionary = {}
 var _flank_rounds: Dictionary = {}
+var _inspection_reports: Dictionary = {}
 const FLANK_SIDE_MARGIN := 0.5
 const FLANK_DESTINATION_SPACING := 1.2
 # A completed 140-degree flank still fits inside a rotated half-plane. This
@@ -34,6 +35,8 @@ func advance(delta: float) -> void:
 			revision += 1
 	for key in _checked.keys():
 		if elapsed >= _checked[key].valid_until: _checked.erase(key)
+	for key in _inspection_reports.keys():
+		if elapsed >= float(_inspection_reports[key].valid_until): _inspection_reports.erase(key)
 	_maintain_flank_rounds()
 
 func reset() -> void:
@@ -43,6 +46,7 @@ func reset() -> void:
 	_claims.clear()
 	_checked.clear()
 	_flank_rounds.clear()
+	_inspection_reports.clear()
 	for member in _members.values():
 		member.status = {}
 		member.activity = {}
@@ -69,6 +73,24 @@ func release_member(id: int) -> void:
 	if _members.has(id): _members[id].status = {}
 	revision += 1
 
+## Ending an action is not ending the body's reload or leaving the team.
+## Dependent allies keep their finite leases while the same real need exists.
+func clear_execution(id: int) -> void:
+	for token in _claims.keys():
+		if int(_claims[token].owner_id) == id: _claims.erase(token)
+	if _members.has(id):
+		var status: Dictionary = _members[id].status
+		if not status.is_empty():
+			status.ready = false
+			status.support_seconds = 0.0
+			status.support_cycle_valid = false
+			status.support_resume_seconds = -1.0
+			status.support_request = {}
+			status.erase("support_request_id")
+			status.erase("support_request_id_signature")
+	# updated_at remains the time of the real publication, not this cancellation.
+	revision += 1
+
 func _context(id: int):
 	return _members[id].context.get_ref() if _members.has(id) else null
 
@@ -79,6 +101,13 @@ func registered_member_count() -> int:
 func _claim_valid(entry: Dictionary) -> bool:
 	var owner = _context(entry.owner_id)
 	var valid: bool = entry.expires_at > elapsed and owner != null and is_instance_valid(owner.actor) and owner.actor.is_inside_tree() and owner.cooperation_enabled() and owner.can_use_action(entry.owner_action) and owner.cooperation_target_id() == entry.target_id
+	if valid and entry.kind == &"inspect_end":
+		var evidence := inspection_evidence(owner, entry.target_id)
+		if evidence.is_empty() or int(evidence.id) != int(entry.get("inspection_id", -1)) or entry.get("domain", "") != _domain(owner.actor): return false
+		var body = entry.get("cover").get_ref() if entry.get("cover") is WeakRef else null
+		if not is_instance_valid(body) or not body is StaticBody3D or (body.collision_layer & 1) == 0 or not is_instance_valid(owner.navigation_region) or not owner.navigation_region.is_ancestor_of(body): return false
+		var box = body.get_node_or_null("CollisionShape3D")
+		return box is CollisionShape3D and not box.disabled and box.shape is BoxShape3D and box.global_transform == entry.get("cover_transform") and box.shape.size == entry.get("cover_size")
 	if not valid or entry.kind != &"flank": return valid
 	var round: Dictionary = _flank_rounds.get(entry.get("flank_round_id", 0), {})
 	return not round.is_empty() and _flank_round_matches(round, owner)
@@ -94,6 +123,7 @@ func set_relation(first: StringName, second: StringName, relation: StringName) -
 	_relations[[second, first]] = relation
 	_claims.clear()
 	_flank_rounds.clear()
+	_inspection_reports.clear()
 	relation_revision += 1
 	revision += 1
 
@@ -129,6 +159,12 @@ func publish_visual(context) -> void:
 	if not _members.has(observer): register(context)
 	var target: int = context.cooperation_target_id()
 	if target == 0: return
+	for inspection_key in _inspection_reports.keys():
+		var investigation: Dictionary = _inspection_reports[inspection_key]
+		if investigation.target_id != target or not _inspection_domain_matches(context, investigation): continue
+		if investigation.source != &"shared_visual" or investigation.position.distance_to(context.last_seen_position) >= 0.5:
+			_inspection_reports.erase(inspection_key)
+			_drop_inspection_claims(int(investigation.id))
 	var key := _key(_members[observer].domain, target)
 	var old: Dictionary = _reports.get(key, {})
 	var reloading: bool = context.observed_reload_remaining > 0.0
@@ -136,11 +172,127 @@ func publish_visual(context) -> void:
 		return
 	_serial += 1
 	_reports[key] = {"target_id": target, "observer_id": observer, "faction": context.actor.faction_id, "group": context.actor.communication_group,
-		"position": context.last_seen_position, "aim_position": context.last_seen_aim_position, "direction": context.last_seen_direction, "velocity": context.observed_velocity,
+		"position": context.last_seen_position, "observer_position": context.actor.global_position, "aim_position": context.last_seen_aim_position, "direction": context.last_seen_direction, "velocity": context.observed_velocity,
 		"captured_at": elapsed, "valid_until": elapsed + maxf(0.1, context.setting(&"cooperation", &"intel_seconds", 5.0)),
 		"id": _serial, "generation": generation, "source": &"shared_visual", "shared": true,
 		"reloading": reloading, "reload_until": elapsed + context.observed_reload_remaining}
 	revision += 1
+
+func _inspection_domain_matches(context, report: Dictionary) -> bool:
+	return report.get("group") == context.actor.communication_group and (report.get("faction") == context.actor.faction_id or _relations.get([report.get("faction"), context.actor.faction_id], &"") == &"allied")
+
+func _drop_inspection_claims(inspection_id: int) -> void:
+	for token in _claims.keys():
+		if int(_claims[token].get("inspection_id", -1)) == inspection_id: _claims.erase(token)
+	revision += 1
+
+## Called only for an acquired observation. Input uses the observer's clock;
+## returned/shared values use board time and never gain life when read again.
+func publish_inspection(context, evidence: Dictionary) -> Dictionary:
+	var target: int = int(evidence.get("target_id", 0))
+	var point: Vector3 = evidence.get("position", Vector3.INF)
+	if target == 0 or target != context.cooperation_target_id() or not point.is_finite(): return {}
+	if not _members.has(context.actor.get_instance_id()): register(context)
+	var key := _key(_domain(context.actor), target)
+	var offset: float = elapsed - context.evidence_elapsed_seconds
+	var deadline: float = float(evidence.get("valid_until", -INF)) + offset
+	if deadline <= elapsed: return {}
+	var cover = evidence.get("cover")
+	if cover is WeakRef: cover = cover.get_ref()
+	var cover_id: int = cover.get_instance_id() if is_instance_valid(cover) else 0
+	var captured: float = float(evidence.get("captured_at", context.evidence_elapsed_seconds)) + offset
+	var old: Dictionary = _inspection_reports.get(key, {})
+	if not old.is_empty() and float(old.valid_until) > elapsed and int(old.cover_id) == cover_id and old.position.distance_to(point) < 0.5:
+		if evidence.get("source") == &"shared_visual" or absf(captured - float(old.captured_at)) <= 0.75: return old.duplicate(true)
+	if not old.is_empty(): _drop_inspection_claims(int(old.id))
+	_serial += 1
+	var value := evidence.duplicate(true)
+	value.merge({"id": _serial, "target_id": target, "position": point, "observer_id": context.actor.get_instance_id(),
+		"faction": context.actor.faction_id, "group": context.actor.communication_group, "generation": generation,
+		"captured_at": captured, "valid_until": deadline, "cover_id": cover_id, "cover": weakref(cover) if is_instance_valid(cover) else null,
+		"checked_ends": [], "source": evidence.get("source", &"visual_loss")}, true)
+	_inspection_reports[key] = value
+	revision += 1
+	return value.duplicate(true)
+
+func inspection_evidence(context, target: int) -> Dictionary:
+	var best: Dictionary = {}
+	for report: Dictionary in _inspection_reports.values():
+		if int(report.target_id) != target or float(report.valid_until) <= elapsed or not _inspection_domain_matches(context, report): continue
+		if best.is_empty() or int(report.id) > int(best.id): best = report
+	return best.duplicate(true)
+
+## Read-only stable allocation of the two end roles. Positions rank suitable
+## bodies; each action still proves its own exact route before taking a lease.
+func _inspection_eligible_members(context, target: int) -> Array[Dictionary]:
+	var members: Array[Dictionary] = []
+	var owner: int = context.actor.get_instance_id()
+	for id in _members:
+		var other = _context(id)
+		if other == null or not can_cooperate(id, owner) or not other.cooperation_enabled() or other.cooperation_target_id() != target or not other.is_alerted or not other.actor.can_move(): continue
+		members.append({"id": id, "position": other.actor.global_position})
+	return members
+
+## Radio membership alone cannot provide a second capable investigator.
+func inspection_eligible_count(context, target: int) -> int:
+	return _inspection_eligible_members(context, target).size()
+
+func inspection_end(context, geometry: Dictionary) -> int:
+	if not context.cooperation_enabled(): return 0
+	var evidence := inspection_evidence(context, geometry.target_id)
+	if evidence.is_empty() or int(evidence.id) != int(geometry.inspection_id): return 0
+	var owner: int = context.actor.get_instance_id()
+	var occupied: Dictionary = {}
+	for entry: Dictionary in _claims.values():
+		if entry.kind != &"inspect_end" or int(entry.get("inspection_id", -1)) != int(evidence.id) or not _claim_valid(entry) or not can_cooperate(entry.owner_id, owner): continue
+		if int(entry.owner_id) == owner: return int(entry.end)
+		occupied[int(entry.end)] = int(entry.owner_id)
+	var members := _inspection_eligible_members(context, int(geometry.target_id))
+	if members.size() < 2: return 0
+	var best: Dictionary = {}
+	var best_cost := INF
+	for first: Dictionary in members:
+		for second: Dictionary in members:
+			if first.id == second.id: continue
+			if occupied.has(-1) and occupied[-1] != first.id: continue
+			if occupied.has(1) and occupied[1] != second.id: continue
+			var cost: float = first.position.distance_to(geometry.ends[-1].entry) + second.position.distance_to(geometry.ends[1].entry)
+			if cost < best_cost - 0.001 or (absf(cost - best_cost) <= 0.001 and int(first.id) < int(best.get(-1, 9223372036854775807))):
+				best_cost = cost
+				best = {-1: first.id, 1: second.id}
+	for end in [-1, 1]:
+		if best.get(end, 0) == owner and not evidence.checked_ends.has(end): return end
+	return 0
+
+func inspection_revision(context, inspection_id: int) -> int:
+	var state: Array = [generation, relation_revision, inspection_id]
+	for id in _members:
+		var other = _context(id)
+		if other == null or not can_cooperate(id, context.actor.get_instance_id()) or not other.cooperation_enabled(): continue
+		state.append([id, other.cooperation_target_id(), other.is_alerted, other.actor.can_move(), other.actor.global_position.snapped(Vector3.ONE * 0.5)])
+	for entry: Dictionary in _claims.values():
+		if entry.kind == &"inspect_end" and int(entry.get("inspection_id", -1)) == inspection_id and _claim_valid(entry): state.append([entry.owner_id, entry.end])
+	var evidence := inspection_evidence(context, context.cooperation_target_id())
+	state.append(evidence.get("checked_ends", []))
+	return hash(state)
+
+func inspection_partner_ready(context, token: Dictionary) -> bool:
+	if not _claim_valid(token): return false
+	for entry: Dictionary in _claims.values():
+		if entry.kind != &"inspect_end" or entry.owner_id == context.actor.get_instance_id() or int(entry.get("inspection_id", -1)) != int(token.inspection_id) or not _claim_valid(entry): continue
+		if not can_cooperate(entry.owner_id, context.actor.get_instance_id()): continue
+		var other = _context(entry.owner_id)
+		if int(entry.get("phase", 0)) >= 2 and other.actor.can_move() and other.actor.global_position.distance_to(entry.entry) <= 0.35: return true
+	return false
+
+func complete_inspection(context, token: Dictionary) -> void:
+	if not _claim_valid(token): return
+	if context.actor.global_position.distance_to(token.peek) > 0.35: return
+	var known: Vector3 = token.get("geometry", {}).get("known", Vector3.INF)
+	if not known.is_finite() or not context.perception.can_observe_position(known): return
+	for report: Dictionary in _inspection_reports.values():
+		if int(report.id) == int(token.inspection_id) and not report.checked_ends.has(int(token.end)): report.checked_ends.append(int(token.end))
+	release(context, token)
 
 func evidence(context, target: int) -> Dictionary:
 	var id: int = context.actor.get_instance_id()
@@ -465,6 +617,10 @@ func claim(context, task: Dictionary) -> Dictionary:
 	var point: Vector3 = task.get("position", context.actor.global_position)
 	if target == 0 or kind.is_empty() or not point.is_finite(): return {}
 	if kind == &"flank": return _claim_flank(context, task)
+	if kind == &"inspect_end":
+		var report := inspection_evidence(context, target)
+		if report.is_empty() or int(report.id) != int(task.get("inspection_id", -1)) or report.checked_ends.has(int(task.get("end", 0))): return {}
+		if int(task.get("end", 0)) not in [-1, 1] or task.get("geometry", {}).is_empty() or inspection_end(context, task.geometry) != int(task.end): return {}
 	for existing in _claims.values():
 		if not _claim_valid(existing) or existing.target_id != target or not can_cooperate(existing.owner_id, id): continue
 		if existing.owner_id == id and existing.kind == kind and String(existing.lane_id) == lane: return existing.duplicate(true)
@@ -478,6 +634,9 @@ func claim(context, task: Dictionary) -> Dictionary:
 	value.merge({"id": _serial, "owner_id": id, "target_id": target, "kind": kind, "lane_id": lane, "position": point,
 		"generation": generation, "created_at": elapsed, "expires_at": elapsed + maxf(0.1, float(task.get("duration", 4.0))),
 		"owner_action": task.get("owner_action", context.utility_current.get("id", &"cooperate"))}, true)
+	if kind == &"inspect_end":
+		value.domain = _domain(context.actor)
+		value.expires_at = minf(value.expires_at, float(inspection_evidence(context, target).valid_until))
 	_claims[_serial] = value
 	revision += 1
 	return value.duplicate(true)
@@ -570,9 +729,7 @@ func candidate_seconds(context, candidate: Dictionary) -> float:
 	if task.is_empty() and candidate_moving and not context.fire.fire_while_moving: support_time = 0.0
 	# Candidate predictions cannot promise more fire than the current magazine/burst.
 	if context.actor.can_use_firearms():
-		var rounds: int = context.actor.ammo.magazine_rounds
-		var burst_left: int = maxi(0, context.fire.burst_shot_count - context.fire.fire_burst_shots)
-		var shot_window: float = mini(rounds, burst_left) * maxf(0.05, context.actor.weapon.shot_interval)
+		var shot_window: float = context.fire.burst_window_seconds(candidate.get("support_intent", false) or task.get("kind", &"") == &"support")
 		if context.actor.ammo.is_reloading: shot_window = 0.0
 		support_time = minf(support_time, shot_window)
 	var quality: float = clampf(float(task.get("quality", 1.0)), 0.0, 1.0)

@@ -6,6 +6,7 @@ var request: Dictionary = {}
 var fire_reaction_elapsed := 0.0
 var fire_burst_shots := 0
 var fire_pause_remaining := 0.0
+var fire_interval_remaining := 0.0
 var fire_decision = preload("res://scripts/enemy/services/enemy_fire_decision.gd").new()
 var actor:
 	get: return context.actor
@@ -18,7 +19,9 @@ var fire_stability_target: float:
 var burst_shot_count: int:
 	get: return context.setting(&"tactics", &"burst_shot_count", 3)
 var burst_pause_seconds: float:
-	get: return context.setting(&"tactics", &"burst_pause_seconds", 1.0)
+	get: return context.setting(&"tactics", &"burst_pause_seconds", 1.8)
+var support_burst_shot_count: int:
+	get: return context.setting(&"tactics", &"support_burst_shot_count", 6)
 var ranged_min_distance: float:
 	get: return context.setting(&"tactics", &"ranged_min_distance", 4.0)
 
@@ -57,6 +60,11 @@ func update_shooting(delta: float, sees_player: bool, movement_requested: bool) 
 	# 自然计时独立于动作授权；搜索、躲藏期间也会消耗已有连射停顿。
 	var elapsed: float = maxf(0.0, delta)
 	fire_pause_remaining = maxf(0.0, fire_pause_remaining - elapsed)
+	fire_interval_remaining = maxf(0.0, fire_interval_remaining - elapsed)
+	# Finishing/cancelling a covering request cannot grant a fresh short burst.
+	# Count carries across action/intent changes; a completed ordinary quota rests.
+	if fire_burst_shots >= burst_limit(request.get("support_intent", false)):
+		_finish_burst()
 	if not _has_authorized_fire_action():
 		fire_reaction_elapsed = 0.0
 		fire_decision.reset()
@@ -87,7 +95,7 @@ func update_shooting(delta: float, sees_player: bool, movement_requested: bool) 
 	actor.update_weapon(delta, point)
 	var reaction_seconds: float = maxf(0.0, fire_reaction_seconds)
 	fire_reaction_elapsed = minf(reaction_seconds, fire_reaction_elapsed + elapsed)
-	if fire_reaction_elapsed < reaction_seconds or fire_pause_remaining > 0.0:
+	if fire_reaction_elapsed < reaction_seconds or fire_pause_remaining > 0.0 or fire_interval_remaining > 0.0:
 		fire_decision.reset()
 		return
 	var moving: bool = movement_requested or Vector2(actor.velocity.x, actor.velocity.z).length() > 0.05
@@ -132,7 +140,7 @@ func _update_suppression_shooting(delta: float, movement_requested: bool) -> voi
 		return
 	actor.update_weapon(delta, point)
 	var moving: bool = movement_requested or Vector2(actor.velocity.x, actor.velocity.z).length() > 0.05
-	if actor.get_shot_origin().distance_to(point) > actor.weapon.fire_range or fire_pause_remaining > 0.0 or (moving and not fire_while_moving):
+	if actor.get_shot_origin().distance_to(point) > actor.weapon.fire_range or fire_pause_remaining > 0.0 or fire_interval_remaining > 0.0 or (moving and not fire_while_moving):
 		return
 	# aim_acquired 记录曾经跟上过目标，换点后仍可能为true；必须核实当前方向。
 	var desired: Vector3 = point - actor.get_shot_origin()
@@ -147,10 +155,42 @@ func _update_suppression_shooting(delta: float, movement_requested: bool) -> voi
 		shot_fired.emit()
 
 func _record_burst_shot() -> void:
+	fire_interval_remaining = shot_interval_seconds()
 	fire_burst_shots += 1
-	if fire_burst_shots >= maxi(1, burst_shot_count):
-		fire_burst_shots = 0
-		fire_pause_remaining = maxf(0.0, burst_pause_seconds)
+	if fire_burst_shots >= burst_limit(request.get("support_intent", false)):
+		_finish_burst()
+
+func _finish_burst() -> void:
+	fire_burst_shots = 0
+	fire_pause_remaining = maxf(fire_pause_remaining, maxf(0.0, burst_pause_seconds))
+
+## All candidate and execution timing reads share the AI cadence. The body still
+## owns the weapon's mechanical cooldown and never fires faster than that limit.
+func shot_interval_seconds() -> float:
+	if actor.weapon == null: return 0.0
+	return maxf(0.05, actor.weapon.shot_interval) * maxf(1.0, float(context.setting(&"tactics", &"shot_interval_multiplier", 1.5)))
+
+func shot_wait_seconds() -> float:
+	return maxf(actor.shot_cooldown, fire_interval_remaining)
+
+func burst_limit(support_intent: bool = false) -> int:
+	var normal := maxi(1, burst_shot_count)
+	# A label alone grants nothing: group/target/freshness and real unmet demand
+	# are checked by the existing cooperation board, including actual reloads.
+	if support_intent and context.cooperation_support_pressure() > 0.0:
+		return maxi(normal, support_burst_shot_count)
+	return normal
+
+func burst_shots_remaining(support_intent: bool = false) -> int:
+	return maxi(0, burst_limit(support_intent) - fire_burst_shots)
+
+func burst_window_seconds(support_intent: bool = false) -> float:
+	if not actor.can_use_firearms() or actor.ammo.is_reloading: return 0.0
+	return mini(actor.ammo.magazine_rounds, burst_shots_remaining(support_intent)) * shot_interval_seconds()
+
+func support_burst_duration() -> float:
+	var delay := maxf(fire_pause_remaining, maxf(shot_wait_seconds(), maxf(0.0, fire_reaction_seconds - fire_reaction_elapsed)))
+	return delay + estimated_steady_wait(true) + burst_window_seconds(true)
 
 func _current_firing_stability() -> float:
 	return actor.get_center_probability()
@@ -183,7 +223,7 @@ func support_cycle_resume_seconds(intent: Dictionary, moving: bool) -> float:
 	if not context.can_use_action(intent.get("owner", &"")) or not context.sees_player or not context.is_arena_active(): return -1.0
 	if context.player.is_dead() or context.player.is_in_dialogue or not context.perception.can_see_player(): return -1.0
 	if actor.get_tree().paused or not actor.has_aim or fire_reaction_elapsed < fire_reaction_seconds: return -1.0
-	if actor.shot_cooldown > fire_pause_remaining or fire_decision.selected_action == fire_decision.Action.STEADY: return -1.0
+	if shot_wait_seconds() > fire_pause_remaining or fire_decision.selected_action == fire_decision.Action.STEADY: return -1.0
 	var horizontal_aim := Vector3(actor.aim_direction.x, 0.0, actor.aim_direction.z)
 	var forward := Vector3(-actor.global_basis.z.x, 0.0, -actor.global_basis.z.z)
 	if not horizontal_aim.is_zero_approx() and forward.angle_to(horizontal_aim) > actor.MAX_GUN_BODY_ANGLE: return -1.0
@@ -193,20 +233,36 @@ func support_cycle_resume_seconds(intent: Dictionary, moving: bool) -> float:
 	if _steady_wait_seconds(demand) > 0.0001: return -1.0
 	return fire_pause_remaining
 
+## Dropping a long covering burst to no intent applies the normal burst quota.
+## Mirror update_shooting's transition without consuming rounds or starting a timer.
+func pause_after_no_fire_seconds() -> float:
+	return maxf(fire_pause_remaining, maxf(0.0, burst_pause_seconds)) if fire_burst_shots >= burst_limit(false) else fire_pause_remaining
+
+## A no-fire stage clears aim and steady progress every tick. Forecast its
+## following steady wait without retaining old accuracy or accumulated pressure.
+func estimated_reset_steady_wait() -> float:
+	if actor.weapon == null: return context.utility_horizon_seconds
+	var stability: float = minf(_current_firing_stability(), actor.weapon.get_aim_settings(false).initial)
+	return _steady_wait_for(stability, 0.0, 0.0, 0.0)
+
 func _steady_wait_seconds(demand: float) -> float:
+	return _steady_wait_for(_current_firing_stability(), fire_decision.last_recovery_rate, fire_decision.wait_seconds, demand)
+
+func _steady_wait_for(stability: float, recovery_rate: float, waited: float, demand: float) -> float:
 	var target: float = maxf(0.0001, fire_stability_target)
-	var quality: float = clampf(_current_firing_stability() / target, 0.0, 1.0)
-	var recovery: float = clampf(fire_decision.last_recovery_rate / target, 0.0, 1.0)
+	var quality: float = clampf(stability / target, 0.0, 1.0)
+	var recovery: float = clampf(recovery_rate / target, 0.0, 1.0)
 	var steady: float = 1.0 + recovery * (1.0 - quality) * maxf(0.0, fire_decision.recovery_gain_weight)
 	var close: float = clampf(1.0 - context._horizontal_distance(context.last_known_position) / maxf(0.01, ranged_min_distance), 0.0, 1.0)
 	var fire_score: float = quality + close * maxf(0.0, fire_decision.close_range_weight) + demand
-	return clampf((steady - fire_score) / maxf(0.05, fire_decision.wait_pressure_per_second) - fire_decision.wait_seconds, 0.0, context.utility_horizon_seconds)
+	return clampf((steady - fire_score) / maxf(0.05, fire_decision.wait_pressure_per_second) - waited, 0.0, context.utility_horizon_seconds)
 
 func reset_fire_timing() -> void:
 	fire_decision.reset()
 	fire_reaction_elapsed = 0.0
 	fire_burst_shots = 0
 	fire_pause_remaining = 0.0
+	fire_interval_remaining = 0.0
 
 
 ## 只给统一评分器提供合法落脚点；不打分、不抽随机数、不修改导航或状态。

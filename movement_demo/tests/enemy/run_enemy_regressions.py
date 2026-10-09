@@ -5,6 +5,11 @@ from pathlib import Path
 import subprocess
 
 TESTS = [
+    "enemy_route_evaluation_batch_test",
+    "enemy_ally_spacing_test",
+    "enemy_ally_spacing_runtime_test",
+    "enemy_firing_cadence_test",
+    "enemy_cover_inspection_test",
     "enemy_ally_navigation_test",
     "enemy_ally_navigation_integration_test",
     "enemy_ally_route_recovery_test",
@@ -47,6 +52,7 @@ TESTS = [
     "enemy_melee_execution_test",
     "enemy_melee_utility_test",
     "enemy_melee_approach_test",
+    "enemy_melee_timing_test",
     "enemy_melee_weapon_test",
     "enemy_reload_observation_test",
     "enemy_melee_tactics_test",
