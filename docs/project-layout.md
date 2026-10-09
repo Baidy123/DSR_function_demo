@@ -2,6 +2,8 @@
 
 游戏工程在 `movement_demo/`，说明文档集中在仓库的 `docs/`；仓库根目录仅保留 README 作为入口。脚本、场景与资源已按用途分类，移动时保留脚本 `.gd.uid` 和场景资源内的 UID。
 
+玩家医疗包沿用 `scenes/player/player_health.tscn`：Health/Medkit 挂 `scripts/player/player_medkit.gd`，只管理本实例数量与治疗进度；`scripts/player/medkit_data.gd` 和 `resources/player/default_medkit.tres` 保存静态效果／时长，生命结算仍在 Health。Health/MedkitIndicator 的 `scripts/ui/medkit_indicator.gd` 只做头顶投影和绘制；`scripts/ui/medkit_stock_label.gd` 挂在原武器栏内，只订阅并显示医疗库存。原移动、Combat、武器槽和敌人运行职责不变。配置及输入打断规则见 [生命与医疗包](gameplay/PLAYER_HEALTH.md)。
+
 ## 文档维护约束
 
 - 用户已确认的功能方向、职责分层和结构约束是实现依据。授权新增功能或维护 MD，不等于授权改变这些方向；不得为了迁就现有代码而倒改要求。
@@ -41,6 +43,7 @@ movement_demo/
 │   │   ├── units/         兵种模板 .tres
 │   │   └── training/      训练配置 .tres
 │   ├── weapons/           玩家与敌人的武器 .tres
+│   ├── player/            玩家医疗包效果与时间等静态配置
 │   ├── noise/             移动声、枪声配置
 │   ├── animations/        动画对应表
 │   ├── effects/           表面命中特效配置

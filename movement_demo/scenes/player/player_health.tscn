@@ -2,6 +2,9 @@
 
 [ext_resource type="Script" path="res://scripts/player/player_health.gd" id="1"]
 [ext_resource type="Script" path="res://scripts/debug/noise_debug.gd" id="2_noise"]
+[ext_resource type="Script" path="res://scripts/player/player_medkit.gd" id="3_medkit"]
+[ext_resource type="Script" path="res://scripts/ui/medkit_indicator.gd" id="4_medkit_indicator"]
+[ext_resource type="Resource" path="res://resources/player/default_medkit.tres" id="5_medkit_settings"]
 
 [sub_resource type="StyleBoxFlat" id="StatusPanel"]
 content_margin_left = 12.0
@@ -39,6 +42,15 @@ corner_radius_bottom_right = 3
 process_mode = 3
 layer = 10
 script = ExtResource("1")
+
+[node name="Medkit" type="Node" parent="."]
+script = ExtResource("3_medkit")
+settings = ExtResource("5_medkit_settings")
+
+[node name="MedkitIndicator" type="Control" parent="."]
+visible = false
+mouse_filter = 2
+script = ExtResource("4_medkit_indicator")
 
 [node name="NoiseRanges" type="Node3D" parent="."]
 script = ExtResource("2_noise")
