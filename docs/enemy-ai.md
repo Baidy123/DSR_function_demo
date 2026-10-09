@@ -4,6 +4,8 @@
 
 文中 `res://` 相对于 `movement_demo/project.godot`，不是仓库根目录。先看“在 Godot 中配置敌人”进行调参；新增动作看“添加动作或新兵种”和“维护协议”；放进新地图看“接入与部署”。完整文件分类见 [项目目录](project-layout.md)。
 
+2026-10-09 敌人协作的讨论方向已获认可，书面方案见 [协作、情报共享与战术压制设计](superpowers/specs/2026-10-09-enemy-cooperation-design.md)。该规范尚待审阅，包含区域内友方共享、阵营／目标接口、临时分工及压制合并方案；运行代码尚未实施，下文继续描述当前实现。
+
 ## 在 Godot 中配置敌人
 
 1. 打开 `movement_demo/scenes/arena.tscn`，选择 `Enemy/UnitType`。敌人已是独立场景实例；如需展开子节点，右键 Enemy 启用“可编辑子节点”。主场景中的路径仍为 `Arena/Enemy/UnitType`。
