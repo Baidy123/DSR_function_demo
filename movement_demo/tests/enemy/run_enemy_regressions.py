@@ -19,6 +19,7 @@ TESTS = [
     "enemy_candidate_reuse_test",
     "suppression_purpose_test",
     "enemy_cooperation_service_test",
+    "enemy_team_planner_test",
     "enemy_cooperation_flank_service_test",
     "enemy_flank_route_test",
     "enemy_cooperation_support_test",

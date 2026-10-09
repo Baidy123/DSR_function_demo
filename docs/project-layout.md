@@ -60,7 +60,9 @@ movement_demo/
 
 敌人协作由 `world/shooting_range.gd` 持有每战斗区一份 `enemy/services/enemy_cooperation.gd`；Context 提供值快照与任务接口，服务不访问其他行为实例或执行身体命令。`actions/enemy_cooperation_action.gd` / `resources/enemy/actions/cooperate.tres` 是训练解锁的协作战术，内部提供有限侧移、另一侧包抄和原地掩护方案；分工搜索与主动补弹仍属于原搜索／换弹模块。统一压制保留旧出口脚本 UID 作为兼容入口，默认目录只装配一个压制实例。参数位于 `config/cooperation_settings.gd`，详见 [敌人协作](enemy-ai.md#敌人协作)。
 
-2026-10-10 的两端检查、基础间距和射击节奏调整继续增强上述既有流程。[统一队伍规划器设计](superpowers/specs/2026-10-10-enemy-team-coordinator-design.md)所述“队伍提供互补岗位与候选位置、个人 Utility 选择执行”尚未实施；现有服务的局部认领、人数名额与身体避让不等于新规划器已接管动作选择。
+2026-10-10 的两端检查、基础间距和射击节奏调整继续增强上述既有流程。[统一队伍规划器设计](superpowers/specs/2026-10-10-enemy-team-coordinator-design.md)所述“队伍提供互补岗位与候选位置、个人 Utility 选择执行”尚未接入运行；现有服务的局部认领、人数名额与身体避让不等于新规划器已接管动作选择。
+
+统一规划器阶段1已新增 `enemy/services/enemy_team_planner.gd`：纯值输入输出的有界组合 helper，负责排除冲突并提议互补岗位，不访问场景、找路、控制身体或制造任务期限。`tests/enemy/enemy_team_planner_test.gd` 覆盖65项纯协议。当前运行中的 board 尚未调用它，实际站位预约和战术接入仍按后续阶段完成。
 
 `enemy/services/enemy_cover_inspection_geometry.gd` 只从冻结的合法线索和直立盒形掩体生成两个可步行检查端点，复用原导航、胶囊扫掠和完整路径校验；不读取隐藏目标身体、不认领、不发射。原 `actions/enemy_search.gd` 消费分侧认领，执行接近、有限等待、绕端检查和真实观察；`enemy_cooperation.gd` 管理线索、端点互斥与完成事实。Context 接收的调查线索默认保留20秒，与5秒精确共享目击分离，不延长射击权限。两端任务默认16秒且受线索原期限限制，等候2秒、观察0.5秒均不续期；单人或不足两个合法端点时沿用普通搜索，不恢复出口压制。几何和路径候选有限缓存，提交及执行继续复核真实可行性。
 
