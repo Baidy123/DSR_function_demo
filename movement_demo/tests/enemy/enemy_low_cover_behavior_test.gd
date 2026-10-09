@@ -154,8 +154,7 @@ func _run() -> void:
 	await process_frame
 	check(not LowCover.proximity_cover(enemy, player).is_empty(), "wall-end contact uses physical radius under rotated nonuniform wall scaling")
 	wall.global_transform = original
-	scene.queue_free()
-	await process_frame
+	await _dispose_scene(scene)
 	await _real_configuration_starts()
 	await _live_attack_start()
 	print("ENEMY LOW COVER BEHAVIOR: %d/%d passed" % [checks - failures, checks])
@@ -209,8 +208,7 @@ func _real_configuration_starts() -> void:
 		check(crouched and shots > 0 and returned, "saved cadence completes crouch rise actual burst and return from " + str(offset))
 		check(shots > 0 and legal_standing_shots, "saved spread and real muzzle lane remain enforced from " + str(offset))
 		print("REAL COVER START ", offset, " shots=", shots, " burst=", ai.context.fire.burst_shot_count, " interval=", enemy.weapon.shot_interval)
-		scene.queue_free()
-		await process_frame
+		await _dispose_scene(scene)
 
 func _live_attack_start() -> void:
 	# Exact live-game positions where collection accepted a head lane but the
@@ -241,9 +239,10 @@ func _live_attack_start() -> void:
 	var torso: Vector3 = ai.context.known_target_point(player.global_position)
 	var old_geometry: Dictionary = ai.cover_selection.assess_attack_point(point, wall, torso, torso)
 	check(ai.context.sees_player and not old_geometry.clear_shot and not assessed.is_empty(), "live standby fixture has a blocked torso and a legal known head/shoulder candidate")
+	if not ai.context.sees_player or old_geometry.clear_shot or assessed.is_empty():
+		_report_live_fixture(ai, enemy, player, wall, point, assessed, old_geometry)
 	if assessed.is_empty():
-		scene.queue_free()
-		await process_frame
+		await _dispose_scene(scene)
 		return
 	var candidate: Dictionary = action.option(assessed.destination, assessed.unavailable, assessed.exposed)
 	var null_frames := 0
@@ -268,5 +267,28 @@ func _live_attack_start() -> void:
 	check(enemy.global_position.distance_to(start) > 0.02 and enemy.shot_count > shots_before, "live attack position advances and fires through the normal AI execution path")
 	check(enemy.shot_count > shots_before and legal_shots, "recovered live-position shots still require actual perception and muzzle clearance")
 	print("LIVE STANDBY REGRESSION null_frames=", null_frames, " shots=", enemy.shot_count - shots_before)
+	await _dispose_scene(scene)
+
+
+func _dispose_scene(scene: Node) -> void:
+	# Finish actual tree removal before another fixture resolves player groups.
 	scene.queue_free()
+	await scene.tree_exited
 	await process_frame
+
+
+func _report_live_fixture(ai, enemy, player, wall, point: Vector3, assessed: Dictionary, torso: Dictionary) -> void:
+	var context = ai.context
+	var identity_matches: bool = is_instance_valid(context.player) and context.player == player
+	var samples: PackedVector3Array = context.known_target_points(context.last_known_position) if identity_matches else PackedVector3Array()
+	var target: Vector3 = ai.cover_selection.low_cover_attack_target(point, samples)
+	var geometry: Dictionary = ai.cover_selection.assess_attack_point(point, wall, target, target) if target.is_finite() else {}
+	var path: PackedVector3Array = context.routes.planning_path(enemy.global_position, point)
+	print("LIVE FIXTURE FAILURE ", JSON.stringify({"player_matches": identity_matches,
+		"player_valid": is_instance_valid(context.player), "visible": context.sees_player,
+		"known": context.last_known_position, "expected_player": player.global_position,
+		"enemy": enemy.global_position, "samples": samples, "target": target,
+		"torso_geometry": torso, "target_geometry": geometry, "assessed": not assessed.is_empty(),
+		"path": path, "context_depth": context._geometry_evaluation_depth,
+		"selection_depth": ai.cover_selection._geometry_evaluation_depth, "fire_depth": context.fire._geometry_evaluation_depth,
+		"muzzle_space": context.fire._muzzle_space != null, "exclusions": str(context.fire._muzzle_query.exclude)}))

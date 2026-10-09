@@ -30,7 +30,7 @@ func register(action) -> void:
 			if job.owners.any(func(owner): return owner.get_ref() == action): return
 			job.owners.append(weakref(action))
 			return
-	jobs.append({"owner": weakref(action), "owners": [weakref(action)], "channel": action.evaluation_channel(), "points": [], "cursor": 0, "priority": 0, "priority_cursor": 0, "completed_passes": 0, "cache": []})
+	jobs.append({"owner": weakref(action), "owners": [weakref(action)], "channel": action.evaluation_channel(), "revision": 0, "points": [], "cursor": 0, "priority": 0, "priority_cursor": 0, "completed_passes": 0, "cache": []})
 	_position = Vector3.INF
 
 ## 显式撤销注册，不能依靠旧实例是否还被调试器或其他观察者持有来决定生命周期。
@@ -63,6 +63,23 @@ func reset_evaluation() -> void:
 
 func regions() -> Array:
 	return context.get_tree().get_nodes_in_group("cover_region").filter(func(region): return context.navigation_region.is_ancestor_of(region))
+
+func _rebuild_job(job: Dictionary, initial: bool) -> void:
+	var action = job.owner.get_ref()
+	job.cache.clear()
+	var empty: bool = job.points.is_empty()
+	job.points = action.evaluation_points()
+	job.revision = action.evaluation_revision()
+	job.cursor %= maxi(1, job.points.size())
+	if initial or empty:
+		job.priority = mini(job.points.size(), action.evaluation_priority_count())
+		job.priority_cursor = 0
+		if job.priority > 0: job.cursor = job.priority % job.points.size()
+	else:
+		# Preserve the rotating scan, but never retain priority indices that no
+		# longer exist after a local queue shrinks.
+		job.priority_cursor = mini(job.priority_cursor, job.points.size())
+		job.priority = mini(job.priority, job.points.size() - job.priority_cursor)
 
 func advance_evaluation() -> void:
 	var frame := Engine.get_physics_frames()
@@ -103,17 +120,14 @@ func advance_evaluation() -> void:
 		_preparing_cover_points = true
 		_prepared_cover_points_ready = false
 		for job in jobs:
-			job.cache.clear()
-			var empty: bool = job.points.is_empty()
-			job.points = job.owner.get_ref().evaluation_points()
-			job.cursor %= maxi(1, job.points.size())
-			if initial or empty:
-				job.priority = mini(job.points.size(), job.owner.get_ref().evaluation_priority_count())
-				job.priority_cursor = 0
-				if job.priority > 0: job.cursor = job.priority % job.points.size()
+			_rebuild_job(job, initial)
 		_preparing_cover_points = false
 		_prepared_cover_points_ready = false
 		_prepared_cover_points.clear()
+	else:
+		for job in jobs:
+			if job.revision != job.owner.get_ref().evaluation_revision():
+				_rebuild_job(job, false)
 	var queue: Array = []
 	for job in jobs:
 		if not job.points.is_empty():
@@ -308,8 +322,8 @@ func assess_route(ai, path: PackedVector3Array, threat: Vector3, multiplier: flo
 	for point: Vector3 in path:
 		var length: float = ai._horizontal_distance_between(previous, point)
 		var samples: int = maxi(1, ceili(length / 0.5))
+		var distance: float = length / samples
 		for index: int in range(samples):
-			var distance: float = length / samples
 			var slow_distance: float = minf(distance, maxf(0.0, reload_seconds - seconds) * walk_speed)
 			var duration: float = slow_distance / walk_speed + (distance - slow_distance) / speed
 			var observed: float = minf(duration, maxf(0.0, horizon - seconds))

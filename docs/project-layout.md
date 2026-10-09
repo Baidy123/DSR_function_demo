@@ -58,9 +58,21 @@ movement_demo/
 
 新增运行脚本按职责放入对应目录；新增敌人动作实现放 `scripts/enemy/actions/`，其定义资源放 `resources/enemy/actions/`。新增交互效果放 `scripts/world/interactions/`，具体交互物场景放 `scenes/world/objects/`；交互物与效果只通过 `InteractionContext` 使用注入的状态，不直接查找全局节点。测试或临时诊断不要放回工程根目录，也不要混入运行脚本目录。
 
-敌人协作由 `world/shooting_range.gd` 持有每战斗区一份 `enemy/services/enemy_cooperation.gd`；Context 提供值快照与任务接口，服务不访问其他行为实例或执行身体命令。`actions/enemy_cooperation_action.gd` / `resources/enemy/actions/cooperate.tres` 是训练解锁的侧向推进战术，分工搜索与主动补弹仍属于原搜索／换弹模块。统一压制保留旧出口脚本 UID 作为兼容入口，默认目录只装配一个压制实例。参数位于 `config/cooperation_settings.gd`，详见 [敌人协作](enemy-ai.md#敌人协作)。
+敌人协作由 `world/shooting_range.gd` 持有每战斗区一份 `enemy/services/enemy_cooperation.gd`；Context 提供值快照与任务接口，服务不访问其他行为实例或执行身体命令。`actions/enemy_cooperation_action.gd` / `resources/enemy/actions/cooperate.tres` 是训练解锁的协作战术，内部提供有限侧移、另一侧包抄和原地掩护方案；分工搜索与主动补弹仍属于原搜索／换弹模块。统一压制保留旧出口脚本 UID 作为兼容入口，默认目录只装配一个压制实例。参数位于 `config/cooperation_settings.gd`，详见 [敌人协作](enemy-ai.md#敌人协作)。
 
-`enemy/services/enemy_local_motion.gd` 是身体私有的近距友军让行辅助，通过原移动入口消费当前方向，使用实际胶囊与所属导航区域检查有限短路段；不接管 AI 目标、任务或动作进度。Context 只接入导航区域与关系服务，暂停／复位等由身体清理。压制记忆将调查脚底点与真实可射身体采样分开，出口射击方案已移除；旧资源与脚本保留加载兼容。
+`enemy/services/enemy_flank_route.gd` 是协作动作使用的只读几何辅助：由合法已知锚点生成有限带转向弧线、逐段检查点与严格步行路径，拒绝直穿目标附近；不认领岗位、不执行身体、不决定最终 Utility 分数。`enemy_cooperation.gd` 继续统一持有冻结的包抄轮次、人数名额及不可变最终目的地，使用真实友军身体位置计算占侧；动作自己保留短段进度、前线保持和有限支援恢复等待。Context 与 Fire 发布即时火力及正常连射暂停的恢复事实，位置预约与实际火力射界分开，不新增控制整个小队的执行框架。
+
+远处的内收后绕行也属于 `enemy_flank_route.gd`：候选保存少量严格几何转折点，辅助查询实际导航折线，再产出不超过约2米的执行检查点和完整路线时长。近距原四种方向／半径组合保留；不会将场外点吸到导航边缘、改变冻结终点或扩大整轮期限。`tests/enemy/enemy_flank_route_test.gd` 检查纯候选边界、保存地图上的真实通路、有限时间及共享盲态的下一段观察预测；正常 Utility 实际绕行继续由 `enemy_cooperation_flank_runtime_test.gd` 的多人开关对照验证，运行器统一调度。身体减速和支援等候仍由原执行层与固定期限处理。
+
+协作动作按现有武器能力分流几何候选：枪械使用另一侧弧线建立射界，近战保留受掩护接近并核对真实可攻击范围；不新增按兵种名称配对的模块。原地掩护和到位保持的只读预测也在该动作内，以实际剩余保持时间及真实火控等待为限；当前枪线的执行事实仍由 Context／Fire 发布。
+
+新增验证仍位于 `tests/enemy/`：`enemy_cooperation_flank_service_test.gd` 检查名额、冻结轮次和生命周期协议；`enemy_cooperation_support_test.gd` 检查真实连射、零火力暂停及枪线／身体门槛；`enemy_cooperation_flank_runtime_test.gd` 以原 AI 循环比较多人开关、实际绕到另一侧、正面实弹及不可达路线。这些文件的存在不代表验证已通过，结果以 [敌人测试](enemy-tests.md) 和实施记录为准。
+
+`enemy/services/enemy_local_motion.gd` 是身体私有的局部移动辅助，负责近距友军让行，以及实际撞静态墙角且偏离导航走廊后的有限返回。通过原移动入口消费当前方向，使用实际胶囊与所属导航区域检查有限短路段；不接管 AI 目标、任务或动作进度。Context 接入导航区域与关系服务，暂停／复位等由身体清理局部移动意图。`enemy_navigation_corner_recovery_test.gd` 在内存中复刻现场掩体碰撞体与导航边界，覆盖单近战在协作开关两种情况下从范围外自主恢复并实际命中，不修改用户场景或烘焙资源。压制记忆将调查脚底点与真实可射身体采样分开，出口射击方案已移除；旧资源与脚本保留加载兼容。
+
+无法通过友军的持续物理阻塞由本地辅助观察，经身体的 `ally_path_blocked` 信号交给 Context 保存有限期堵点；跨动作的路线过滤位于 `enemy_cover_selection._path_to()`，在原导航缓存之后复核堵点的当前有效性。队友移开即可恢复路线，复位和离场清理记忆；身体仍只报告执行事实，不决定替代战术或目的地。`enemy_ally_route_recovery_test.gd` 使用真实窄口和身体碰撞验证跨终点过滤、原选择器的替代目的地、恢复通行与生命周期。
+
+`enemy_ally_route_autonomous_test.gd` 通过真实玩家声音、听觉和完整 AI 更新复现搜索短段反复尝试同一窄口，要求在搜索阶段登记堵点并在队友移开后自主通过；保留原搜索卡住期限，不手动选中动作。身体观察允许有限间隔内累计同一堵点的真实失败，避免每次短段退出都清空证据，等待时间本身不算阻塞。
 
 空间评估的重复物理查询由 Context、Selection、Fire 各自管理同步只读批次缓存：选择器和空间扫描成对开启／结束，嵌套批次共用结果，最外层返回即清除。动作提交、身体移动及实际开火恢复实时查询，不用整帧缓存代替执行检查。团队服务的友军射线检查只读取必要的成员位置，不构建完整任务快照。
 

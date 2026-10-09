@@ -29,6 +29,8 @@ var ai:
 var attack_geometry = preload("res://scripts/enemy/services/enemy_attack_geometry.gd").new()
 var _geometry_evaluation_depth := 0
 var _environment_ray_cache: Dictionary = {}
+var _environment_query: PhysicsRayQueryParameters3D
+var _environment_space: PhysicsDirectSpaceState3D
 var environment_ray_queries := 0
 
 
@@ -39,13 +41,19 @@ func _ready() -> void:
 		add_child(preview)
 
 func begin_geometry_evaluation() -> void:
-	if _geometry_evaluation_depth == 0: _environment_ray_cache.clear()
+	if _geometry_evaluation_depth == 0:
+		_environment_ray_cache.clear()
+		_environment_query = null
+		_environment_space = null
 	_geometry_evaluation_depth += 1
 
 func end_geometry_evaluation() -> void:
 	assert(_geometry_evaluation_depth > 0)
 	_geometry_evaluation_depth -= 1
-	if _geometry_evaluation_depth == 0: _environment_ray_cache.clear()
+	if _geometry_evaluation_depth == 0:
+		_environment_ray_cache.clear()
+		_environment_query = null
+		_environment_space = null
 
 ## Only these fixed environment queries exclude actor and player; vision queries
 ## that must hit the player retain their own unmodified physics query.
@@ -53,8 +61,19 @@ func environment_ray(from: Vector3, to: Vector3) -> Dictionary:
 	var key := [from, to]
 	if _geometry_evaluation_depth > 0 and _environment_ray_cache.has(key): return _environment_ray_cache[key]
 	environment_ray_queries += 1
-	var hit: Dictionary = enemy.get_world_3d().direct_space_state.intersect_ray(_ray_query(from, to))
-	if _geometry_evaluation_depth > 0: _environment_ray_cache[key] = hit
+	if _geometry_evaluation_depth <= 0:
+		return enemy.get_world_3d().direct_space_state.intersect_ray(_ray_query(from, to))
+	# The existing batch is synchronous and read-only. Exclusions, collision mask
+	# and world are identical for these environment rays; only endpoints vary.
+	# Keep _ray_query() independent because other callers may change its flags.
+	if _environment_query == null:
+		_environment_query = _ray_query(from, to)
+		_environment_space = enemy.get_world_3d().direct_space_state
+	else:
+		_environment_query.from = from
+		_environment_query.to = to
+	var hit: Dictionary = _environment_space.intersect_ray(_environment_query)
+	_environment_ray_cache[key] = hit
 	return hit
 
 
@@ -177,7 +196,8 @@ func _path_to(from: Vector3, to: Vector3) -> PackedVector3Array:
 		_path_cache.clear()
 	var key := [from, to, enemy.agent.navigation_layers, NavigationServer3D.map_get_iteration_id(enemy.agent.get_navigation_map())]
 	if not _path_cache.has(key): _path_cache[key] = _query_path_to(from, to)
-	return _path_cache[key]
+	var path: PackedVector3Array = _path_cache[key]
+	return PackedVector3Array() if ai.is_ally_path_blocked(from, path) else path
 
 func _query_path_to(from: Vector3, to: Vector3) -> PackedVector3Array:
 	var nav_point: Vector3 = NavigationServer3D.region_get_closest_point(ai.navigation_region.get_rid(), to)

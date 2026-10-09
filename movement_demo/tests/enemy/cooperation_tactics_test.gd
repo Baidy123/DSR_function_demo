@@ -63,9 +63,14 @@ func _run() -> void:
 	var real_supported_move := false
 	var checked_walk_contract := false
 	var initial_shots: int = first.shot_count + second.shot_count
+	var maximum_displacement := 0.0
 	for frame in 420:
+		var before: Array[Vector3] = [first.global_position, second.global_position]
 		await _tick()
 		for ai in [first_ai, second_ai]:
+			var start: Vector3 = initial_first if ai == first_ai else initial_second
+			var displacement: Vector3 = ai.actor.global_position - start
+			maximum_displacement = maxf(maximum_displacement, Vector2(displacement.x, displacement.z).length())
 			var snapshot: Dictionary = ai.context.cooperation_snapshot()
 			saw_ready_support = saw_ready_support or not snapshot.supports.is_empty()
 			if ai.utility_current.get("id", &"") == &"cooperate":
@@ -74,10 +79,14 @@ func _run() -> void:
 				if not checked_walk_contract:
 					_check_walk_contract(ai, action)
 					checked_walk_contract = true
-				if action.phase == action.Phase.MOVE and action._support_ready(): real_supported_move = true
+				var step: Vector3 = ai.actor.global_position - before[0 if ai == first_ai else 1]
+				if action.phase == action.Phase.MOVE and action._support_ready() and Vector2(step.x, step.z).length() > 0.001: real_supported_move = true
 	check(first.shot_count + second.shot_count > initial_shots and saw_ready_support, "正常感知与火控建立真实开火支援")
 	check(saw_advance and real_supported_move, "原 Utility 自主选择协作推进并在实际支援下执行")
-	check(first.global_position.distance_to(initial_first) > 0.5 or second.global_position.distance_to(initial_second) > 0.5, "协作方案产生真实碰撞移动")
+	# Utility may return toward an earlier position; observe the whole original
+	# window while retaining the displacement threshold and real supported step.
+	check(maximum_displacement > 0.5, "协作方案产生真实碰撞移动")
+	print("COOPERATION MOVEMENT maximum=%.3f final_first=%.3f final_second=%.3f" % [maximum_displacement, first.global_position.distance_to(initial_first), second.global_position.distance_to(initial_second)])
 	check(checked_walk_contract, "自主协作执行经过严格步行路线边界检查")
 	var before_claims: int = first_ai.context.cooperation_snapshot().claims.size()
 	for count in 8: first_ai.action_selector.assess_options(first_ai, first_ai.context.sees_player)

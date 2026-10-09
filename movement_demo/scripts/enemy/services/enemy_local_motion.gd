@@ -21,6 +21,7 @@ var _yield_origin := Vector3.ZERO
 var _yield_axis := Vector3.ZERO
 var _return_point := Vector3.INF
 var _hold_remaining := 0.0
+var _yield_hold_limit := 1.2
 var _requests: Dictionary = {}
 var _failed_partner: WeakRef
 var _failed_direction := Vector3.ZERO
@@ -33,6 +34,22 @@ var _following_axis := Vector3.ZERO
 var _following_wait := 0.0
 var _side_partner: WeakRef
 var _side_sign := 1.0
+var _blocked_observer: WeakRef
+var _blocked_origin := Vector3.INF
+var _blocked_axis := Vector3.ZERO
+var _blocked_seconds := 0.0
+var _blocked_reported := false
+var _blocked_last_contact := -INF
+var _blocked_body_position := Vector3.INF
+const BLOCKED_PROGRESS_DISTANCE := 0.1
+const BLOCKED_REPORT_SECONDS := 1.25
+const BLOCKED_MAX_GAP_SECONDS := 2.0
+var _navigation_return := Vector3.INF
+var _navigation_return_remaining := 0.0
+var _navigation_blocker: WeakRef
+var _navigation_block_origin := Vector3.INF
+var _navigation_block_seconds := 0.0
+var _navigation_retry_at := 0.0
 
 func configure(body, navigation: NavigationRegion3D, board) -> void:
 	if actor == body and region == navigation and relations == board: return
@@ -61,6 +78,7 @@ func reset() -> void:
 	_partner = null
 	_return_point = Vector3.INF
 	_hold_remaining = 0.0
+	_yield_hold_limit = 1.2
 	_requests.clear()
 	_failed_partner = null
 	_failed_direction = Vector3.ZERO
@@ -73,6 +91,105 @@ func reset() -> void:
 	_following_wait = 0.0
 	_side_partner = null
 	_side_sign = 1.0
+	_clear_blocked_observation()
+	_navigation_return = Vector3.INF
+	_navigation_return_remaining = 0.0
+	_clear_navigation_observation()
+	_navigation_retry_at = 0.0
+
+func _clear_navigation_observation() -> void:
+	_navigation_blocker = null
+	_navigation_block_origin = Vector3.INF
+	_navigation_block_seconds = 0.0
+
+## NavigationAgent can skip a nearby projected start while the actual capsule
+## is outside the corridor. Recover only after a real static-wall failure.
+func _observe_navigation_failure(moved: Vector3, delta: float) -> void:
+	if _navigation_return.is_finite(): return
+	if Vector2(moved.x, moved.z).length() >= 0.005 or _desired.length_squared() < 0.0025 or not actor.can_move() or actor._hit_push_remaining > 0.0 or _point.is_finite() or _hold_remaining > 0.0 or not is_instance_valid(region):
+		_clear_navigation_observation()
+		return
+	if _elapsed < _navigation_retry_at: return
+	var wall = null
+	for index in actor.get_slide_collision_count():
+		var collision: KinematicCollision3D = actor.get_slide_collision(index)
+		var normal := collision.get_normal()
+		if collision.get_collider() is StaticBody3D and Vector2(normal.x, normal.z).length_squared() > 0.25:
+			wall = collision.get_collider()
+			break
+	if wall == null:
+		_clear_navigation_observation()
+		return
+	if _body(_navigation_blocker) != wall or not _navigation_block_origin.is_finite() or actor.global_position.distance_to(_navigation_block_origin) > 0.05:
+		_navigation_blocker = weakref(wall)
+		_navigation_block_origin = actor.global_position
+		_navigation_block_seconds = 0.0
+	_navigation_block_seconds += maxf(0.0, delta)
+	if _navigation_block_seconds < 0.2: return
+	_navigation_retry_at = _elapsed + 0.5
+	var nearest: Vector3 = NavigationServer3D.region_get_closest_point(region.get_rid(), actor.global_position)
+	if absf(nearest.y - actor.global_position.y) > 0.5: return
+	nearest.y = actor.global_position.y
+	var inward: Vector3 = nearest - actor.global_position
+	if inward.length() <= 0.05 or inward.length() > 0.75: return
+	# The exact boundary may still leave the capsule touching a simplified
+	# corner. Prefer one radius further inside the same validated short segment.
+	for point: Vector3 in [nearest + inward.normalized() * _radius(actor), nearest]:
+		if actor.global_position.distance_to(point) > 1.1 or not _walkable(point): continue
+		_navigation_return = point
+		_navigation_return_remaining = clampf(actor.global_position.distance_to(point) / maxf(0.1, _desired.length()) + 0.35, 0.35, 1.2)
+		_clear_navigation_observation()
+		return
+
+func _clear_blocked_observation() -> void:
+	_blocked_observer = null
+	_blocked_origin = Vector3.INF
+	_blocked_axis = Vector3.ZERO
+	_blocked_seconds = 0.0
+	_blocked_reported = false
+	_blocked_last_contact = -INF
+	_blocked_body_position = Vector3.INF
+
+## Report an observed physical failure; the body does not choose a different
+## tactical goal. Short yielding, normal following and solo movement stay local.
+func observe_motion(before: Vector3, delta: float) -> Dictionary:
+	if not is_instance_valid(actor):
+		reset()
+		return {}
+	var moved: Vector3 = actor.global_position - before
+	_observe_navigation_failure(moved, delta)
+	var previous = _body(_blocked_observer)
+	if previous != null:
+		var progress: Vector3 = actor.global_position - _blocked_origin
+		var displaced: Vector3 = previous.global_position - _blocked_body_position
+		if not actor.can_move() or actor._hit_push_remaining > 0.0 or actor.is_vaulting() or not _friend(previous) or _elapsed - _blocked_last_contact > BLOCKED_MAX_GAP_SECONDS or Vector2(displaced.x, displaced.z).length() >= 0.5 or absf(displaced.y) >= 0.5 or progress.dot(_blocked_axis) >= BLOCKED_PROGRESS_DISTANCE:
+			_clear_blocked_observation()
+	if Vector2(moved.x, moved.z).length() >= 0.02:
+		return {}
+	if not actor.can_move() or actor._hit_push_remaining > 0.0 or actor.is_vaulting():
+		_clear_blocked_observation()
+		return {}
+	# Brief action boundaries and a local retreat do not erase a real failure.
+	# They add no blocked time, and cannot keep it alive beyond the finite gap.
+	if _desired.length_squared() < 0.0025 or _point.is_finite() or _hold_remaining > 0.0: return {}
+	if not _regions.has(_region_id) or _regions[_region_id].size() <= 1:
+		_clear_blocked_observation()
+		return {}
+	var other = _blocked_friend(_neighbors(), _desired)
+	if other == null: return {}
+	var axis := _desired.normalized()
+	if _body(_blocked_observer) != other or not _blocked_origin.is_finite() or axis.dot(_blocked_axis) < 0.8:
+		_blocked_observer = weakref(other)
+		_blocked_origin = actor.global_position
+		_blocked_axis = axis
+		_blocked_body_position = other.global_position
+		_blocked_seconds = 0.0
+		_blocked_reported = false
+	_blocked_last_contact = _elapsed
+	_blocked_seconds += maxf(0.0, delta)
+	if _blocked_reported or _blocked_seconds < BLOCKED_REPORT_SECONDS: return {}
+	_blocked_reported = true
+	return {"blocker": other, "position": other.global_position}
 
 func _friend(other) -> bool:
 	if not is_instance_valid(actor) or not is_instance_valid(other) or other == actor: return false
@@ -126,7 +243,12 @@ func _start_side(other, axis: Vector3, kind: StringName) -> bool:
 	var preferred: float = _side_sign if _body(_side_partner) == other else 1.0
 	# A nearby recess can begin just ahead of the body. Validate both short
 	# segments before committing, including the capsule around its corner.
-	for longitudinal in [0.0, -0.45, 0.45]:
+	var offsets := [0.0, -0.45, 0.45]
+	# A stationary blocker inside a doorway may have to leave the tunnel before
+	# there is room for either capsule. Only the yielding body takes these extra
+	# bounded forward steps; the passer does not invent a longer tactical route.
+	if kind == &"yield": offsets.append_array([0.9, 1.35, 1.8])
+	for longitudinal: float in offsets:
 		var mouth: Vector3 = actor.global_position + axis.normalized() * longitudinal
 		if longitudinal != 0.0 and not _walkable(mouth): continue
 		for sign_value in [preferred, -preferred]:
@@ -135,12 +257,21 @@ func _start_side(other, axis: Vector3, kind: StringName) -> bool:
 			_point = mouth if longitudinal != 0.0 else point
 			_next_point = point if longitudinal != 0.0 else Vector3.INF
 			_point_remaining = 1.1
+			if kind == &"yield" and longitudinal > 0.45:
+				var speed: float = maxf(0.1, actor.move_speed * actor.get_effective_movement_multiplier(1.0))
+				_point_remaining = clampf(longitudinal / speed + 0.35, 1.1, 2.5)
 			_point_kind = kind
 			_partner = weakref(other)
 			_side_partner = weakref(other)
 			_side_sign = sign_value
-			_yield_origin = actor.global_position
+			# A long forward yield must wait until the requester passes the actual
+			# mouth, not merely the blocker's former position inside the doorway.
+			_yield_origin = mouth if kind == &"yield" and longitudinal > 0.45 else actor.global_position
 			_yield_axis = axis.normalized()
+			_yield_hold_limit = 1.2
+			if kind == &"yield" and longitudinal > 0.45:
+				var pass_distance: float = maxf(0.0, (mouth - other.global_position).dot(_yield_axis)) + _radius(actor) + _radius(other) + 0.2
+				_yield_hold_limit = clampf(pass_distance / maxf(0.1, other.local_motion._desired.length()) + 0.35, 1.2, 3.0)
 			_return_point = mouth if kind == &"yield" else Vector3.INF
 			return true
 	return false
@@ -215,6 +346,15 @@ func resolve(desired: Vector3, delta: float, speed_limit: float) -> Vector3:
 	if not is_instance_valid(region) or not actor.can_move() or actor._hit_push_remaining > 0.0:
 		reset()
 		return desired
+	if _navigation_return.is_finite():
+		_navigation_return_remaining -= maxf(0.0, delta)
+		var correction: Vector3 = _navigation_return - actor.global_position
+		correction.y = 0.0
+		if desired.is_zero_approx() or correction.length() <= 0.04 or _navigation_return_remaining <= 0.0 or not _walkable(_navigation_return, Vector3.INF, false):
+			_navigation_return = Vector3.INF
+			_navigation_retry_at = _elapsed + 0.5
+		else:
+			return correction.normalized() * minf(minf(speed_limit, desired.length()), correction.length() / maxf(0.001, delta))
 	if (not _regions.has(_region_id) or _regions[_region_id].size() <= 1) and _requests.is_empty():
 		if _partner != null or _following_partner != null:
 			reset()
@@ -247,7 +387,7 @@ func resolve(desired: Vector3, delta: float, speed_limit: float) -> Vector3:
 			_next_point = Vector3.INF
 			_point_remaining = 1.1
 			if not _point.is_finite() and _point_kind == &"yield":
-				_hold_remaining = 1.2
+				_hold_remaining = _yield_hold_limit
 				return Vector3.ZERO
 		elif _walkable(actor.global_position + difference.limit_length(0.2), Vector3.INF, false):
 			var speed: float = minf(speed_limit, desired.length()) if not desired.is_zero_approx() else minf(speed_limit, actor.move_speed * actor.get_effective_movement_multiplier(1.0))

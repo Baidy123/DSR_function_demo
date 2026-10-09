@@ -8,6 +8,7 @@ class CoverQueue extends RefCounted:
 	func evaluation_channel() -> StringName: return channel
 	func evaluation_points() -> Array: return spatial.cover_points()
 	func evaluation_priority_count() -> int: return 0
+	func evaluation_revision() -> int: return 0
 	func evaluation_weight() -> int: return 1
 	func evaluate_point(_point: Variant) -> Dictionary: return {}
 

@@ -33,6 +33,7 @@ signal vault_landed
 signal melee_started
 signal melee_struck(target: Node3D, settings: Dictionary, direction: Vector3)
 signal melee_finished(cancelled: bool)
+signal ally_path_blocked(blocker: Node3D, position: Vector3)
 
 # 冷却只由身体物理更新推进；阶段与参数快照属于敌人的近战控制器。
 var melee_active := false
@@ -175,6 +176,8 @@ func move_character(direction: Vector3, delta: float, speed_multiplier: float = 
 	var before: Vector3 = global_position
 	_last_move_physics_frame = Engine.get_physics_frames()
 	move_and_slide()
+	var blockage: Dictionary = local_motion.observe_motion(before, delta)
+	if not blockage.is_empty(): ally_path_blocked.emit(blockage.blocker, blockage.position)
 	_weapon_move_distance += Vector2(global_position.x - before.x, global_position.z - before.z).length()
 	_update_movement_noise(delta, before, speed_multiplier > 1.0)
 

@@ -7,9 +7,19 @@ import subprocess
 TESTS = [
     "enemy_ally_navigation_test",
     "enemy_ally_navigation_integration_test",
+    "enemy_ally_route_recovery_test",
+    "enemy_ally_route_autonomous_test",
+    "enemy_navigation_corner_recovery_test",
     "enemy_geometry_batch_test",
+    "enemy_candidate_reuse_test",
     "suppression_purpose_test",
     "enemy_cooperation_service_test",
+    "enemy_cooperation_flank_service_test",
+    "enemy_flank_route_test",
+    "enemy_cooperation_support_test",
+    "enemy_shared_contact_test",
+    "enemy_spatial_revision_test",
+    "enemy_cooperation_flank_runtime_test",
     "enemy_cooperation_line_safety_test",
     "enemy_cooperation_search_test",
     "enemy_cooperation_reload_test",
@@ -100,7 +110,7 @@ def main():
                    "--log-file", str(logs / (name + ".log")),
                    "--script", "res://tests/enemy/" + name + ".gd"]
         try:
-            timeout = 180 if name == "cooperation_runtime_test" else 75
+            timeout = 300 if name == "enemy_cooperation_flank_runtime_test" else 180 if name == "cooperation_runtime_test" else 75
             run = subprocess.run(command, capture_output=True, timeout=timeout)
             output = (run.stdout + run.stderr).decode("utf-8", errors="replace")
             code = run.returncode

@@ -4,6 +4,12 @@ func _run() -> void:
 	await _setup()
 	await _shooting_yield()
 	_clear_walls()
+	await physics_frame
+	await _long_doorway_autonomous_yield(false)
+	_clear_walls()
+	await physics_frame
+	await _long_doorway_autonomous_yield(true)
+	_clear_walls()
 	var player = scene.get_node("Player")
 	player.global_position = arena.to_global(Vector3(6, 0, 7))
 	await _reset(Vector3(-7.6, 0, -3), Vector3(-7.6, 0, 0))
@@ -48,6 +54,90 @@ func _run() -> void:
 	check(absf(change.z) < 0.001 and absf(change.x - actors[0].move_speed * STEP) < 0.001, "友军离区后立即清除旧绕行，单人原方向与原速度恢复")
 	print("ALLY NAVIGATION INTEGRATION: %d/%d passed" % [checks - failures, checks])
 	quit(1 if failures else 0)
+
+func _long_doorway_autonomous_yield(shared_contact: bool) -> void:
+	# Both bodies fit along the tunnel, but none of the old +/-0.45m mouths
+	# allows a side step. Beyond +1.55m there is real open floor on both sides.
+	_wall(Vector3(-1.2, 1, -0.55), Vector3(4.8, 2, 0.2))
+	_wall(Vector3(-1.2, 1, 0.55), Vector3(4.8, 2, 0.2))
+	await _reset(Vector3(-1.1, 0, 0), Vector3.ZERO)
+	var mover = actors[0]
+	var shooter = actors[1]
+	var approach_ai = mover.get_node("AI")
+	var shooting_ai = shooter.get_node("AI")
+	var saved_unit = mover.get_node("UnitType").profile
+	var saved_weapon = mover.weapon
+	# The same-group control uses an ordinary melee pursuer, so a legitimate
+	# ranged stopping distance cannot end its approach before the doorway.
+	if shared_contact:
+		mover.get_node("UnitType").profile = load("res://resources/enemy/units/melee.tres").duplicate(true)
+		mover.equip_weapon(load("res://resources/weapons/enemy_test_melee.tres").duplicate(true))
+		approach_ai.refresh_configuration(true)
+	mover.communication_group = shooter.communication_group if shared_contact else &"doorway_hearing"
+	for actor in actors: actor.get_node("AI").set_physics_process(false)
+	var player = scene.get_node("Player")
+	player.global_position = arena.to_global(Vector3(5, 0, 0))
+	player.get_node("Health").debug_invincible = true
+	# Real hearing selects the rear unit's investigation. The front unit keeps
+	# normal visible combat; neither selected action nor navigation target is set.
+	approach_ai.perception.sight_distance = 0.0
+	approach_ai.perception.close_awareness_radius = 0.0
+	approach_ai.actions[&"search"].tracking_cheat_enabled = false
+	shooter.look_at(player.global_position)
+	for frame in 60:
+		await physics_frame
+		shooting_ai._physics_process(STEP)
+	check(shooting_ai.utility_current.get("id") == &"engage" and shooting_ai.utility_current.get("destination", {}).is_empty() and shooter.shot_count > 0, "长门洞前方AI自主站定射击，后方通路确被其身体占据")
+	var noise := NoiseData.new()
+	noise.occluded_range_multiplier = 1.0
+	noise.emit_from(player, 15.0)
+	var saw_search := false
+	var saw_long_yield := false
+	var side_after_mouth := false
+	var safe := true
+	var stopped_fire := true
+	var crossed := false
+	var saw_shared := false
+	var saw_fast := false
+	for frame in 420:
+		await physics_frame
+		var before: Array[Vector3] = [mover.global_position, shooter.global_position]
+		var shots: int = shooter.shot_count
+		approach_ai._physics_process(STEP)
+		shooting_ai._physics_process(STEP)
+		saw_search = saw_search or approach_ai.utility_current.get("id") == &"search"
+		saw_shared = saw_shared or not approach_ai.context.fresh_shared_contact().is_empty()
+		if shooter.local_motion._point_kind == &"yield" and shooter.local_motion._yield_origin.x > arena.global_position.x + 1.5:
+			saw_long_yield = true
+		if absf(shooter.global_position.z - arena.global_position.z) > 0.3:
+			side_after_mouth = side_after_mouth or shooter.global_position.x > arena.global_position.x + 1.5
+		var separation: Vector3 = mover.global_position - shooter.global_position
+		safe = safe and Vector2(separation.x, separation.z).length() >= 0.68
+		for index in 2:
+			var moved: Vector3 = actors[index].global_position - before[index]
+			var multiplier := 1.0
+			var active = actors[index].get_node("AI").current_action
+			if shared_contact and active != null and active.has_method("movement_multiplier"): multiplier = active.movement_multiplier()
+			var allowed_speed: float = actors[index].move_speed * actors[index].get_effective_movement_multiplier(multiplier)
+			safe = safe and Vector2(moved.x, moved.z).length() <= allowed_speed * STEP + 0.005
+			if index == 0 and multiplier > 1.0 and moved.length() > mover.move_speed * STEP + 0.001: saw_fast = true
+			var local: Vector3 = arena.to_local(actors[index].global_position)
+			if local.x > -3.6 and local.x < 1.2: safe = safe and absf(local.z) < 0.13
+		if Vector2(shooter.global_position.x - before[1].x, shooter.global_position.z - before[1].z).length() > 0.001:
+			stopped_fire = stopped_fire and shooter.shot_count == shots
+		crossed = crossed or mover.global_position.x > arena.global_position.x + 2.5
+		if crossed: break
+	check(saw_search and saw_long_yield and side_after_mouth, "两AI正常决策下前方者先走出较长门洞，再在真实空地侧让")
+	check(crossed and safe, "后方AI自主穿过原门洞，双方保持身体分离、墙体边界及原速度")
+	check(stopped_fire, "长门洞局部让行仍遵守禁止移动射击")
+	if shared_contact: check(saw_shared and saw_fast, "同通信组真实共享视觉使近战后方者快速追查，仍按该动作实际速度验证安全")
+	print("ALLY LONG DOOR shared=", shared_contact, " search=", saw_search, " yield=", saw_long_yield, " side=", side_after_mouth, " crossed=", crossed, " positions=", mover.global_position, ",", shooter.global_position)
+	mover.communication_group = shooter.communication_group
+	if shared_contact:
+		mover.get_node("UnitType").profile = saved_unit
+		mover.equip_weapon(saved_weapon)
+		approach_ai.refresh_configuration(true)
+		approach_ai.set_physics_process(false)
 
 func _shooting_yield() -> void:
 	# Only the approach is narrow. The shooter's side pocket has a clear shot

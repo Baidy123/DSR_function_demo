@@ -39,6 +39,9 @@ var _posture_shapes: Dictionary = {}
 var _geometry_evaluation_depth := 0
 var _position_evaluation_cache: Dictionary = {}
 var position_free_queries := 0
+var _blocked_ally_paths: Array[Dictionary] = []
+const ALLY_PATH_BLOCK_SECONDS := 4.0
+const MAX_ALLY_PATH_BLOCKS := 6
 var _exposure_frame := -1
 var _exposure_cache: Dictionary = {}
 var _exposure_safe_distance := 3.0
@@ -52,6 +55,8 @@ var reload_risk_weight: float:
 	get: return utility_risk_weight
 
 func setup(body: CharacterBody3D, perception_node: Node, selection_node: Node) -> void:
+	if body.has_signal(&"ally_path_blocked") and not body.is_connected(&"ally_path_blocked", _on_ally_path_blocked):
+		body.connect(&"ally_path_blocked", _on_ally_path_blocked)
 	actor = body
 	routes.context = self
 	agent = body.get_node("NavigationAgent3D")
@@ -102,6 +107,7 @@ func refresh_environment() -> bool:
 
 
 func detach_environment() -> void:
+	_blocked_ally_paths.clear()
 	actor.configure_local_navigation(null, null)
 	if cooperation != null: cooperation.unregister(actor.get_instance_id())
 	cooperation = null
@@ -169,6 +175,7 @@ func _known_reload_threat() -> Vector3:
 func update_evidence(delta: float, visible: bool) -> void:
 	sees_player = visible
 	evidence_elapsed_seconds += maxf(0.0, delta)
+	_expire_ally_path_blocks()
 	_update_reload_observation(delta, visible)
 	recent_damage_pressure = maxf(0.0, recent_damage_pressure - delta * 0.5)
 	nearby_shot_pressure = maxf(0.0, nearby_shot_pressure - delta * 0.5)
@@ -268,7 +275,63 @@ func block_utility_destination(point: Vector3) -> void:
 func is_utility_destination_blocked(point: Vector3) -> bool:
 	return blocked_destinations.any(func(entry): return _horizontal_distance_between(entry.position, point) < 0.75)
 
+func _on_ally_path_blocked(blocker: Node3D, position: Vector3) -> void:
+	if not is_instance_valid(blocker) or not position.is_finite() or cooperation == null or not cooperation.can_share_space(actor.get_instance_id(), blocker.get_instance_id()): return
+	for entry: Dictionary in _blocked_ally_paths:
+		if _ally_path_block_active(entry) and entry.blocker.get_ref() == blocker and _horizontal_distance_between(entry.position, position) < 0.5: return
+	var own_shape: CollisionShape3D = actor.get_node("CollisionShape3D")
+	var other_shape: CollisionShape3D = blocker.get_node("CollisionShape3D")
+	var radius: float = own_shape.shape.radius * maxf(own_shape.global_basis.x.length(), own_shape.global_basis.z.length()) + other_shape.shape.radius * maxf(other_shape.global_basis.x.length(), other_shape.global_basis.z.length()) + 0.08
+	if _blocked_ally_paths.size() >= MAX_ALLY_PATH_BLOCKS: _blocked_ally_paths.pop_front()
+	_blocked_ally_paths.append({"blocker": weakref(blocker), "position": position, "radius": radius,
+		"valid_until": evidence_elapsed_seconds + ALLY_PATH_BLOCK_SECONDS})
+	_ally_paths_changed()
+
+func _ally_path_block_active(entry: Dictionary) -> bool:
+	if evidence_elapsed_seconds >= float(entry.valid_until) or cooperation == null: return false
+	var blocker = entry.blocker.get_ref()
+	if not is_instance_valid(blocker) or not cooperation.can_share_space(actor.get_instance_id(), blocker.get_instance_id()): return false
+	var moved: Vector3 = blocker.global_position - entry.position
+	return Vector2(moved.x, moved.z).length() < 0.5 and absf(moved.y) < 0.5
+
+func _expire_ally_path_blocks() -> void:
+	if _blocked_ally_paths.is_empty(): return
+	var previous := _blocked_ally_paths.size()
+	_blocked_ally_paths = _blocked_ally_paths.filter(_ally_path_block_active)
+	if previous != _blocked_ally_paths.size(): _ally_paths_changed()
+
+func _ally_paths_changed() -> void:
+	# A new observed route obstruction invalidates cached destinations as well as
+	# the selected plan. The existing spatial budget still rebuilds their costs.
+	if spatial != null: spatial.reset_evaluation()
+	invalidate_utility()
+
+## Exact live filter after the navigation cache, so another destination using
+## the same blocked passage is rejected too. Retreating away remains possible.
+func is_ally_path_blocked(from: Vector3, path: PackedVector3Array) -> bool:
+	if path.is_empty() or _blocked_ally_paths.is_empty(): return false
+	for entry: Dictionary in _blocked_ally_paths:
+		if not _ally_path_block_active(entry): continue
+		var obstacle := Vector2(entry.position.x, entry.position.z)
+		var previous: Vector3 = from
+		for point: Vector3 in path:
+			var start := Vector2(previous.x, previous.z)
+			var finish := Vector2(point.x, point.z)
+			var motion := finish - start
+			if motion.is_zero_approx():
+				previous = point
+				continue
+			var closest := Geometry2D.get_closest_point_to_segment(obstacle, start, finish)
+			var ratio := clampf((closest - start).dot(motion) / motion.length_squared(), 0.0, 1.0)
+			var height := lerpf(previous.y, point.y, ratio)
+			if closest.distance_to(obstacle) < float(entry.radius) and absf(height - float(entry.position.y)) < 1.0:
+				var leaving: bool = start.distance_to(obstacle) <= float(entry.radius) and finish.distance_to(obstacle) > start.distance_to(obstacle) and motion.dot(start - obstacle) >= 0.0
+				if not leaving: return true
+			previous = point
+	return false
+
 func reset_memory() -> void:
+	_blocked_ally_paths.clear()
 	if cooperation != null: cooperation.release_member(actor.get_instance_id())
 	_shared_visual.clear()
 	_shared_notification_position = Vector3.INF
@@ -447,6 +510,34 @@ func cooperation_enabled() -> bool:
 func has_combat_contact() -> bool:
 	return has_visual_memory or team_visual_contact
 
+## Shared contact authorizes a combat approach, never personal sight or firing.
+func fresh_shared_contact() -> Dictionary:
+	if sees_player: return {}
+	var report: Dictionary = cooperation_target_evidence()
+	if not report.get("shared", false) or report.get("source", &"") != &"shared_visual": return {}
+	if report.get("target_id", 0) != cooperation_target_id() or not report.get("position", Vector3.INF).is_finite(): return {}
+	return report if evidence_elapsed_seconds < float(report.get("valid_until", -INF)) else {}
+
+## Both approach and search estimate recovery of observation from the same
+## frozen report. This uses known geometry, not the hidden target's live pose.
+func shared_contact_information(position: Vector3, arrival_seconds: float, report: Dictionary = {}) -> float:
+	var horizon: float = utility_horizon_seconds
+	if report.is_empty(): report = fresh_shared_contact()
+	if report.is_empty() or not position.is_finite(): return horizon
+	if not report.get("shared", false) or report.get("source", &"") != &"shared_visual": return horizon
+	if evidence_elapsed_seconds >= float(report.get("valid_until", -INF)) or report.get("target_id", 0) != cooperation_target_id(): return horizon
+	var feet: Vector3 = report.get("position", Vector3.INF)
+	if not feet.is_finite() or position.distance_to(feet) > maxf(perception.sight_distance, perception.close_awareness_radius): return horizon
+	var target: Vector3 = report.get("aim_position", Vector3.INF)
+	if not target.is_finite(): target = actor.get_posture_eye_position(false, feet)
+	if not cover_selection.has_clear_line(actor.get_posture_eye_position(false, position), target): return horizon
+	var direction := Vector3(feet.x - position.x, 0.0, feet.z - position.z)
+	var forward := Vector3(-actor.global_basis.z.x, 0.0, -actor.global_basis.z.z)
+	var turn := 0.0
+	if not direction.is_zero_approx() and not forward.is_zero_approx():
+		turn = forward.angle_to(direction) / deg_to_rad(maxf(0.1, actor.turn_speed_degrees))
+	return clampf(maxf(arrival_seconds, turn), 0.0, horizon)
+
 func cooperation_target_id() -> int:
 	return player.get_instance_id() if is_instance_valid(player) else 0
 
@@ -576,24 +667,34 @@ func cooperation_publish_execution(output: Dictionary) -> void:
 		target = intent.get("point", Vector3.INF) if intent.get("mode", &"") == &"memory" else (last_seen_aim_position if sees_player else Vector3.INF)
 	var ready := false
 	var supported := 0.0
+	var cycle_resume := -1.0
 	var moving: bool = not actor.get_local_movement_velocity().is_zero_approx() or Vector2(actor.velocity.x, actor.velocity.z).length_squared() > 0.0025
 	if firearms and target.is_finite() and rounds > 0 and not actor.ammo.is_reloading and not actor.is_vaulting() and not actor.melee_active and actor.shooting_enabled:
 		var origin: Vector3 = actor.get_shot_origin()
 		var desired: Vector3 = target - origin
 		ready = not desired.is_zero_approx() and actor.aim_acquired and actor.aim_direction.angle_to(desired) <= actor.AIM_ACQUIRE_ANGLE and desired.length() <= actor.weapon.fire_range
-		ready = ready and fire.fire_pause_remaining <= 0.0 and (intent.get("mode", &"") == &"memory" or fire.fire_reaction_elapsed >= fire.fire_reaction_seconds)
+		ready = ready and (intent.get("mode", &"") == &"memory" or fire.fire_reaction_elapsed >= fire.fire_reaction_seconds)
 		ready = ready and (intent.get("mode", &"") == &"memory" or fire.fire_decision.selected_action != fire.fire_decision.Action.STEADY)
 		ready = ready and fire.has_clear_firing_lane(origin, desired, desired.length()) and cooperation_line_safe(origin, target)
 		ready = ready and (not moving or fire.fire_while_moving)
+		# Execution fires along the current gun direction. A nearby clear target
+		# ray alone cannot publish support while that actual ray still hits a wall.
+		if ready and not actor.aim_direction.is_equal_approx(desired.normalized()):
+			ready = fire.has_clear_firing_lane(origin, actor.aim_direction, desired.length())
+		if ready and fire.fire_pause_remaining > 0.0:
+			cycle_resume = fire.support_cycle_resume_seconds(intent, moving)
+			ready = false
 		if ready:
 			var burst_left: int = maxi(1, fire.burst_shot_count - fire.fire_burst_shots)
 			supported = minf(utility_horizon_seconds, mini(rounds, burst_left) * maxf(0.05, actor.weapon.shot_interval))
 	var task: Dictionary = utility_current.get("cooperation", {})
 	cooperation.publish_status(self, {"position": actor.global_position, "target_id": cooperation_target_id(), "ready": ready,
 		"firearms": firearms, "reloading": actor.ammo.is_reloading, "rounds": rounds, "support_seconds": supported,
+		"support_cycle_valid": cycle_resume >= 0.0, "support_resume_seconds": cycle_resume,
 		"melee_threat_seconds": melee.support_window(sees_player),
 		"aim_position": target, "forward": actor.aim_direction, "moving": moving,
-		"health_ratio": actor.health / maxf(1.0, actor.max_health), "lane_id": task.get("lane_id", &"target"),
+		"health_ratio": actor.health / maxf(1.0, actor.max_health), "lane_id": &"target",
+		"position_lane_id": task.get("lane_id", &""),
 		"beneficiary_id": task.get("beneficiary_id", 0), "request_id": task.get("request_id", 0),
 		"support_request": utility_current.get("support_request", {}),
 		"reload_seconds": actor.weapon.reload_seconds * (1.0 - actor.ammo.reload_progress) if firearms and actor.ammo.is_reloading else 0.0})

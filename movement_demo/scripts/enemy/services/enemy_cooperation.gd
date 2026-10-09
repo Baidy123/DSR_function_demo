@@ -11,6 +11,14 @@ var _reports: Dictionary = {}
 var _claims: Dictionary = {}
 var _checked: Dictionary = {}
 var _relations: Dictionary = {}
+var _flank_rounds: Dictionary = {}
+const FLANK_SIDE_MARGIN := 0.5
+const FLANK_DESTINATION_SPACING := 1.2
+# A completed 140-degree flank still fits inside a rotated half-plane. This
+# default geometry guard prevents a new round from sending the front after it.
+const FLANK_SEPARATION_COSINE := -0.5 # cos(120 degrees), horizontal directions.
+const FLANK_GEOMETRY_MEMBER_STEP := 0.5
+const FLANK_GEOMETRY_TARGET_STEP := 0.25
 
 func advance(delta: float) -> void:
 	elapsed += maxf(0.0, delta)
@@ -26,6 +34,7 @@ func advance(delta: float) -> void:
 			revision += 1
 	for key in _checked.keys():
 		if elapsed >= _checked[key].valid_until: _checked.erase(key)
+	_maintain_flank_rounds()
 
 func reset() -> void:
 	generation += 1
@@ -33,7 +42,10 @@ func reset() -> void:
 	_reports.clear()
 	_claims.clear()
 	_checked.clear()
-	for member in _members.values(): member.status = {}
+	_flank_rounds.clear()
+	for member in _members.values():
+		member.status = {}
+		member.activity = {}
 	revision += 1
 
 func register(context) -> bool:
@@ -42,7 +54,7 @@ func register(context) -> bool:
 	var changed: bool = _members.has(id) and _members[id].domain != domain
 	if changed: unregister(id)
 	if not _members.has(id):
-		_members[id] = {"context": weakref(context), "domain": domain, "faction": context.actor.faction_id, "group": context.actor.communication_group, "status": {}}
+		_members[id] = {"context": weakref(context), "domain": domain, "faction": context.actor.faction_id, "group": context.actor.communication_group, "status": {}, "activity": {}}
 		revision += 1
 	return changed
 
@@ -60,9 +72,16 @@ func release_member(id: int) -> void:
 func _context(id: int):
 	return _members[id].context.get_ref() if _members.has(id) else null
 
+## Cheap invalidation hint only; eligibility still uses the full domain checks.
+func registered_member_count() -> int:
+	return _members.size()
+
 func _claim_valid(entry: Dictionary) -> bool:
 	var owner = _context(entry.owner_id)
-	return entry.expires_at > elapsed and owner != null and is_instance_valid(owner.actor) and owner.actor.is_inside_tree() and owner.cooperation_enabled() and owner.can_use_action(entry.owner_action) and owner.cooperation_target_id() == entry.target_id
+	var valid: bool = entry.expires_at > elapsed and owner != null and is_instance_valid(owner.actor) and owner.actor.is_inside_tree() and owner.cooperation_enabled() and owner.can_use_action(entry.owner_action) and owner.cooperation_target_id() == entry.target_id
+	if not valid or entry.kind != &"flank": return valid
+	var round: Dictionary = _flank_rounds.get(entry.get("flank_round_id", 0), {})
+	return not round.is_empty() and _flank_round_matches(round, owner)
 
 func _domain(actor) -> String:
 	return JSON.stringify([String(actor.faction_id), String(actor.communication_group)])
@@ -74,6 +93,7 @@ func set_relation(first: StringName, second: StringName, relation: StringName) -
 	_relations[[first, second]] = relation
 	_relations[[second, first]] = relation
 	_claims.clear()
+	_flank_rounds.clear()
 	relation_revision += 1
 	revision += 1
 
@@ -152,7 +172,16 @@ func publish_status(context, status: Dictionary) -> void:
 	entry.id = id
 	entry.updated_at = elapsed
 	_members[id].status = entry
-	if old.get("ready", false) != entry.get("ready", false) or old.get("reloading", false) != entry.get("reloading", false): revision += 1
+	# Activity outlives an execution switch. Clearing a fire intent must not
+	# momentarily remove a living participant from the opposite-side quota.
+	_members[id].activity = {"target_id": entry.get("target_id", 0), "updated_at": elapsed}
+	var changed: bool = old.is_empty() or old.get("ready", false) != entry.get("ready", false) or old.get("reloading", false) != entry.get("reloading", false) or old.get("moving", false) != entry.get("moving", false) or old.get("target_id", 0) != entry.get("target_id", 0)
+	var old_position: Vector3 = old.get("position", Vector3.INF)
+	var new_position: Vector3 = entry.get("position", Vector3.INF)
+	if old_position.is_finite() and new_position.is_finite():
+		for round: Dictionary in _flank_rounds.values():
+			if _flank_round_matches(round, context) and _flank_opposite(round, old_position) != _flank_opposite(round, new_position): changed = true
+	if changed: revision += 1
 
 func snapshot(context, target: int) -> Dictionary:
 	var id: int = context.actor.get_instance_id()
@@ -164,11 +193,15 @@ func snapshot(context, target: int) -> Dictionary:
 		var status: Dictionary = _members[other_id].status
 		if status.is_empty() or elapsed - float(status.updated_at) > 0.35: continue
 		var member := status.duplicate(true)
-		member.support_seconds = maxf(0.0, float(member.get("support_seconds", 0.0)) - maxf(0.0, elapsed - float(member.updated_at)))
+		var age: float = maxf(0.0, elapsed - float(member.updated_at))
+		member.support_seconds = maxf(0.0, float(member.get("support_seconds", 0.0)) - age)
+		member.support_resume_seconds = maxf(0.0, float(member.get("support_resume_seconds", 0.0)) - age) if member.get("support_cycle_valid", false) else -1.0
 		if member.support_seconds <= 0.0: member.ready = false
-		if member.get("ready", false) and (other.actor.ammo.is_reloading or other.actor.ammo.magazine_rounds <= 0 or not other.actor.shooting_enabled or other.actor.is_vaulting() or other.actor.melee_active):
+		if other.actor.ammo.is_reloading or other.actor.ammo.magazine_rounds <= 0 or not other.actor.shooting_enabled or other.actor.is_vaulting() or other.actor.melee_active:
 			member.ready = false
 			member.support_seconds = 0.0
+			member.support_cycle_valid = false
+			member.support_resume_seconds = -1.0
 		# can_cooperate is the same predicate already checked above, with no
 		# mutation or await between these reads.
 		member.can_cooperate = true
@@ -193,7 +226,7 @@ func snapshot(context, target: int) -> Dictionary:
 		var copy: Dictionary = claim.duplicate(true)
 		copy.remaining = claim.expires_at - elapsed
 		result.claims.append(copy)
-		if claim.kind == &"advance" and claim.owner_id != id:
+		if claim.kind in [&"advance", &"flank"] and claim.owner_id != id:
 			var request := copy.duplicate(true)
 			request.request_id = claim.id
 			request.beneficiary_id = claim.owner_id
@@ -227,6 +260,201 @@ func _position_blocks_line(position: Vector3, origin: Vector3, endpoint: Vector3
 	var closest := Geometry3D.get_closest_point_to_segment(torso, origin, endpoint)
 	return Vector2(torso.x - closest.x, torso.z - closest.z).length() < 0.4 and absf(torso.y - closest.y) < 0.9
 
+## Read-only proposal. The first successful claim freezes the frame; previews
+## neither create a round nor extend its deadline.
+func flank_opportunity(context) -> Dictionary:
+	var result := {"round_id": 0, "anchor": Vector3.INF, "front_axis": Vector3.ZERO, "capacity": 0, "remaining_slots": 0}
+	if not context.cooperation_enabled(): return result
+	var target: int = context.cooperation_target_id()
+	var evidence: Dictionary = context.cooperation_target_evidence()
+	if target == 0 or not _flank_evidence_live(context, evidence): return result
+	var members := _flank_members(context, target)
+	return _flank_opportunity_for_members(context, evidence, members)
+
+## Only geometric inputs invalidate the bounded spatial queue. Report IDs,
+## timestamps and firing cadence still reprice live candidates without clearing
+## their geometry. Quantization is an invalidation hint, never an input to paths,
+## occupancy, destination validation or actual movement.
+func flank_geometry_revision(context) -> int:
+	if not context.cooperation_enabled(): return 0
+	var target: int = context.cooperation_target_id()
+	var evidence: Dictionary = context.cooperation_target_evidence()
+	if target == 0 or not _flank_evidence_live(context, evidence): return 0
+	var members := _flank_members(context, target)
+	if members.size() < 2: return 0
+	members.sort_custom(func(a: Dictionary, b: Dictionary): return int(a.id) < int(b.id))
+	var key: Array = [generation, context.actor.faction_id, context.actor.communication_group, target,
+		_geometry_cell(evidence.position, FLANK_GEOMETRY_TARGET_STEP)]
+	for member: Dictionary in members:
+		key.append([member.id, _geometry_cell(member.position, FLANK_GEOMETRY_MEMBER_STEP)])
+	var opportunity := _flank_opportunity_for_members(context, evidence, members)
+	# Occupancy uses real body positions, so crossing a quota plane invalidates
+	# immediately even when both positions fall inside the same half-metre cell.
+	key.append([opportunity.round_id, opportunity.capacity, opportunity.remaining_slots])
+	if opportunity.round_id != 0: key.append([opportunity.anchor, opportunity.front_axis])
+	var slots: Array = []
+	var id: int = context.actor.get_instance_id()
+	for entry: Dictionary in _claims.values():
+		if entry.target_id != target or entry.kind not in [&"advance", &"flank"] or not _claim_valid(entry) or not can_cooperate(entry.owner_id, id): continue
+		slots.append([entry.id, entry.owner_id, entry.kind, entry.lane_id, entry.get("flank_destination", Vector3.INF)])
+	slots.sort_custom(func(a: Array, b: Array): return int(a[0]) < int(b[0]))
+	key.append(slots)
+	return hash(key)
+
+func _geometry_cell(position: Vector3, step: float) -> Vector3i:
+	return Vector3i(roundi(position.x / step), roundi(position.y / step), roundi(position.z / step))
+
+func _flank_opportunity_for_members(context, evidence: Dictionary, members: Array[Dictionary]) -> Dictionary:
+	var result := {"round_id": 0, "anchor": Vector3.INF, "front_axis": Vector3.ZERO, "capacity": 0, "remaining_slots": 0}
+	if members.size() < 2: return result
+	var capacity := floori(members.size() / 2.0)
+	for round: Dictionary in _flank_rounds.values():
+		if not _flank_round_matches(round, context): continue
+		# Do not rotate or start a second frame while the first round is alive.
+		if evidence.position.distance_to(round.anchor) > 2.0: return result
+		return {"round_id": round.id, "anchor": round.anchor, "front_axis": round.front_axis,
+			"capacity": capacity, "remaining_slots": maxi(0, capacity - _flank_occupants(round, members).size()),
+			"expires_at": round.expires_at, "remaining_seconds": maxf(0.0, round.expires_at - elapsed)}
+	var anchor: Vector3 = evidence.position
+	var axis := Vector3.ZERO
+	var directions: Array[Vector3] = []
+	for member: Dictionary in members:
+		var radial: Vector3 = member.position - anchor
+		radial.y = 0.0
+		axis += radial
+		directions.append(radial.normalized())
+	if axis.is_zero_approx(): return result
+	axis = axis.normalized()
+	for member: Dictionary in members:
+		if (member.position - anchor).dot(axis) <= FLANK_SIDE_MARGIN: return result
+	for first in directions.size():
+		for second in range(first + 1, directions.size()):
+			if directions[first].dot(directions[second]) <= FLANK_SEPARATION_COSINE: return result
+	return {"round_id": 0, "anchor": anchor, "front_axis": axis, "capacity": capacity, "remaining_slots": capacity}
+
+func _flank_evidence_live(context, evidence: Dictionary) -> bool:
+	return not evidence.is_empty() and evidence.get("target_id", 0) == context.cooperation_target_id() and evidence.get("position", Vector3.INF).is_finite() and float(evidence.get("valid_until", -INF)) > context.evidence_elapsed_seconds
+
+func _flank_members(context, target: int) -> Array[Dictionary]:
+	var result: Array[Dictionary] = []
+	var id: int = context.actor.get_instance_id()
+	for other_id in _members:
+		if not can_cooperate(other_id, id): continue
+		var other = _context(other_id)
+		if other == null or not other.actor.is_inside_tree() or other.cooperation_target_id() != target: continue
+		var activity: Dictionary = _members[other_id].activity
+		if activity.is_empty() or int(activity.get("target_id", 0)) != target or elapsed - float(activity.updated_at) > 0.35: continue
+		result.append({"id": other_id, "position": other.actor.global_position})
+	return result
+
+func _flank_round_matches(round: Dictionary, context) -> bool:
+	var id: int = context.actor.get_instance_id()
+	if round.expires_at <= elapsed or round.generation != generation or round.target_id != context.cooperation_target_id(): return false
+	if not _members.has(id) or not can_share_intel(id, id) or not context.actor.is_inside_tree(): return false
+	return round.group == context.actor.communication_group and (round.faction == context.actor.faction_id or _relations.get([round.faction, context.actor.faction_id], &"") == &"allied")
+
+func _flank_opposite(round: Dictionary, position: Vector3) -> bool:
+	return (position - round.anchor).dot(round.front_axis) < -FLANK_SIDE_MARGIN
+
+func _flank_occupants(round: Dictionary, members: Array[Dictionary]) -> Dictionary:
+	var occupied: Dictionary = {}
+	for member: Dictionary in members:
+		if _flank_opposite(round, member.position): occupied[member.id] = true
+	for entry: Dictionary in _claims.values():
+		if entry.kind == &"flank" and entry.get("flank_round_id", 0) == round.id and _claim_valid(entry): occupied[entry.owner_id] = true
+	return occupied
+
+func _claim_flank(context, task: Dictionary) -> Dictionary:
+	_maintain_flank_rounds()
+	var id: int = context.actor.get_instance_id()
+	var target: int = context.cooperation_target_id()
+	if int(task.get("target_id", target)) != target or not context.can_use_action(task.get("owner_action", &"cooperate")): return {}
+	var opportunity := flank_opportunity(context)
+	if opportunity.capacity <= 0: return {}
+	var anchor: Vector3 = task.get("flank_anchor", Vector3.INF)
+	var axis: Vector3 = task.get("flank_axis", Vector3.ZERO)
+	var destination: Vector3 = task.get("flank_destination", Vector3.INF)
+	var proposed_round: int = task.get("flank_round_id", 0)
+	if not anchor.is_finite() or not axis.is_finite() or not destination.is_finite(): return {}
+	if anchor.distance_to(opportunity.anchor) > 0.1 or axis.distance_to(opportunity.front_axis) > 0.01: return {}
+	if proposed_round != 0 and proposed_round != opportunity.round_id: return {}
+	if (destination - opportunity.anchor).dot(opportunity.front_axis) >= -FLANK_SIDE_MARGIN: return {}
+	for existing: Dictionary in _claims.values():
+		if existing.kind != &"flank" or existing.target_id != target or not _claim_valid(existing) or not can_cooperate(existing.owner_id, id): continue
+		if existing.owner_id == id:
+			return existing.duplicate(true) if existing.flank_destination.distance_to(destination) < 0.05 else {}
+		if existing.flank_destination.distance_to(destination) < FLANK_DESTINATION_SPACING: return {}
+	for member: Dictionary in _flank_members(context, target):
+		if member.id != id and member.position.distance_to(destination) < FLANK_DESTINATION_SPACING: return {}
+	if opportunity.remaining_slots <= 0: return {}
+	var duration: float = task.get("duration", 4.0)
+	if not is_finite(duration) or duration <= 0.0: return {}
+	var round_id: int = opportunity.round_id
+	if round_id == 0:
+		_serial += 1
+		round_id = _serial
+		_flank_rounds[round_id] = {"id": round_id, "target_id": target, "anchor": opportunity.anchor,
+			"front_axis": opportunity.front_axis, "faction": context.actor.faction_id, "group": context.actor.communication_group,
+			"generation": generation, "expires_at": elapsed + duration}
+	var round: Dictionary = _flank_rounds[round_id]
+	_serial += 1
+	var value := task.duplicate(true)
+	value.merge({"id": _serial, "owner_id": id, "target_id": target, "kind": &"flank", "lane_id": task.get("lane_id", &"opposite"),
+		"position": context.actor.global_position, "generation": generation, "created_at": elapsed,
+		"expires_at": minf(elapsed + duration, round.expires_at), "owner_action": task.get("owner_action", &"cooperate"),
+		"flank_round_id": round_id, "flank_anchor": round.anchor, "flank_axis": round.front_axis, "flank_destination": destination}, true)
+	_claims[_serial] = value
+	revision += 1
+	return value.duplicate(true)
+
+func _discard_flank_round(round_id: int) -> void:
+	for token in _claims.keys():
+		if _claims[token].get("flank_round_id", 0) == round_id: _claims.erase(token)
+	_flank_rounds.erase(round_id)
+	revision += 1
+
+## Execution maintenance only. A falling population first revokes departures
+## that have not crossed; already moved bodies are never teleported back.
+func _maintain_flank_rounds() -> void:
+	for round_id in _flank_rounds.keys():
+		var round: Dictionary = _flank_rounds[round_id]
+		var representative = null
+		var evidence_moved := false
+		for id in _members:
+			var member = _context(id)
+			if member == null or not is_instance_valid(member.actor) or not _flank_round_matches(round, member): continue
+			var evidence: Dictionary = member.cooperation_target_evidence()
+			if _flank_evidence_live(member, evidence):
+				if evidence.position.distance_to(round.anchor) > 2.0: evidence_moved = true
+				if member.cooperation_enabled(): representative = member
+		if representative == null or evidence_moved:
+			_discard_flank_round(round_id)
+			continue
+		var members := _flank_members(representative, round.target_id)
+		if members.size() < 2:
+			_discard_flank_round(round_id)
+			continue
+		var crossed: Dictionary = {}
+		for member: Dictionary in members:
+			if _flank_opposite(round, member.position): crossed[member.id] = true
+		var claims: Array[Dictionary] = []
+		for token in _claims.keys():
+			var entry: Dictionary = _claims[token]
+			if entry.get("flank_round_id", 0) != round_id: continue
+			if not _claim_valid(entry):
+				_claims.erase(token)
+				revision += 1
+			else: claims.append(entry)
+		claims.sort_custom(func(a: Dictionary, b: Dictionary):
+			if crossed.has(a.owner_id) != crossed.has(b.owner_id): return crossed.has(a.owner_id)
+			return int(a.id) < int(b.id))
+		var unclaimed_crossed := crossed.duplicate()
+		for entry: Dictionary in claims: unclaimed_crossed.erase(entry.owner_id)
+		var slots: int = maxi(0, floori(members.size() / 2.0) - unclaimed_crossed.size())
+		for index in range(slots, claims.size()):
+			_claims.erase(claims[index].id)
+			revision += 1
+
 func claim(context, task: Dictionary) -> Dictionary:
 	if not context.cooperation_enabled(): return {}
 	var id: int = context.actor.get_instance_id()
@@ -236,6 +464,7 @@ func claim(context, task: Dictionary) -> Dictionary:
 	var lane: String = String(task.get("lane_id", ""))
 	var point: Vector3 = task.get("position", context.actor.global_position)
 	if target == 0 or kind.is_empty() or not point.is_finite(): return {}
+	if kind == &"flank": return _claim_flank(context, task)
 	for existing in _claims.values():
 		if not _claim_valid(existing) or existing.target_id != target or not can_cooperate(existing.owner_id, id): continue
 		if existing.owner_id == id and existing.kind == kind and String(existing.lane_id) == lane: return existing.duplicate(true)
@@ -256,11 +485,16 @@ func claim(context, task: Dictionary) -> Dictionary:
 func update_claim(context, token: Dictionary, state: Dictionary) -> bool:
 	var id: int = token.get("id", 0)
 	if not _claims.has(id) or token.get("generation", -1) != generation: return false
+	if _claims[id].kind == &"flank":
+		_maintain_flank_rounds()
+		if not _claims.has(id): return false
 	var entry: Dictionary = _claims[id]
-	if entry.owner_id != context.actor.get_instance_id() or entry.expires_at <= elapsed or not context.cooperation_enabled() or not context.can_use_action(entry.owner_action) or entry.target_id != context.cooperation_target_id(): return false
+	if entry.owner_id != context.actor.get_instance_id() or not _claim_valid(entry): return false
 	# Status cannot renew evidence or impersonate measured ready fire.
 	for key in [&"phase", &"progress", &"position"]:
-		if state.has(key): entry[key] = state[key]
+		if state.has(key):
+			if key == &"phase" and entry.get(key) != state[key]: revision += 1
+			entry[key] = state[key]
 	return true
 
 func release(context, token: Dictionary) -> void:
@@ -329,6 +563,11 @@ func candidate_seconds(context, candidate: Dictionary) -> float:
 	var support_time: float = float(task.get("support_seconds", available if self_status.get("ready", false) else 0.0))
 	var start: float = clampf(float(task.get("estimated_start_seconds", 0.0)), 0.0, horizon)
 	support_time = maxf(0.0, minf(support_time, horizon - start))
+	var candidate_moving := _candidate_moves(context, candidate)
+	# An ordinary moving option inherits the currently measured fire state, not
+	# permission to keep firing after it starts walking. Explicit arrival plans
+	# retain their own delayed, stationary support estimate.
+	if task.is_empty() and candidate_moving and not context.fire.fire_while_moving: support_time = 0.0
 	# Candidate predictions cannot promise more fire than the current magazine/burst.
 	if context.actor.can_use_firearms():
 		var rounds: int = context.actor.ammo.magazine_rounds
@@ -352,9 +591,12 @@ func candidate_seconds(context, candidate: Dictionary) -> float:
 		if request.beneficiary_id == id: continue
 		if task.get("request_id", 0) != 0 and task.request_id != request.request_id: continue
 		if String(task.get("lane_id", "target")) != String(request.get("lane_id", "target")): continue
+		var stationary_required := _request_requires_stationary(request)
+		if stationary_required and candidate_moving: continue
 		var covered := 0.0
 		for support in data.supports:
 			if support.owner_id == id: continue
+			if stationary_required and support.get("moving", false): continue
 			if String(support.get("lane_id", "target")) == String(task.get("lane_id", "target")):
 				covered = maxf(covered, float(support.support_seconds))
 		var end: float = minf(start + support_time, minf(horizon, float(request.get("remaining", horizon))))
@@ -377,6 +619,18 @@ func candidate_seconds(context, candidate: Dictionary) -> float:
 					gain = maxf(gain, common_window * minf(angle / 90.0, 1.0) * quality)
 	return clampf(gain, 0.0, horizon) if is_finite(gain) else 0.0
 
+func _candidate_moves(context, candidate: Dictionary) -> bool:
+	if not candidate.get("route", {}).is_empty(): return true
+	if float(candidate.get("cooperation", {}).get("movement_seconds", 0.0)) > 0.05: return true
+	var destination: Dictionary = candidate.get("destination", {})
+	var position: Vector3 = destination.get("position", destination.get("hide", Vector3.INF))
+	if not position.is_finite(): return false
+	var offset: Vector3 = position - context.actor.global_position
+	return Vector2(offset.x, offset.z).length() > 0.15
+
+func _request_requires_stationary(request: Dictionary) -> bool:
+	return request.get("kind", &"") in [&"advance", &"flank", &"move"]
+
 func support_pressure(context) -> float:
 	if not context.cooperation_enabled(): return 0.0
 	var data: Dictionary = context.cooperation_snapshot()
@@ -386,6 +640,8 @@ func support_pressure(context) -> float:
 		if request.beneficiary_id == id: continue
 		var covered := 0.0
 		for support in data.supports:
-			if support.owner_id != id and support.get("lane_id", &"target") == &"target": covered = maxf(covered, float(support.support_seconds))
+			if support.owner_id == id or support.get("lane_id", &"target") != &"target": continue
+			if _request_requires_stationary(request) and support.get("moving", false): continue
+			covered = maxf(covered, float(support.support_seconds))
 		need = maxf(need, maxf(0.0, float(request.get("remaining", 0.0)) - covered))
 	return clampf(need / maxf(0.1, context.utility_horizon_seconds), 0.0, 1.0)

@@ -174,12 +174,32 @@ func estimated_steady_wait(support_intent: bool = false) -> float:
 	# Candidate estimates cannot inherit the previous action's retreat intent.
 	var demand: float = suppression_pressure()
 	if demand <= 0.0: return 0.0
+	return _steady_wait_seconds(demand if support_intent else 0.0)
+
+## A cycle is an ordinary burst pause, not present fire or a promise to recover
+## from another failure. Context separately checks ammunition and both gun lanes.
+func support_cycle_resume_seconds(intent: Dictionary, moving: bool) -> float:
+	if moving or fire_pause_remaining <= 0.0 or intent.get("mode", &"") != &"visible": return -1.0
+	if not context.can_use_action(intent.get("owner", &"")) or not context.sees_player or not context.is_arena_active(): return -1.0
+	if context.player.is_dead() or context.player.is_in_dialogue or not context.perception.can_see_player(): return -1.0
+	if actor.get_tree().paused or not actor.has_aim or fire_reaction_elapsed < fire_reaction_seconds: return -1.0
+	if actor.shot_cooldown > fire_pause_remaining or fire_decision.selected_action == fire_decision.Action.STEADY: return -1.0
+	var horizontal_aim := Vector3(actor.aim_direction.x, 0.0, actor.aim_direction.z)
+	var forward := Vector3(-actor.global_basis.z.x, 0.0, -actor.global_basis.z.z)
+	if not horizontal_aim.is_zero_approx() and forward.angle_to(horizontal_aim) > actor.MAX_GUN_BODY_ANGLE: return -1.0
+	var demand: float = suppression_pressure(intent, false) if intent.get("support_intent", false) else 0.0
+	# update_shooting resets the steady decision during a burst pause. Re-evaluate
+	# its comparison without changing wait pressure or granting future recovery.
+	if _steady_wait_seconds(demand) > 0.0001: return -1.0
+	return fire_pause_remaining
+
+func _steady_wait_seconds(demand: float) -> float:
 	var target: float = maxf(0.0001, fire_stability_target)
 	var quality: float = clampf(_current_firing_stability() / target, 0.0, 1.0)
 	var recovery: float = clampf(fire_decision.last_recovery_rate / target, 0.0, 1.0)
 	var steady: float = 1.0 + recovery * (1.0 - quality) * maxf(0.0, fire_decision.recovery_gain_weight)
 	var close: float = clampf(1.0 - context._horizontal_distance(context.last_known_position) / maxf(0.01, ranged_min_distance), 0.0, 1.0)
-	var fire_score: float = quality + close * maxf(0.0, fire_decision.close_range_weight) + (demand if support_intent else 0.0)
+	var fire_score: float = quality + close * maxf(0.0, fire_decision.close_range_weight) + demand
 	return clampf((steady - fire_score) / maxf(0.05, fire_decision.wait_pressure_per_second) - fire_decision.wait_seconds, 0.0, context.utility_horizon_seconds)
 
 func reset_fire_timing() -> void:
@@ -204,15 +224,22 @@ var _lane_cache: Dictionary = {}
 var _muzzle_shape := ConvexPolygonShape3D.new()
 var _muzzle_query := PhysicsShapeQueryParameters3D.new()
 var _muzzle_dimensions := Vector2.INF
+var _muzzle_space: PhysicsDirectSpaceState3D
 
 func begin_geometry_evaluation() -> void:
-	if _geometry_evaluation_depth == 0: _lane_cache.clear()
+	if _geometry_evaluation_depth == 0:
+		_lane_cache.clear()
+		_muzzle_space = null
+		_muzzle_query.exclude = []
 	_geometry_evaluation_depth += 1
 
 func end_geometry_evaluation() -> void:
 	assert(_geometry_evaluation_depth > 0)
 	_geometry_evaluation_depth -= 1
-	if _geometry_evaluation_depth == 0: _lane_cache.clear()
+	if _geometry_evaluation_depth == 0:
+		_lane_cache.clear()
+		_muzzle_space = null
+		_muzzle_query.exclude = []
 
 func has_clear_firing_lane(origin: Vector3, direction: Vector3, distance: float) -> bool:
 	if direction.is_zero_approx() or distance <= 0.0: return false
@@ -248,8 +275,17 @@ func _query_clear_firing_lane(origin: Vector3, direction: Vector3, distance: flo
 	query.shape = _muzzle_shape
 	query.transform = Transform3D(Basis.looking_at(axis, Vector3.UP if absf(axis.y) < 0.999 else Vector3.RIGHT), origin)
 	query.collision_mask = 1
-	query.exclude = context.cover_selection._ray_query(origin, endpoint).exclude
-	var space: PhysicsDirectSpaceState3D = actor.get_world_3d().direct_space_state
+	var space: PhysicsDirectSpaceState3D
+	if _geometry_evaluation_depth > 0:
+		# Only this synchronous read-only batch has stable actor/player exclusions.
+		# Every distinct lane still performs its complete convex-shape query.
+		if _muzzle_space == null:
+			query.exclude = context.cover_selection._ray_query(origin, endpoint).exclude
+			_muzzle_space = actor.get_world_3d().direct_space_state
+		space = _muzzle_space
+	else:
+		query.exclude = context.cover_selection._ray_query(origin, endpoint).exclude
+		space = actor.get_world_3d().direct_space_state
 	return space.intersect_shape(query, 1).is_empty()
 
 ## 水平外围弹道的通畅比例参与候选的有效火力估计，不要求极端散布全部避墙。

@@ -21,6 +21,15 @@ func _init() -> void:
 	set(value):
 		lane_hold_seconds = value
 		mark_override(&"lane_hold_seconds")
+## A whole flank has a fixed deadline; individual walking legs are re-scored.
+@export_range(4.0, 20.0, 0.5) var flank_plan_seconds := 14.0:
+	set(value):
+		flank_plan_seconds = value
+		mark_override(&"flank_plan_seconds")
+@export_range(0.1, 3.0, 0.1) var support_recovery_seconds := 2.0:
+	set(value):
+		support_recovery_seconds = value
+		mark_override(&"support_recovery_seconds")
 @export_range(1.0, 8.0, 0.1) var flank_distance := 3.0:
 	set(value):
 		flank_distance = value

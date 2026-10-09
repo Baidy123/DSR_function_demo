@@ -1060,6 +1060,9 @@ func movement_multiplier() -> float:
 
 
 func state_label() -> String:
+	if noise_search_origin.is_finite(): return "噪声调查"
+	if context.has_combat_contact():
+		return "战斗接敌" if not context.fresh_shared_contact().is_empty() else "失联搜索"
 	if investigation_phase == context.State.TRACK:
 		return "快速追查" if movement_multiplier() > 1.0 else "沿线调查"
 	if investigation_phase == context.State.SEARCH:
@@ -1108,11 +1111,15 @@ func collect_candidates(visible: bool) -> Array[Dictionary]:
 	var path: PackedVector3Array = PackedVector3Array() if is_observing() else context.routes.planning_path(actor.global_position, point)
 	if is_observing() or path.is_empty():
 		var candidate := option({}, horizon, context._reload_exposure(actor.global_position, threat) * horizon)
+		var report: Dictionary = context.fresh_shared_contact()
+		if not report.is_empty(): candidate.outcome.information_loss = context.shared_contact_information(actor.global_position, 0.0, report)
 		candidate.accepts_noise = true
 		candidate.search_recovery = not is_observing()
 		return [candidate]
 	var route: Dictionary = context.spatial.assess_route(context, path, threat, movement_multiplier(), context.spatial._reload_seconds(context) if actor.ammo.is_reloading else 0.0)
 	var candidate := option({}, horizon, route.exposure + context._reload_exposure(point, threat) * maxf(0.0, horizon - route.seconds))
+	var report: Dictionary = context.fresh_shared_contact()
+	if not report.is_empty(): candidate.outcome.information_loss = context.shared_contact_information(point, route.seconds, report)
 	candidate.accepts_noise = true
 	candidate.route_target = point
 	return [candidate]
@@ -1162,6 +1169,9 @@ func cancel(reason: StringName = &"switch") -> void:
 
 func can_interrupt(next: Dictionary, visible: bool) -> bool:
 	if visible or next.get("urgent", false): return true
+	# A newly evaluated combat approach may replace an earlier investigation,
+	# but still has to win the ordinary Utility cost and switch comparison.
+	if next.get("combat_contact", false) and not context.fresh_shared_contact().is_empty(): return true
 	var committed := has_committed_segment()
 	# 搜索段边界允许换方案，但同一份旧威胁不能把调查重新送回躲藏。
 	# 新受伤/明显近弹通过 release_segment 解锁撤离，换弹仍可立即接管。

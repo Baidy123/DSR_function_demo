@@ -100,6 +100,10 @@ func option(destination: Dictionary, unavailable: float, exposure: float, inform
 func evaluation_points() -> Array:
 	return []
 
+## Changes to this action's non-geometric inputs invalidate only its own queue.
+func evaluation_revision() -> int:
+	return 0
+
 func evaluate_point(_point: Variant) -> Dictionary:
 	return {}
 
