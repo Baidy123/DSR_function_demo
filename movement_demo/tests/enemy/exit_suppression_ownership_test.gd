@@ -16,7 +16,7 @@ func _run() -> void:
 	ai.set_physics_process(false)
 	player.set_physics_process(false)
 	preload("res://tests/enemy/enemy_fire_fixture.gd").configure_timing(actor)
-	preload("res://tests/enemy/enemy_fire_fixture.gd").set_training_action(ai, &"exit_suppression", true)
+	preload("res://tests/enemy/enemy_fire_fixture.gd").set_training_action(ai, &"suppression", true)
 	actor.global_position = Vector3(24, 0, -2)
 	player.global_position = Vector3(18, 0, -7)
 	for region in get_nodes_in_group("cover_region"):
@@ -44,7 +44,7 @@ func _run() -> void:
 	var exits = ai.actions[&"suppression"]
 	var ordinary = ai.actions[&"suppression"]
 	_memory(ai, clear_memory)
-	check(exits.collect_candidates(false).filter(func(candidate): return candidate.plan == &"exit_sweep").is_empty() and not ordinary.collect_candidates(false).filter(func(candidate): return candidate.plan == &"point").is_empty(), "归属未知时退出出口候选但保留原点压制")
+	check(exits.preview_candidate(&"exit_sweep").is_empty() and not ordinary.preview_candidate(&"point").is_empty(), "退役出口不会恢复，公开几何仍可预览无遮挡记忆点")
 	var stacked = _cover(ai, Vector3(20.55, 1.1, -2), Vector3(0.2, 2.2, 3))
 	await _settle()
 	check(selection.suppression_geometry(known).is_empty(), "前后两面墙同时遮挡冻结点时拒绝猜测归属")
@@ -53,12 +53,11 @@ func _run() -> void:
 	stacked.collision_layer = 0
 	await _settle()
 	_memory(ai, known)
-	exits.begin(exits.preview_candidate(&"exit_sweep"), false)
-	check(exits.is_active() and exits.target_cover == cover, "消除歧义后执行锁定实际归属墙")
+	check(not exits.begin({"plan": &"exit_sweep"}, false) and selection.suppression_geometry(known).get("body") == cover, "归属明确也不授权已移除的出口压制")
 	stacked.collision_layer = 1
 	await _settle()
 	exits.step(1.0 / 60.0, false)
-	check(not exits.is_active(), "执行中归属变为歧义便结束而不换压邻墙")
+	check(not exits.is_active() and selection.suppression_geometry(known).is_empty(), "动态归属歧义仍被共享几何拒绝且没有出口执行")
 	stacked.collision_layer = 0
 	# 同一墙两端都被实际身体障碍封死，不得从邻墙借出口。
 	var first = _obstacle(ai.navigation_region, Vector3(21, 1.1, -4.1), Vector3(1.5, 2.2, 1.0))
@@ -80,7 +79,7 @@ func _run() -> void:
 	geometry = selection.suppression_geometry(known)
 	check(geometry.get("body") == low and not geometry.get("first", []).is_empty() and not geometry.get("second", []).is_empty(), "脚腿遮挡可确认低墙并保留真实可射出口")
 	_memory(ai, known)
-	check(not exits.collect_candidates(false).filter(func(candidate): return candidate.plan == &"exit_sweep").is_empty(), "可靠低墙归属仍允许出口压制参与原Utility")
+	check(exits.preview_candidate(&"exit_sweep").is_empty(), "可靠低墙归属也不会重新启用出口压制")
 	check(selection.suppression_geometry(Vector3(17, 0, -2)).is_empty(), "遮挡墙离冻结点超出原推断范围时拒绝归属")
 	print("Exit suppression ownership: %d/%d passed" % [checks - failures, checks])
 	scene.queue_free()
@@ -93,6 +92,7 @@ func _memory(ai, point: Vector3) -> void:
 	ai.context.has_visual_memory = true
 	ai.context.last_known_position = point
 	ai.context.last_seen_position = point
+	ai.context.last_seen_aim_position = point + Vector3.UP * 0.8 # Explicit frozen sample for this geometry-only fixture.
 	ai.context.publish_suppression_evidence(&"visual_loss", point)
 
 func _cover(ai, position: Vector3, size: Vector3):

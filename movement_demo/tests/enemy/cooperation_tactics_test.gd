@@ -83,7 +83,7 @@ func _run() -> void:
 	for count in 8: first_ai.action_selector.assess_options(first_ai, first_ai.context.sees_player)
 	check(first_ai.context.cooperation_snapshot().claims.size() == before_claims, "候选反复收集不认领新任务")
 	await _visible_support()
-	await _exit_assignment()
+	await _blocked_shared_region()
 	await _expired_evidence()
 	await _mixed_roles()
 	await _empty_magazine()
@@ -110,6 +110,7 @@ func _configure(actor) -> void:
 	ai.training.profile.set_setting(&"search", &"lost_target_hint_chance", 0.0)
 	ai.training.profile.set_setting(&"search", &"search_hint_chance", 0.0)
 	ai.refresh_configuration(true)
+	ai.set_physics_process(false)
 	ai.cover_selection.debug_cover_selection = false
 	ai.cover_selection.debug_attack_points = false
 	actor.look_at(player.global_position)
@@ -142,21 +143,22 @@ func _visible_support() -> void:
 	second.ammo.magazine_rounds = 1
 	check(second.request_reload(), "友军通过原武器接口实际开始换弹")
 	var saw_visible_candidate := false
-	var saw_visible_selected := false
+	var saw_actual_support := false
 	var checked_prediction := false
 	var starting_shots: int = first.shot_count
 	for frame in 120:
 		await _tick()
+		if second.ammo.is_reloading:
+			saw_actual_support = saw_actual_support or first_ai.context.cooperation_snapshot().supports.any(func(support): return support.owner_id == first.get_instance_id() and support.support_seconds > 0.0)
 		var candidates: Array = first_ai.action_selector.assess_options(first_ai, first_ai.context.sees_player)
 		saw_visible_candidate = saw_visible_candidate or candidates.any(func(candidate): return candidate.id == &"suppression" and candidate.get("plan", &"") == &"visible")
 		if not checked_prediction and candidates.any(func(candidate): return candidate.id == &"suppression" and candidate.get("plan", &"") == &"visible"):
 			_check_prediction_windows(first_ai.actions[&"suppression"], &"visible")
 			checked_prediction = true
-		saw_visible_selected = saw_visible_selected or (first_ai.utility_current.get("id", &"") == &"suppression" and first_ai.utility_current.get("plan", &"") == &"visible")
 	check(saw_visible_candidate, "目标可见且友军换弹时压制候选进入共同评分")
 	check(first.shot_count > starting_shots, "换弹掩护仍通过真实反应、转枪与武器开火")
 	# Ordinary fire may already satisfy the request; both legal alternatives are useful.
-	check(saw_visible_selected or first_ai.context.cooperation_snapshot().supports.any(func(support): return support.owner_id == first.get_instance_id()), "可见压制或现有正常交战实际履行掩护")
+	check(saw_actual_support, "队友真实换弹期间可见压制或正常交战实际履行掩护")
 	check(checked_prediction, "真实换弹需求期间完成可见压制预测边界检查")
 
 func _check_prediction_windows(action, mode: StringName) -> void:
@@ -208,7 +210,7 @@ func _check_prediction_windows(action, mode: StringName) -> void:
 	actor.aim_direction = saved_aim
 	check(execution == [action.remaining, action.aim_point, action._shots_remaining, fire.fire_burst_shots, action._evidence, action._claim, action.plan], "%s 刷新预测不更改执行瞄准、证据、租约、时长或连射计数" % mode)
 
-func _exit_assignment() -> void:
+func _blocked_shared_region() -> void:
 	_reset_open()
 	player.global_position = Vector3(20.8, 0, 0)
 	await _settle(4)
@@ -222,34 +224,27 @@ func _exit_assignment() -> void:
 	cover.get_node("CollisionShape3D").shape.size = Vector3(0.8, 2.2, 3.0)
 	await _settle(4)
 	check(not first_ai.perception.can_see_player() and not second_ai.perception.can_see_player(), "实际高墙令两名观察者失视")
-	var dual := false
-	var selected_exit := false
-	var checked_active_prediction := false
+	# The last observed samples become fully occluded; no real support can reach
+	# this region. Keep both actors physically still to isolate fire authorization.
 	var shots: int = first.shot_count + second.shot_count
-	for frame in 120:
-		await _tick()
-		var claims: Array = first_ai.context.cooperation_snapshot().claims.filter(func(claim): return claim.get("coverage_kind", &"") == &"exit")
-		if claims.size() >= 2:
-			dual = dual or (claims[0].owner_id != claims[1].owner_id and claims[0].lane_id != claims[1].lane_id and claims[0].cover_id == claims[1].cover_id)
-		selected_exit = selected_exit or (first_ai.utility_current.get("plan", &"") in [&"exit_left", &"exit_right"]) or (second_ai.utility_current.get("plan", &"") in [&"exit_left", &"exit_right"])
-		if not checked_active_prediction:
-			for ai in [first_ai, second_ai]:
-				var committed = ai.actions[&"suppression"]
-				if committed.active and not committed._claim.is_empty() and committed._current_mode() in [&"exit_left", &"exit_right"]:
-					_check_prediction_windows(committed, committed._current_mode())
-					checked_active_prediction = true
-					break
-	check(selected_exit and dual, "正常 Utility 为同一可靠掩体认领不同出口而不抢同槽")
-	check(first.shot_count + second.shot_count > shots, "多人出口方案实际打出子弹")
+	var illegal_candidate := false
+	for frame in 30:
+		await physics_frame
+		for ai in [first_ai, second_ai]:
+			ai.context.update_evidence(1.0 / 60.0, ai.perception.can_see_player())
+			var action = ai.actions[&"suppression"]
+			illegal_candidate = illegal_candidate or not action.collect_candidates(false).is_empty()
+			var output: Dictionary = action.tick(1.0 / 60.0, false)
+			ai.context.fire.update(1.0 / 60.0, false, false, output.fire)
+	check(not illegal_candidate, "两名友军失视且完整枪线被墙阻挡时不生成压制")
+	check(first.shot_count + second.shot_count == shots, "多人共享墙后位置不产生实际无效盲射")
 	var action = first_ai.actions[&"suppression"]
 	var old_aim: Vector3 = action.aim_point
 	var old_remaining: float = action.remaining
 	for count in 5: action.collect_candidates(false)
 	check(action.aim_point == old_aim and is_equal_approx(action.remaining, old_remaining), "压制预评估不改变真实瞄准和有限时长")
-	check(checked_active_prediction, "真实认领出口的执行阶段完成只读预测验证")
+	check(first_ai.context.cooperation_snapshot().claims.filter(func(claim): return claim.get("coverage_kind", &"") == &"exit").is_empty(), "已移除的出口不创建协作岗位或覆盖信用")
 	cover.collision_layer = 0
-	for frame in 10: await _tick()
-	check(first_ai.context.cooperation_snapshot().claims.filter(func(claim): return claim.get("coverage_kind", &"") == &"exit").is_empty(), "出口归属失效后释放两端岗位")
 	cover.queue_free()
 	await _settle(3)
 
@@ -272,6 +267,7 @@ func _mixed_roles() -> void:
 	second_ai.unit_type.profile = preload("res://resources/enemy/units/melee.tres").duplicate(true)
 	second_ai.training.profile.selected_tactics.assign([&"cooperate"])
 	second_ai.refresh_configuration(true)
+	second_ai.set_physics_process(false)
 	var weapon := preload("res://resources/weapons/enemy_test_melee.tres").duplicate(true)
 	second.equip_weapon(weapon)
 	var hits := {"count": 0}

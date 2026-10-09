@@ -5,6 +5,7 @@ var collection_costs: Dictionary = {}
 ## 选择器不登记具体动作；新模块只需实现统一协议并加入兵种资源。
 func assess_options(ai, sees_player: bool) -> Array[Dictionary]:
 	var options: Array[Dictionary] = []
+	ai.context.begin_geometry_evaluation()
 	ai.context.spatial.advance_evaluation()
 	ai.context.begin_cooperation_preview()
 	for action in ai.actions.values():
@@ -23,6 +24,7 @@ func assess_options(ai, sees_player: bool) -> Array[Dictionary]:
 			options.append(candidate)
 		collection_costs[action.action_id] = Time.get_ticks_usec() - started
 	ai.context.end_cooperation_preview()
+	ai.context.end_geometry_evaluation()
 	return options
 
 func choose_option(options: Array, current: Dictionary = {}) -> Dictionary:

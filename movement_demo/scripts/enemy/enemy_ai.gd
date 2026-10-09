@@ -163,7 +163,8 @@ func _physics_process(delta: float) -> void:
 	# 先登记近战执行占用，再消费移动／射击意图；新行为同帧提交冲突请求也受身体约束。
 	context.melee.update(delta, visible, output.get("melee", {}))
 	actor.move_character(direction, delta, output.get("multiplier", 1.0))
-	context.fire.update(delta, visible, not direction.is_zero_approx(), output.get("fire", {}))
+	var moving: bool = not actor.get_local_movement_velocity().is_zero_approx() or Vector2(actor.velocity.x, actor.velocity.z).length_squared() > 0.0025
+	context.fire.update(delta, visible, moving, output.get("fire", {}))
 	context.cooperation_publish_execution(output)
 	frame_costs.execution = Time.get_ticks_usec() - stamp
 	if current_action != null and not output.get("running", true):
@@ -244,6 +245,7 @@ func can_use_action(id: StringName) -> bool:
 	return context.can_use_action(id)
 
 func reset_actions() -> void:
+	actor.clear_local_movement()
 	_cancel_utility_execution(&"reset")
 	utility_options.clear()
 	for action in actions.values():

@@ -69,6 +69,7 @@ func advance_evaluation() -> void:
 	if frame == _frame:
 		return
 	_frame = frame
+	context.begin_geometry_evaluation()
 	var started := Time.get_ticks_usec()
 	last_evaluated_count = 0
 	# Route geometry shares the same frame budget, rather than running inside candidate collection.
@@ -143,6 +144,7 @@ func advance_evaluation() -> void:
 		last_evaluated_count += 1
 		total_evaluated_count += 1
 	last_evaluation_usec = Time.get_ticks_usec() - started
+	context.end_geometry_evaluation()
 
 func destinations(action) -> Array:
 	for job in jobs:

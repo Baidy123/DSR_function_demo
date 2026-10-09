@@ -60,6 +60,10 @@ movement_demo/
 
 敌人协作由 `world/shooting_range.gd` 持有每战斗区一份 `enemy/services/enemy_cooperation.gd`；Context 提供值快照与任务接口，服务不访问其他行为实例或执行身体命令。`actions/enemy_cooperation_action.gd` / `resources/enemy/actions/cooperate.tres` 是训练解锁的侧向推进战术，分工搜索与主动补弹仍属于原搜索／换弹模块。统一压制保留旧出口脚本 UID 作为兼容入口，默认目录只装配一个压制实例。参数位于 `config/cooperation_settings.gd`，详见 [敌人协作](enemy-ai.md#敌人协作)。
 
+`enemy/services/enemy_local_motion.gd` 是身体私有的近距友军让行辅助，通过原移动入口消费当前方向，使用实际胶囊与所属导航区域检查有限短路段；不接管 AI 目标、任务或动作进度。Context 只接入导航区域与关系服务，暂停／复位等由身体清理。压制记忆将调查脚底点与真实可射身体采样分开，出口射击方案已移除；旧资源与脚本保留加载兼容。
+
+空间评估的重复物理查询由 Context、Selection、Fire 各自管理同步只读批次缓存：选择器和空间扫描成对开启／结束，嵌套批次共用结果，最外层返回即清除。动作提交、身体移动及实际开火恢复实时查询，不用整帧缓存代替执行检查。团队服务的友军射线检查只读取必要的成员位置，不构建完整任务快照。
+
 `docs/enemy-ai.md` 是敌人结构、维护和使用部署说明；`docs/gameplay/` 保留移动、武器、掩体等专项说明，`docs/TODO.md` 记录后续方向，`docs/superpowers/` 保存仍有价值的设计与验收记录。第三方插件自带文档留在插件目录，以保留其使用说明和许可。
 
 敌人配置与扩展见 [敌人 AI](enemy-ai.md)，验证入口见 [敌人测试](enemy-tests.md)，未完成方向见 [待办](TODO.md)。

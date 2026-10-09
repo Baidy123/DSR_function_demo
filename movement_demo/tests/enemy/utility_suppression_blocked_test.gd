@@ -29,6 +29,8 @@ func _run() -> void:
 	ai.has_visual_memory = true
 	ai.last_seen_position = player.global_position
 	ai.last_known_position = player.global_position
+	ai.context.last_seen_aim_position = player.global_position + Vector3.UP * 0.8
+	ai.context.publish_suppression_evidence(&"visual_loss", player.global_position)
 	var action = ai.actions[&"suppression"]
 	# 先完成合法出生点验证，再模拟运行中靠近枪口的动态障碍。
 	# 否则测试构造的是出生时身体已经嵌墙，敌人应保持待命。
@@ -66,18 +68,14 @@ func _run() -> void:
 	for frame in range(3): await physics_frame
 	action.step(1.0 / 60.0, false)
 	check(not action.is_active(), "压制中射界失效立即交回决策")
-	# 中心与一侧被挡，但另一侧仍可射：必须挑可射样本，不能等一个打不出的枪。
+	# Samples cannot turn a fully blocked observed center into an inferred exit.
 	box.size.z = 0.1
 	action.target_radius = 1.5
 	for frame in range(3): await physics_frame
+	ai.context.publish_suppression_evidence(&"visual_loss", ai.last_seen_position)
 	action.on_target_lost()
-	check(action.is_active(), "部分目标区域可射时仍能压制")
-	var all_clear := true
-	for sample in range(40):
-		action.on_shot_fired()
-		var origin: Vector3 = enemy.get_shot_origin()
-		all_clear = all_clear and ai.context.fire.has_clear_suppression_lane(origin, action.aim_point - origin, origin.distance_to(action.aim_point))
-	check(all_clear, "压制只从实际可射目标中换点")
+	check(not action.is_active(), "中心被挡时周边散布样本不能伪造可压制区域")
+	check(action.collect_candidates(false).is_empty(), "大半径不会绕过冻结中心的完整硬遮挡")
 	action.reset()
 	wall.collision_layer = 0
 	for region in get_nodes_in_group("cover_region"):
@@ -91,44 +89,26 @@ func _run() -> void:
 	cover_collision.shape.size = Vector3(0.8, 2.2, 3)
 	enemy.global_position = Vector3(24.5, 0, -2)
 	ai.last_seen_position = Vector3(20.8, 0, -2)
-	var exit_resource = load("res://resources/enemy/actions/exit_suppression.tres")
-
-	preload("res://tests/enemy/enemy_fire_fixture.gd").set_training_action(ai, exit_resource.action_id, true)
-	preload("res://tests/enemy/enemy_fire_fixture.gd").set_training_action(ai, &"exit_suppression", true)
 	var exits = ai.actions[&"suppression"]
-	for frame in range(3): await physics_frame
-	exits.begin(exits.preview_candidate(&"exit_sweep"), false)
-	check(exits.is_active(), "两端确有射界时仍可启动出口压制")
-	all_clear = true
-	for target: Vector3 in exits.first_exit + exits.second_exit:
-		var origin: Vector3 = enemy.get_shot_origin()
-		all_clear = all_clear and ai.context.fire.has_clear_suppression_lane(origin, target - origin, origin.distance_to(target)) and ai.cover_selection.has_clear_line(origin,target)
-	check(all_clear and not exits.first_exit.is_empty() and not exits.second_exit.is_empty(), "出口检查枪口与中心射线，不要求整个散布避开目标墙")
-	exits.reset()
 	ai.last_known_position = ai.last_seen_position
-	ai.utility_suppression_pending = true
-	ai.utility_unseen_seconds = 0.0
+	ai.context.last_seen_aim_position = ai.last_seen_position + Vector3.UP * 0.8
+	ai.context.publish_suppression_evidence(&"visual_loss", ai.last_seen_position)
+	for frame in range(3): await physics_frame
+	var geometry: Dictionary = ai.cover_selection.suppression_geometry(ai.last_seen_position)
+	check(not geometry.is_empty() and not geometry.first.is_empty() and not geometry.second.is_empty(), "实体掩体仍可提供两端通路供搜索选位")
+	var removed := true
+	for mode in [&"exit_sweep", &"exit_left", &"exit_right"]:
+		removed = removed and exits.preview_candidate(mode).is_empty() and not exits.begin({"plan": mode}, false)
+	check(removed and not exits.is_active(), "两端真实通路也不恢复出口候选和运行分支")
 	options = ai.action_selector.assess_options(ai, false)
-	var ordinary: Array = options.filter(func(o): return o.id == &"suppression" and o.plan == &"point")
-	var targeted: Array = options.filter(func(o): return o.id == &"suppression" and o.plan == &"exit_sweep")
-	check(not ordinary.is_empty() and not targeted.is_empty(), "普通和出口压制同时有真实有效候选")
-	check(not ordinary.is_empty() and not targeted.is_empty() and targeted[0].cost < ordinary[0].cost, "可信出口封锁收益打破与普通压制的同分")
+	check(not options.any(func(option): return option.id == &"suppression"), "统一候选池不再以墙后坐标或出口推断制造火力收益")
 	ai.invalidate_utility()
 	ai._update_utility_decision(0.5, false)
-	check(ai.utility_current.get("id") == &"suppression" and ai.utility_current.get("plan") == &"exit_sweep", "统一选择器实际选择出口压制")
-	shots = enemy.shot_count
-	for frame in range(100):
-		await physics_frame
-		var output: Dictionary = exits.tick(1.0 / 60.0, false)
-		enemy.face_direction(output.facing, 1.0 / 60.0)
-		ai.context.fire.update(1.0 / 60.0, false, false, output.fire)
-	check(enemy.shot_count > shots, "选中的出口压制实际打出子弹")
-	var fresh: float = exits.information_retention()
-	# 已执行方案持有冻结证据；真实记忆计时同时推进失视年龄与该证据的年龄。
-	ai.context.update_evidence(20.0, false)
-	check(exits.information_retention() < fresh * 0.1, "出口推断随失视时间衰减，不永久压制旧位置")
-	ai._cancel_utility_execution()
-	# 冻结线索实际归属的墙必须仍提供掩体语义，不能借用其他邻墙出口。
+	check(ai.utility_current.get("id") != &"suppression", "正常Utility拒绝无效盲射并选择其他动作")
+	var original_range: float = enemy.weapon.fire_range
+	enemy.weapon.fire_range = 2.6
+	check(exits.preview_candidate(&"point").is_empty() and exits.preview_candidate(&"exit_sweep").is_empty(), "冻结点超射程不能借更近出口伪造火力")
+	enemy.weapon.fire_range = original_range
 	var nearer = load("res://scenes/world/cover.tscn").instantiate()
 	ai.navigation_region.add_child(nearer)
 	nearer.global_position = Vector3(22.8, 1.1, -4.35)
@@ -142,21 +122,11 @@ func _run() -> void:
 	wall.global_position = Vector3(23.65, 1, -3.17)
 	cover.remove_from_group("cover_region")
 	for frame in range(3): await physics_frame
-	var center: Vector3 = ai.last_seen_position + Vector3.UP * 0.8
-	check(not _prepare_exit_targets(exits, center), "实际遮挡墙不再提供掩体语义时不会改认邻墙")
+	check(ai.cover_selection.suppression_geometry(ai.last_seen_position).is_empty(), "实际遮挡墙不再提供掩体语义时共享几何不会改认邻墙")
 	cover.add_to_group("cover_region")
-	check(_prepare_exit_targets(exits, center) and exits.target_cover == cover, "恢复实际遮挡墙后仅选择该归属墙的合法出口")
-	check(exits.first_exit.is_empty() != exits.second_exit.is_empty(), "只露出一侧出口时仍保留封锁方案")
-	var original_range: float = enemy.weapon.fire_range
-	# 新出口取身体能绕出的入口，射程仍位于真实出口与记忆中心之间。
-	enemy.weapon.fire_range = 2.6
-	check(enemy.get_shot_origin().distance_to(center) > enemy.weapon.fire_range and not exits.preview_candidate(&"exit_sweep").is_empty(), "记忆中心超射程但实际出口可射时仍可参选")
-	exits.begin(exits.preview_candidate(&"exit_sweep"), false)
-	check(exits.is_active() and enemy.get_shot_origin().distance_to(exits.aim_point) <= enemy.weapon.fire_range, "执行阶段同样按实际出口射程启动")
-	exits.reset()
-	enemy.weapon.fire_range = 0.1
-	check(exits.preview_candidate(&"exit_sweep").is_empty(), "所有实际出口超射程仍不能参选")
-	enemy.weapon.fire_range = original_range
+	geometry = ai.cover_selection.suppression_geometry(ai.last_seen_position)
+	check(geometry.get("body") == cover, "恢复实际遮挡墙后共享几何仅选择原归属墙")
+	check(geometry.get("first", []).is_empty() != geometry.get("second", []).is_empty(), "真实实体障碍仍将共享通路限制为单侧")
 	print("UTILITY SUPPRESSION BLOCKED: %d/%d passed" % [checks - failures, checks])
 	quit(1 if failures else 0)
 
@@ -164,7 +134,3 @@ func check(ok: bool, label: String) -> void:
 	checks += 1
 	if not ok: failures += 1
 	print("PASS " if ok else "FAIL ", label)
-
-func _prepare_exit_targets(action, center: Vector3) -> bool:
-	action._mode = &"exit_sweep"
-	return action._prepare_targets(center)

@@ -109,6 +109,7 @@ func _run() -> void:
 	await physics_frame
 	preload("res://tests/enemy/enemy_fire_fixture.gd").advance_evaluation(ai, true)
 	check(job.cursor >= 25, "目标移动刷新候选后保留常规远点扫描进度")
+	await _retreat_execution_contract(ai)
 	print("RETREAT FIRE CREDIT: %d/%d passed" % [checks - failures, checks])
 	quit(1 if failures else 0)
 
@@ -116,3 +117,75 @@ func check(ok: bool, label: String) -> void:
 	checks += 1
 	if not ok: failures += 1
 	print("PASS " if ok else "FAIL ", label)
+
+## Execution contract for a real legal candidate, not a claim that Utility must
+## prefer retreat over every equally legal cover or engagement alternative.
+func _retreat_execution_contract(ai) -> void:
+	var actor = ai.actor
+	var player = ai.player
+	preload("res://tests/enemy/enemy_fire_fixture.gd").configure_timing(actor)
+	ai.set_physics_process(false)
+	player.set_physics_process(false)
+	player.get_node("Combat").set_physics_process(false)
+	player.get_node("Health").debug_invincible = true
+	ai.context.reset_memory()
+	actor.global_position = Vector3(24, 0, -2)
+	actor.velocity = Vector3.ZERO
+	player.global_position = Vector3(22, 0, -2)
+	actor.look_at(player.global_position)
+	actor.cancel_reload()
+	actor.ammo.magazine_rounds = actor.weapon.magazine_capacity
+	for frame in 5: await physics_frame
+	var real_visible: bool = ai.perception.can_see_player()
+	check(real_visible, "合法候选执行契约：先取得真实目击")
+	for frame in 90:
+		await physics_frame
+		ai.context.update_evidence(1.0 / 60.0, ai.perception.can_see_player())
+		ai.context.spatial.advance_evaluation()
+	var candidates: Array = ai.action_selector.assess_options(ai, ai.context.sees_player).filter(func(option): return option.get("mode") == &"covering_retreat" and option.get("route", {}).is_empty() and option.outcome.unavailable_seconds < ai.utility_horizon_seconds)
+	candidates.sort_custom(func(a, b): return a.outcome.unavailable_seconds < b.outcome.unavailable_seconds)
+	check(not candidates.is_empty(), "合法候选执行契约：原空间评估提供有射界的真实退让路线")
+	if candidates.is_empty(): return
+	var candidate: Dictionary = candidates[0]
+	ai._start_utility_option(candidate, true)
+	var action = ai.actions[&"covering_retreat"]
+	check(ai.current_action == action and action.valid(true), "合法候选执行契约：通过原validate和begin提交退让")
+	var start: Vector3 = actor.global_position
+	var shots: int = actor.shot_count
+	var saw_intent := false
+	var saw_moving_shot := false
+	var reaction_respected := true
+	var moving_respected := true
+	var saw_moving_gate := false
+	var saw_pressure := false
+	# The request must obey both gates. Restore the original movement permission
+	# after reaction completes; no route, speed, score or aim is replaced.
+	ai.training.profile.set_setting(&"tactics", &"fire_while_moving", false)
+	for frame in 240:
+		await physics_frame
+		var visible: bool = ai.perception.can_see_player()
+		ai.context.update_evidence(1.0 / 60.0, visible)
+		if frame == 35: ai.training.profile.set_setting(&"tactics", &"fire_while_moving", true)
+		var output: Dictionary = action.execute_tick(1.0 / 60.0, visible)
+		actor.request_crouch(output.get("crouch", false))
+		actor.face_direction(output.get("facing", Vector3.ZERO), 1.0 / 60.0)
+		actor.move_character(output.get("direction", Vector3.ZERO), 1.0 / 60.0, output.get("multiplier", 1.0))
+		var moving: bool = not actor.get_local_movement_velocity().is_zero_approx() or Vector2(actor.velocity.x, actor.velocity.z).length_squared() > 0.0025
+		var intent: Dictionary = output.get("fire", {})
+		var before: int = actor.shot_count
+		var reacting: bool = ai.context.fire.fire_reaction_elapsed + 1.0 / 60.0 < ai.context.fire.fire_reaction_seconds
+		if not intent.is_empty():
+			saw_intent = saw_intent or (intent.get("pressure_reason") == &"retreat" and intent.get("support_intent", false) and not intent.get("bypass_steady", false))
+			saw_pressure = saw_pressure or (visible and moving and ai.context.fire.suppression_pressure(intent, moving) > 0.0)
+		ai.context.fire.update(1.0 / 60.0, visible, moving, intent)
+		if reacting: reaction_respected = reaction_respected and actor.shot_count == before
+		if moving and not ai.context.fire.fire_while_moving and not intent.is_empty():
+			saw_moving_gate = true
+			moving_respected = moving_respected and actor.shot_count == before
+		if moving and actor.shot_count > before: saw_moving_shot = true
+		if not output.get("running", true) or (saw_moving_shot and actor.global_position.distance_to(start) > 0.5): break
+	ai.training.profile.set_setting(&"tactics", &"fire_while_moving", true)
+	check(saw_intent and saw_pressure, "合法候选执行契约：移动退让输出真实压力意图且不绕过稳枪")
+	check(reaction_respected and saw_moving_gate and moving_respected, "合法候选执行契约：退让压力仍遵守反应和禁止移动开火门控")
+	check(saw_moving_shot and actor.shot_count > shots and actor.global_position.distance_to(start) > 0.5, "合法候选执行契约：经原body和fire管线实际边移动边开火")
+	ai._cancel_utility_execution()

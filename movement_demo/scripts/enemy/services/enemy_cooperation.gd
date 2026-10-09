@@ -94,6 +94,15 @@ func can_share_intel(sender_id: int, receiver_id: int) -> bool:
 func can_cooperate(first_id: int, second_id: int) -> bool:
 	return can_share_intel(first_id, second_id)
 
+## Physical courtesy does not require belonging to the same radio group.
+func can_share_space(first_id: int, second_id: int) -> bool:
+	for id in [first_id, second_id]:
+		var context = _context(id)
+		if context == null or not is_instance_valid(context.actor) or not context.actor.is_inside_tree() or context.actor.is_dead: return false
+	var first = _context(first_id).actor
+	var second = _context(second_id).actor
+	return first.faction_id == second.faction_id or _relations.get([first.faction_id, second.faction_id], &"") == &"allied"
+
 func publish_visual(context) -> void:
 	if not context.sees_player or not context.last_seen_position.is_finite(): return
 	var observer: int = context.actor.get_instance_id()
@@ -107,7 +116,7 @@ func publish_visual(context) -> void:
 		return
 	_serial += 1
 	_reports[key] = {"target_id": target, "observer_id": observer, "faction": context.actor.faction_id, "group": context.actor.communication_group,
-		"position": context.last_seen_position, "direction": context.last_seen_direction, "velocity": context.observed_velocity,
+		"position": context.last_seen_position, "aim_position": context.last_seen_aim_position, "direction": context.last_seen_direction, "velocity": context.observed_velocity,
 		"captured_at": elapsed, "valid_until": elapsed + maxf(0.1, context.setting(&"cooperation", &"intel_seconds", 5.0)),
 		"id": _serial, "generation": generation, "source": &"shared_visual", "shared": true,
 		"reloading": reloading, "reload_until": elapsed + context.observed_reload_remaining}
@@ -129,6 +138,17 @@ func publish_status(context, status: Dictionary) -> void:
 	if not _members.has(id): register(context)
 	var old: Dictionary = _members[id].status
 	var entry := status.duplicate(true)
+	for kind in [&"reload", &"support"]:
+		var field: String = "%s_request_id" % kind
+		var signature: Array = [entry.get("target_id", 0), kind, entry.get("support_request", {}).get("kind", &"") if kind == &"support" else &"reload"]
+		var requested: bool = entry.get("reloading", false) if kind == &"reload" else not entry.get("support_request", {}).is_empty()
+		if requested:
+			if old.get(field + "_signature", []) != signature:
+				_serial += 1
+				entry[field] = _serial
+			else:
+				entry[field] = old[field]
+			entry[field + "_signature"] = signature
 	entry.id = id
 	entry.updated_at = elapsed
 	_members[id].status = entry
@@ -149,7 +169,9 @@ func snapshot(context, target: int) -> Dictionary:
 		if member.get("ready", false) and (other.actor.ammo.is_reloading or other.actor.ammo.magazine_rounds <= 0 or not other.actor.shooting_enabled or other.actor.is_vaulting() or other.actor.melee_active):
 			member.ready = false
 			member.support_seconds = 0.0
-		member.can_cooperate = can_cooperate(other_id, id)
+		# can_cooperate is the same predicate already checked above, with no
+		# mutation or await between these reads.
+		member.can_cooperate = true
 		result.members.append(member)
 		if int(member.get("target_id", 0)) != target: continue
 		var threat_seconds: float = maxf(0.0, float(member.get("melee_threat_seconds", 0.0)) - maxf(0.0, elapsed - float(member.updated_at)))
@@ -160,11 +182,11 @@ func snapshot(context, target: int) -> Dictionary:
 			support.owner_id = other_id
 			result.supports.append(support)
 		if member.get("reloading", false) and other_id != id:
-			result.requests.append({"id": -other_id, "request_id": -other_id, "kind": &"reload", "target_id": target, "beneficiary_id": other_id,
+			result.requests.append({"id": member.reload_request_id, "request_id": member.reload_request_id, "kind": &"reload", "target_id": target, "beneficiary_id": other_id,
 				"position": member.position, "duration": member.get("reload_seconds", 0.0), "remaining": member.get("reload_seconds", 0.0), "lane_id": &"target"})
 		var need: Dictionary = member.get("support_request", {})
 		if not need.is_empty() and other_id != id:
-			result.requests.append({"id": -other_id, "request_id": -other_id, "kind": need.get("kind", &"move"), "target_id": target, "beneficiary_id": other_id,
+			result.requests.append({"id": member.support_request_id, "request_id": member.support_request_id, "kind": need.get("kind", &"move"), "target_id": target, "beneficiary_id": other_id,
 				"position": member.position, "remaining": maxf(0.0, float(need.get("duration", 0.0))), "lane_id": need.get("lane_id", &"target")})
 	for claim in _claims.values():
 		if claim.target_id != target or not _claim_valid(claim) or not can_cooperate(claim.owner_id, id): continue
@@ -178,6 +200,32 @@ func snapshot(context, target: int) -> Dictionary:
 			request.lane_id = &"target"
 			result.requests.append(request)
 	return result
+
+## Same membership/freshness and stored body positions as snapshot().members,
+## without constructing unrelated support, request or claim dictionaries.
+func line_safe(context, origin: Vector3, endpoint: Vector3) -> bool:
+	var id: int = context.actor.get_instance_id()
+	for other_id in _members:
+		if other_id == id or not can_share_intel(other_id, id): continue
+		var other = _context(other_id)
+		if other == null or not is_instance_valid(other.actor) or other.actor.is_dead or not other.actor.is_inside_tree(): continue
+		var status: Dictionary = _members[other_id].status
+		if status.is_empty() or elapsed - float(status.updated_at) > 0.35: continue
+		if _position_blocks_line(status.position, origin, endpoint): return false
+	return true
+
+## An already validated snapshot is reusable only inside its synchronous preview
+## batch. Execution callers use line_safe() and recheck current membership.
+func line_safe_from_members(context, origin: Vector3, endpoint: Vector3, members: Array) -> bool:
+	var id: int = context.actor.get_instance_id()
+	for member in members:
+		if member.id != id and _position_blocks_line(member.position, origin, endpoint): return false
+	return true
+
+func _position_blocks_line(position: Vector3, origin: Vector3, endpoint: Vector3) -> bool:
+	var torso := position + Vector3.UP * 0.9
+	var closest := Geometry3D.get_closest_point_to_segment(torso, origin, endpoint)
+	return Vector2(torso.x - closest.x, torso.z - closest.z).length() < 0.4 and absf(torso.y - closest.y) < 0.9
 
 func claim(context, task: Dictionary) -> Dictionary:
 	if not context.cooperation_enabled(): return {}
@@ -233,17 +281,21 @@ func publish_checked(context, points: PackedVector3Array) -> void:
 	if not context.cooperation_enabled(): return
 	var id: int = context.actor.get_instance_id()
 	var target: int = context.cooperation_target_id()
+	var domain: String = _domain(context.actor)
 	for point in points:
 		if not point.is_finite(): continue
 		var grid := Vector3i(roundi(point.x * 100.0), roundi(point.y * 100.0), roundi(point.z * 100.0))
-		var key := [_domain(context.actor), target, grid]
-		_checked[key] = {"position": point, "observer_id": id, "target_id": target, "domain": _domain(context.actor), "observed_at": elapsed,
+		var key := [domain, target, grid]
+		_checked[key] = {"position": point, "observer_id": id, "target_id": target, "domain": domain, "observed_at": elapsed,
 			"valid_until": elapsed + maxf(0.1, context.setting(&"cooperation", &"checked_point_seconds", 3.0))}
 
 func checked_points(context) -> Array[Dictionary]:
 	var result: Array[Dictionary] = []
+	var domain: String = _domain(context.actor)
+	var target: int = context.cooperation_target_id()
+	var id: int = context.actor.get_instance_id()
 	for entry in _checked.values():
-		if entry.domain == _domain(context.actor) and entry.target_id == context.cooperation_target_id() and entry.observer_id != context.actor.get_instance_id() and entry.valid_until > elapsed:
+		if entry.domain == domain and entry.target_id == target and entry.observer_id != id and entry.valid_until > elapsed:
 			result.append(entry.duplicate(true))
 	return result
 
@@ -296,15 +348,6 @@ func candidate_seconds(context, candidate: Dictionary) -> float:
 			if support.owner_id == id or support.get("moving", false) or support.get("lane_id", &"target") != &"target": continue
 			var overlap: float = maxf(0.0, minf(move_end, float(support.support_seconds)) - move_start)
 			gain = maxf(gain, overlap * quality)
-	if task.get("coverage_kind", &"") == &"exit" and data.members.size() > 1:
-		var lanes: Array = task.get("coverage_lanes", [task.get("lane_id", &"")])
-		var uncovered := 0.0
-		for lane in lanes:
-			var covered := 0.0
-			for support in data.supports:
-				if support.owner_id != id and String(support.get("lane_id", "")) == String(lane): covered = maxf(covered, float(support.support_seconds))
-			uncovered += maxf(0.0, start + support_time - maxf(start, covered))
-		gain = maxf(gain, uncovered / maxf(1.0, lanes.size()) * quality)
 	for request in data.requests:
 		if request.beneficiary_id == id: continue
 		if task.get("request_id", 0) != 0 and task.request_id != request.request_id: continue

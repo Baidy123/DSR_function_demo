@@ -49,6 +49,7 @@ func _run() -> void:
 	check(not a.cooperation_enabled() and not b.cooperation_enabled(), "default sharing does not unlock advanced tactics")
 	var report: Dictionary = b.cooperation_target_evidence()
 	check(report.get("observer_id", 0) == first.get_instance_id() and report.get("target_id", 0) == player.get_instance_id(), "shared observation retains its source and target identity")
+	check(report.get("aim_position", Vector3.INF).is_finite() and report.aim_position == a.last_seen_aim_position, "untrained firearm observers share a genuinely visible aim sample without gaining a suppression action")
 	var original: Vector3 = report.get("position", Vector3.INF)
 	var deadline: float = report.get("valid_until", -1.0)
 	first.look_at(first.global_position + Vector3.LEFT)
@@ -64,6 +65,7 @@ func _run() -> void:
 	second.communication_group = &"separate"
 	b.update_evidence(STEP, false)
 	check(not b.team_visual_contact and b.cooperation_target_evidence().is_empty(), "changing communication group revokes old shared authority")
+	check(a.cooperation.can_share_space(first.get_instance_id(), second.get_instance_id()), "friendly physical yielding does not depend on a shared radio group")
 	second.communication_group = &""
 	b.update_evidence(STEP, false)
 	check(b.team_visual_contact, "joining the original group can read its still valid observation")
@@ -78,12 +80,15 @@ func _run() -> void:
 	second.faction_id = &"outsider"
 	b.update_evidence(STEP, false)
 	check(not b.team_visual_contact and not original_board.is_hostile(&"enemy", &"outsider"), "unknown factions neither share intel nor automatically become hostile")
+	check(not original_board.can_share_space(first.get_instance_id(), second.get_instance_id()), "neutral strangers cannot issue friendly yielding requests")
 	original_board.set_relation(&"enemy", &"outsider", &"allied")
 	b.update_evidence(STEP, false)
 	check(b.team_visual_contact, "an explicit allied relation grants intel sharing")
+	check(original_board.can_share_space(first.get_instance_id(), second.get_instance_id()), "an explicit allied relation also authorizes physical yielding")
 	original_board.set_relation(&"enemy", &"outsider", &"neutral")
 	b.update_evidence(STEP, false)
 	check(not b.team_visual_contact and b.cooperation_target_evidence().is_empty(), "revoking the relation removes cached shared evidence")
+	check(not original_board.can_share_space(first.get_instance_id(), second.get_instance_id()), "revoking an alliance immediately revokes friendly yielding")
 	second.faction_id = &"enemy"
 	b.update_evidence(STEP, false)
 	for actor in [first, second]: Fixture.set_training_action(actor.get_node("AI"), &"cooperate", true)
@@ -127,8 +132,11 @@ func _run() -> void:
 	check(real_support and first.shot_count > 0, "actual aimed firing publishes usable support")
 	second.ammo.magazine_rounds = 2
 	second.request_reload()
+	b.cooperation_publish_execution({})
+	var request_id: int = a.cooperation_snapshot().requests[0].request_id
 	second.ammo.reload_progress = 1.0 - 0.2 / second.weapon.reload_seconds
 	b.cooperation_publish_execution({})
+	check(a.cooperation_snapshot().requests[0].request_id == request_id, "continued reload status preserves one request identity despite fresh observations")
 	var delayed := {"outcome": {"unavailable_seconds": 1.0}, "cooperation": {"kind": &"support", "lane_id": &"target", "support_seconds": 1.0, "estimated_start_seconds": 1.0}}
 	check(is_zero_approx(a.cooperation_candidate_seconds(delayed)), "support arriving after the actual reload request ends receives no credit")
 	second.ammo.reload_progress = 0.0
@@ -136,11 +144,17 @@ func _run() -> void:
 	var credit: float = a.cooperation_candidate_seconds(delayed)
 	check(credit > 0.0 and credit <= 1.0 and is_equal_approx(credit, a.cooperation_candidate_seconds(delayed)), "only overlapping demand is credited and repeated evaluation preserves the provider's own value")
 	second.cancel_reload()
+	b.cooperation_publish_execution({})
+	second.request_reload()
+	b.cooperation_publish_execution({})
+	check(a.cooperation_snapshot().requests[0].request_id != request_id, "a later actual reload receives a new request identity without depending on a suppression preview")
+	second.cancel_reload()
 	first.ammo.magazine_rounds = 0
 	check(b.cooperation_snapshot().supports.is_empty(), "running out of ammunition immediately invalidates previous support")
 	first.is_dead = true
 	original_board.advance(STEP)
 	check(b.cooperation_snapshot().members.all(func(member): return member.id != first.get_instance_id()), "dead members cannot retain a support slot")
+	check(not original_board.can_share_space(first.get_instance_id(), second.get_instance_id()), "dead or unregistered bodies cannot retain yielding authority")
 	var training := EnemyTrainingProfile.new()
 	training.set_setting(&"exit_suppression", &"duration_min", 1.7)
 	check(is_equal_approx(training.setting(&"suppression", &"exit_duration_min"), 1.7), "legacy explicit exit settings survive unified suppression")

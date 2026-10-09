@@ -110,7 +110,7 @@ func update_shooting(delta: float, sees_player: bool, movement_requested: bool) 
 		var recovery_rate: float = maxf(0.0, stability - previous_stability) / maxf(elapsed, 0.0001)
 		var distance: float = actor.get_shot_origin().distance_to(point)
 		var close_pressure: float = clampf(1.0 - distance / maxf(ranged_min_distance, 0.01), 0.0, 1.0)
-		var support_pressure: float = context.cooperation_support_pressure() if request.get("support_intent", false) else 0.0
+		var support_pressure: float = suppression_pressure(request, moving) if request.get("support_intent", false) else 0.0
 		if fire_decision.choose_action(elapsed, stability, fire_stability_target, recovery_rate, close_pressure, support_pressure) != fire_decision.Action.FIRE:
 			return
 	if actor.try_fire():
@@ -127,6 +127,9 @@ func _update_suppression_shooting(delta: float, movement_requested: bool) -> voi
 		actor.update_weapon(delta)
 		return
 	var point: Vector3 = request.get("point", Vector3.INF)
+	if not point.is_finite():
+		actor.update_weapon(delta)
+		return
 	actor.update_weapon(delta, point)
 	var moving: bool = movement_requested or Vector2(actor.velocity.x, actor.velocity.z).length() > 0.05
 	if actor.get_shot_origin().distance_to(point) > actor.weapon.fire_range or fire_pause_remaining > 0.0 or (moving and not fire_while_moving):
@@ -135,7 +138,7 @@ func _update_suppression_shooting(delta: float, movement_requested: bool) -> voi
 	var desired: Vector3 = point - actor.get_shot_origin()
 	if desired.is_zero_approx() or actor.aim_direction.angle_to(desired) > actor.AIM_ACQUIRE_ANGLE:
 		return
-	if not has_clear_suppression_lane(actor.get_shot_origin(), actor.aim_direction, actor.get_shot_origin().distance_to(point)):
+	if not has_clear_suppression_lane(actor.get_shot_origin(), desired, desired.length()) or not has_clear_suppression_lane(actor.get_shot_origin(), actor.aim_direction, desired.length()):
 		context.invalidate_utility()
 		return
 	if not context.cooperation_line_safe(actor.get_shot_origin(), point): return
@@ -152,9 +155,24 @@ func _record_burst_shot() -> void:
 func _current_firing_stability() -> float:
 	return actor.get_center_probability()
 
+func close_suppression_pressure() -> float:
+	if not context.sees_player or not context.last_seen_position.is_finite(): return 0.0
+	return clampf(1.0 - context._horizontal_distance(context.last_seen_position) / maxf(0.01, ranged_min_distance), 0.0, 1.0)
+
+## Intent can express urgency, but only current observations/authorized retreat
+## or real unmet team demand supply pressure. It never bypasses firing gates.
+func suppression_pressure(intent: Dictionary = {}, moving: bool = false) -> float:
+	var pressure: float = maxf(context.cooperation_support_pressure(), close_suppression_pressure())
+	if intent.get("pressure_reason", &"") == &"retreat" and context.sees_player and moving:
+		var current: Dictionary = context.utility_current
+		if intent.get("owner", &"") == current.get("id", &"") and current.get("mode", &"") == &"covering_retreat" and current.get("support_request", {}).get("kind", &"") == &"retreat":
+			pressure = maxf(pressure, 1.0)
+	return clampf(pressure, 0.0, 1.0)
+
 ## Read-only estimate using the same steady/fire comparison; no aim or timer changes.
 func estimated_steady_wait(support_intent: bool = false) -> float:
-	var demand: float = context.cooperation_support_pressure()
+	# Candidate estimates cannot inherit the previous action's retreat intent.
+	var demand: float = suppression_pressure()
 	if demand <= 0.0: return 0.0
 	var target: float = maxf(0.0001, fire_stability_target)
 	var quality: float = clampf(_current_firing_stability() / target, 0.0, 1.0)
@@ -175,24 +193,32 @@ func reset_fire_timing() -> void:
 ## 普通接敌和墙角攻击占位一样，先比较完整路线，再执行选中的准确位置。
 
 func has_clear_suppression_lane(origin: Vector3, direction: Vector3, distance: float) -> bool:
-	if direction.is_zero_approx() or distance <= 0.0:
-		return false
-	return context.cover_selection.has_clear_line(origin, origin + direction.normalized() * minf(0.5, distance))
+	# A clear muzzle alone never makes a frozen region behind a hard wall useful.
+	return has_clear_firing_lane(origin, direction, distance)
 
 
 ## 中心弹道与近枪口空间是硬条件；远处外围散布擦墙只降低质量。
 
-var _lane_frame := -1
+var _geometry_evaluation_depth := 0
 var _lane_cache: Dictionary = {}
 var _muzzle_shape := ConvexPolygonShape3D.new()
 var _muzzle_query := PhysicsShapeQueryParameters3D.new()
 var _muzzle_dimensions := Vector2.INF
 
+func begin_geometry_evaluation() -> void:
+	if _geometry_evaluation_depth == 0: _lane_cache.clear()
+	_geometry_evaluation_depth += 1
+
+func end_geometry_evaluation() -> void:
+	assert(_geometry_evaluation_depth > 0)
+	_geometry_evaluation_depth -= 1
+	if _geometry_evaluation_depth == 0: _lane_cache.clear()
+
 func has_clear_firing_lane(origin: Vector3, direction: Vector3, distance: float) -> bool:
-	if _lane_frame != Engine.get_physics_frames():
-		_lane_frame = Engine.get_physics_frames()
-		_lane_cache.clear()
-	var key := [origin, direction, distance, actor.get_max_shot_deviation_degrees()]
+	if direction.is_zero_approx() or distance <= 0.0: return false
+	if _geometry_evaluation_depth <= 0: return _query_clear_firing_lane(origin, direction, distance)
+	var endpoint: Vector3 = origin + direction.normalized() * distance
+	var key := [origin, endpoint, actor.get_max_shot_deviation_degrees()]
 	if not _lane_cache.has(key):
 		_lane_cache[key] = _query_clear_firing_lane(origin, direction, distance)
 	return _lane_cache[key]

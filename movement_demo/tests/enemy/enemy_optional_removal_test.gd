@@ -26,6 +26,7 @@ func _run() -> void:
 	ai.unit_type.profile.tactical_actions.clear()
 	ai.training.profile.selected_tactics.assign([&"exit_suppression", &"covering_retreat", &"attack_position"])
 	ai.refresh_configuration(true)
+	ai.set_physics_process(false)
 	ai.cover_selection.debug_cover_selection = false
 	ai.actions[&"search"].debug_tracking_cheat = false
 	ai.actions[&"search"].tracking_cheat_enabled = false
@@ -50,18 +51,30 @@ func _run() -> void:
 	ai.unit_type.profile.tactical_actions.append(preload("res://resources/enemy/actions/suppression.tres"))
 	ai.training.profile.selected_tactics.assign([&"suppression"])
 	ai.refresh_configuration(true)
+	ai.set_physics_process(false)
 	check(not ai.actions.has(&"engage") and ai.actions.has(&"suppression"), "接敌与压制按定义分别装配")
+	ai.context.reset_memory()
 	enemy.global_position = Vector3(24, 0, -2)
-	ai.is_alerted = true
-	ai.has_visual_memory = true
-	ai.last_seen_position = Vector3(22, 0, -2)
-	ai.last_known_position = ai.last_seen_position
-	player.global_position = Vector3(26, 0, 4)
-	enemy.look_at(ai.last_seen_position)
+	enemy.velocity = Vector3.ZERO
+	player.global_position = Vector3(22, 0, -2)
+	enemy.look_at(player.global_position)
 	for frame in range(4): await physics_frame
+	var visible: bool = ai.perception.can_see_player()
+	ai.context.update_evidence(1.0 / 60.0, visible)
+	var observed_aim: Vector3 = ai.context.last_seen_aim_position
+	check(visible and observed_aim.is_finite(), "独立压制先取得真实可见身体采样")
+	player.global_position = Vector3(26, 0, 4)
+	for frame in range(4): await physics_frame
+	visible = ai.perception.can_see_player()
+	ai.context.update_evidence(1.0 / 60.0, visible)
+	var evidence: Dictionary = ai.context.suppression_basis()
+	check(not visible and evidence.get("source") == &"visual_loss" and evidence.get("aim_position", Vector3.INF).is_equal_approx(observed_aim), "真正失视冻结原可射身体点，隐藏玩家不会改写目标")
 	var shots: int = enemy.shot_count
-	ai._start_utility_option({"id": &"suppression", "destination": {}, "cost": 0.0}, false)
 	var suppression = ai.actions[&"suppression"]
+	var candidates: Array = suppression.collect_candidates(false)
+	check(not candidates.is_empty(), "移除接敌后仍能产生合法个人失视压制候选")
+	if not candidates.is_empty(): ai._start_utility_option(candidates[0], false)
+	check(ai.current_action == suppression and suppression.is_active(), "独立压制通过原validate和begin启动合法方案")
 	for frame in range(60):
 		await physics_frame
 		var output: Dictionary = suppression.tick(1.0 / 60.0, false)
@@ -70,6 +83,7 @@ func _run() -> void:
 	check(enemy.shot_count > shots, "移除接敌模块后压制仍能独立实际开火")
 	ai.unit_type.profile.tactical_actions.clear()
 	ai.refresh_configuration(true)
+	ai.set_physics_process(false)
 	check(ai.current_action == null and not suppression.is_active(), "运行中删除压制会取消其执行")
 	ai.context.noise_search_origin = Vector3.INF
 	ai.is_alerted = true

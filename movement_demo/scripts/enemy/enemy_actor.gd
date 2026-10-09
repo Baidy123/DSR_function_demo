@@ -4,6 +4,8 @@ extends CharacterBody3D
 
 const BodyMotion = preload("res://scripts/enemy/services/enemy_body_motion.gd")
 var body_motion = BodyMotion.new()
+var local_motion = preload("res://scripts/enemy/services/enemy_local_motion.gd").new()
+var _local_movement_velocity := Vector3.ZERO
 @export_group("协作分组")
 ## 同战斗区且通信资格匹配的友军共享真实观察。新阵营需通过关系接口配置。
 @export var faction_id: StringName = &"enemy"
@@ -151,6 +153,7 @@ func _physics_process(delta: float) -> void:
 
 ## 执行方向与速度；调用者负责决定目的地。
 func move_character(direction: Vector3, delta: float, speed_multiplier: float = 1.0) -> void:
+	_local_movement_velocity = Vector3.ZERO
 	if get_tree().paused: return
 	if body_motion.active():
 		if _last_move_physics_frame == Engine.get_physics_frames(): return
@@ -161,8 +164,9 @@ func move_character(direction: Vector3, delta: float, speed_multiplier: float = 
 	# 自主移动与受击外力分开：任何行为都不能绕过前摇限制。
 	if not can_move(): direction = Vector3.ZERO
 	speed_multiplier = get_effective_movement_multiplier(speed_multiplier)
-	velocity.x = direction.x * move_speed * speed_multiplier
-	velocity.z = direction.z * move_speed * speed_multiplier
+	_local_movement_velocity = local_motion.resolve(Vector3(direction.x, 0.0, direction.z) * move_speed * speed_multiplier, delta, move_speed * speed_multiplier)
+	velocity.x = _local_movement_velocity.x
+	velocity.z = _local_movement_velocity.z
 	velocity += _advance_hit_push(delta)
 	if not is_on_floor():
 		velocity += get_gravity() * delta
@@ -173,6 +177,21 @@ func move_character(direction: Vector3, delta: float, speed_multiplier: float = 
 	move_and_slide()
 	_weapon_move_distance += Vector2(global_position.x - before.x, global_position.z - before.z).length()
 	_update_movement_noise(delta, before, speed_multiplier > 1.0)
+
+
+## Facts of this body's voluntary motion, including a short local yield, excluding hit push.
+func get_local_movement_velocity() -> Vector3:
+	return _local_movement_velocity
+
+func clear_local_movement() -> void:
+	local_motion.reset()
+	_local_movement_velocity = Vector3.ZERO
+
+func configure_local_navigation(navigation: NavigationRegion3D, board) -> void:
+	local_motion.configure(self, navigation, board)
+
+func _exit_tree() -> void:
+	local_motion.configure(self, null, null)
 
 
 ## 条件查询与实际执行共用；不读取 AI、行为 ID 或控制器阶段。
@@ -224,6 +243,8 @@ func receive_hit(damage: float, attacker_position: Vector3 = Vector3.INF) -> voi
 	health = maxf(0.0, health - maxf(damage, 0.0))
 	if health <= 0.0:
 		is_dead = true
+		local_motion.reset()
+		_local_movement_velocity = Vector3.ZERO
 		cancel_melee()
 		clear_melee_hit_effects()
 		cancel_reload()
@@ -264,6 +285,7 @@ func receive_melee_hit(damage: float, attacker_position: Vector3, distance: floa
 	_hit_push_duration = maxf(0.05, duration)
 	_hit_push_remaining = _hit_push_duration if distance > 0.0 else 0.0
 	_hit_push_velocity = direction.normalized() * (2.0 * maxf(0.0, distance) / _hit_push_duration)
+	if _hit_push_remaining > 0.0: clear_local_movement()
 
 
 func _advance_hit_push(delta: float) -> Vector3:
@@ -293,6 +315,8 @@ func clear_melee_hit_effects() -> void:
 
 
 func reset_target() -> void:
+	local_motion.reset()
+	_local_movement_velocity = Vector3.ZERO
 	body_motion.reset()
 	cancel_melee()
 	melee_cooldown = 0.0
@@ -640,7 +664,9 @@ func request_crouch(value: bool) -> void:
 	body_motion.request_crouch(value)
 
 func begin_vault(plan: Dictionary) -> bool:
-	return body_motion.begin(plan)
+	if not body_motion.begin(plan): return false
+	clear_local_movement()
+	return true
 
 func is_vaulting() -> bool:
 	return body_motion.active()

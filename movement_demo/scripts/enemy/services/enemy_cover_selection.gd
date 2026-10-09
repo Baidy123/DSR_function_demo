@@ -27,6 +27,9 @@ var ai:
 	get: return get_parent().context
 @onready var enemy = get_parent().get_parent()
 var attack_geometry = preload("res://scripts/enemy/services/enemy_attack_geometry.gd").new()
+var _geometry_evaluation_depth := 0
+var _environment_ray_cache: Dictionary = {}
+var environment_ray_queries := 0
 
 
 func _ready() -> void:
@@ -34,6 +37,25 @@ func _ready() -> void:
 		var preview := preload("res://scripts/debug/attack_point_preview.gd").new()
 		preview.name = "AttackPreview"
 		add_child(preview)
+
+func begin_geometry_evaluation() -> void:
+	if _geometry_evaluation_depth == 0: _environment_ray_cache.clear()
+	_geometry_evaluation_depth += 1
+
+func end_geometry_evaluation() -> void:
+	assert(_geometry_evaluation_depth > 0)
+	_geometry_evaluation_depth -= 1
+	if _geometry_evaluation_depth == 0: _environment_ray_cache.clear()
+
+## Only these fixed environment queries exclude actor and player; vision queries
+## that must hit the player retain their own unmodified physics query.
+func environment_ray(from: Vector3, to: Vector3) -> Dictionary:
+	var key := [from, to]
+	if _geometry_evaluation_depth > 0 and _environment_ray_cache.has(key): return _environment_ray_cache[key]
+	environment_ray_queries += 1
+	var hit: Dictionary = enemy.get_world_3d().direct_space_state.intersect_ray(_ray_query(from, to))
+	if _geometry_evaluation_depth > 0: _environment_ray_cache[key] = hit
+	return hit
 
 
 ## 保留所有候选的评估结果，供查看淘汰原因；不改变状态、导航目的地或射击请求。
@@ -220,11 +242,7 @@ func _center_hidden_by_cover(
 	if not is_instance_valid(expected_cover):
 		return false
 
-	var query: PhysicsRayQueryParameters3D = _ray_query(
-		origin,
-		enemy.get_posture_eye_position(crouched, point)
-	)
-	var hit: Dictionary = enemy.get_world_3d().direct_space_state.intersect_ray(query)
+	var hit: Dictionary = environment_ray(origin, enemy.get_posture_eye_position(crouched, point))
 	return not hit.is_empty() and hit.collider == expected_cover
 
 
@@ -262,11 +280,7 @@ func _cover_quality(
 	for threat_offset: Vector3 in threat_offsets:
 		for body_offset: Vector3 in body_offsets:
 			total += 1
-			var query: PhysicsRayQueryParameters3D = _ray_query(
-				origin + threat_offset,
-				target_center + body_offset
-			)
-			var hit: Dictionary = enemy.get_world_3d().direct_space_state.intersect_ray(query)
+			var hit: Dictionary = environment_ray(origin + threat_offset, target_center + body_offset)
 
 			if not hit.is_empty() and hit.collider == expected_cover:
 				protected += 1
@@ -283,8 +297,7 @@ func is_hidden_at(point: Vector3, origin: Vector3) -> bool:
 	var side: Vector3 = direction.normalized().cross(Vector3.UP) * 0.4
 	var body_offsets: Array[Vector3] = [Vector3.ZERO, side, -side]
 	for offset: Vector3 in body_offsets:
-		var query: PhysicsRayQueryParameters3D = _ray_query(origin, enemy.get_posture_eye_position(false, point) + offset)
-		var hit: Dictionary = enemy.get_world_3d().direct_space_state.intersect_ray(query)
+		var hit: Dictionary = environment_ray(origin, enemy.get_posture_eye_position(false, point) + offset)
 		if hit.is_empty() or not hit.collider is StaticBody3D:
 			return false
 	return true
@@ -293,7 +306,7 @@ func is_hidden_at(point: Vector3, origin: Vector3) -> bool:
 func has_clear_line(from: Vector3, to: Vector3) -> bool:
 	if from.distance_squared_to(to) < 0.000001:
 		return true
-	return enemy.get_world_3d().direct_space_state.intersect_ray(_ray_query(from, to)).is_empty()
+	return environment_ray(from, to).is_empty()
 
 
 ## 先确认冻结线索的实际遮挡归属，再评估该墙出口；不能因出口不可射改认邻墙。
@@ -315,10 +328,9 @@ func suppression_geometry(known: Vector3) -> Dictionary:
 func confirmed_suppression_cover(known: Vector3) -> StaticBody3D:
 	if not known.is_finite(): return null
 	var origin: Vector3 = enemy.get_shot_origin()
-	var space: PhysicsDirectSpaceState3D = enemy.get_world_3d().direct_space_state
 	# 低墙可能挡腿而不挡眼睛；这里不读取目标当前是否蹲下。
 	var low_point := known + Vector3.UP * 0.15
-	var hit: Dictionary = space.intersect_ray(_ray_query(origin, low_point))
+	var hit: Dictionary = environment_ray(origin, low_point)
 	var region := hit.get("collider") as StaticBody3D
 	if region == null or not region.is_in_group("cover_region") or not ai.navigation_region.is_ancestor_of(region): return null
 	var box := region.get_node_or_null("CollisionShape3D") as CollisionShape3D
@@ -332,8 +344,8 @@ func confirmed_suppression_cover(known: Vector3) -> StaticBody3D:
 	var radius: float = enemy.get_node("CollisionShape3D").shape.radius
 	var side: Vector3 = direction.normalized().cross(Vector3.UP) * radius * 0.75
 	for target: Vector3 in [low_point, low_point + side, low_point - side, known + Vector3.UP * enemy.get_posture_body_height(false) * 0.5]:
-		var forward: Dictionary = space.intersect_ray(_ray_query(origin, target))
-		var backward: Dictionary = space.intersect_ray(_ray_query(target, origin))
+		var forward: Dictionary = environment_ray(origin, target)
+		var backward: Dictionary = environment_ray(target, origin)
 		if forward.is_empty() and backward.is_empty(): continue
 		if forward.get("collider") != region or backward.get("collider") != region: return null
 	return region

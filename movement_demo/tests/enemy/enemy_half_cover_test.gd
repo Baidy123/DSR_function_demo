@@ -80,42 +80,27 @@ func _run() -> void:
 	check(ai.context.suppression_basis().get("id") == event_id and ai.context.suppression_basis().position == captured, "remaining in contact neither tracks coordinates nor renews the event")
 	var suppression = ai.actions[&"suppression"]
 	check(basis.get("low_cover_context", false), "low-cover context is frozen with the exact clue")
-	var exits = ai.actions[&"suppression"]
-	check(not exits.preview_candidate(&"exit_sweep").is_empty(), "low-cover exit suppression remains a legal geometric alternative")
+	for mode in [&"exit_left", &"exit_right", &"exit_sweep"]:
+		check(suppression.preview_candidate(mode).is_empty(), "retired exit modes cannot turn an exact clue into fire")
 	ai.training.profile.set_setting(&"suppression", &"low_cover_point_preference", 0.0)
 	var unbiased: Dictionary = ai.action_selector.score_outcome(ai.context, 1.0, 1.0, 1.0, suppression.preference_credit())
 	ai.training.profile.set_setting(&"suppression", &"low_cover_point_preference", 1.0)
 	var biased: Dictionary = ai.action_selector.score_outcome(ai.context, 1.0, 1.0, 1.0, suppression.preference_credit())
-	check(is_equal_approx(unbiased.cost - biased.cost, 1.0) and biased.exposed_seconds == unbiased.exposed_seconds and exits.preview_candidate(&"exit_sweep").outcome.preference_credit == 0.0, "low-cover preference transparently improves point suppression without falsifying outcomes")
+	check(is_equal_approx(unbiased.cost - biased.cost, 1.0) and biased.exposed_seconds == unbiased.exposed_seconds, "low-cover preference remains explicit and never falsifies outcomes")
 	var alternatives: Array = [{"id": &"point", "cost": biased.cost}, {"id": &"better", "cost": biased.cost - 0.1}]
 	check(ai.action_selector.choose_option(alternatives).id == &"better", "another lower-cost candidate can still beat the low-cover preference")
-	# Move towards one end: exits no longer offer symmetric containment of the known point.
 	enemy.global_position.x += 0.6
 	await settle()
-	var candidates: Array = suppression.collect_candidates(false)
-	check(not candidates.is_empty(), "exact non-visual clue grants authorized suppression eligibility")
-	if not candidates.is_empty():
-		var best: Dictionary = ai.action_selector.choose_option(ai.action_selector.assess_options(ai, false))
-		check(best.get("id") == &"suppression", "ordinary Utility selects authorized suppression from an exact clue")
-		ai._start_utility_option(best, false)
-		check(suppression.active and suppression.target_center.is_equal_approx(captured + Vector3.UP * 0.8), "suppression executes its evidence snapshot")
-		var shots: int = enemy.shot_count
-		var wall_hits := 0
-		for frame in 100:
-			await physics_frame
-			ai.context.update_evidence(1.0 / 60.0, false)
-			var output: Dictionary = suppression.tick(1.0 / 60.0, false)
-			enemy.face_direction(output.facing, 1.0 / 60.0)
-			var previous: int = enemy.shot_count
-			ai.context.fire.update(1.0 / 60.0, false, false, output.fire)
-			if enemy.shot_count > previous and enemy.last_shot_collider == cover: wall_hits += 1
-		check(enemy.shot_count > shots and wall_hits > 0, "Utility-selected suppression fires real shots that stop at the low wall")
-		check(suppression.target_center == captured + Vector3.UP * 0.8, "suppression never follows the hidden live target")
-		var expiry: float = basis.valid_until
-		ai._cancel_utility_execution()
-		check(suppression.collect_candidates(false).is_empty(), "switching actions cannot restart a spent suppression event")
-		ai.context.evidence_elapsed_seconds = expiry + 0.1
-		check(ai.context.suppression_basis().is_empty(), "close clue expires on its own clock")
+	check(suppression.collect_candidates(false).is_empty(), "an exact hidden foot coordinate alone cannot authorize wasteful hard-wall fire")
+	var shots: int = enemy.shot_count
+	for frame in 20:
+		await physics_frame
+		ai.context.update_evidence(1.0 / 60.0, false)
+		ai.context.fire.update(1.0 / 60.0, false, false, suppression.tick(1.0 / 60.0, false).fire)
+	check(enemy.shot_count == shots and ai.context.last_known_position == captured, "hidden clue retains investigation evidence without firing into the wall")
+	check(ai.context.suppression_basis().position == captured, "hidden movement never updates the frozen clue")
+	ai.context.evidence_elapsed_seconds = float(basis.valid_until) + 0.1
+	check(ai.context.suppression_basis().is_empty(), "close clue expires on its own clock")
 	ai.context.reset_memory()
 	ai.context.last_known_position = player.global_position
 	ai.context.is_alerted = true

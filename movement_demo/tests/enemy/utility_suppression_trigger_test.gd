@@ -35,6 +35,7 @@ func _run() -> void:
 	enemy.look_at(player.global_position)
 	for f in range(5): await physics_frame
 	check(ai.perception.can_see_player(), "测试起点真实目击玩家")
+	ai.context.update_evidence(0.01, true)
 	ai.is_alerted = true
 	ai.has_visual_memory = true
 	ai.last_known_position = player.global_position
@@ -74,10 +75,11 @@ func _run() -> void:
 	# 即使有旧标记，掩体执行期间也不能把压制送入候选池抢占。
 	ai.utility_suppression_pending = true
 	enemy.global_position = Vector3(24.327566, 0.001, 7.430623)
+	await _apply_cover_posture(enemy, {"crouch": false})
 	for f in range(3): await physics_frame
 	check(ai.actions[&"suppression"].utility_available(), "仍有可射区域时单独验证主动躲藏的资格门槛")
 	var options: Array = evaluator.assess_options(ai, false)
-	check(not options.any(func(o): return o.id in suppressed), "掩体动作不被普通或出口压制抢占")
+	check(not options.any(func(o): return o.id in suppressed), "掩体动作不被失视压制抢占")
 	enemy.global_position = cover_choice.destination.hide
 	await _apply_cover_posture(enemy, cover_choice.destination)
 	ai.utility_suppression_pending = false

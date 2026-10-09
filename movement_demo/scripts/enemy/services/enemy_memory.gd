@@ -5,6 +5,8 @@ enum CombatType { MELEE, RANGED }
 var state: State = State.IDLE
 var last_known_position: Vector3 = Vector3.INF
 var last_seen_position: Vector3 = Vector3.INF
+## Actual observed body sample with a clear muzzle lane; never inferred from hidden pose.
+var last_seen_aim_position: Vector3 = Vector3.INF
 var last_seen_direction := Vector3.ZERO
 var observed_velocity := Vector3.ZERO
 var has_visual_memory := false

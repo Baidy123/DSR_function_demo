@@ -172,7 +172,7 @@ func tick(delta: float, visible: bool) -> Dictionary:
 	_running = transfer.is_active()
 	if low_cycle.active(): low_cycle.tick(delta, transfer.phase == transfer.Phase.HIDE, visible, transfer.watch_seconds)
 	var facing: Vector3 = context.last_known_position - actor.global_position if transfer.covering_retreat or direction.is_zero_approx() else direction
-	var firing: Dictionary = {"owner": action_id, "mode": &"visible", "bypass_steady": true} if transfer.covering_retreat and transfer.phase == transfer.Phase.RUN_TO_COVER else {}
+	var firing: Dictionary = {"owner": action_id, "mode": &"visible", "support_intent": true, "pressure_reason": &"retreat"} if transfer.covering_retreat and transfer.phase == transfer.Phase.RUN_TO_COVER else {}
 	var output := motion(direction, transfer.movement_multiplier(), facing, firing)
 	output.crouch = transfer.wants_crouch()
 	return output
