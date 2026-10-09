@@ -70,7 +70,7 @@ movement_demo/
 
 主场景保留原相机节点，通过新增的 `CameraGroundAnchor`（`systems/camera_ground_anchor.gd`）跟随玩家地面高度，过滤翻越抬升；不修改第三方相机插件。Arena 增加一个独立低掩体实例，原高掩体和行为资源保留。玩家、敌人、NPC 与示例胶囊站高为 1.75 米，导航资源同步这一尺度。
 
-原 `Camera3D` 挂 `systems/player_camera.gd`，只订阅现有 Combat 装备通知，将 WeaponData 中的视野大小／过渡时间应用到正交 Size；`systems/camera_occlusion.gd` 是该相机私有的遮挡查询与材质还原辅助对象。位置仍由 Phantom Camera 和原地面锚点控制，不把视野或透明状态放进武器槽、角色动作或 AI。共享材质、物理与导航资源保持独立，配置与限制见 [相机说明](gameplay/CAMERA.md)。
+原 `Camera3D` 挂 `systems/player_camera.gd`，只订阅现有 Combat 装备通知，将 WeaponData 中的视野大小／过渡时间应用到正交 Size；`systems/camera_occlusion.gd` 是该相机私有的模型遮挡查询与材质还原辅助对象，仅处理 `camera_fadeable` 标记的天花板／装饰，保留掩体不透明。主场景增加 `scenes/world/camera_occlusion_demo.tscn` 纯视觉试玩实例，不增加物理或导航几何。位置仍由 Phantom Camera 和原地面锚点控制，不把视野或透明状态放进武器槽、角色动作或 AI。共享材质、物理与导航资源保持独立，配置与限制见 [相机说明](gameplay/CAMERA.md)。
 
 玩家 V 近战直接扩展 `scripts/player/player_combat_v3.gd`，不另建玩家近战执行文件。纯表现剑光放在 `scripts/systems/effects/` 与 `scenes/effects/`；参数仍在 WeaponData。敌人由 `services/enemy_melee_controller.gd` 管请求与阶段，`enemy_actor.gd` 管实际命中、冷却及独立受击。近战与射击同属底层执行；现有 `actions/enemy_tactics.gd` 在远程接敌中提供近战推开方案，不新增独立挥击脚本／行为资源，不改默认行为、战术目录和训练选择。本轮不移动原模块，不与玩家共用攻击或受击函数，见 [近战说明](gameplay/MELEE.md)。
 

@@ -5,13 +5,14 @@ const Occlusion = preload("res://scripts/systems/camera_occlusion.gd")
 
 @export var player_path: NodePath = ^"../Player"
 @export_group("遮挡透明")
+## 只处理 camera_fadeable 组的天花板／装饰；玩法掩体始终排除。
 @export var occlusion_enabled: bool = true
 ## 挡住角色时保留的不透明度；0完全透明，1不改变外观。
 @export_range(0.0, 1.0, 0.05) var occluded_opacity: float = 0.25
 ## 从完整外观到遮挡透明、或恢复完整外观所用的秒数；0立即切换。
 @export_range(0.0, 2.0, 0.05, "suffix:s") var occlusion_fade_seconds: float = 0.2
-## 只查询环境所在的物理层；不会修改物体的碰撞或可见性层。
-@export_flags_3d_physics var occlusion_mask: int = 1
+## 标记装饰物的3D显示层筛选，同时受相机 Cull Mask 限制；不使用物理层。
+@export_flags_3d_render var occlusion_mask: int = 1
 
 var _actor: Node3D
 var _combat: Node

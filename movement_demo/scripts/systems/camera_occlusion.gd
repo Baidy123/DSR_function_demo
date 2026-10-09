@@ -1,8 +1,8 @@
 extends RefCounted
 
-## 相机专用外观处理：查询原碰撞，独立复制材质，离开遮挡后还原原引用。
+## 只处理明确标记的天花板／装饰物；按模型表面查询，不新增玩法碰撞。
 ## Compatibility 不支持 GeometryInstance3D.transparency，不能用该属性淡出。
-const MAX_HITS_PER_RAY := 16
+const FADE_GROUP := &"camera_fadeable"
 const IGNORE_GROUP := &"camera_occlusion_ignore"
 var _faded: Dictionary = {}
 var _warned_materials: Dictionary = {}
@@ -14,30 +14,35 @@ func update(camera: Camera3D, actor: Node3D, height: float, delta: float,
 		clear()
 		return
 	var obstructing: Dictionary = {}
-	var visited: Dictionary = {}
+	var candidates: Dictionary = {}
+	for decoration in camera.get_tree().get_nodes_in_group(FADE_GROUP):
+		if not _has_excluded_ancestor(decoration): _collect_meshes(decoration, candidates)
 	var center := actor.global_position + Vector3.UP * height * 0.55
 	var side := camera.global_basis.x.normalized() * minf(0.25, height * 0.2)
 	var points := [actor.global_position + Vector3.UP * height * 0.9,
 		center, center - side, center + side, actor.global_position + Vector3.UP * height * 0.25]
-	var space := camera.get_world_3d().direct_space_state
+	var origins: Array[Vector3] = []
+	var targets: Array[Vector3] = []
 	for point: Vector3 in points:
 		# 正交投影的射线互相平行，不能简单从相机原点连到角色。
 		if camera.is_position_behind(point): continue
-		var screen_point := camera.unproject_position(point)
-		var origin := camera.project_ray_origin(screen_point)
-		var query := PhysicsRayQueryParameters3D.create(origin, point, mask)
-		query.hit_from_inside = true
-		var excluded: Array[RID] = []
-		if actor is CollisionObject3D: excluded.append(actor.get_rid())
-		for _layer in MAX_HITS_PER_RAY:
-			query.exclude = excluded
-			var hit := space.intersect_ray(query)
-			if hit.is_empty(): break
-			excluded.append(hit.rid)
-			var body = hit.collider
-			if body is StaticBody3D and not body.is_in_group(IGNORE_GROUP) and not visited.has(body):
-				visited[body] = true
-				_collect_meshes(body, obstructing)
+		origins.append(camera.project_ray_origin(camera.unproject_position(point)))
+		targets.append(point)
+	for mesh: MeshInstance3D in candidates:
+		if mesh.get_world_3d() != camera.get_world_3d() or (mesh.layers & camera.cull_mask & mask) == 0: continue
+		# 导入模型可能用0.01等非零缩放；不能把其很小的行列式当成零。
+		if mesh.global_basis.determinant() == 0.0: continue
+		var inverse := mesh.global_transform.affine_inverse()
+		var bounds := mesh.mesh.get_aabb()
+		for index in origins.size():
+			var from := inverse * origins[index]
+			var to := inverse * targets[index]
+			if bounds.intersects_segment(from, to) == null: continue
+			# Godot 复用 Mesh 的三角形查询缓存；精确表面检查避免镂空装饰误淡出。
+			var triangles := mesh.mesh.generate_triangle_mesh()
+			if triangles != null and not triangles.intersect_segment(from, to).is_empty():
+				obstructing[mesh] = true
+				break
 	for mesh: MeshInstance3D in obstructing:
 		if not _faded.has(mesh):
 			var entry := _capture(mesh)
@@ -61,13 +66,23 @@ func update(camera: Camera3D, actor: Node3D, height: float, delta: float,
 
 
 func _collect_meshes(node: Node, result: Dictionary) -> void:
-	# 包括 Presentation 运行时的内部模型，但不跨进另一个物理对象或粒子节点。
-	if node.is_in_group(IGNORE_GROUP): return
+	# 标记专用容器时包括其内部模型；角色和玩法掩体始终排除。
+	if _is_excluded(node): return
 	if node is MeshInstance3D and node.is_visible_in_tree() and node.mesh != null:
 		result[node] = true
 	for child in node.get_children(true):
-		if child is CollisionObject3D: continue
 		_collect_meshes(child, result)
+
+
+func _is_excluded(node: Node) -> bool:
+	return node is CharacterBody3D or node.is_in_group("cover_region") or node.is_in_group(IGNORE_GROUP)
+
+
+func _has_excluded_ancestor(node: Node) -> bool:
+	while node != null:
+		if _is_excluded(node): return true
+		node = node.get_parent()
+	return false
 
 
 func _capture(mesh: MeshInstance3D) -> Dictionary:
