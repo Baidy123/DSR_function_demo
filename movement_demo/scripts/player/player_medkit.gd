@@ -98,7 +98,7 @@ func _physics_process(delta: float) -> void:
 func _can_treat() -> bool:
 	if health.is_dead or health.health >= health.max_health or remaining_count <= 0 or player.is_in_dialogue: return false
 	if not player.is_on_floor() or player.is_vaulting() or player.is_facing_npc: return false
-	if player.current_speed > 0.02 or Vector2(player.velocity.x, player.velocity.z).length() > 0.02: return false
+	# 动作输入由 _has_action_input 检查；松键后的惯性继续原减速，不阻止医疗。
 	# 身体的实际姿态量决定是否仍在蹲起，不借用表现层的动画状态。
 	if player.crouch_amount > 0.0001 and player.crouch_amount < 0.9999: return false
 	if combat != null:

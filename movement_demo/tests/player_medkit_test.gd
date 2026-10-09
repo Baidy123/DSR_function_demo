@@ -169,6 +169,33 @@ func _run() -> void:
 	await _step(20)
 	_key(KEY_D, false)
 	_check("movement both cancels treatment and actually moves", not medkit.is_using() and player.global_position.length() > 0.2)
+	# Release movement and press H in the same input batch, before deceleration.
+	# Both current_speed and velocity must still be nonzero when H is dispatched.
+	for mode in ["walk", "sprint", "crouch"]:
+		await _settle()
+		if mode == "crouch":
+			player.request_crouch(true)
+			await _step(20)
+		_key(KEY_W, true)
+		if mode == "sprint": _key(KEY_SHIFT, true)
+		await _step(30)
+		var speed_before: float = player.current_speed
+		var velocity_before: Vector3 = player.velocity
+		_check(mode + ": actual movement builds nonzero inertia", speed_before > 0.2 and Vector2(velocity_before.x, velocity_before.z).length() > 0.2)
+		_key(KEY_H, true)
+		_key(KEY_H, false)
+		_check(mode + ": held movement still rejects H without stopping the player", not medkit.is_using() and is_equal_approx(player.current_speed, speed_before) and player.velocity.is_equal_approx(velocity_before))
+		_key(KEY_W, false)
+		if mode == "sprint": _key(KEY_SHIFT, false)
+		var before_coasting: Vector3 = player.global_position
+		_key(KEY_H, true)
+		_key(KEY_H, false)
+		_check(mode + ": release then H immediately starts despite residual velocity", medkit.is_using() and is_equal_approx(player.current_speed, speed_before) and player.velocity.is_equal_approx(velocity_before))
+		await _step(30)
+		_check(mode + ": original deceleration continues while medical progress advances", medkit.is_using() and medkit.get_progress() > 0.2 and is_zero_approx(player.current_speed) and player.global_position.distance_to(before_coasting) > 0.01)
+		_key(KEY_D, true)
+		_key(KEY_D, false)
+		_check(mode + ": new movement still cancels without healing or consumption", not medkit.is_using() and medkit.remaining_count == 3 and health.health == 65.0)
 	await _settle()
 	combat.ammo.magazine_rounds = 1
 	_check("original reload still starts", combat.request_reload())
