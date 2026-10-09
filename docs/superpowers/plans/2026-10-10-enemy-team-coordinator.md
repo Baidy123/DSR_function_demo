@@ -1,6 +1,10 @@
 # 敌人队伍协调器实施计划
 
-2026-10-10。用户已批准[正式设计](../specs/2026-10-10-enemy-team-coordinator-design.md)，本计划依据设计提交 `0cf2bcb` 编写，供选择实施方式。当前只完成书面计划，新的队伍规划器产品代码尚未开始；设计中的接口名称及建议默认值仍须实现和验证，不能记作已有功能或用户指定的硬数值。
+2026-10-10。用户已批准[正式设计](../specs/2026-10-10-enemy-team-coordinator-design.md)及本计划，并选择在当前会话按分工推进。本计划依据设计提交 `0cf2bcb` 编写。新的队伍规划器产品代码尚未开始；设计中的接口名称及建议默认值仍须实现和验证，不能记作已有功能或用户指定的硬数值。
+
+用户后续建议提前整理每张地图的信息以改善性能。本次将区域共享静态索引细化进阶段5，保留阶段0至7的次序；加载时分批准备、变化时局部更新和不增加手工烘焙步骤是当前实现选择，不写成用户指定的硬参数或已证实的性能收益。
+
+针对用户询问能否自动化，本计划采用自动建立和维护：新地图首次加载自动准备，地图增删／移动／尺寸调整自动更新，同图 reset／重开复用有效静态数据，仅重置敌情、调查进度和任务；换图隔离缓存，不手工维护战术图或场景名标签。具体事件／增量签名机制由实现选择；导航网格本身仍按原项目流程重烘焙，索引自动跟随新版本。
 
 ## 开始条件与保留边界
 
@@ -18,7 +22,7 @@
 | --- | --- | --- |
 | root：通用接入与整合 | `services/enemy_context.gd`、`actions/enemy_action.gd`、`enemy_ai.gd`、必要的 `enemy_action_selector.gd`、`services/enemy_spatial_evaluator.gd`、`config/cooperation_settings.gd`、训练兼容与运行器、正式 MD | 拥有所有公共胶水。接收 board、planner、搜索的接口请求；合并、验收、commit/push。`world/shooting_range.gd` 原区域时钟优先直接复用，确需修改也由 root 负责。 |
 | agent1：任务板与原战术转接 | `services/enemy_cooperation.gd`、`actions/enemy_search.gd`、`services/enemy_search_coverage.gd`、`services/enemy_cover_inspection_geometry.gd`、`services/enemy_flank_route.gd`、`actions/enemy_cooperation_action.gd`；对应服务／搜索协议测试 | board 始终唯一拥有者，统一旧 inspection/flank/search 权威。搜索预算扩展交 root 修改 Spatial，不能双方编辑 Context。 |
-| agent3：纯规划与协议 | 新增 `services/enemy_team_planner.gd` 及 `.gd.uid`、纯值协议／规划器测试 | 首先冻结输入输出协议，可与 root 的通用接点测试并行。后续协助只读审查；普通动作自保适配文件只有在 root 明确移交后才编辑。 |
+| agent3：纯规划与协议 | 新增 `services/enemy_team_planner.gd` 及 `.gd.uid`、纯值协议／规划器测试；纯 planner 稳定后，在阶段5负责拟新增 `services/enemy_tactical_map.gd` 及对应索引测试 | 地图 helper 与纯 planner 分开，前者只整理地图，后者继续只读值。root 拥有区域挂接与公共预算入口，agent1 只消费索引做 coverage/search。普通动作自保适配文件只有在 root 明确移交后才编辑。 |
 | agent2：真实行为与性能验收 | 新增协调器运行时／同步／地图搜索测试，所需的独立测试辅助 | 不在生产代码里加入强选。root 统一登记运行器，避免测试登记冲突。性能测试由 agent2 独占机器负载窗口。 |
 
 表内脚本路径均相对于 `movement_demo/scripts/enemy/`，特别注明的世界脚本除外；测试放在 `movement_demo/tests/enemy/`。如需修改 `enemy_tactics.gd`、`enemy_reload_action.gd`、`enemy_cover_action.gd` 或 `enemy_covering_retreat_action.gd` 的 offer／自保适配，默认由 root 编辑，或整文件移交后再由 agent3 编辑。Fire、身体和局部避让在本计划中以复用为主，不能因协同指令绕过它们的执行保护。
@@ -32,12 +36,13 @@
 | 落点 | 拟实现／复用接口 | 必须保持的语义 |
 | --- | --- | --- |
 | 纯 planner | `propose(snapshot, limits) -> Dictionary` | 输入只有值，含 board 时钟；返回有限组合／局部修正建议。无 Node、Context、Action 引用，无导航／物理调用，不自行推进共同阶段。 |
+| 区域地图 helper（阶段5） | 拟新增 `enemy_tactical_map.gd`，提供版本化分块模板查询、失效登记及有界准备入口；具体方法名由 root 统一 | 每战斗区一份，读当前静态几何／导航连接，输出值摘要；不保存队伍情报、已查账本、成员执行资格或完整路径。准备由公共预算入口调度，查询不偷偷触发同步整图重建。 |
 | board | `submit_offers(context, offers)`、`assignment(context)`、`report_assignment(context, report)` | board 校验身份、权限、证据、版本、过期和占用；只在 `advance(delta)` 的维护周期或实际失效事件统一维护一次计划。成员提交不各触发一轮全队规划。 |
 | board 基础预约 | 独立 `reservation_id` 与准备／提交／释放接口 | 高级 OFF 也可预约；不放宽旧高级 `claim()` 权限。基础预约、待接受指派、实际认领使用同一占用身份，不能双计数。 |
 | Action | `coordination_offers(visible)`、`assignment_escape(candidate, visible)`，以及通用执行合同／进度反馈查询 | 默认空，旧模块仍可装配；offer 来自本地预算缓存，自保由动作与身体事实确认。执行合同能区分“本段仍有效”与“本次候选尚未准备”。 |
 | Context | `publish_coordination_offers(options)`、`coordination_choices(options)`、`assignment_requires_transition(next, current)` | 发布发生在同步只读评估批次关闭后。保留完整候选供调试／当前成本，仅过滤传给 `choose_option` 的参选集合。通用接口不按 flank/search 名称分派。 |
 | AI 执行接点 | `_update_utility_decision`、`_start_utility_option`、`_cancel_utility_execution` | 岗位身份改变可跳过普通成本迟滞，但仍遵守自保和不可打断执行。只有 `begin` 成功才接受岗位；失败回滚预约并反馈。普通清理不能删新待接受指派或他人对本人的有效支援。 |
-| 原空间队列 | `evaluation_points/evaluation_revision/evaluate_point` 与 `advance_evaluation()` | 廉价枚举、昂贵验证分开；地图样本、双端备选和原动作共享24点／2000微秒推进预算、每通道6个缓存上限。 |
+| 原空间队列 | `evaluation_points/evaluation_revision/evaluate_point` 与 `advance_evaluation()` | 廉价枚举、昂贵验证分开；区域共享地图准备、地图样本、双端备选和原动作从原24点／2000微秒推进额度内统一扣账，保留每通道6个候选缓存上限。公共预算接点由 root 维护，不给预处理另开叠加额度。 |
 | 原覆盖服务 | 分拆 `build/_append_point`，扩展 `take_next/mark` | 多人工作集增量准备；`take_next` 限于本人获分配样本，`mark` 仍依据真实观察。个人覆盖率与团队账本分离。 |
 
 offer／plan／assignment／feedback 的字段以正式设计为准，至少包含成员代际、配置／关系／环境版本、固定捕获时间与期限，以及 `scope/basic/tactical`、`role`、`offer_key`、`position_set_key`。基础 `independent_position` 可无目标；未知声音战术搜索必须有合法 `evidence_id`，不能凭空补目标身份。
@@ -114,9 +119,18 @@ offer／plan／assignment／feedback 的字段以正式设计为准，至少包�
 
 ## 阶段5：原空间预算内的地图分区搜索
 
-负责人：agent1 拥有 coverage/search/board；root 独占 Spatial 的共享队列扩展；agent3 补 planner 片区组合；agent2 验证地图。
+负责人：agent1 拥有 coverage/search/board 并消费地图索引；root 独占 Spatial／区域挂接及公共预算扩展；agent3 在纯 planner 稳定后拥有地图 helper／索引测试并补片区组合；agent2 验证实际地图与性能。
 
-1. 将 `enemy_search_coverage.build/_append_point` 的廉价原始枚举与导航／身体／路径验证拆开。高级搜索沿原搜索半径准备有限工作集，相关昂贵步骤进入同一空间队列，不能在每次 offer 收集时同步重建全图。
+先完成区域共享准备，再接入下列搜索工作集；这属于本阶段内部细化，不提前到阶段0至4：
+
+- 新增 `enemy_tactical_map.gd` 及 UID，由现有战斗区域持有单一实例。地图首次加载且导航来源可用后自动分批读取静态碰撞、导航层／连接摘要、各掩体面的端点、候选模板和有实际几何依据的狭口信息。不依赖场景名、人工房间／门标签或额外手工战术烘焙，导航网格仍按原流程维护；有限分块准备，不穷举全图路径、身体尺寸或射线组合。
+- 分离地图模板与成员验证。静态模板不携带可开火／可通过结论；coverage/search 按合法线索、本人导航层、体型／姿态及武器生成并验证本地 offer。完整路径、当前门状态、身体扫掠、堵点过滤、动态敌友占位和枪线仍在原入口实时核对。掩体遮挡面须由合法冻结线索确定，不从地图几何推定隐藏目标位置。
+- 地图索引可共享，搜索工作集及真实检查账本仍按 board 的分组／目标或 evidence 域隔离。已查事实、过期时间、任务进度及成员战术信息不写入地图 helper；不同组只复用没有敌情的静态模板。
+- 模板／分块绑定实际形状、变换、启用状态和导航来源版本。通过生命周期事件／有界增量签名等自动识别节点增删、形状替换、尺寸／变换／碰撞启用和导航更新；不要求手动刷新。局部变化只使相关数据失效并排队更新；无法定位的导航拓扑变化才允许该区域拓扑整轮失效，重建仍分批。预热或更新未完成时保留原合法行为和能实时核实的执行段，不能冻结全队或继续信任已失效模板。
+- 同图 reset 保留有效索引，同图重开在地图／区域身份与版本核验后复用静态数据、重新绑定场景来源；敌情、逐点检查账本、搜索进度和计划预约仍清理。缓存不能只用场景名为键或把旧 Node／RID 当新场景凭证，换图不串用；无缓存时自动建立，复用容量和离场释放有界，不新增手工清缓存步骤。
+- root 的统一接点每帧只推进一次共享准备队列，并将加载枚举、版本检查、失效维护和实际查询计入原空间点数／时间总额度与整体 AI 统计；不足时延后，与原动作公平轮转。不每个敌人另建索引，不新增独立叠加的24点／2000微秒额度，也不在只读索引查询里补做无界准备。
+
+1. 将 `enemy_search_coverage.build/_append_point` 的廉价原始枚举与导航／身体／路径验证拆开。高级搜索沿原搜索半径消费共享模板、准备有限工作集，成员相关的昂贵步骤进入同一空间队列，不能在每次 offer 收集时同步重建地图或重复其静态索引。
 2. 冻结共同格尺度、导航层／高度身份、原点及 `search_round_id/grid_key/sample_id`。为未知声音保留 evidence 域，不把它强改成玩家目标；不消费 `tracking_cheat` 的隐藏坐标作为中央事实。
 3. 统一候选与邻接验证使用 `selection._path_to` 或同等严格入口，保留导航终点容差、身体扫掠及堵点过滤。世界距离近不等于连通；隔墙、跨层、断开的岛分别处理。
 4. 把有限已验证样本组合为片区 offer，保存精确待查样本、预计可观察样本、有限进路摘要与本地路线键。预计观察不写入已查账本；不按场景名称或不存在的房间／门标签分组。
@@ -127,7 +141,9 @@ offer／plan／assignment／feedback 的字段以正式设计为准，至少包�
 
 新增 `enemy_team_search_test.gd` 和地图运行用例：多分支互补检查、单入口串行／少派人、部分准备后继续推进、同格跨层／隔墙不误记、未知声音隔离、隐藏玩家静默移动不改指派、负证据过期复查、全部路线失效回退。保留原 `search_area_coverage_test` 独立密采样覆盖与 `search_reacquisition_test` 自主重新接敌断言。
 
-验收出口：地图搜索实际由统一片区分工驱动，预算仍是原共享额度；单人／高级 OFF 不承担团队搜索等待。通过搜索、导航、缓存和空间预算专项后独立提交／推送。
+新增 `enemy_tactical_map_test.gd` 检查不同布局首次加载自动分批准备、多个成员复用同一索引、查询不触发无界准备、异组检查账本隔离；验证同图 reset／重开复用有效静态数据但清理任务与观察进度，换图不串缓存。动态门、碰撞／掩体节点增删、形状替换、尺寸／变换和导航连接更新后，须自动局部失效或按必要范围分批拓扑重建，无手动通知夹具替代实际变更检测。用不同身体尺寸和武器证明静态模板不替代成员执行验证；验证未受影响数据不重建、准备未完成时个人仍行动。对冷启动、稳态复用、局部修改与拓扑重建分别记录原预算消耗、耗时／查询数、缓存规模及总体 AI 帧耗时，不只报告预热完成后的平均收益。
+
+验收出口：地图搜索实际由统一片区分工驱动，同区域静态准备只做一份且计入原共享额度；单人／高级 OFF 不承担团队搜索等待，加载和重建不冻结全队。通过索引、搜索、导航、缓存和空间预算专项后独立提交／推送。
 
 ## 阶段6：同步释放、局部调整与失效恢复
 
@@ -159,8 +175,8 @@ offer／plan／assignment／feedback 的字段以正式设计为准，至少包�
 
 1. 先运行新增协议和功能专项，再运行受影响的原模块／装配／射频／导航／搜索／生命周期测试；失败必须定位和修复，不删有效断言、不修改原 Utility 权重迁就场景。
 2. 根据最终变更范围运行完整敌人回归及相关玩家战斗、表现、区域复位检查；不把新增测试数预先当成通过数。最终记录以运行器实际列表为准。
-3. 性能在预导入且独占的同一环境下执行，记录单敌人P99／最大、各规模AI总帧P99／最大、decision／spatial耗时、中央维护次数／耗时、offer数、查询数与采样数。保留原16／50毫秒与各专项门槛，中央预算不能隐藏在统计外。
-4. 检查同组同周期只规划一次、有界组合与公平轮转，预热不重复全图扫描；验证同步只读批次缓存关闭后同帧环境变更仍被实际执行检查发现。
+3. 性能在预导入且独占的同一环境下执行，记录单敌人P99／最大、各规模AI总帧P99／最大、decision／spatial耗时、中央维护次数／耗时、offer数、查询数与采样数。另测运行时地图索引冷启动、稳态及局部／拓扑重建，计入共享准备的全部耗时和点数；资源预导入不等于跳过地图冷启动验收。保留原16／50毫秒与各专项门槛，中央和地图准备预算不能隐藏在统计外。
+4. 检查同组同周期只规划一次、同区域共享索引每帧只推进一次、有界组合与公平轮转，预热不重复全图扫描、不因成员增加各建一份；验证同步只读批次缓存关闭后同帧环境变更仍被实际执行检查发现。
 5. 新增调试字段只用于解释实际 plan/role/phase 与失败原因，不代替实景验收。同步 `enemy-ai.md`、`project-layout.md`、`enemy-tests.md`、TODO 和实施记录，准确区分已实现、待办和实测限制。
 6. 最终只暂存本阶段已核对的完整文件集合，普通 commit/push；核对远端分支推送结果并向用户报告 commit、验证结果及仍存在的限制。日志、缓存、临时诊断及其他任务的本地删除记录不提交。
 
@@ -186,6 +202,6 @@ python movement_demo/tests/enemy/run_enemy_regressions.py --godot E:/Godot/Godot
 | --- | --- |
 | 已批准规格 | `0cf2bcb`，正式设计链接见文首 |
 | phase2 产品基线 commit／推送 | 待当前阶段验收完成后填写 |
-| 实施方式 | 待用户选择 |
+| 实施方式 | 用户已选择：当前会话按分工推进 |
 | 新规划器产品代码 | 尚未开始 |
 | 阶段1至7结果／commit | 待各阶段实际完成后记录，不能预填通过 |
