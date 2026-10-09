@@ -620,6 +620,7 @@ func request_melee() -> bool:
 		"recovery": maxf(0.0, weapon.melee_recovery_seconds),
 		"distance": maxf(0.0, weapon.melee_knockback_distance),
 		"duration": maxf(0.05, weapon.melee_knockback_seconds),
+		"slow_multiplier": weapon.melee_slow_multiplier, "slow_seconds": weapon.melee_slow_seconds,
 	}
 	melee_direction = -player.global_basis.z
 	melee_direction.y = 0.0
@@ -730,7 +731,8 @@ func _execute_player_melee() -> void:
 	if is_instance_valid(target):
 		if target.has_method("receive_melee_hit"):
 			target.receive_melee_hit(_melee_settings.damage, player.global_position,
-				_melee_settings.distance, _melee_settings.duration, melee_direction)
+				_melee_settings.distance, _melee_settings.duration, melee_direction,
+				_melee_settings.slow_multiplier, _melee_settings.slow_seconds)
 		else:
 			# 固定训练靶沿用自身计数与生命规则，不改成可移动角色。
 			target.receive_hit(_melee_settings.damage, player.global_position)

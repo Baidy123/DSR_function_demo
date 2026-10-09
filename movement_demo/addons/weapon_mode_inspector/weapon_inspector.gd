@@ -41,11 +41,13 @@ const COMMON_FIELDS := {
 	"melee_windup_seconds": "近战前摇（秒）", "melee_recovery_seconds": "近战收招（秒）",
 	"melee_interval": "近战间隔（秒）", "melee_knockback_distance": "击退距离（米）",
 	"melee_knockback_seconds": "击退时长（秒）",
+	"melee_slow_multiplier": "命中后移动速度", "melee_slow_seconds": "命中减速时长（秒）",
 }
 const PERCENT_FIELDS := [
 	"initial_accuracy", "moving_accuracy_cap", "shot_accuracy_penalty", "minimum_accuracy",
 	"target_move_accuracy_loss_per_meter_slow", "target_move_accuracy_loss_per_meter_fast",
 	"target_move_minimum_accuracy", "player_move_accuracy_loss_per_meter",
+	"melee_slow_multiplier",
 ]
 const FIREARM_FIELDS := [
 	"ammo_type", "magazine_capacity", "reload_seconds", "shot_noise", "shot_noise_radius",

@@ -28,7 +28,8 @@ func weapon_settings() -> Dictionary:
 		"angle": clampf(weapon.melee_angle_degrees, 1.0, 180.0), "height": maxf(0.0, weapon.melee_height_tolerance),
 		"windup": maxf(0.0, weapon.melee_windup_seconds), "recovery": maxf(0.0, weapon.melee_recovery_seconds),
 		"interval": maxf(0.0, weapon.melee_interval), "distance": maxf(0.0, weapon.melee_knockback_distance),
-		"duration": maxf(0.05, weapon.melee_knockback_seconds)}
+		"duration": maxf(0.05, weapon.melee_knockback_seconds),
+		"slow_multiplier": weapon.melee_slow_multiplier, "slow_seconds": weapon.melee_slow_seconds}
 
 
 func can_request(visible: bool) -> bool:

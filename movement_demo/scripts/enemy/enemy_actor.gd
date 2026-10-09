@@ -104,6 +104,8 @@ var death_tween: Tween
 var _hit_push_velocity: Vector3 = Vector3.ZERO
 var _hit_push_remaining: float = 0.0
 var _hit_push_duration: float = 0.0
+var _hit_slow_multiplier: float = 1.0
+var _hit_slow_remaining: float = 0.0
 var _last_move_physics_frame: int = -1
 var _melee_accuracy_frame: int = -1
 
@@ -124,6 +126,7 @@ func _ready() -> void:
 
 
 func _physics_process(delta: float) -> void:
+	if get_tree().paused: return
 	if weapon != null and not can_equip_weapon(weapon):
 		push_warning("当前兵种不能装备专用近战武器，已取消攻击并卸下武器。")
 		equip_weapon(null)
@@ -136,6 +139,9 @@ func _physics_process(delta: float) -> void:
 	# 未激活或暂停 AI 时仍能承受物理击退；正常移动过的帧不会重复移动。
 	if not is_dead and _hit_push_remaining > 0.0 and _last_move_physics_frame != Engine.get_physics_frames():
 		move_character(Vector3.ZERO, delta)
+	# 身体每帧只推进一次，行为切换、停步或 AI 停用不冻结减速期限。
+	_hit_slow_remaining = maxf(0.0, _hit_slow_remaining - maxf(0.0, delta))
+	if is_zero_approx(_hit_slow_remaining): _hit_slow_remaining = 0.0
 
 
 ## 执行方向与速度；调用者负责决定目的地。
@@ -177,7 +183,7 @@ func can_turn() -> bool:
 ## 行动层估算移动时限时也使用同一限制。
 func get_effective_movement_multiplier(requested: float) -> float:
 	var effective := minf(requested, 1.0) if ammo.is_reloading or melee_active else requested
-	return effective * lerpf(1.0, crouching_speed_multiplier, body_motion.amount)
+	return effective * lerpf(1.0, crouching_speed_multiplier, body_motion.amount) * get_melee_movement_multiplier()
 
 
 func _update_movement_noise(delta: float, before_move: Vector3, fast_movement: bool = false) -> void:
@@ -214,7 +220,7 @@ func receive_hit(damage: float, attacker_position: Vector3 = Vector3.INF) -> voi
 	if health <= 0.0:
 		is_dead = true
 		cancel_melee()
-		_clear_hit_push()
+		clear_melee_hit_effects()
 		cancel_reload()
 		clear_aim()
 		velocity = Vector3.ZERO
@@ -234,7 +240,8 @@ func receive_hit(damage: float, attacker_position: Vector3 = Vector3.INF) -> voi
 
 ## 敌人自身的近战受击入口。只接收结果，不读取玩家或选择战术。
 func receive_melee_hit(damage: float, attacker_position: Vector3, distance: float,
-		duration: float, fallback_direction: Vector3 = Vector3.FORWARD) -> void:
+		duration: float, fallback_direction: Vector3 = Vector3.FORWARD,
+		slow_multiplier: float = 1.0, slow_seconds: float = 0.0) -> void:
 	if is_dead or get_tree().paused: return
 	receive_hit(damage, attacker_position)
 	weapon_stability = 0.0
@@ -242,6 +249,9 @@ func receive_melee_hit(damage: float, attacker_position: Vector3, distance: floa
 	_melee_accuracy_frame = Engine.get_physics_frames()
 	if is_dead: return
 	if is_vaulting(): body_motion.interrupt()
+	if is_finite(slow_multiplier) and is_finite(slow_seconds) and slow_multiplier < 1.0 and slow_seconds > 0.0:
+		_hit_slow_multiplier = clampf(slow_multiplier, 0.0, 1.0)
+		_hit_slow_remaining = slow_seconds
 	var direction := global_position - attacker_position
 	direction.y = 0.0
 	if direction.is_zero_approx():
@@ -267,12 +277,22 @@ func _clear_hit_push() -> void:
 	_hit_push_duration = 0.0
 
 
+func get_melee_movement_multiplier() -> float:
+	return _hit_slow_multiplier if _hit_slow_remaining > 0.0 else 1.0
+
+
+func clear_melee_hit_effects() -> void:
+	_clear_hit_push()
+	_hit_slow_remaining = 0.0
+	_hit_slow_multiplier = 1.0
+
+
 func reset_target() -> void:
 	body_motion.reset()
 	cancel_melee()
 	melee_cooldown = 0.0
 	melee_count = 0
-	_clear_hit_push()
+	clear_melee_hit_effects()
 	_melee_accuracy_frame = -1
 	_last_move_physics_frame = -1
 	_movement_noise_timer = 0.0
@@ -533,7 +553,8 @@ func execute_melee(target: Node3D, settings: Dictionary, direction: Vector3) -> 
 	_melee_hit_used = true
 	var hit := melee_target_reachable(target, settings, direction) and target.has_method("receive_melee_hit")
 	if hit:
-		target.receive_melee_hit(settings.damage, global_position, settings.distance, settings.duration, direction)
+		target.receive_melee_hit(settings.damage, global_position, settings.distance, settings.duration, direction,
+			settings.get("slow_multiplier", 1.0), settings.get("slow_seconds", 0.0))
 	# 受击可能导致世界暂停或死亡取消，表现层仍以当前身体状态为准。
 	melee_struck.emit(target if hit else null, settings, direction)
 	return hit

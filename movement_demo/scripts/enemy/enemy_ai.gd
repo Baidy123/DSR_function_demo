@@ -130,6 +130,7 @@ func _physics_process(delta: float) -> void:
 		context.set(key, get(key))
 	var enabled: bool = not actor.is_dead and is_arena_active() and not player.is_dead() and not player.is_in_dialogue
 	if not enabled:
+		if is_instance_valid(player) and player.is_in_dialogue: actor.clear_melee_hit_effects()
 		if _enabled_last_frame: reset_actions()
 		_enabled_last_frame = false
 		actor.cancel_reload()

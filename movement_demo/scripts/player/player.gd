@@ -96,6 +96,8 @@ var is_in_dialogue: bool = false
 var _melee_push_velocity := Vector3.ZERO
 var _melee_push_remaining := 0.0
 var _melee_push_duration := 0.0
+var _melee_slow_multiplier := 1.0
+var _melee_slow_remaining := 0.0
 
 @onready var visual: Node3D = $"."
 @onready var combat = get_node_or_null("Combat")
@@ -134,6 +136,8 @@ func _unhandled_input(event: InputEvent) -> void:
 func _physics_process(delta: float) -> void:
 	if is_dead() or get_tree().paused:
 		return
+	_melee_slow_remaining = maxf(0.0, _melee_slow_remaining - maxf(0.0, delta))
+	if is_zero_approx(_melee_slow_remaining): _melee_slow_remaining = 0.0
 	if combat != null:
 		combat.begin_frame(delta, Input.is_action_pressed("aim"))
 	if is_vaulting():
@@ -185,6 +189,8 @@ func _physics_process(delta: float) -> void:
 				target_speed = move_speed * get_posture_move_multiplier()
 				if is_sprinting:
 					target_speed *= sprint_speed_multiplier
+	var hit_speed_multiplier := get_melee_movement_multiplier()
+	target_speed *= hit_speed_multiplier
 	if facing_npc_this_frame or is_in_dialogue:
 		# 对话期间清掉移动惯性。
 		current_speed = 0.0
@@ -195,8 +201,10 @@ func _physics_process(delta: float) -> void:
 		if target_speed < current_speed:
 			speed_change = deceleration
 		current_speed = move_toward(current_speed, target_speed, speed_change * delta)
-		if crouch_amount > 0.0001:
-			current_speed = minf(current_speed, move_speed * get_posture_move_multiplier())
+		if crouch_amount > 0.0001 or hit_speed_multiplier < 1.0:
+			var speed_limit := move_speed * get_posture_move_multiplier() * hit_speed_multiplier
+			if is_sprinting: speed_limit *= sprint_speed_multiplier
+			current_speed = minf(current_speed, speed_limit)
 
 	# 剩余速度跟随当前朝向，形成弧线；松键后不再转身。
 	var forward: Vector3 = -visual.global_basis.z
@@ -230,7 +238,7 @@ func _physics_process(delta: float) -> void:
 func _move_while_locked(delta: float, direction: Vector3, melee: bool = false) -> void:
 	is_sprinting = false
 	var speed: float = move_speed if melee else move_speed * combat.weapon.locked_move_multiplier
-	speed *= get_posture_move_multiplier()
+	speed *= get_posture_move_multiplier() * get_melee_movement_multiplier()
 	var desired: Vector3 = direction * speed
 	# 进入锁定时也限制惯性，不能带着奔跑速度横移。
 	var horizontal := Vector3(velocity.x, 0.0, velocity.z).limit_length(speed)
@@ -298,7 +306,7 @@ func set_dialogue_active(active: bool) -> void:
 	if active:
 		_begin_vault_fall()
 		_aim_cover.clear()
-		_clear_melee_push()
+		clear_melee_hit_effects()
 		if combat != null:
 			combat.cancel_melee()
 			combat.cancel_aim()
@@ -320,17 +328,22 @@ func face_npc(npc_position: Vector3) -> void:
 func receive_hit(damage: float = 25.0, _attacker_position: Vector3 = Vector3.ZERO) -> void:
 	if health != null:
 		health.receive_hit(damage)
-		if health.is_dead: _clear_melee_push()
+		if health.is_dead: clear_melee_hit_effects()
 
 
 ## 玩家自己的近战受击入口；与敌人受击实现分开，外力由原移动入口推进。
 func receive_melee_hit(damage: float, attacker_position: Vector3, distance: float,
-		duration: float, fallback_direction: Vector3 = Vector3.FORWARD) -> void:
+		duration: float, fallback_direction: Vector3 = Vector3.FORWARD,
+		slow_multiplier: float = 1.0, slow_seconds: float = 0.0) -> void:
 	if is_dead() or is_in_dialogue or get_tree().paused: return
 	receive_hit(damage, attacker_position)
 	if combat != null: combat.apply_melee_disruption()
 	if is_dead(): return
 	_begin_vault_fall()
+	# 仅有效减速刷新计时；无减速的武器不会清除已有受击效果。
+	if is_finite(slow_multiplier) and is_finite(slow_seconds) and slow_multiplier < 1.0 and slow_seconds > 0.0:
+		_melee_slow_multiplier = clampf(slow_multiplier, 0.0, 1.0)
+		_melee_slow_remaining = slow_seconds
 	var direction := global_position - attacker_position
 	direction.y = 0.0
 	if direction.is_zero_approx(): direction = Vector3(fallback_direction.x, 0.0, fallback_direction.z)
@@ -352,6 +365,16 @@ func _clear_melee_push() -> void:
 	_melee_push_velocity = Vector3.ZERO
 	_melee_push_remaining = 0.0
 	_melee_push_duration = 0.0
+
+
+func get_melee_movement_multiplier() -> float:
+	return _melee_slow_multiplier if _melee_slow_remaining > 0.0 else 1.0
+
+
+func clear_melee_hit_effects() -> void:
+	_clear_melee_push()
+	_melee_slow_remaining = 0.0
+	_melee_slow_multiplier = 1.0
 
 
 func is_dead() -> bool:
@@ -614,4 +637,4 @@ func _on_posture_death() -> void:
 	_posture_presentation_transition = &""
 	_vault_region = null
 	_aim_cover.clear()
-	_clear_melee_push()
+	clear_melee_hit_effects()

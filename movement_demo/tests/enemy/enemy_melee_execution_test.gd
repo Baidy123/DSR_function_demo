@@ -3,11 +3,14 @@ extends SceneTree
 class Target extends CharacterBody3D:
 	var hits := 0
 	var damage_received := 0.0
+	var hit_effects := Vector4.ZERO
 	var is_in_dialogue := false
 	func is_dead() -> bool: return false
-	func receive_melee_hit(damage: float, _origin: Vector3, _distance: float, _duration: float, _direction: Vector3) -> void:
+	func receive_melee_hit(damage: float, _origin: Vector3, distance: float, duration: float, _direction: Vector3,
+			slow_multiplier: float = 1.0, slow_seconds: float = 0.0) -> void:
 		hits += 1
 		damage_received += damage
+		hit_effects = Vector4(distance, duration, slow_multiplier, slow_seconds)
 
 var checks := 0
 var failures := 0
@@ -66,8 +69,13 @@ func _run() -> void:
 	controller.update(0.05, true, INTENT)
 	check(target.hits == 0, "前摇未完不造成伤害")
 	weapon.melee_damage = 99.0
+	weapon.melee_knockback_distance = 2.0
+	weapon.melee_knockback_seconds = 0.4
+	weapon.melee_slow_multiplier = 0.8
+	weapon.melee_slow_seconds = 1.2
 	controller.update(0.05, true, INTENT)
 	check(target.hits == 1 and target.damage_received == 25.0, "实际伤害使用开始时快照且不依赖玩家Combat")
+	check(target.hit_effects.is_equal_approx(Vector4(1.0, 0.2, 0.5, 0.5)), "敌人击退与减速使用当前武器出手时快照")
 	check(not get_nodes_in_group("enemy_melee_effect").is_empty(), "空模型也显示敌人剑光")
 	controller.update(0.3, true, INTENT)
 	check(target.hits == 1 and not actor.melee_active, "收招不重复伤害并结束动作")

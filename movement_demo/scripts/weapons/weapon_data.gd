@@ -77,6 +77,10 @@ enum AmmoType { RIFLE, PISTOL, SMG, SHOTGUN }
 @export_range(0.0, 5.0, 0.05) var melee_knockback_distance: float = 1.0
 ## 击退外力衰减至零的时间（秒）。
 @export_range(0.05, 2.0, 0.01) var melee_knockback_seconds: float = 0.2
+## 近战命中后目标自主移动保留的比例；0.5为原速度50%，1不减速，不缩小击退外力。
+@export_range(0.0, 1.0, 0.05) var melee_slow_multiplier: float = 0.5
+## 命中减速持续时间（秒）；0关闭。再次命中刷新本次效果，不叠乘速度。
+@export_range(0.0, 5.0, 0.05, "suffix:s") var melee_slow_seconds: float = 0.5
 
 @export_group("概率模式参数（百分比）")
 ## 初始直射中心概率：0.5表示50%；松开瞄准也将概率限制到不超过本值。

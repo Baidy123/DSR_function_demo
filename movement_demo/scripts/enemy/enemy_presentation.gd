@@ -35,7 +35,8 @@ func _physics_process(delta: float) -> void:
 
 
 func _sync() -> void:
-	if presentation == null: return
+	# 场景卸载仍可能发出近战结束通知；离树后不再查询挂点的世界变换。
+	if not is_instance_valid(presentation) or not presentation.is_inside_tree() or not is_instance_valid(actor) or not actor.is_inside_tree(): return
 	var posture: Dictionary = actor.get_posture_presentation_state()
 	state.crouch_amount = posture.amount
 	state.posture_transition = posture.transition
