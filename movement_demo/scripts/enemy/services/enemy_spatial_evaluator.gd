@@ -273,7 +273,7 @@ func _ammo_wait(ai) -> float:
 		return ai.utility_horizon_seconds
 	if ai.actor.ammo.is_reloading:
 		return _reload_seconds(ai)
-	return 0.0 if ai.actor.ammo.magazine_rounds > 0 else ai.utility_horizon_seconds
+	return ai.fire.estimated_steady_wait() if ai.actor.ammo.magazine_rounds > 0 else ai.utility_horizon_seconds
 
 func _exposure(ai, point: Vector3, threat: Vector3) -> float:
 	return ai._reload_exposure(point, threat) if threat.is_finite() else 0.0

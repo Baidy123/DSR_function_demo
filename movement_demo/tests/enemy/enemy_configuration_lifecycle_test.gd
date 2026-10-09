@@ -26,6 +26,7 @@ func _run() -> void:
 	var player = scene.get_node("Player")
 	ai.set_physics_process(false)
 	player.set_physics_process(false)
+	preload("res://tests/enemy/enemy_fire_fixture.gd").configure_timing(actor)
 	ai.cover_selection.debug_attack_points = false
 	ai.cover_selection.debug_cover_selection = false
 	player.get_node("Health").debug_invincible = true
@@ -33,7 +34,7 @@ func _run() -> void:
 	player.global_position = Vector3(22, 0, -2)
 	actor.face_direction(player.global_position - actor.global_position, 10.0)
 	for frame in range(8): await physics_frame
-	var ids: Array[StringName] = [&"cover", &"attack_position", &"covering_retreat", &"suppression", &"exit_suppression"]
+	var ids: Array[StringName] = [&"cover", &"attack_position", &"covering_retreat", &"suppression", &"cooperate"]
 	# 刻意保留旧实例，模拟调试器/外部观察者仍在查看旧动作，不能靠释放时机保证正确性。
 	var retained: Array = []
 	for mask in range(32):

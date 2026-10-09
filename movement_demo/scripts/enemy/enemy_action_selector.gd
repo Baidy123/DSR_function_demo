@@ -6,6 +6,7 @@ var collection_costs: Dictionary = {}
 func assess_options(ai, sees_player: bool) -> Array[Dictionary]:
 	var options: Array[Dictionary] = []
 	ai.context.spatial.advance_evaluation()
+	ai.context.begin_cooperation_preview()
 	for action in ai.actions.values():
 		if not action.is_enabled(): continue
 		var started := Time.get_ticks_usec()
@@ -13,10 +14,15 @@ func assess_options(ai, sees_player: bool) -> Array[Dictionary]:
 			var outcome: Dictionary = candidate.get("outcome", {})
 			if candidate.get("id") != action.action_id or outcome.is_empty(): continue
 			var breakdown := score_outcome(ai.context, outcome.get("unavailable_seconds", 0.0), outcome.get("exposed_seconds", 0.0), outcome.get("information_loss", 0.0), outcome.get("preference_credit", 0.0))
+			var seconds: float = ai.context.cooperation_candidate_seconds(candidate)
+			breakdown.cooperation_seconds = seconds
+			breakdown.cooperation_credit = seconds * maxf(0.0, ai.context.utility_cooperation_weight)
+			breakdown.cost -= breakdown.cooperation_credit
 			candidate.cost = breakdown.cost
 			candidate.breakdown = breakdown
 			options.append(candidate)
 		collection_costs[action.action_id] = Time.get_ticks_usec() - started
+	ai.context.end_cooperation_preview()
 	return options
 
 func choose_option(options: Array, current: Dictionary = {}) -> Dictionary:
@@ -38,6 +44,8 @@ func same_option(a: Dictionary, b: Dictionary) -> bool:
 	if a.get("id", &"") != b.get("id", &"") or a.get("plan", &"") != b.get("plan", &"") or a.get("mode", &"") != b.get("mode", &""):
 		return false
 	if a.get("route", {}).get("vault", {}).get("cover") != b.get("route", {}).get("vault", {}).get("cover"): return false
+	for key in [&"target_id", &"lane_id", &"request_id", &"beneficiary_id"]:
+		if a.get("cooperation", {}).get(key) != b.get("cooperation", {}).get(key): return false
 	var first: Dictionary = a.get("destination", {})
 	var second: Dictionary = b.get("destination", {})
 	if first.is_empty() or second.is_empty():

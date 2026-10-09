@@ -49,7 +49,7 @@ func _run() -> void:
 		quit(1)
 		return
 	var cover_choice: Dictionary = covers[0]
-	var suppressed := [&"suppression", &"exit_suppression"]
+	var suppressed := [&"suppression"]
 	ai.utility_suppression_pending = true
 	ai._start_utility_option(cover_choice, true)
 	check(not ai.utility_suppression_pending, "选择主动躲藏清除旧压制机会")

@@ -4,7 +4,7 @@ extends "res://scripts/enemy/config/module_settings.gd"
 func _init() -> void:
 	section = &"suppression"
 
-## 朝最后目击位置附近压制的最短秒数；当前未接弹匣。
+## 点压制的最短秒数；空匣时交回统一换弹调度。
 @export_range(0.1, 10.0, 0.1) var duration_min: float = 3.0:
 	set(value):
 		duration_min = value
@@ -25,3 +25,22 @@ func _init() -> void:
 	set(value):
 		low_cover_point_preference = value
 		mark_override(&"low_cover_point_preference")
+
+@export_group("出口方案")
+@export_range(0.1, 10.0, 0.1) var exit_duration_min: float = 3.0:
+	set(value):
+		exit_duration_min = value
+		mark_override(&"exit_duration_min")
+@export_range(0.1, 10.0, 0.1) var exit_duration_max: float = 5.0:
+	set(value):
+		exit_duration_max = value
+		mark_override(&"exit_duration_max")
+## 每侧实际射击次数，冷却和连射停顿不计入。
+@export_range(1, 20, 1) var shots_per_exit_min: int = 2:
+	set(value):
+		shots_per_exit_min = value
+		mark_override(&"shots_per_exit_min")
+@export_range(1, 20, 1) var shots_per_exit_max: int = 5:
+	set(value):
+		shots_per_exit_max = value
+		mark_override(&"shots_per_exit_max")

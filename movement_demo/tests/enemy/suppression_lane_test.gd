@@ -15,6 +15,7 @@ func _run() -> void:
 	var player = ai.player
 	ai.set_physics_process(false)
 	player.set_physics_process(false)
+	preload("res://tests/enemy/enemy_fire_fixture.gd").configure_timing(enemy)
 	player.get_node("Health").debug_invincible = true
 	ai.actions[&"search"].tracking_cheat_enabled = false
 	ai.cover_selection.debug_cover_selection = false
@@ -74,8 +75,8 @@ func _run() -> void:
 	for f in range(3): await physics_frame
 	check(action.utility_available(), "用户现场普通压制不再被最大散布整体否决")
 	preload("res://tests/enemy/enemy_fire_fixture.gd").set_training_action(ai,&"exit_suppression",true)
-	var exits = ai.actions[&"exit_suppression"]
-	check(not exits.utility_available(), "现场线索仅在墙端附近且无可靠遮挡归属时不误压出口")
+	var exits = ai.actions[&"suppression"]
+	check(exits.preview_candidate(&"exit_sweep").is_empty(), "现场线索仅在墙端附近且无可靠遮挡归属时不误压出口")
 	# 单端执行仍在同一原场景验证，但新线索必须真实处于 CoverA 背侧。
 	var actual_cover = ai.navigation_region.get_node("Environment/CoverA")
 	var actual_box: CollisionShape3D = actual_cover.get_node("CollisionShape3D")
@@ -83,7 +84,7 @@ func _run() -> void:
 	ai.last_seen_position = actual_box.to_global(Vector3(half.x + 0.6, -half.y, 0.0))
 	ai.last_known_position = ai.last_seen_position
 	ai.context.publish_suppression_evidence(&"visual_loss", ai.last_seen_position)
-	check(ai.cover_selection.confirmed_suppression_cover(ai.last_seen_position) == actual_cover and exits.utility_available(), "实际遮挡明确后出口仍不因最大散布擦墙而失效")
+	check(ai.cover_selection.confirmed_suppression_cover(ai.last_seen_position) == actual_cover and not exits.preview_candidate(&"exit_sweep").is_empty(), "实际遮挡明确后出口仍不因最大散布擦墙而失效")
 	# 横墙只隔住负Z端；通过真实碰撞制造单端，而非只清空候选数组。
 	var end_wall := StaticBody3D.new()
 	var end_collision := CollisionShape3D.new()
@@ -94,7 +95,7 @@ func _run() -> void:
 	scene.add_child(end_wall)
 	end_wall.global_position = Vector3(15,1,0)
 	for f in range(3): await physics_frame
-	exits.on_target_lost()
+	exits.begin(exits.preview_candidate(&"exit_sweep"), false)
 	check(exits.is_active(), "单端出口压制可以启动")
 	check(exits.first_exit.is_empty() and not exits.second_exit.is_empty(), "实体墙挡住一端，另一端仍有有效目标")
 	print("LIVE EXIT COUNTS ",exits.first_exit.size()," / ",exits.second_exit.size())

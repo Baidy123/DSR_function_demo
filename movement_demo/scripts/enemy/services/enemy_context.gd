@@ -27,7 +27,13 @@ var utility_horizon_seconds := 4.0
 var utility_fire_weight := 3.0
 var utility_risk_weight := 3.0
 var utility_information_weight := 1.0
+var utility_cooperation_weight := 4.0
 var utility_threat_half_life_seconds := 4.0
+var cooperation
+var team_visual_contact := false
+var _shared_visual: Dictionary = {}
+var _shared_notification_position := Vector3.INF
+var _cooperation_identity: Array = []
 var avoid_position := Vector3.INF
 var _posture_shapes: Dictionary = {}
 var _exposure_frame := -1
@@ -80,16 +86,23 @@ func refresh_environment() -> bool:
 		arena = owner_arena
 		arena_zone = zone
 		navigation_region = navigation
+		cooperation = environment.get("cooperation")
 		_spawn_position = actor.global_position
 		_spawn_checked = false
 		_environment_warning = ""
 		if arena != null: arena.register_enemy(actor)
+		if cooperation != null: cooperation.register(self)
 	if not is_instance_valid(player) or not player.is_inside_tree():
 		player = actor.get_tree().get_first_node_in_group("player")
 	return changed
 
 
 func detach_environment() -> void:
+	if cooperation != null: cooperation.unregister(actor.get_instance_id())
+	cooperation = null
+	_shared_visual.clear()
+	_shared_notification_position = Vector3.INF
+	team_visual_contact = false
 	if is_instance_valid(arena): arena.unregister_enemy(actor)
 	arena = null
 	arena_zone = null
@@ -181,12 +194,16 @@ func update_evidence(delta: float, visible: bool) -> void:
 		invalidate_utility()
 	perception.update_close_cover(delta)
 	was_seeing_player = visible
+	_update_cooperation_evidence()
 	if state == State.IDLE:
 		patrol_pause_timer = maxf(0.0, patrol_pause_timer - delta)
 
 ## 已观察事实的短期推断，不是玩家剩余换弹时间。
 func observed_reload_window() -> float:
-	return observed_reload_remaining
+	var shared_remaining := 0.0
+	if not sees_player and _shared_visual.get("reloading", false):
+		shared_remaining = maxf(0.0, float(_shared_visual.get("reload_until", 0.0)) - evidence_elapsed_seconds)
+	return maxf(observed_reload_remaining, shared_remaining)
 
 func _update_reload_observation(delta: float, visible: bool) -> void:
 	var had_opportunity := observed_reload_remaining > 0.0
@@ -246,6 +263,11 @@ func is_utility_destination_blocked(point: Vector3) -> bool:
 	return blocked_destinations.any(func(entry): return _horizontal_distance_between(entry.position, point) < 0.75)
 
 func reset_memory() -> void:
+	if cooperation != null: cooperation.release_member(actor.get_instance_id())
+	_shared_visual.clear()
+	_shared_notification_position = Vector3.INF
+	team_visual_contact = false
+	_cooperation_identity.clear()
 	evidence_elapsed_seconds = 0.0
 	memory_generation += 1
 	suppression_evidence = {}
@@ -388,3 +410,163 @@ func known_target_points(feet: Vector3) -> PackedVector3Array:
 			if perception._sees_point(point): points.append(point)
 		return points
 	return PackedVector3Array([actor.get_posture_eye_position(false, feet)])
+
+func cooperation_enabled() -> bool:
+	return cooperation != null and can_use_action(&"cooperate") and not actor.is_dead
+
+func has_combat_contact() -> bool:
+	return has_visual_memory or team_visual_contact
+
+func cooperation_target_id() -> int:
+	return player.get_instance_id() if is_instance_valid(player) else 0
+
+func cooperation_target_evidence() -> Dictionary:
+	var personal_time := evidence_elapsed_seconds - utility_unseen_seconds
+	if not sees_player and not _shared_visual.is_empty() and _shared_visual.get("target_id", 0) == cooperation_target_id() and (not has_visual_memory or float(_shared_visual.captured_at) >= personal_time):
+		var report := _shared_visual.duplicate(true)
+		report.confidence = pow(0.5, maxf(0.0, evidence_elapsed_seconds - float(report.captured_at)) / maxf(0.1, utility_threat_half_life_seconds))
+		return report
+	if not has_visual_memory or not last_seen_position.is_finite(): return {}
+	return {"target_id": cooperation_target_id(), "position": last_seen_position, "direction": last_seen_direction, "velocity": observed_velocity,
+		"captured_at": personal_time, "valid_until": personal_time + float(setting(&"cooperation", &"intel_seconds", 5.0)),
+		"id": 0, "source": &"visual", "shared": false, "confidence": pow(0.5, utility_unseen_seconds / maxf(0.1, utility_threat_half_life_seconds))}
+
+func _update_cooperation_evidence() -> void:
+	if cooperation == null: return
+	var identity := [cooperation.get_instance_id(), actor.faction_id, actor.communication_group, cooperation_target_id(), cooperation.generation, cooperation.relation_revision]
+	if identity != _cooperation_identity:
+		if team_visual_contact and not has_visual_memory:
+			last_known_position = noise_search_origin
+			is_alerted = noise_search_origin.is_finite()
+		_shared_visual.clear()
+		_shared_notification_position = Vector3.INF
+		team_visual_contact = false
+		_cooperation_identity = identity
+		cooperation.register(self)
+	if sees_player: cooperation.publish_visual(self)
+	var report: Dictionary = cooperation.evidence(self, cooperation_target_id())
+	if report.is_empty(): return
+	# Convert the common arena clock without rejuvenating the original observation.
+	var offset: float = evidence_elapsed_seconds - cooperation.elapsed
+	for key in [&"captured_at", &"valid_until", &"reload_until"]:
+		report[key] = float(report.get(key, 0.0)) + offset
+	var old: Dictionary = _shared_visual
+	if not old.is_empty() and int(report.id) < int(old.id): return
+	if not old.is_empty() and int(report.id) == int(old.id):
+		_shared_visual = report # Re-map original timestamps if this individual was inactive.
+		return
+	_shared_visual = report
+	var first_contact := not team_visual_contact
+	team_visual_contact = true
+	if sees_player: return
+	var personal_time: float = evidence_elapsed_seconds - utility_unseen_seconds
+	if has_visual_memory and float(report.captured_at) < personal_time: return
+	var changed: bool = first_contact or not _shared_notification_position.is_finite() or _shared_notification_position.distance_to(report.position) >= 0.5
+	last_known_position = report.position
+	is_alerted = true
+	noise_search_origin = Vector3.INF
+	utility_threat_age_seconds = maxf(0.0, evidence_elapsed_seconds - float(report.captured_at))
+	if changed:
+		_shared_notification_position = report.position
+		event_received.emit(&"cooperation_intel", report.duplicate(true))
+		invalidate_utility()
+
+var _cooperation_preview_snapshot: Dictionary = {}
+
+## Candidate collection is read-only: share one observation across this batch,
+## then discard it before action validation, claims or physical execution.
+func begin_cooperation_preview() -> void:
+	_cooperation_preview_snapshot = cooperation.snapshot(self, cooperation_target_id()) if cooperation_enabled() else {}
+
+func end_cooperation_preview() -> void:
+	_cooperation_preview_snapshot = {}
+
+func cooperation_snapshot(target_id: int = 0) -> Dictionary:
+	if cooperation == null: return {"members": [], "requests": [], "claims": [], "supports": [], "threats": [], "revision": 0}
+	if not _cooperation_preview_snapshot.is_empty() and (target_id == 0 or target_id == cooperation_target_id()): return _cooperation_preview_snapshot
+	return cooperation.snapshot(self, cooperation_target_id() if target_id == 0 else target_id)
+
+func cooperation_claim(task: Dictionary) -> Dictionary:
+	return cooperation.claim(self, task) if cooperation_enabled() else {}
+
+func cooperation_update(token: Dictionary, status: Dictionary) -> bool:
+	return cooperation.update_claim(self, token, status) if cooperation != null else false
+
+func cooperation_release(token: Dictionary) -> void:
+	if cooperation != null: cooperation.release(self, token)
+
+func cooperation_search_available(point: Vector3, radius: float = 1.0) -> bool:
+	return cooperation.search_available(self, point, radius) if cooperation_enabled() else true
+
+func cooperation_claim_search(point: Vector3, duration: float = 6.0) -> Dictionary:
+	return cooperation_claim({"target_id": cooperation_target_id(), "kind": &"search", "position": point, "duration": duration,
+		"owner_action": utility_current.get("id", &"search"), "radius": float(setting(&"cooperation", &"search_claim_radius", 1.0))})
+
+func cooperation_publish_checked(points: PackedVector3Array) -> void:
+	if cooperation_enabled(): cooperation.publish_checked(self, points)
+
+func cooperation_checked_points() -> Array[Dictionary]:
+	if not cooperation_enabled(): return []
+	var points: Array[Dictionary] = cooperation.checked_points(self)
+	var offset: float = evidence_elapsed_seconds - cooperation.elapsed
+	for item in points:
+		item.observed_at += offset
+		item.valid_until += offset
+	return points
+
+func cooperation_reload_opportunity() -> Dictionary:
+	return cooperation.reload_opportunity(self) if cooperation_enabled() else {"allowed": false, "support_seconds": 0.0, "provider_id": 0, "request_id": 0}
+
+func cooperation_claim_reload(duration: float) -> Dictionary:
+	if not cooperation_reload_opportunity().allowed: return {}
+	return cooperation_claim({"kind": &"reload", "lane_id": &"reload", "target_id": cooperation_target_id(), "position": actor.global_position,
+		"owner_action": utility_current.get("id", &"reload"), "duration": duration})
+
+func cooperation_candidate_seconds(candidate: Dictionary) -> float:
+	return cooperation.candidate_seconds(self, candidate) if cooperation_enabled() else 0.0
+
+func cooperation_support_pressure() -> float:
+	return cooperation.support_pressure(self) if cooperation_enabled() else 0.0
+
+func cooperation_clear_execution() -> void:
+	if cooperation != null: cooperation.release_member(actor.get_instance_id())
+
+func cooperation_line_safe(origin: Vector3, endpoint: Vector3) -> bool:
+	if cooperation == null: return true
+	for member in cooperation_snapshot().members:
+		if member.id == actor.get_instance_id(): continue
+		var torso: Vector3 = member.position + Vector3.UP * 0.9
+		var closest := Geometry3D.get_closest_point_to_segment(torso, origin, endpoint)
+		if Vector2(torso.x - closest.x, torso.z - closest.z).length() < 0.4 and absf(torso.y - closest.y) < 0.9:
+			return false
+	return true
+
+func cooperation_publish_execution(output: Dictionary) -> void:
+	if cooperation == null: return
+	var firearms: bool = actor.can_use_firearms()
+	var rounds: int = actor.ammo.magazine_rounds
+	var intent: Dictionary = output.get("fire", {})
+	var target := Vector3.INF
+	if not intent.is_empty():
+		target = intent.get("point", Vector3.INF) if intent.get("mode", &"") == &"memory" else (known_target_point(last_known_position) if sees_player else Vector3.INF)
+	var ready := false
+	var supported := 0.0
+	if firearms and target.is_finite() and rounds > 0 and not actor.ammo.is_reloading and not actor.is_vaulting() and not actor.melee_active and actor.shooting_enabled:
+		var origin: Vector3 = actor.get_shot_origin()
+		var desired: Vector3 = target - origin
+		ready = not desired.is_zero_approx() and actor.aim_acquired and actor.aim_direction.angle_to(desired) <= actor.AIM_ACQUIRE_ANGLE and desired.length() <= actor.weapon.fire_range
+		ready = ready and fire.fire_pause_remaining <= 0.0 and (intent.get("mode", &"") == &"memory" or fire.fire_reaction_elapsed >= fire.fire_reaction_seconds)
+		ready = ready and (intent.get("mode", &"") == &"memory" or fire.fire_decision.selected_action != fire.fire_decision.Action.STEADY)
+		ready = ready and fire.has_clear_firing_lane(origin, desired, desired.length()) and cooperation_line_safe(origin, target)
+		if ready:
+			var burst_left: int = maxi(1, fire.burst_shot_count - fire.fire_burst_shots)
+			supported = minf(utility_horizon_seconds, mini(rounds, burst_left) * maxf(0.05, actor.weapon.shot_interval))
+	var task: Dictionary = utility_current.get("cooperation", {})
+	cooperation.publish_status(self, {"position": actor.global_position, "target_id": cooperation_target_id(), "ready": ready,
+		"firearms": firearms, "reloading": actor.ammo.is_reloading, "rounds": rounds, "support_seconds": supported,
+		"melee_threat_seconds": melee.support_window(sees_player),
+		"aim_position": target, "forward": actor.aim_direction, "moving": not output.get("direction", Vector3.ZERO).is_zero_approx(),
+		"health_ratio": actor.health / maxf(1.0, actor.max_health), "lane_id": task.get("lane_id", &"target"),
+		"beneficiary_id": task.get("beneficiary_id", 0), "request_id": task.get("request_id", 0),
+		"support_request": utility_current.get("support_request", {}),
+		"reload_seconds": actor.weapon.reload_seconds * (1.0 - actor.ammo.reload_progress) if firearms and actor.ammo.is_reloading else 0.0})

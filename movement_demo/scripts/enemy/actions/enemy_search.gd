@@ -177,16 +177,46 @@ var _track_stuck_seconds := 0.0
 var _segment_speed := -1.0
 var _trail_pending: Array[Vector3] = []
 var _checked_trail: Array[Vector3] = []
+var _search_claim: Dictionary = {}
 
 const Actor = preload("res://scripts/enemy/enemy_actor.gd")
 
 
 func predicted_position() -> Vector3:
 	var distance := track_distance
-	if not observed_velocity.is_zero_approx():
+	var evidence := _search_evidence()
+	var velocity: Vector3 = evidence.get("velocity", observed_velocity)
+	if not velocity.is_zero_approx():
 		# 按最后可见速度预测短短一段；原 Track Distance 作为最大距离。
-		distance = minf(track_distance, observed_velocity.length() * 1.25)
-	return context.last_seen_position + context.last_seen_direction * distance
+		distance = minf(track_distance, velocity.length() * 1.25)
+	return _known_search_position() + Vector3(evidence.get("direction", context.last_seen_direction)) * distance
+
+
+func _search_evidence() -> Dictionary:
+	return context.cooperation_target_evidence()
+
+
+func _known_search_position() -> Vector3:
+	var evidence := _search_evidence()
+	return evidence.get("position", context.last_seen_position if context.has_visual_memory else context.last_known_position)
+
+
+func _search_evidence_age() -> float:
+	var evidence := _search_evidence()
+	return maxf(0.0, context.evidence_elapsed_seconds - float(evidence.get("captured_at", context.evidence_elapsed_seconds - context.utility_unseen_seconds)))
+
+
+func _release_search_claim() -> void:
+	if context != null and not _search_claim.is_empty(): context.cooperation_release(_search_claim)
+	_search_claim = {}
+
+
+func _claim_search_point(point: Vector3, seconds: float) -> bool:
+	_release_search_claim()
+	if not context.cooperation_enabled(): return true
+	var default_seconds: float = float(context.setting(&"cooperation", &"search_claim_seconds", 6.0))
+	_search_claim = context.cooperation_claim_search(point, maxf(0.1, maxf(default_seconds, seconds)))
+	return not _search_claim.is_empty()
 
 
 func _begin_segment() -> void:
@@ -209,9 +239,7 @@ func investigate_known_threat(position: Vector3) -> void:
 	has_suspected_position = false
 	_trail_pending.clear()
 	_checked_trail.clear()
-	if _set_suspected_position_from_raw(position, 2.0):
-		_start_track_to_suspected()
-	else:
+	if not (_set_suspected_position_from_raw(position, 2.0) and _start_track_to_suspected()):
 		begin_search(position)
 	release_segment()
 
@@ -277,15 +305,15 @@ func begin_tracking_or_search(allow_hint: bool = true) -> void:
 	search_hint_timer = 0.0
 
 	# 第一优先：如果允许“小外挂”，只在这个时刻掷一次骰子。
-	if allow_hint and _try_tracking_cheat_hint(lost_target_hint_chance):
-		_start_track_to_suspected()
+	if allow_hint and _try_tracking_cheat_hint(lost_target_hint_chance) and _start_track_to_suspected():
 		return
 
 	# 先确认失视附近，再沿最后可见方向查下一段；不会一步跨过藏身处。
-	var known: Vector3 = context.last_seen_position if context.has_visual_memory else context.last_known_position
+	var known := _known_search_position()
 	if known.is_finite(): _trail_pending.append(known)
-	if context.has_visual_memory and not context.last_seen_direction.is_zero_approx():
-		search_direction = context.last_seen_direction.normalized()
+	var observed_direction: Vector3 = _search_evidence().get("direction", context.last_seen_direction)
+	if context.has_combat_contact() and not observed_direction.is_zero_approx():
+		search_direction = observed_direction.normalized()
 		var prediction := predicted_position()
 		if context._horizontal_distance_between(prediction, known) > track_arrival_distance * 2.0:
 			_trail_pending.append(prediction)
@@ -300,17 +328,16 @@ func _start_next_trail() -> bool:
 	while not _trail_pending.is_empty():
 		var point: Vector3 = _trail_pending.pop_front()
 		if not _set_suspected_position_from_raw(point, 2.0): continue
-		_start_track_to_suspected()
-		return true
+		if _start_track_to_suspected(): return true
 	return false
 
 
 func _focused_evidence() -> bool:
-	return context.has_visual_memory and not noise_search_origin.is_finite() and context.utility_unseen_seconds < maxf(0.0, float(_setting(&"focused_search_seconds", 8.0)))
+	return context.has_combat_contact() and not noise_search_origin.is_finite() and _search_evidence_age() < maxf(0.0, float(_setting(&"focused_search_seconds", 8.0)))
 
 
 func _fresh_pursuit() -> bool:
-	return context.has_visual_memory and not noise_search_origin.is_finite() and context.utility_unseen_seconds < maxf(0.0, float(_setting(&"combat_pursuit_seconds", 4.0)))
+	return context.has_combat_contact() and not noise_search_origin.is_finite() and _search_evidence_age() < maxf(0.0, float(_setting(&"combat_pursuit_seconds", 4.0)))
 
 
 func _next_segment_speed() -> float:
@@ -568,9 +595,12 @@ func _set_suspected_position_relaxed(raw_target: Vector3) -> bool:
 	return false
 
 
-func _start_track_to_suspected() -> void:
+func _start_track_to_suspected() -> bool:
 	if not has_suspected_position:
-		return
+		return false
+	if not _claim_search_point(suspected_position, track_seconds):
+		has_suspected_position = false
+		return false
 
 	var direction: Vector3 = suspected_look_position - actor.global_position
 	direction.y = 0.0
@@ -589,13 +619,14 @@ func _start_track_to_suspected() -> void:
 	_track_stuck_seconds = 0.0
 	context.state = context.State.TRACK
 	agent.target_position = suspected_position
+	return true
 
 
 func _process_track(delta: float) -> Vector3:
 	track_timer = maxf(0.0, track_timer - delta)
 	if _return_to_area_search:
 		search_elapsed_seconds += delta
-		if not context.has_visual_memory and search_seconds > 0.0:
+		if not context.has_combat_contact() and search_seconds > 0.0:
 			search_timer = maxf(0.0, search_timer - delta)
 
 	var reached_track_target: bool = (
@@ -633,6 +664,9 @@ func _process_track(delta: float) -> Vector3:
 
 
 func _finish_tracking(failed: bool = false) -> void:
+	_release_search_claim()
+	if not failed and context.cooperation_enabled() and context.perception.can_observe_position(suspected_look_position):
+		context.cooperation_publish_checked(PackedVector3Array([suspected_look_position]))
 	# 只为首次沿线调查记录已核实位置；区域搜索中的提示支线不无限累积旧轨迹。
 	if not failed and not _return_to_area_search: _checked_trail.append(suspected_position)
 	has_suspected_position = false
@@ -677,6 +711,7 @@ func _take_exact_clue() -> bool:
 	return true
 
 func begin_search(center: Vector3 = Vector3.INF) -> void:
+	_release_search_claim()
 	if not is_enabled():
 		context.state = context.State.IDLE
 		return
@@ -689,7 +724,7 @@ func begin_search(center: Vector3 = Vector3.INF) -> void:
 	context.is_alerted = true
 
 	# 普通搜索沿用最后目击圆心；本次由声音触发时，以新的声源位置为圆心。
-	search_origin = context.last_seen_position if context.has_visual_memory else (center if center.is_finite() else context.last_known_position)
+	search_origin = _known_search_position() if context.has_combat_contact() else (center if center.is_finite() else context.last_known_position)
 	if noise_search_origin.is_finite():
 		search_origin = noise_search_origin
 	if _exact_search_origin.is_finite(): search_origin = _exact_search_origin
@@ -697,7 +732,7 @@ func begin_search(center: Vector3 = Vector3.INF) -> void:
 
 	# SEARCH 主方向优先使用玩家最后真实移动方向。
 	# 没有移动方向时，再使用已有的怀疑方向；还没有就从 NPC 朝搜索中心；最后才使用当前朝向。
-	var forward: Vector3 = Vector3.ZERO if noise_search_origin.is_finite() else context.last_seen_direction
+	var forward: Vector3 = Vector3.ZERO if noise_search_origin.is_finite() else _search_evidence().get("direction", context.last_seen_direction)
 	forward.y = 0.0
 
 	if forward.is_zero_approx():
@@ -718,7 +753,7 @@ func begin_search(center: Vector3 = Vector3.INF) -> void:
 	search_direction = forward.normalized()
 
 	# 真实接敌后不因总时间放弃；短路段和卡住计时仍各自生效。
-	search_timer = search_seconds if not context.has_visual_memory and search_seconds > 0.0 else INF
+	search_timer = search_seconds if not context.has_combat_contact() and search_seconds > 0.0 else INF
 	search_elapsed_seconds = 0.0
 	search_hint_timer = maxf(0.25, search_hint_interval_seconds)
 	search_pause_timer = _observation_seconds()
@@ -750,7 +785,7 @@ func _process_search(delta: float) -> Vector3:
 	search_elapsed_seconds += delta
 	search_hint_timer = maxf(0.0, search_hint_timer - delta)
 
-	if not context.has_visual_memory and search_seconds > 0.0:
+	if not context.has_combat_contact() and search_seconds > 0.0:
 		search_timer = maxf(0.0, search_timer - delta)
 		if search_timer <= 0.0:
 			if debug_systematic_search:
@@ -774,8 +809,7 @@ func _process_search(delta: float) -> Vector3:
 			search_is_pausing = false
 			if not noise_search_origin.is_finite() and search_hint_timer <= 0.0:
 				search_hint_timer = maxf(0.25, search_hint_interval_seconds)
-				if _try_tracking_cheat_hint(get_current_search_hint_chance()):
-					_start_track_to_suspected()
+				if _try_tracking_cheat_hint(get_current_search_hint_chance()) and _start_track_to_suspected():
 					return Vector3.ZERO
 
 			if not _advance_systematic_search_target():
@@ -861,6 +895,7 @@ func _search_point_cost(point: Vector3) -> float:
 
 
 func _advance_systematic_search_target() -> bool:
+	_release_search_claim()
 	if get_search_coverage() >= search_coverage_goal:
 		return false
 	var next: Dictionary = coverage.take_next(predicted_position(), _focused_evidence())
@@ -883,6 +918,9 @@ func _advance_systematic_search_target() -> bool:
 		for index in range(1, path.size()):
 			path_length += path[index - 1].distance_to(path[index])
 		search_target_timer = _bound_fast_segment(path_length / maxf(0.1, actor.move_speed * movement_multiplier()) + 3.0)
+		if not _claim_search_point(destination, search_target_timer):
+			search_current_target_active = false
+			return false
 		agent.target_position = destination
 		if debug_systematic_search:
 			print("[AI][搜索] 轨迹调查目标=", destination, " 已覆盖=", snappedf(get_search_coverage() * 100.0, 0.1), "%")
@@ -897,6 +935,7 @@ func _advance_systematic_search_target() -> bool:
 
 func _finish_current_search_point() -> void:
 	_mark_search_coverage(search_current_target)
+	_release_search_claim()
 	# 到达搜寻目标才记录覆盖并停留；普通寻路拐点不会调用这里。
 	search_current_target_active = false
 	search_progress_best_distance = INF
@@ -907,6 +946,7 @@ func _finish_current_search_point() -> void:
 
 
 func _skip_current_search_point() -> void:
+	_release_search_claim()
 	release_segment()
 	context.invalidate_utility()
 	search_current_target_active = false
@@ -919,7 +959,8 @@ func _skip_current_search_point() -> void:
 
 
 func _end_search() -> void:
-	if context.has_visual_memory and is_enabled():
+	_release_search_claim()
+	if context.has_combat_contact() and is_enabled():
 		# 搜完一轮或暂时无路可走都不解除交战警戒，也不刷新证据和提示衰减。
 		var elapsed := search_elapsed_seconds
 		var hint_remaining := search_hint_timer
@@ -967,6 +1008,7 @@ func _end_search() -> void:
 
 
 func reset() -> void:
+	_release_search_claim()
 	_exact_search_origin = Vector3.INF
 	route_motion.reset()
 	_segment_speed = -1.0
@@ -1052,9 +1094,7 @@ func investigate_noise(position: Vector3, fresh_evidence: bool = false) -> void:
 	context.is_alerted = true
 
 
-	if _set_suspected_position_from_raw(position, 1.0) or _set_suspected_position_relaxed(position):
-		_start_track_to_suspected()
-	else:
+	if not ((_set_suspected_position_from_raw(position, 1.0) or _set_suspected_position_relaxed(position)) and _start_track_to_suspected()):
 		# 精确声源不可达时，在附近可达区域搜索，不穿过碰撞墙。
 		begin_search(position)
 
@@ -1088,7 +1128,10 @@ func begin(candidate: Dictionary, visible: bool) -> bool:
 		investigate_noise(position)
 	elif investigation_phase >= 0:
 		context.state = investigation_phase
-		agent.target_position = utility_destination()
+		if (has_suspected_position or search_current_target_active) and not _claim_search_point(utility_destination(), track_timer if investigation_phase == context.State.TRACK else search_target_timer):
+			recover_unreachable_destination()
+		else:
+			agent.target_position = utility_destination()
 	else:
 		begin_tracking_or_search(context.investigation_hint_allowed)
 	context.investigation_hint_allowed = false
@@ -1112,6 +1155,7 @@ func tick(delta: float, _visible: bool) -> Dictionary:
 func cancel(reason: StringName = &"switch") -> void:
 	# 暂时被其他行动接管时保留搜索覆盖和已承诺的调查段；死亡/复位调用 reset。
 	_running = false
+	_release_search_claim()
 	route_motion.reset()
 	plan = {}
 	if reason != &"switch": reset()
@@ -1131,6 +1175,15 @@ func on_event(event: StringName, data: Dictionary) -> void:
 	if event == &"visibility" and data.visible:
 		_exact_search_origin = Vector3.INF
 		reset()
+	elif event == &"cooperation_intel":
+		# 只有真正改变调查线索的团队报告触发该事件，不将更新快照变成每帧重开路线。
+		route_motion.reset()
+		plan.erase("route")
+		plan.erase("route_target")
+		_exact_search_origin = Vector3.INF
+		_release_search_claim()
+		if _running: investigate_known_threat(data.position)
+		else: investigation_phase = -1
 	elif event == &"exact_cover_clue":
 		# The new frozen clue supersedes an old selected movement route. An airborne
 		# body still finishes safely, but cannot resume that obsolete request.
@@ -1161,7 +1214,7 @@ func route_tick(delta: float, visible: bool) -> Dictionary:
 		if track_timer <= 0.0: _running = false
 	elif investigation_phase == context.State.SEARCH:
 		search_target_timer = maxf(0.0, search_target_timer - delta)
-		if not context.has_visual_memory: search_timer = maxf(0.0, search_timer - delta)
-		if search_target_timer <= 0.0 or (not context.has_visual_memory and search_timer <= 0.0): _running = false
+		if not context.has_combat_contact(): search_timer = maxf(0.0, search_timer - delta)
+		if search_target_timer <= 0.0 or (not context.has_combat_contact() and search_timer <= 0.0): _running = false
 	if visible: _running = false
 	return motion(Vector3.ZERO, movement_multiplier())

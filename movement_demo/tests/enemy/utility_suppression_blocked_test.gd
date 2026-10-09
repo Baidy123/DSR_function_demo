@@ -95,9 +95,9 @@ func _run() -> void:
 
 	preload("res://tests/enemy/enemy_fire_fixture.gd").set_training_action(ai, exit_resource.action_id, true)
 	preload("res://tests/enemy/enemy_fire_fixture.gd").set_training_action(ai, &"exit_suppression", true)
-	var exits = ai.actions[&"exit_suppression"]
+	var exits = ai.actions[&"suppression"]
 	for frame in range(3): await physics_frame
-	exits.on_target_lost()
+	exits.begin(exits.preview_candidate(&"exit_sweep"), false)
 	check(exits.is_active(), "两端确有射界时仍可启动出口压制")
 	all_clear = true
 	for target: Vector3 in exits.first_exit + exits.second_exit:
@@ -109,13 +109,13 @@ func _run() -> void:
 	ai.utility_suppression_pending = true
 	ai.utility_unseen_seconds = 0.0
 	options = ai.action_selector.assess_options(ai, false)
-	var ordinary: Array = options.filter(func(o): return o.id == &"suppression")
-	var targeted: Array = options.filter(func(o): return o.id == &"exit_suppression")
+	var ordinary: Array = options.filter(func(o): return o.id == &"suppression" and o.plan == &"point")
+	var targeted: Array = options.filter(func(o): return o.id == &"suppression" and o.plan == &"exit_sweep")
 	check(not ordinary.is_empty() and not targeted.is_empty(), "普通和出口压制同时有真实有效候选")
 	check(not ordinary.is_empty() and not targeted.is_empty() and targeted[0].cost < ordinary[0].cost, "可信出口封锁收益打破与普通压制的同分")
 	ai.invalidate_utility()
 	ai._update_utility_decision(0.5, false)
-	check(ai.utility_current.get("id") == &"exit_suppression", "统一选择器实际选择出口压制")
+	check(ai.utility_current.get("id") == &"suppression" and ai.utility_current.get("plan") == &"exit_sweep", "统一选择器实际选择出口压制")
 	shots = enemy.shot_count
 	for frame in range(100):
 		await physics_frame
@@ -143,19 +143,19 @@ func _run() -> void:
 	cover.remove_from_group("cover_region")
 	for frame in range(3): await physics_frame
 	var center: Vector3 = ai.last_seen_position + Vector3.UP * 0.8
-	check(not exits._prepare_targets(center), "实际遮挡墙不再提供掩体语义时不会改认邻墙")
+	check(not _prepare_exit_targets(exits, center), "实际遮挡墙不再提供掩体语义时不会改认邻墙")
 	cover.add_to_group("cover_region")
-	check(exits._prepare_targets(center) and exits.target_cover == cover, "恢复实际遮挡墙后仅选择该归属墙的合法出口")
+	check(_prepare_exit_targets(exits, center) and exits.target_cover == cover, "恢复实际遮挡墙后仅选择该归属墙的合法出口")
 	check(exits.first_exit.is_empty() != exits.second_exit.is_empty(), "只露出一侧出口时仍保留封锁方案")
 	var original_range: float = enemy.weapon.fire_range
 	# 新出口取身体能绕出的入口，射程仍位于真实出口与记忆中心之间。
 	enemy.weapon.fire_range = 2.6
-	check(enemy.get_shot_origin().distance_to(center) > enemy.weapon.fire_range and exits.utility_available(), "记忆中心超射程但实际出口可射时仍可参选")
-	exits.on_target_lost()
+	check(enemy.get_shot_origin().distance_to(center) > enemy.weapon.fire_range and not exits.preview_candidate(&"exit_sweep").is_empty(), "记忆中心超射程但实际出口可射时仍可参选")
+	exits.begin(exits.preview_candidate(&"exit_sweep"), false)
 	check(exits.is_active() and enemy.get_shot_origin().distance_to(exits.aim_point) <= enemy.weapon.fire_range, "执行阶段同样按实际出口射程启动")
 	exits.reset()
 	enemy.weapon.fire_range = 0.1
-	check(not exits.utility_available(), "所有实际出口超射程仍不能参选")
+	check(exits.preview_candidate(&"exit_sweep").is_empty(), "所有实际出口超射程仍不能参选")
 	enemy.weapon.fire_range = original_range
 	print("UTILITY SUPPRESSION BLOCKED: %d/%d passed" % [checks - failures, checks])
 	quit(1 if failures else 0)
@@ -164,3 +164,7 @@ func check(ok: bool, label: String) -> void:
 	checks += 1
 	if not ok: failures += 1
 	print("PASS " if ok else "FAIL ", label)
+
+func _prepare_exit_targets(action, center: Vector3) -> bool:
+	action._mode = &"exit_sweep"
+	return action._prepare_targets(center)

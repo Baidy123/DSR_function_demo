@@ -35,6 +35,15 @@ func build(shared_context, origin: Vector3, radius_setting: float, coverage_radi
 	var radius: float = maxf(1.0, search_radius)
 	# 均匀采样近似面积；每轮随机转动采样网，避免目标坐标固定。
 	var spacing: float = maxf(0.5, maxf(search_coverage_radius * 0.5, radius / 18.0))
+	if _uses_team_grid():
+		# 合作者使用同一世界格；共享的已查点可精确匹配，不把墙另一侧的近点算作已观察。
+		for x in range(int(floor((search_origin.x - radius) / spacing)), int(ceil((search_origin.x + radius) / spacing)) + 1):
+			for z in range(int(floor((search_origin.z - radius) / spacing)), int(ceil((search_origin.z + radius) / spacing)) + 1):
+				var point := Vector3(x * spacing, search_origin.y, z * spacing)
+				if context._horizontal_distance_between(point, search_origin) <= radius: _append_point(point)
+		uncovered.assign(pending)
+		sample_count = uncovered.size()
+		return
 	var angle: float = randf() * TAU
 	var extent: int = int(ceil(radius / spacing))
 	for x in range(-extent, extent + 1):
@@ -90,18 +99,40 @@ func mark(point: Vector3) -> void:
 	for index in range(pending.size() - 1, -1, -1):
 		if covered.has(pending[index]):
 			pending.remove_at(index)
+	if context.cooperation_enabled() and not covered.is_empty():
+		var observed := PackedVector3Array()
+		for sample: Vector3 in covered: observed.append(sample)
+		context.cooperation_publish_checked(observed)
 
 
-func point_cost(point: Vector3, predicted: Vector3) -> float:
+func _uses_team_grid() -> bool:
+	if not context.cooperation_enabled(): return false
+	for member: Dictionary in context.cooperation_snapshot().get("members", []):
+		if int(member.get("id", 0)) != actor.get_instance_id() and member.get("can_cooperate", false): return true
+	return false
+
+
+func _available(point: Vector3, checked: Dictionary) -> bool:
+	if not context.cooperation_enabled(): return true
+	if not context.cooperation_search_available(point, float(context.setting(&"cooperation", &"search_claim_radius", 1.0))): return false
+	# 只排除同一个量化地面样本；共享负证据不修改个人覆盖率，过期后仍能重新选中。
+	var key := point.snapped(Vector3.ONE * 0.01)
+	return not checked.has(key)
+
+
+func point_cost(point: Vector3, predicted: Vector3, evidence: Dictionary = {}) -> float:
 	var origin: Vector3 = search_origin
 	var prediction: Vector3 = origin
 	var confidence := 0.0
-	if context.has_visual_memory and not context.noise_search_origin.is_finite() and not context.last_seen_direction.is_zero_approx():
+	if evidence.is_empty(): evidence = context.cooperation_target_evidence()
+	var direction: Vector3 = evidence.get("direction", context.last_seen_direction)
+	var age: float = maxf(0.0, context.evidence_elapsed_seconds - float(evidence.get("captured_at", context.evidence_elapsed_seconds - context.utility_unseen_seconds)))
+	if context.has_combat_contact() and not context.noise_search_origin.is_finite() and not direction.is_zero_approx():
 		prediction = predicted
-		confidence = pow(0.5, context.utility_unseen_seconds / 4.0)
+		confidence = pow(0.5, age / 4.0)
 	var offset := point - origin
 	offset.y = 0.0
-	var backwards := maxf(0.0, -offset.dot(context.last_seen_direction))
+	var backwards := maxf(0.0, -offset.dot(direction))
 	return lerpf(offset.length(), context._horizontal_distance_between(point, prediction) + backwards, confidence) + context._horizontal_distance(point) * 0.25
 
 
@@ -135,19 +166,20 @@ func prepare_focus(checked: Array[Vector3]) -> void:
 			if context.is_position_free(destination): focus_points.append(destination)
 
 
-func _take_focus(prediction: Vector3) -> Dictionary:
+func _take_focus(prediction: Vector3, checked: Dictionary = {}, evidence: Dictionary = {}) -> Dictionary:
 	var best: Dictionary = {}
 	var best_cost := INF
 	var chosen := -1
 	for index in range(focus_points.size() - 1, -1, -1):
 		var point: Vector3 = focus_points[index]
+		if not _available(point, checked): continue
 		var path: PackedVector3Array = context.cover_selection._path_to(actor.global_position, point)
 		if path.is_empty() or not context.is_position_free(point):
 			focus_points.remove_at(index)
 			# 逆序删除仅移动此前已选的更高索引。
 			if chosen > index: chosen -= 1
 			continue
-		var cost: float = point_cost(point, prediction) + context.cover_selection._path_length_from_path(path) * 0.35
+		var cost: float = point_cost(point, prediction, evidence) + context.cover_selection._path_length_from_path(path) * 0.35
 		if cost < best_cost:
 			chosen = index
 			best_cost = cost
@@ -157,18 +189,27 @@ func _take_focus(prediction: Vector3) -> Dictionary:
 
 
 func take_next(prediction: Vector3, prefer_focus: bool = false) -> Dictionary:
+	var checked: Dictionary = {}
+	var evidence: Dictionary = context.cooperation_target_evidence()
+	if context.cooperation_enabled():
+		for report: Dictionary in context.cooperation_checked_points():
+			var observed: Vector3 = report.get("position", Vector3.INF)
+			if observed.is_finite() and float(report.get("valid_until", 0.0)) > context.evidence_elapsed_seconds and float(report.get("observed_at", -INF)) >= float(evidence.get("captured_at", -INF)):
+				checked[observed.snapped(Vector3.ONE * 0.01)] = true
 	if prefer_focus:
-		var focus := _take_focus(prediction)
+		var focus := _take_focus(prediction, checked, evidence)
 		if not focus.is_empty(): return focus
 	# 候选已有空间/路径过滤；这里只做廉价排序，选中后重新核实路径。
 	while not pending.is_empty():
-		var chosen_index := 0
-		var best_cost := point_cost(pending[0], prediction)
-		for candidate_index in range(1, pending.size()):
-			var cost := point_cost(pending[candidate_index], prediction)
+		var chosen_index := -1
+		var best_cost := INF
+		for candidate_index in range(pending.size()):
+			if not _available(pending[candidate_index], checked): continue
+			var cost := point_cost(pending[candidate_index], prediction, evidence)
 			if cost < best_cost:
 				chosen_index = candidate_index
 				best_cost = cost
+		if chosen_index < 0: return {}
 		var destination: Vector3 = pending[chosen_index]
 		pending.remove_at(chosen_index)
 		var path: PackedVector3Array = NavigationServer3D.map_get_path(

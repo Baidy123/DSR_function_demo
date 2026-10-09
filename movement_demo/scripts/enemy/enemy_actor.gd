@@ -4,6 +4,11 @@ extends CharacterBody3D
 
 const BodyMotion = preload("res://scripts/enemy/services/enemy_body_motion.gd")
 var body_motion = BodyMotion.new()
+@export_group("协作分组")
+## 同战斗区且通信资格匹配的友军共享真实观察。新阵营需通过关系接口配置。
+@export var faction_id: StringName = &"enemy"
+## 留空表示本阵营默认通信组；非空组只与同组共享。
+@export var communication_group: StringName = &""
 @export_group("Posture")
 const standing_height := 1.75
 @export var crouching_height := 1.0

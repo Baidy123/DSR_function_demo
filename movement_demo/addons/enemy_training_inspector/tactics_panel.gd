@@ -79,7 +79,7 @@ func refresh(force: bool = false) -> void:
 			checkbox.text += "（由 %s 包含）" % "、".join(names)
 			checkbox.tooltip_text = "取消相应高级项后才可单独修改；原有手动选择会保留。"
 		else:
-			checkbox.tooltip_text = "手动启用" if training.selected_tactics.has(id) else "尚未解锁"
+			checkbox.tooltip_text = "手动启用" if Library.selected_tactics(training, source).has(id) else "尚未解锁"
 		checkbox.toggled.connect(_toggle.bind(training, id))
 		rows.add_child(checkbox)
 		if invalid: _note(checkbox.tooltip_text)
@@ -89,6 +89,7 @@ func _toggle(enabled: bool, training: EnemyTrainingProfile, id: StringName) -> v
 	var before: Array[StringName] = training.selected_tactics.duplicate()
 	var after: Array[StringName] = before.duplicate()
 	after.erase(id)
+	if id == &"suppression": after.erase(&"exit_suppression")
 	if enabled: after.append(id)
 	undo_redo.create_action("更改敌人战术解锁", UndoRedo.MERGE_DISABLE, training)
 	undo_redo.add_do_property(training, &"selected_tactics", after)

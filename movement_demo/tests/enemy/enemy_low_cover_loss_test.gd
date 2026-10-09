@@ -25,6 +25,11 @@ func _run() -> void:
 	ai.set_physics_process(false)
 	enemy.set_physics_process(false)
 	player.set_physics_process(false)
+	# 本项验证远程压制证据；实例明确具备火器资格，不依赖关卡当前选中的兵种。
+	enemy.get_node("UnitType").profile = preload("res://resources/enemy/units/ranged.tres").duplicate(true)
+	var firearm: WeaponData = enemy.weapon.duplicate(true)
+	firearm.fire_mode = WeaponData.FireMode.AUTOMATIC
+	enemy.equip_weapon(firearm)
 	Fixture.set_training_action(ai, &"exit_suppression", true)
 	ai.training.profile.set_setting(&"perception", &"close_cover_intelligence_enabled", false)
 	var cover = scene.get_node("Arena/NavigationRegion3D/Environment/LowCover")

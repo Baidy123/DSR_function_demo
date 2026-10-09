@@ -14,5 +14,6 @@ func collect_candidates(visible: bool) -> Array[Dictionary]:
 		var candidate := option(destination, horizon - route.fire_seconds, exposed, horizon - minf(horizon, route.seconds))
 		candidate.mode = &"covering_retreat"
 		candidate.conceals = true
+		candidate.support_request = {"kind": &"retreat", "duration": minf(horizon, route.seconds), "lane_id": &"target"}
 		result.append(candidate)
 	return result

@@ -15,6 +15,7 @@ func _run() -> void:
 	var player = scene.get_node("Player")
 	ai.set_physics_process(false)
 	player.set_physics_process(false)
+	preload("res://tests/enemy/enemy_fire_fixture.gd").configure_timing(actor)
 	preload("res://tests/enemy/enemy_fire_fixture.gd").set_training_action(ai, &"exit_suppression", true)
 	actor.global_position = Vector3(24, 0, -2)
 	player.global_position = Vector3(18, 0, -7)
@@ -40,19 +41,19 @@ func _run() -> void:
 	var clear_memory := Vector3(21.6, 0, -4.1)
 	check(selection.has_clear_line(actor.get_shot_origin(), clear_memory + Vector3.UP * 0.15), "邻墙端部案例的冻结点确实没有静态遮挡")
 	check(selection.suppression_geometry(clear_memory).is_empty(), "仅靠近可绕端部而无实际遮挡证据时不认领掩体")
-	var exits = ai.actions[&"exit_suppression"]
+	var exits = ai.actions[&"suppression"]
 	var ordinary = ai.actions[&"suppression"]
 	_memory(ai, clear_memory)
-	check(exits.collect_candidates(false).is_empty() and not ordinary.collect_candidates(false).is_empty(), "归属未知时退出出口候选但保留原点压制")
+	check(exits.collect_candidates(false).filter(func(candidate): return candidate.plan == &"exit_sweep").is_empty() and not ordinary.collect_candidates(false).filter(func(candidate): return candidate.plan == &"point").is_empty(), "归属未知时退出出口候选但保留原点压制")
 	var stacked = _cover(ai, Vector3(20.55, 1.1, -2), Vector3(0.2, 2.2, 3))
 	await _settle()
 	check(selection.suppression_geometry(known).is_empty(), "前后两面墙同时遮挡冻结点时拒绝猜测归属")
 	_memory(ai, known)
-	check(exits.collect_candidates(false).is_empty(), "多墙歧义不能进入出口压制候选")
+	check(exits.collect_candidates(false).filter(func(candidate): return candidate.plan == &"exit_sweep").is_empty(), "多墙歧义不能进入出口压制候选")
 	stacked.collision_layer = 0
 	await _settle()
 	_memory(ai, known)
-	exits.on_target_lost()
+	exits.begin(exits.preview_candidate(&"exit_sweep"), false)
 	check(exits.is_active() and exits.target_cover == cover, "消除歧义后执行锁定实际归属墙")
 	stacked.collision_layer = 1
 	await _settle()
@@ -66,7 +67,7 @@ func _run() -> void:
 	geometry = selection.suppression_geometry(known)
 	check(geometry.get("body") == cover and geometry.get("first", []).is_empty() and geometry.get("second", []).is_empty(), "已确认墙出口封堵仍保留原归属并报告零可射出口")
 	_memory(ai, known)
-	check(exits.collect_candidates(false).is_empty(), "原归属墙全部出口失效时不提供出口方案")
+	check(exits.collect_candidates(false).filter(func(candidate): return candidate.plan == &"exit_sweep").is_empty(), "原归属墙全部出口失效时不提供出口方案")
 	first.collision_layer = 0
 	second.collision_layer = 0
 	cover.collision_layer = 0
@@ -79,7 +80,7 @@ func _run() -> void:
 	geometry = selection.suppression_geometry(known)
 	check(geometry.get("body") == low and not geometry.get("first", []).is_empty() and not geometry.get("second", []).is_empty(), "脚腿遮挡可确认低墙并保留真实可射出口")
 	_memory(ai, known)
-	check(not exits.collect_candidates(false).is_empty(), "可靠低墙归属仍允许出口压制参与原Utility")
+	check(not exits.collect_candidates(false).filter(func(candidate): return candidate.plan == &"exit_sweep").is_empty(), "可靠低墙归属仍允许出口压制参与原Utility")
 	check(selection.suppression_geometry(Vector3(17, 0, -2)).is_empty(), "遮挡墙离冻结点超出原推断范围时拒绝归属")
 	print("Exit suppression ownership: %d/%d passed" % [checks - failures, checks])
 	scene.queue_free()

@@ -5,10 +5,11 @@ signal presentation_reset(region: Node)
 var players_inside: Array[Node3D] = []
 var enemies: Array[CharacterBody3D] = []
 var _combat_zone: Area3D
+var cooperation = preload("res://scripts/enemy/services/enemy_cooperation.gd").new()
 
 
 func enemy_environment() -> Dictionary:
-	return {"zone": get_node_or_null("CombatZone"), "navigation": get_node_or_null("NavigationRegion3D")}
+	return {"zone": get_node_or_null("CombatZone"), "navigation": get_node_or_null("NavigationRegion3D"), "cooperation": cooperation}
 
 
 func register_enemy(enemy: CharacterBody3D) -> void:
@@ -18,14 +19,19 @@ func register_enemy(enemy: CharacterBody3D) -> void:
 
 func unregister_enemy(enemy: CharacterBody3D) -> void:
 	enemies.erase(enemy)
+	cooperation.unregister(enemy.get_instance_id())
 
 
 func _ready() -> void:
 	_bind_combat_zone()
 
 
-func _physics_process(_delta: float) -> void:
+func _physics_process(delta: float) -> void:
 	_bind_combat_zone()
+	for player in players_inside:
+		if is_instance_valid(player) and not player.is_dead() and not player.is_in_dialogue:
+			cooperation.advance(delta)
+			break
 
 
 func _bind_combat_zone() -> void:
@@ -58,6 +64,7 @@ func _on_player_exited(body: Node3D) -> void:
 
 
 func _reset_targets() -> void:
+	cooperation.reset()
 	presentation_reset.emit(self)
 	# 直接子靶与注册的嵌套敌人去重，只刷新本区域。
 	var targets: Array[Node] = []

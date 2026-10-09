@@ -67,7 +67,7 @@ overridden = PackedStringArray("fire_stability_target", "burst_shot_count", "bur
 [resource]
 script = ExtResource("profile")
 display_name = "竞技场现有训练"
-selected_tactics = Array[StringName]([&"cover"])
+selected_tactics = Array[StringName]([&"cover", &"suppression", &"cooperate"])
 ai = SubResource("ai")
 tactics = SubResource("tactics")
 search = SubResource("search")

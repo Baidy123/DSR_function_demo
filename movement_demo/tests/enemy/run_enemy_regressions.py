@@ -5,6 +5,11 @@ from pathlib import Path
 import subprocess
 
 TESTS = [
+    "enemy_cooperation_service_test",
+    "enemy_cooperation_search_test",
+    "enemy_cooperation_reload_test",
+    "enemy_cooperation_solo_test",
+    "cooperation_tactics_test",
     "enemy_half_cover_test",
     "low_cover_band_test",
     "enemy_low_cover_loss_test",
@@ -69,6 +74,7 @@ TESTS = [
     "enemy_fire_timing_test",
     "enemy_fire_decision_test",
     "utility_runtime_test",
+    "cooperation_runtime_test",
 ]
 
 
@@ -89,7 +95,8 @@ def main():
                    "--log-file", str(logs / (name + ".log")),
                    "--script", "res://tests/enemy/" + name + ".gd"]
         try:
-            run = subprocess.run(command, capture_output=True, timeout=75)
+            timeout = 180 if name == "cooperation_runtime_test" else 75
+            run = subprocess.run(command, capture_output=True, timeout=timeout)
             output = (run.stdout + run.stderr).decode("utf-8", errors="replace")
             code = run.returncode
         except subprocess.TimeoutExpired as error:

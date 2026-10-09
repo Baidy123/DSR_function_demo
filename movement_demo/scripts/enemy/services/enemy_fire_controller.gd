@@ -102,6 +102,7 @@ func update_shooting(delta: float, sees_player: bool, movement_requested: bool) 
 		fire_decision.reset()
 		context.invalidate_utility()
 		return
+	if not context.cooperation_line_safe(actor.get_shot_origin(), point): return
 	if request.get("bypass_steady", false):
 		fire_decision.reset()
 	else:
@@ -109,7 +110,8 @@ func update_shooting(delta: float, sees_player: bool, movement_requested: bool) 
 		var recovery_rate: float = maxf(0.0, stability - previous_stability) / maxf(elapsed, 0.0001)
 		var distance: float = actor.get_shot_origin().distance_to(point)
 		var close_pressure: float = clampf(1.0 - distance / maxf(ranged_min_distance, 0.01), 0.0, 1.0)
-		if fire_decision.choose_action(elapsed, stability, fire_stability_target, recovery_rate, close_pressure) != fire_decision.Action.FIRE:
+		var support_pressure: float = context.cooperation_support_pressure() if request.get("support_intent", false) else 0.0
+		if fire_decision.choose_action(elapsed, stability, fire_stability_target, recovery_rate, close_pressure, support_pressure) != fire_decision.Action.FIRE:
 			return
 	if actor.try_fire():
 		fire_decision.on_shot_fired()
@@ -136,6 +138,7 @@ func _update_suppression_shooting(delta: float, movement_requested: bool) -> voi
 	if not has_clear_suppression_lane(actor.get_shot_origin(), actor.aim_direction, actor.get_shot_origin().distance_to(point)):
 		context.invalidate_utility()
 		return
+	if not context.cooperation_line_safe(actor.get_shot_origin(), point): return
 	if actor.try_fire():
 		_record_burst_shot()
 		shot_fired.emit()
@@ -148,6 +151,18 @@ func _record_burst_shot() -> void:
 
 func _current_firing_stability() -> float:
 	return actor.get_center_probability()
+
+## Read-only estimate using the same steady/fire comparison; no aim or timer changes.
+func estimated_steady_wait(support_intent: bool = false) -> float:
+	var demand: float = context.cooperation_support_pressure()
+	if demand <= 0.0: return 0.0
+	var target: float = maxf(0.0001, fire_stability_target)
+	var quality: float = clampf(_current_firing_stability() / target, 0.0, 1.0)
+	var recovery: float = clampf(fire_decision.last_recovery_rate / target, 0.0, 1.0)
+	var steady: float = 1.0 + recovery * (1.0 - quality) * maxf(0.0, fire_decision.recovery_gain_weight)
+	var close: float = clampf(1.0 - context._horizontal_distance(context.last_known_position) / maxf(0.01, ranged_min_distance), 0.0, 1.0)
+	var fire_score: float = quality + close * maxf(0.0, fire_decision.close_range_weight) + (demand if support_intent else 0.0)
+	return clampf((steady - fire_score) / maxf(0.05, fire_decision.wait_pressure_per_second) - fire_decision.wait_seconds, 0.0, context.utility_horizon_seconds)
 
 func reset_fire_timing() -> void:
 	fire_decision.reset()

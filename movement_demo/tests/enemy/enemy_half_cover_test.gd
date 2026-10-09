@@ -80,13 +80,13 @@ func _run() -> void:
 	check(ai.context.suppression_basis().get("id") == event_id and ai.context.suppression_basis().position == captured, "remaining in contact neither tracks coordinates nor renews the event")
 	var suppression = ai.actions[&"suppression"]
 	check(basis.get("low_cover_context", false), "low-cover context is frozen with the exact clue")
-	var exits = ai.actions[&"exit_suppression"]
-	check(exits.utility_available(), "low-cover exit suppression remains a legal geometric alternative")
+	var exits = ai.actions[&"suppression"]
+	check(not exits.preview_candidate(&"exit_sweep").is_empty(), "low-cover exit suppression remains a legal geometric alternative")
 	ai.training.profile.set_setting(&"suppression", &"low_cover_point_preference", 0.0)
 	var unbiased: Dictionary = ai.action_selector.score_outcome(ai.context, 1.0, 1.0, 1.0, suppression.preference_credit())
 	ai.training.profile.set_setting(&"suppression", &"low_cover_point_preference", 1.0)
 	var biased: Dictionary = ai.action_selector.score_outcome(ai.context, 1.0, 1.0, 1.0, suppression.preference_credit())
-	check(is_equal_approx(unbiased.cost - biased.cost, 1.0) and biased.exposed_seconds == unbiased.exposed_seconds and exits.preference_credit() == 0.0, "low-cover preference transparently improves point suppression without falsifying outcomes")
+	check(is_equal_approx(unbiased.cost - biased.cost, 1.0) and biased.exposed_seconds == unbiased.exposed_seconds and exits.preview_candidate(&"exit_sweep").outcome.preference_credit == 0.0, "low-cover preference transparently improves point suppression without falsifying outcomes")
 	var alternatives: Array = [{"id": &"point", "cost": biased.cost}, {"id": &"better", "cost": biased.cost - 0.1}]
 	check(ai.action_selector.choose_option(alternatives).id == &"better", "another lower-cost candidate can still beat the low-cover preference")
 	# Move towards one end: exits no longer offer symmetric containment of the known point.

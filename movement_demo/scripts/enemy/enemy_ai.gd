@@ -47,6 +47,8 @@ var utility_current: Dictionary:
 ## 每秒信息损失的代价权重，例如躲进掩体后无法持续观察目标。
 ## 调大更重视保持/重新获得目标信息，调小更能接受失视躲藏；0表示不计此项代价。
 @export_range(0.0, 10.0, 0.1) var utility_information_weight: float = 1.0
+## 每秒有效协作收益的信用；0保留协作候选但关闭团队收益偏好。
+@export_range(0.0, 10.0, 0.1) var utility_cooperation_weight: float = 4.0
 ## 正常情况下重新收集并比较动作候选的间隔，单位为秒；受击、配置变化等可请求提前重评。
 ## 调小反应更及时但评估更频繁，调大更省计算但可能反应较慢；重评后仍需满足切换条件。
 @export_range(0.1, 2.0, 0.1) var utility_recheck_seconds: float = 0.4
@@ -126,7 +128,7 @@ func _physics_process(delta: float) -> void:
 	refresh_configuration()
 	frame_costs.configuration = Time.get_ticks_usec() - stamp
 	stamp = Time.get_ticks_usec()
-	for key in [&"utility_horizon_seconds", &"utility_fire_weight", &"utility_risk_weight", &"utility_information_weight", &"utility_threat_half_life_seconds"]:
+	for key in [&"utility_horizon_seconds", &"utility_fire_weight", &"utility_risk_weight", &"utility_information_weight", &"utility_cooperation_weight", &"utility_threat_half_life_seconds"]:
 		context.set(key, get(key))
 	var enabled: bool = not actor.is_dead and is_arena_active() and not player.is_dead() and not player.is_in_dialogue
 	if not enabled:
@@ -162,6 +164,7 @@ func _physics_process(delta: float) -> void:
 	context.melee.update(delta, visible, output.get("melee", {}))
 	actor.move_character(direction, delta, output.get("multiplier", 1.0))
 	context.fire.update(delta, visible, not direction.is_zero_approx(), output.get("fire", {}))
+	context.cooperation_publish_execution(output)
 	frame_costs.execution = Time.get_ticks_usec() - stamp
 	if current_action != null and not output.get("running", true):
 		context.investigation_hint_allowed = true
@@ -221,6 +224,7 @@ func _start_utility_option(candidate: Dictionary, visible: bool) -> void:
 
 func _cancel_utility_execution(reason: StringName = &"switch") -> void:
 	if current_action != null: current_action.cancel(reason)
+	context.cooperation_clear_execution()
 	current_action = null
 	utility_current = {}
 	context.fire.request = {}

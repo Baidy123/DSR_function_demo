@@ -25,7 +25,7 @@ static func resolve(unit: EnemyUnitProfile, training: EnemyTrainingProfile) -> D
 	for definition in unit.default_behaviors:
 		if definition != null and catalog.has(definition.action_id) and unit.supports(definition.required_capabilities):
 			result.definitions[definition.action_id] = definition
-	for id in training.selected_tactics if training != null else []:
+	for id in selected_tactics(training, unit):
 		if not catalog.has(id) or catalog[id].category != EnemyActionDefinition.Category.TACTICAL:
 			continue # 保留旧兵种选择，但不参与当前装配。
 		var closure: Dictionary = {}
@@ -39,6 +39,15 @@ static func resolve(unit: EnemyUnitProfile, training: EnemyTrainingProfile) -> D
 				if not result.included_by.has(included):
 					result.included_by[included] = []
 				result.included_by[included].append(id)
+	return result
+
+## 旧训练解锁出口压制时升级到统一压制；解析与检查器预览不修改资源。
+static func selected_tactics(training: EnemyTrainingProfile, unit: EnemyUnitProfile = null) -> Array[StringName]:
+	var result: Array[StringName] = []
+	if training == null: return result
+	for id in training.selected_tactics:
+		var migrated: StringName = &"suppression" if id == &"exit_suppression" and (unit == null or unit.definition(&"suppression") != null) else id
+		if not result.has(migrated): result.append(migrated)
 	return result
 
 static func _expand(id: StringName, catalog: Dictionary, unit: EnemyUnitProfile, visiting: Array, closure: Dictionary) -> String:

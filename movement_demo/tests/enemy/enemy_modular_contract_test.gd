@@ -23,8 +23,8 @@ func _run() -> void:
 	check(base.definitions.has(&"reload") and not base.definitions.has(&"cover"), "基础換弹独立于掩体战术")
 	training.selected_tactics = [&"exit_suppression"]
 	var advanced := Library.resolve(unit, training)
-	check(advanced.definitions.has(&"suppression") and advanced.definitions.has(&"exit_suppression"), "高级项自动包含基础项且两者共存")
-	check(advanced.included_by[&"suppression"] == [&"exit_suppression"], "包含来源可供检查器解释")
+	check(advanced.definitions.has(&"suppression") and not advanced.definitions.has(&"exit_suppression"), "旧出口选择迁移为唯一压制实例")
+	check(advanced.included_by.is_empty(), "合并后的压制没有虚构父子包含关系")
 	check(training.selected_tactics == [&"exit_suppression"], "解析不改写显式选择")
 	training.selected_tactics.clear()
 	check(not Library.resolve(unit, training).definitions.has(&"suppression"), "取消高级项撤销仅由它带来的基础权限")
@@ -35,12 +35,12 @@ func _run() -> void:
 	var source: EnemyActionDefinition = unit.definition(&"suppression")
 	unit.tactical_actions.erase(source)
 	var missing := Library.resolve(unit, training)
-	check(not missing.definitions.has(&"exit_suppression") and not missing.errors.is_empty(), "缺少关联基础项使高级项失效")
+	check(not missing.definitions.has(&"exit_suppression") and not missing.definitions.has(&"suppression"), "目录没有压制时旧选择不能绕过目录装配")
 	unit.tactical_actions.append(source)
-	check(Library.resolve(unit, training).definitions.has(&"exit_suppression"), "恢复兵种目录后恢复原有选择")
+	check(Library.resolve(unit, training).definitions.has(&"suppression"), "恢复兵种目录后恢复原有选择")
 	var melee: EnemyUnitProfile = load("res://resources/enemy/units/melee.tres")
 	check(not Library.resolve(melee, training).definitions.has(&"exit_suppression") and training.selected_tactics == [&"exit_suppression"], "更换兵种保留隐藏选择但不装配")
-	source.includes = [&"exit_suppression"]
+	source.includes = [&"suppression"]
 	check(not Library.resolve(unit, training).errors.is_empty(), "包含关系成环被拒绝")
 	source.includes.clear()
 	unit.tactical_actions.append(source)
@@ -52,7 +52,7 @@ func _run() -> void:
 	check(not Library.resolve(unit, training).definitions.has(&"misplaced_tactic"), "战术定义错放在默认板块不会绕过授权")
 	unit.default_behaviors.erase(misplaced)
 	unit.capabilities.erase(&"firearms")
-	check(not Library.resolve(unit, training).definitions.has(&"exit_suppression"), "身体能力要求不能由训练绕过")
+	check(not Library.resolve(unit, training).definitions.has(&"suppression"), "身体能力要求不能由训练绕过")
 	unit.capabilities.append(&"firearms")
 	check(training.setting(&"tactics", &"ranged_min_distance", 0.0, {&"ranged_min_distance": 8.0}) == 8.0, "未显式覆盖时保留兵种动作参数")
 	training.set_setting(&"tactics", &"ranged_min_distance", 3.0)
@@ -72,7 +72,7 @@ func _run() -> void:
 	ai.unit_type.profile = unit
 	ai.training.profile = training.duplicate(true)
 	ai.refresh_configuration(true)
-	check(ai.actions.has(&"exit_suppression") and ai.actions[&"exit_suppression"] != ai.actions[&"suppression"], "父子动作拥有不同执行实例")
+	check(ai.actions.has(&"suppression") and not ai.actions.has(&"exit_suppression"), "旧训练仅创建统一压制执行实例")
 	check(not ai.actions.has(&"cover") and not ai.actions.has(&"attack_position"), "未授权动作完全不创建")
 	var search_before = ai.actions[&"search"]
 	ai.training.profile.selected_tactics.clear()

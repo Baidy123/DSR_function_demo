@@ -45,6 +45,17 @@ func is_active_for(action_id: StringName) -> bool:
 func allows_movement(action_id: StringName) -> bool:
 	return is_active_for(action_id) and context.actor.can_move()
 
+## Actual nearby pressure is separate from ranged fire readiness.
+func support_window(visible: bool) -> float:
+	if not visible or not _environment_valid(): return 0.0
+	if phase == Phase.WINDUP and context.actor.melee_active:
+		if context.actor.melee_target_reachable(context.player, settings, direction):
+			return maxf(0.0, float(settings.windup) - elapsed)
+	if can_request(visible):
+		var values := weapon_settings()
+		return maxf(0.0, float(values.windup))
+	return 0.0
+
 
 ## 表现读取独立快照，不参与执行许可判断，也不能修改控制器进度。
 func presentation_state() -> Dictionary:

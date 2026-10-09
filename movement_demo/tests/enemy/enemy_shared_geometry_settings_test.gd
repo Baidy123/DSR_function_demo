@@ -24,6 +24,7 @@ func _run() -> void:
 		var player = scene.get_node("Player")
 		ai.set_physics_process(false)
 		player.set_physics_process(false)
+		preload("res://tests/enemy/enemy_fire_fixture.gd").configure_timing(actor)
 		preload("res://tests/enemy/enemy_fire_fixture.gd").set_training_action(ai, &"exit_suppression", true)
 		for body in ai.navigation_region.get_node("Environment").get_children():
 			if body is StaticBody3D and body.name != "Floor": body.collision_layer = 0
@@ -46,11 +47,11 @@ func _run() -> void:
 			await process_frame
 		ai.training.profile.set_setting(&"selection", &"cover_inference_distance", 0.1)
 		var ordinary = ai.actions[&"suppression"]
-		var exits = ai.actions[&"exit_suppression"]
-		check(is_zero_approx(ordinary.information_retention()) and not exits.utility_available(), "较小共享半径同时排除两种压制的远处掩体推断")
+		var exits = ai.actions[&"suppression"]
+		check(is_zero_approx(ordinary.information_retention()) and exits.preview_candidate(&"exit_sweep").is_empty(), "较小共享半径同时排除两种压制的远处掩体推断")
 		ai.training.profile.set_setting(&"selection", &"cover_inference_distance", 2.35)
 		var retained: float = ordinary.information_retention()
-		check(retained > 0.0 and exits.utility_available(), "调大共享半径同时恢复两种压制的几何收益")
+		check(retained > 0.0 and not exits.preview_candidate(&"exit_sweep").is_empty(), "调大共享半径同时恢复两种压制的几何收益")
 		ai.training.profile.selected_tactics.assign([&"suppression"])
 		ai.training.profile.exit_suppression = null
 		ai.refresh_configuration(true)
