@@ -120,6 +120,8 @@ Vault 跟随真实翻越进度，Vault Fall 在身体下落期间独立循环；
 
 ## 维护与验证
 
+相机遮挡透明是独立的外观消费流程：原 `Camera3D` 查询挡住玩家的静态环境，并处理其可见 Mesh，包括 Presentation 的内部模型。使用独立的 StandardMaterial3D / ORMMaterial3D 副本渐变，恢复时还原原引用，不修改模型资源或物理碰撞；自定义 ShaderMaterial 需另行提供适配。模型分支可用 `camera_occlusion_ignore` 组排除，完整配置见 [相机说明](CAMERA.md)。
+
 通用挂载、动画后端及状态类型放在 `scripts/systems/presentation/`；命中快照、表面配置与特效管理在 `scripts/systems/effects/`。玩家、敌人和 NPC 各自的 Presentation 适配器读取已有状态。敌人 AI 和战术模块不引用模型、素材名称或粒子。
 
 `weapon_presentation.gd` 只负责装备外观的实例生命周期、挂点跟随及方块回退；配置保留在既有 `WeaponData`，由 `visual_presentation.gd` 消费状态中的 `weapon` 和相对本节点的 `weapon_mount_position`。它不读取 Ammo 或修改装备、身体、战术，原场景节点路径不变。

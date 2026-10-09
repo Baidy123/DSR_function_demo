@@ -14,6 +14,8 @@
 
 装备来源统一为 WeaponSlots，初始化与切槽时将选中资源交给 Combat。Combat 保留运行时武器引用，检查器不再提供重复的 Weapon 配置；它继续负责瞄准模式、稳定度计算、射线和伤害。展开槽内资源会按 Combat 的 Aim Mode 显示对应模式参数；从文件系统直接打开资源才显示两组。
 
+武器资源的 **相机视野（仅玩家）** 分组配置 `camera_view_size` 和 `camera_transition_seconds`：Size越大看得越广，0沿用主场景相机原值，切换默认过渡0.25秒。相机订阅已有 `Combat.weapon_changed`，武器槽不管理镜头。当前两份试玩资源分别设为13、17，原枪械类型与数值保留；新步枪资源也在此配置，不按槽位或弹药类型推断。详见 [相机与遮挡透明](CAMERA.md)。
+
 每把武器的 `Fire Mode` 可选“单发／自动”：单发每次点击发一枪，自动在瞄准时按住左键持续开火；射速仍由 `Shot Interval` 决定。现有资源默认单发，切枪后需要重新按下左键。完整规则及测试见 [PLAYER_FIRE_MODES.md](PLAYER_FIRE_MODES.md)。
 
 ## 操作与边界

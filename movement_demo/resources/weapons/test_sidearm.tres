@@ -5,6 +5,7 @@
 
 [resource]
 script = ExtResource("1_weapon")
+camera_view_size = 17.0
 ammo_type = 2
 magazine_capacity = 30
 reload_seconds = 4.5

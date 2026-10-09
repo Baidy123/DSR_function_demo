@@ -5,6 +5,7 @@
 
 [resource]
 script = ExtResource("1")
+camera_view_size = 13.0
 cone_angle_degrees = 45.0
 stabilize_seconds = 1.0
 moving_accuracy_cap = 0.4

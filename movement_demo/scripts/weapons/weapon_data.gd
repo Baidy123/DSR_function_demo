@@ -5,6 +5,12 @@ extends Resource
 enum FireMode { SEMI_AUTO, AUTOMATIC, MELEE }
 enum AmmoType { RIFLE, PISTOL, SMG, SHOTGUN }
 
+@export_group("相机视野（仅玩家）")
+## 正交相机 Size，越大看得越广；0沿用场景原视野，不改变锁定距离或弹道射程。
+@export_range(0.0, 60.0, 0.1, "suffix:m") var camera_view_size: float = 0.0
+## 切换到这把枪时的视野过渡秒数；0立即切换，出生直接使用初始武器视野。
+@export_range(0.0, 3.0, 0.05, "suffix:s") var camera_transition_seconds: float = 0.25
+
 @export_group("武器外观")
 ## 可选纯外观场景；留空显示方块占位，不参与弹道、命中或装备资格。
 @export var visual_model: PackedScene

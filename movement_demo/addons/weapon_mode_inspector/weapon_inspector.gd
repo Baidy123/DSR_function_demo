@@ -30,6 +30,7 @@ const SPREAD_FIELDS := {
 	"spread_target_move_fast_speed": "高速目标速度",
 }
 const COMMON_FIELDS := {
+	"camera_view_size": "视野大小（0沿用场景）", "camera_transition_seconds": "视野过渡时间",
 	"damage": "单发伤害", "aim_range": "锁定距离", "fire_range": "弹道射程",
 	"cone_angle_degrees": "索敌总角度", "locked_move_multiplier": "锁定移动倍率",
 	"shot_interval": "射击间隔",

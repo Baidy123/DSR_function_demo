@@ -25,6 +25,7 @@
 [ext_resource type="Script" uid="uid://k0q37ja4h4tl" path="res://scripts/player/player_presentation.gd" id="player_presentation"]
 [ext_resource type="Script" uid="uid://bxfli5ujmf35g" path="res://scripts/systems/presentation/visual_presentation.gd" id="presentation"]
 [ext_resource type="Script" path="res://scripts/systems/camera_ground_anchor.gd" id="camera_anchor"]
+[ext_resource type="Script" path="res://scripts/systems/player_camera.gd" id="player_camera"]
 
 [sub_resource type="Environment" id="Environment"]
 background_mode = 1
@@ -245,12 +246,15 @@ script = ExtResource("npc_presentation")
 script = ExtResource("impact_receiver")
 
 [node name="Camera3D" type="Camera3D" parent="." unique_id=1669516944]
+process_priority = 400
+process_physics_priority = 400
 physics_interpolation_mode = 1
 transform = Transform3D(1, 0, 0, 0, 0.348572, 0.937282, 0, -0.937282, 0.348572, 0.29, 5.29, 6.483183)
 top_level = true
 projection = 1
 current = true
 size = 12.928184
+script = ExtResource("player_camera")
 
 [node name="PhantomCameraHost" type="Node" parent="Camera3D" unique_id=1759746251]
 process_priority = 300
