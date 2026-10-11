@@ -13,7 +13,7 @@ const MAX_CONFLICT_CHECKS := 2048
 const MAX_VALUE_ITEMS := 24000
 
 func propose(snapshot: Dictionary, limits: Dictionary = {}) -> Dictionary:
-	var work := {"snapshot": snapshot, "members": {}, "bundles": [], "occupancy": [],
+	var work := {"snapshot": snapshot, "members": {}, "bundles": [], "pools": {}, "occupancy": [],
 		"failures": [], "requests": [], "pair_limit": _limit(limits, "max_pair_trials", MAX_PAIR_TRIALS),
 		"conflict_limit": _limit(limits, "max_conflict_checks", MAX_CONFLICT_CHECKS),
 		"alternatives": maxi(1, _limit(limits, "max_alternatives", MAX_ALTERNATIVES)),
@@ -33,23 +33,22 @@ func propose(snapshot: Dictionary, limits: Dictionary = {}) -> Dictionary:
 		if current.get("tactic") == &"support" and _active_request(work, current.get("request_id")).is_empty(): return _result(work, &"none", &"support_request_ended")
 		var continuity := _current_assignments(work, current)
 		if continuity.assignments.is_empty(): return _result(work, &"none", &"invalid_assignments")
-		if not continuity.assignments.is_empty():
-			if continuity.invalid.is_empty():
-				if current.get("execution_valid", true) == false: return _result(work, &"none", &"plan_execution_invalid", current.get("tactic", &""))
-				if current.tactic == &"search":
-					var extension := _extend_search(work, current, continuity.assignments)
-					if not extension.assignments.is_empty(): return _with_basic(work, extension, continuity.assignments + extension.assignments)
-				# A missing offer or a cheaper unrelated option is not execution failure.
-				return _with_basic(work, _result(work, &"keep", &"execution_valid", current.get("tactic", &"")), continuity.assignments)
-			# Search slots are independent. A blocked member must not cancel the
-			# real observation already being executed in another reachable sector.
-			if current.tactic == &"search" and not continuity.protected.is_empty():
-				var extension := _extend_search(work, current, continuity.protected)
-				extension.removed_actor_ids = continuity.invalid.map(func(entry): return entry.actor_id)
-				extension.changed_actor_ids.append_array(extension.removed_actor_ids)
-				return _with_basic(work, extension, continuity.protected + extension.assignments)
-			var repair := _repair(work, current, continuity)
-			return _with_basic(work, repair, continuity.protected + repair.assignments)
+		if continuity.invalid.is_empty():
+			if current.get("execution_valid", true) == false: return _result(work, &"none", &"plan_execution_invalid", current.get("tactic", &""))
+			if current.tactic == &"search":
+				var extension := _extend_search(work, current, continuity.assignments)
+				if not extension.assignments.is_empty(): return _with_basic(work, extension, continuity.assignments + extension.assignments)
+			# A missing offer or a cheaper unrelated option is not execution failure.
+			return _with_basic(work, _result(work, &"keep", &"execution_valid", current.get("tactic", &"")), continuity.assignments)
+		# Search slots are independent. A blocked member must not cancel the
+		# real observation already being executed in another reachable sector.
+		if current.tactic == &"search" and not continuity.protected.is_empty():
+			var extension := _extend_search(work, current, continuity.protected)
+			extension.removed_actor_ids = continuity.invalid.map(func(entry): return entry.actor_id)
+			extension.changed_actor_ids.append_array(extension.removed_actor_ids)
+			return _with_basic(work, extension, continuity.protected + extension.assignments)
+		var repair := _repair(work, current, continuity)
+		return _with_basic(work, repair, continuity.protected + repair.assignments)
 	var selected := _new_plan(work)
 	return _with_basic(work, selected, selected.assignments)
 
@@ -260,6 +259,8 @@ func _collect_requests(work: Dictionary) -> bool:
 	return true
 
 func _pool(work: Dictionary, role: StringName) -> Array:
+	# Pools are immutable within this proposal; repair sorts its own array.
+	if work.pools.has(role): return work.pools[role].duplicate()
 	var result: Array = []
 	var owners: Array = []
 	var by_actor := {}
@@ -275,7 +276,8 @@ func _pool(work: Dictionary, role: StringName) -> Array:
 	for offset in MAX_OFFERS:
 		for actor_id in owners:
 			if offset < by_actor[actor_id].size(): result.append(by_actor[actor_id][offset])
-	return result
+	work.pools[role] = result
+	return result.duplicate()
 
 func _trial(work: Dictionary) -> bool:
 	if work.counters.pair_trials >= work.pair_limit: return false
@@ -540,7 +542,9 @@ func _protected_bundle(assignment: Dictionary) -> Dictionary:
 		if not reserved.get("fire_ready") is bool or not _number(reserved.get("measured_support_seconds")): return {}
 		keys[reserved.offer_key] = true
 		sets[reserved.position_set_key] = true
-		var copy: Dictionary = reserved.duplicate(true)
+		# Only the role is normalized here. Nested values remain read-only until
+		# _reserved_offer() creates an independent public assignment snapshot.
+		var copy: Dictionary = reserved.duplicate()
 		copy.role = assignment.role
 		positions.append(copy)
 	if keys.size() != assignment.allowed_offer_keys.size() or sets.size() != assignment.reserved_position_sets.size(): return {}

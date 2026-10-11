@@ -17,6 +17,7 @@ func _run() -> void:
 		return
 	_source_contract()
 	_source_fallback_contract()
+	_snapshot_isolation()
 	_inspect_transaction()
 	_visibility_and_permissions()
 	_flank_facts()
@@ -149,6 +150,32 @@ func _source_fallback_contract() -> void:
 	check(board.revision == revision_before and board.coordination_source(a, a.cooperation_target_id()).valid_until == 20.0, "Repeated source publication and reads do not renew fallback evidence")
 	_advance(14.0)
 	check(board.coordination_source(a, a.cooperation_target_id()).is_empty(), "Investigation expires at its original deadline even after visual fallback")
+	_reset_tactical()
+
+func _snapshot_isolation() -> void:
+	var source := _source(contexts[0])
+	_pair(source)
+	var job: Dictionary = _accept(0)
+	check(not job.is_empty(), "Snapshot contract owns a real accepted assignment")
+	if job.is_empty(): return
+	var stored: Dictionary = board._coordination_plans[job.team_id].duplicate(true)
+	var offers: Dictionary = board._coordination_offers.duplicate(true)
+	check(not job.has("raw_offers") and not job.reserved_offers.is_empty(), "Public assignment exposes executable alternatives without internal previews")
+	job.allowed_offer_keys.clear()
+	job.partner_ids.clear()
+	job.reserved_offers[0].path_summary.blocked_position_sets.append("caller_mutation")
+	job.reserved_offers[0].position = _point(30)
+	check(board._coordination_plans[stored.team_id] == stored, "Mutating nested public assignment values cannot alter the board's accepted plan")
+	var snapshot_value: Dictionary = board._coordination_snapshot(stored.team_id, source, board._coordination_team_members(stored.team_id))
+	check(board._coordination_plans[stored.team_id] == stored and board._coordination_offers == offers, "Projecting execution validity and current geometry does not modify the stored plan or previews")
+	check(snapshot_value.current_plan.assignments.all(func(entry): return not entry.has("raw_offers")), "Planner snapshots omit internal previews for every assignment")
+	snapshot_value.current_plan.assignments[0].reserved_offers[0].path_summary.blocked_position_sets.append("planner_mutation")
+	snapshot_value.current_plan.required_participants.clear()
+	snapshot_value.current_plan.tactical_frame.changed = true
+	snapshot_value.members[0].offers[0].path_summary.observation_points.clear()
+	check(board._coordination_plans[stored.team_id] == stored and board._coordination_offers == offers, "Nested planner snapshot edits cannot escape into either board registry")
+	var unchanged: Dictionary = board.assignment(contexts[0])
+	check(unchanged.assignment_id == job.assignment_id and unchanged.expires_at == job.expires_at and unchanged.allowed_offer_keys.size() > 0, "Snapshot reads preserve accepted identity, original deadline and legal choices")
 	_reset_tactical()
 
 func _inspect_transaction() -> void:

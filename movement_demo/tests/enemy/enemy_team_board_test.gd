@@ -204,9 +204,15 @@ func _lifecycle() -> void:
 	pending = board.prepare_reservation(a, _offer(a, _point(-2)))
 	actors[0].communication_group = &"moved_group"
 	check(not board.validate_reservation(a, pending), "Changing communication identity revokes an old pending token immediately")
+	check(not board.can_share_intel(actors[0].get_instance_id(), actors[1].get_instance_id()), "An unpublished live radio change immediately rejects old intelligence membership")
 	_versions(a)
 	actors[0].communication_group = &""
 	_versions(a)
+	var original_faction: StringName = actors[0].faction_id
+	actors[0].faction_id = &"unpublished_faction"
+	check(board.coordination_identity(a).is_empty() and not board.can_share_intel(actors[1].get_instance_id(), actors[0].get_instance_id()), "An unpublished live faction change rejects both identity and received intelligence")
+	actors[0].faction_id = original_faction
+	check(not board.coordination_identity(a).is_empty() and board.can_share_intel(actors[0].get_instance_id(), actors[1].get_instance_id()), "Restoring the exact live domain restores eligibility without stale cached decisions")
 	pending = board.prepare_reservation(a, _offer(a, _point(-2)))
 	_versions(a, 2)
 	check(not board.validate_reservation(a, pending), "Published configuration changes invalidate stale local offers and reservations")

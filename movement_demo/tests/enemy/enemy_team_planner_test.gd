@@ -16,6 +16,7 @@ func _run() -> void:
 	_search_contract()
 	_continuity_contract()
 	_input_and_budget_contract()
+	_output_isolation_contract()
 	print("TEAM PLANNER: %d/%d passed" % [checks - failures, checks])
 	quit(1 if failures else 0)
 
@@ -242,6 +243,27 @@ func _continuity_contract() -> void:
 	check(result.operation == &"repair" and result.assignments[0].previous_actor_id == 2 and result.assignments[0].actor_id == 3 and result.required_participants == [1, 3], "A replacement identifies the old slot and suggests a revised participant set without issuing phase IDs")
 	snapshot.failures = [{"actor_id": 3, "position_set_key": "right_new", "valid_until": 20.0}]
 	check(planner.propose(snapshot).operation == &"none", "Failed positions remain cooled down across fresh offers and plan attempts")
+
+func _output_isolation_contract() -> void:
+	var snapshot := _pair()
+	var original := snapshot.duplicate(true)
+	var result: Dictionary = planner.propose(snapshot)
+	var expected := result.duplicate(true)
+	result.assignments[0].allowed_offer_keys.clear()
+	result.assignments[0].reserved_offers[0].path_summary.blocked_position_sets.append("outside_edit")
+	result.assignments[0].reserved_offers[0].position = Vector3(50, 0, 50)
+	check(snapshot == original and planner.propose(snapshot) == expected, "Nested output edits cannot mutate input offers or a later proposal")
+	snapshot.current_plan = _plan(snapshot, expected)
+	snapshot.current_plan.assignments[0].reserved_offers[0].role = &"frozen_role_marker"
+	original = snapshot.duplicate(true)
+	check(planner.propose(snapshot).operation == &"keep" and snapshot == original, "Internal protected-role normalization leaves frozen assignment values untouched")
+	snapshot.current_plan.assignments[1].execution_valid = false
+	snapshot.members[1].offers = [_offer(2, &"inspect_right", Vector3(4, 0, 3), "new_right", 2)]
+	result = planner.propose(snapshot)
+	original = snapshot.duplicate(true)
+	check(result.operation == &"repair" and result.assignments.size() == 1, "A later call rebuilds role choices from current offers after an earlier keep")
+	result.assignments[0].reserved_offers[0].path_summary.blocked_position_sets.append("repair_edit")
+	check(snapshot == original, "Repair alternatives retain independent nested output values")
 
 func _input_and_budget_contract() -> void:
 	var snapshot := _pair()

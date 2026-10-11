@@ -81,7 +81,7 @@ func _reservation_member_valid(context) -> bool:
 	return (_members.has(id) and _context(id) == context and context.cooperation == self
 		and context.actor.is_inside_tree() and not context.actor.is_dead
 		and is_instance_valid(context.arena) and context.arena.is_ancestor_of(context.actor)
-		and _members[id].domain == _domain(context.actor))
+		and _member_domain_matches(context.actor, _members[id]))
 
 ## Trusted Context glue publishes these revisions before it submits an offer.
 ## Register alone remains compatible, but cannot silently authorize version zero.
@@ -354,12 +354,11 @@ func reset() -> void:
 
 func register(context) -> bool:
 	var id: int = context.actor.get_instance_id()
-	var domain: String = _domain(context.actor)
-	var changed: bool = _members.has(id) and (_members[id].domain != domain or _context(id) != context)
+	var changed: bool = _members.has(id) and (not _member_domain_matches(context.actor, _members[id]) or _context(id) != context)
 	if changed: unregister(id)
 	if not _members.has(id):
 		_member_serial += 1
-		_members[id] = {"context": weakref(context), "domain": domain, "faction": context.actor.faction_id, "group": context.actor.communication_group, "status": {}, "activity": {},
+		_members[id] = {"context": weakref(context), "domain": _domain(context.actor), "faction": context.actor.faction_id, "group": context.actor.communication_group, "status": {}, "activity": {},
 			"member_generation": _member_serial, "versions_published": false, "config_revision": 0, "environment_revision": 0, "navigation_revision": 0}
 		_rebuild_teams()
 		revision += 1
@@ -424,6 +423,10 @@ func _claim_valid(entry: Dictionary) -> bool:
 func _domain(actor) -> String:
 	return JSON.stringify([String(actor.faction_id), String(actor.communication_group)])
 
+## Compare live fields on every check; serialization is only needed for keys.
+func _member_domain_matches(actor, member: Dictionary) -> bool:
+	return actor.faction_id == member.faction and actor.communication_group == member.group
+
 func _key(domain: String, target: int) -> String:
 	return "%s:%s:%s" % [generation, domain, target]
 
@@ -449,7 +452,7 @@ func can_share_intel(sender_id: int, receiver_id: int) -> bool:
 	if not _members.has(sender_id) or not _members.has(receiver_id): return false
 	for id in [sender_id, receiver_id]:
 		var context = _context(id)
-		if context == null or not is_instance_valid(context.actor) or context.actor.is_dead or _domain(context.actor) != _members[id].domain: return false
+		if context == null or not is_instance_valid(context.actor) or context.actor.is_dead or not _member_domain_matches(context.actor, _members[id]): return false
 	var first: Dictionary = _members[sender_id]
 	var second: Dictionary = _members[receiver_id]
 	return first.group == second.group and (first.faction == second.faction or _relations.get([first.faction, second.faction], &"") == &"allied")
@@ -1452,14 +1455,20 @@ func assignment(context) -> Dictionary:
 	var entry := _assignment_for_owner(context.actor.get_instance_id())
 	if entry.is_empty(): return {}
 	var plan: Dictionary = _coordination_plans[entry.team_id]
-	var result := entry.duplicate(true)
+	var result := _assignment_snapshot(entry)
 	result.phase = plan.phase
 	result.phase_id = plan.phase_id
 	result.release_at = plan.release_at
 	result.stage_until = plan.stage_until
 	result.tactic = plan.tactic
-	result.erase("raw_offers")
 	return result
+
+## Internal previews can be large. Exclude them before copying public values;
+## all remaining nested arrays/dictionaries still belong to the caller.
+func _assignment_snapshot(entry: Dictionary) -> Dictionary:
+	var result := entry.duplicate()
+	result.erase("raw_offers")
+	return result.duplicate(true)
 
 func _reservation_projections(entry: Dictionary) -> Array:
 	if entry.get("scope") == &"tactical" and entry.phase == &"pending" and entry.get("selected_offer_key", "") == "":
@@ -1649,7 +1658,6 @@ func _coordination_occupancy(context) -> Array:
 	for reservation: Dictionary in _reservations.values():
 		if not _reservation_valid(reservation) or not can_share_space(owner, reservation.owner_id): continue
 		for projection: Dictionary in _reservation_projections(reservation):
-			var footprint := _reservation_footprint(_context(reservation.owner_id), projection.position)
 			var summary := _coordination_physical_summary(_context(reservation.owner_id), projection.get("path_summary", {}), reservation.target_id)
 			result.append({"actor_id": reservation.owner_id, "kind": &"reservation", "position": projection.position,
 				"reservation_id": reservation.reservation_id, "position_set_key": projection.position_set_key,
@@ -1697,9 +1705,6 @@ func _coordination_frame_valid(summary: Dictionary, source: Dictionary, role: St
 	var side: float = (position - anchor).dot(axis)
 	return side < -FLANK_SIDE_MARGIN if role == &"flank" else side > FLANK_SIDE_MARGIN
 
-func _coordination_frame(source: Dictionary, _ids: Array, plan: Dictionary) -> Dictionary:
-	return plan.get("tactical_frame", {}) if not plan.is_empty() else {"anchor": source.position, "axis": source.front_axis}
-
 func _coordination_offer_observed(source: Dictionary, offer: Dictionary) -> bool:
 	if _coordination_checked.is_empty() or offer.role not in [&"inspect_left", &"inspect_right", &"search_sector"]: return false
 	for point: Vector3 in offer.path_summary.observation_points:
@@ -1711,7 +1716,7 @@ func _coordination_offer_observed(source: Dictionary, offer: Dictionary) -> bool
 func _coordination_snapshot(team_id: int, source: Dictionary, ids: Array) -> Dictionary:
 	var environment := _coordination_environment(team_id, ids)
 	var current: Dictionary = _coordination_plans.get(team_id, {})
-	var frame := _coordination_frame(source, ids, current)
+	var frame: Dictionary = current.get("tactical_frame", {}) if not current.is_empty() else {"anchor": source.position, "axis": source.front_axis}
 	var members: Array = []
 	var representative = _context(ids[0])
 	for id: int in ids:
@@ -1721,7 +1726,6 @@ func _coordination_snapshot(team_id: int, source: Dictionary, ids: Array) -> Dic
 		var offers: Array = []
 		for raw: Dictionary in _coordination_offers.get(id, []):
 			if raw.target_id != source.target_id or raw.evidence_id != source.evidence_id or not _coordination_offer_valid(context, raw, true): continue
-			if not _coordination_frame_valid(raw.path_summary, source, raw.role, raw.position): continue
 			if _coordination_offer_observed(source, raw): continue
 			var normalized := raw.duplicate(true)
 			normalized.path_summary = _coordination_physical_summary(context, raw.path_summary, source.target_id)
@@ -1743,10 +1747,14 @@ func _coordination_snapshot(team_id: int, source: Dictionary, ids: Array) -> Dic
 		"members": members, "occupancy": _coordination_occupancy(representative), "requests": _coordination_requests(ids, source),
 		"failures": _coordination_failures.filter(func(entry): return entry.team_id == team_id and entry.target_id == source.target_id and entry.evidence_id == source.evidence_id).duplicate(true), "flank_owner_ids": [], "current_plan": {}}
 	if not current.is_empty():
-		var projected: Dictionary = current.duplicate(true)
+		var projected := current.duplicate()
+		projected.erase("assignments")
+		projected = projected.duplicate(true)
+		projected.assignments = []
 		projected.execution_valid = _coordination_plan_source(current).size() > 0 and current.expires_at > elapsed
 		projected.segment_boundary = true
-		for entry: Dictionary in projected.assignments:
+		for stored: Dictionary in current.assignments:
+			var entry := _assignment_snapshot(stored)
 			entry.execution_valid = _coordination_assignment_valid(current, entry)
 			var owner = _context(int(entry.actor_id))
 			if _reservation_member_valid(owner):
@@ -1754,7 +1762,7 @@ func _coordination_snapshot(team_id: int, source: Dictionary, ids: Array) -> Dic
 					reserved.path_summary = _coordination_physical_summary(owner, reserved.path_summary, current.target_id)
 			projected.segment_boundary = projected.segment_boundary and entry.get("segment_boundary", true)
 			if entry.role == &"flank" and entry.execution_valid: snapshot_value.flank_owner_ids.append(entry.actor_id)
-			entry.erase("raw_offers")
+			projected.assignments.append(entry)
 		snapshot_value.current_plan = projected
 	return snapshot_value
 
@@ -1763,13 +1771,17 @@ func _coordination_find_source(team_id: int, ids: Array) -> Dictionary:
 	if not current.is_empty(): return _coordination_plan_source(current)
 	var best: Dictionary = {}
 	for key: String in _coordination_sources:
+		if _coordination_sources[key].team_id != team_id: continue
 		var source := _active_coordination_source(key)
-		if source.is_empty() or source.team_id != team_id: continue
+		if source.is_empty() or (not best.is_empty() and source.captured_at <= best.captured_at): continue
 		var offered := false
 		for id: int in ids:
 			for offer: Dictionary in _coordination_offers.get(id, []):
-				if offer.target_id == source.target_id and offer.evidence_id == source.evidence_id and _coordination_offer_valid(_context(id), offer, true): offered = true
-		if offered and (best.is_empty() or source.captured_at > best.captured_at): best = source
+				if offer.target_id == source.target_id and offer.evidence_id == source.evidence_id and _coordination_offer_valid(_context(id), offer, true):
+					offered = true
+					break
+			if offered: break
+		if offered: best = source
 	return best
 
 func _coordination_entry(proposal: Dictionary, plan: Dictionary) -> Dictionary:
@@ -1819,7 +1831,7 @@ func _coordination_plan_duration(proposal: Dictionary) -> float:
 			if entry.allowed_offer_keys.has(raw.offer_key): travel = maxf(travel, maxf(0.0, float(raw.get("accept_after", elapsed)) - elapsed) + float(raw.travel_seconds))
 	return minf(COORDINATION_MAX_SECONDS, maxf(4.0, travel + COORDINATION_WAIT_SECONDS + 2.0))
 
-func _install_coordination_proposal(team_id: int, source: Dictionary, proposal: Dictionary, snapshot_value: Dictionary) -> void:
+func _install_coordination_proposal(team_id: int, source: Dictionary, proposal: Dictionary) -> void:
 	var previous: Dictionary = _coordination_plans.get(team_id, {})
 	if proposal.operation == &"keep": return
 	if proposal.operation == &"none":
@@ -1879,7 +1891,6 @@ func _install_coordination_proposal(team_id: int, source: Dictionary, proposal: 
 	_coordination_plans[team_id] = plan
 	for entry: Dictionary in new_entries:
 		_reservations[entry.reservation_id] = _coordination_reservation(_context(entry.actor_id), entry, plan)
-	_coordination_counters[team_id] = proposal.counters.duplicate(true)
 	revision += 1
 
 func _drop_coordination_plan(team_id: int, _reason: StringName) -> void:
@@ -1999,4 +2010,4 @@ func _advance_coordination() -> void:
 		var snapshot_value := _coordination_snapshot(team_id, source, ids)
 		var proposal: Dictionary = _team_planner.propose(snapshot_value)
 		_coordination_counters[team_id] = proposal.get("counters", {}).duplicate(true)
-		_install_coordination_proposal(team_id, source, proposal, snapshot_value)
+		_install_coordination_proposal(team_id, source, proposal)
