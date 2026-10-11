@@ -43,6 +43,21 @@ func _set_setting(key: StringName, value: Variant) -> void:
 func collect_candidates(_visible: bool) -> Array[Dictionary]:
 	return []
 
+## Offers are already prepared pure values, never new geometry work or candidates.
+## Ordinary actions do not acquire a tactical role by implementing this protocol.
+func coordination_offers(_visible: bool) -> Array[Dictionary]:
+	return []
+
+## An override confirms actual self-preservation; caller labels grant no exception.
+func assignment_escape(_candidate: Dictionary, _visible: bool) -> bool:
+	return false
+
+## Default actions promise no tactical phase, remaining window or protected segment.
+## Assigned actions override this with their actual execution progress and deadline.
+func execution_contract(visible: bool) -> Dictionary:
+	return {"valid": _running and valid(visible), "segment_boundary": true,
+		"remaining_seconds": 0.0, "progress": 0.0, "ready_for_phase": false}
+
 func validate(candidate: Dictionary, _visible: bool) -> bool:
 	if not is_enabled():
 		return false

@@ -38,6 +38,9 @@ var _coordination_configuration_revision := 0
 var _coordination_environment_revision := 0
 var _coordination_environment_signature: Array = []
 var _coordination_reservation: Dictionary = {}
+var _coordination_execution: Dictionary = {}
+var _coordination_pending_assignment: Dictionary = {}
+var _coordination_execution_completed := false
 var _inspection_shared_report_id := -1
 var _inspection_notification_id := -1
 var avoid_position := Vector3.INF
@@ -114,6 +117,7 @@ func refresh_environment() -> bool:
 
 
 func detach_environment() -> void:
+	_clear_coordination_memory()
 	_blocked_ally_paths.clear()
 	if spatial != null: spatial.clear_cover_preparation()
 	actor.configure_local_navigation(null, null)
@@ -343,6 +347,7 @@ func is_ally_path_blocked(from: Vector3, path: PackedVector3Array) -> bool:
 	return false
 
 func reset_memory() -> void:
+	_clear_coordination_memory()
 	_blocked_ally_paths.clear()
 	_inspection_shared_report_id = -1
 	_inspection_notification_id = -1
@@ -748,14 +753,136 @@ func cooperation_candidate_seconds(candidate: Dictionary) -> float:
 func cooperation_support_pressure() -> float:
 	return cooperation.support_pressure(self) if cooperation_enabled() else 0.0
 
-func cooperation_clear_execution() -> void:
+func cooperation_clear_execution(reason: StringName = &"switch") -> void:
+	if not _coordination_execution_completed and not _coordination_execution.is_empty() and _coordination_pending_assignment.get("assignment_id") != _coordination_execution.get("assignment_id"):
+		report_coordination_execution({"valid": false, "segment_boundary": true},
+			&"self_preservation" if reason == &"self_preservation" else &"unavailable", reason)
 	if cooperation != null: cooperation.clear_execution(actor.get_instance_id())
 	_coordination_reservation = {}
+	_coordination_execution = {}
+	_coordination_execution_completed = false
+
+func _clear_coordination_memory() -> void:
+	_coordination_reservation = {}
+	_coordination_execution = {}
+	_coordination_pending_assignment = {}
+	_coordination_execution_completed = false
+	_coordination_environment_signature.clear()
+
+## Called outside the selector's synchronous read-only evaluation. Context never
+## holds or calls action instances; AI verifies each action's escape permission.
+func coordination_assignment() -> Dictionary:
+	if cooperation == null or not cooperation_enabled() or cooperation.registered_member_count() <= 1 or not cooperation.has_method("assignment"): return {}
+	return cooperation.assignment(self)
+
+func prepare_coordination_evaluation() -> void:
+	if cooperation != null and cooperation.registered_member_count() > 1: _publish_coordination_versions()
+
+func coordination_offer_identity() -> Dictionary:
+	return cooperation.coordination_identity(self) if cooperation != null and cooperation_enabled() else {}
+
+func coordination_source(target_id: int = 0) -> Dictionary:
+	return cooperation.coordination_source(self, target_id) if cooperation != null and cooperation_enabled() and cooperation.has_method("coordination_source") else {}
+
+func coordination_now() -> float:
+	return cooperation.elapsed if cooperation != null else evidence_elapsed_seconds
+
+func publish_coordination_offers(options: Array[Dictionary], offers: Array[Dictionary]) -> void:
+	if cooperation == null or not cooperation.has_method("submit_offers") or not _publish_coordination_versions(): return
+	var by_key: Dictionary = {}
+	for candidate in options:
+		var key: String = candidate.get("coordination_offer_key", "")
+		if not key.is_empty() and is_finite(float(candidate.get("cost", INF))): by_key[key] = candidate
+	var roles: Dictionary = {}
+	var inspected := 0
+	for raw in offers:
+		inspected += 1
+		if inspected > 32: break
+		var key: String = raw.get("offer_key", "")
+		if not by_key.has(key): continue
+		var candidate: Dictionary = by_key[key]
+		if raw.get("owner_action") != candidate.get("id"): continue
+		var offer := raw.duplicate(true)
+		offer.cost = candidate.cost
+		var role: StringName = offer.get("role", &"")
+		if not roles.has(role): roles[role] = []
+		roles[role].append(offer)
+	var role_keys: Array = roles.keys()
+	role_keys.sort()
+	for role in role_keys:
+		roles[role].sort_custom(func(a, b): return a.cost < b.cost if a.cost != b.cost else String(a.offer_key) < String(b.offer_key))
+	var selected: Array = []
+	# First preserve complementary roles, then add their best alternatives.
+	while selected.size() < 6:
+		var added := false
+		for role in role_keys:
+			if selected.size() >= 6: break
+			if roles[role].is_empty(): continue
+			selected.append(roles[role].pop_front())
+			added = true
+		if not added: break
+	cooperation.submit_offers(self, selected)
+
+func assignment_requires_transition(next: Dictionary, _current: Dictionary) -> bool:
+	var assignment: Dictionary = next.get("coordination_assignment", {})
+	if assignment.is_empty(): return not _coordination_execution.is_empty()
+	return not _same_coordination_execution(assignment) or next.get("coordination_offer_key", "") != _coordination_execution.get("selected_offer_key", "")
+
+func _same_coordination_execution(assignment: Dictionary) -> bool:
+	if assignment.is_empty() or _coordination_execution.is_empty(): return false
+	for key in [&"generation", &"team_id", &"plan_id", &"assignment_id", &"assignment_revision", &"owner_action"]:
+		if assignment.get(key) != _coordination_execution.get(key): return false
+	return assignment.get("accepted", false)
+
+func coordination_continuation(contract: Dictionary, owner: StringName) -> bool:
+	var assignment := coordination_assignment()
+	return contract.get("valid", false) and owner == assignment.get("owner_action") and _same_coordination_execution(assignment)
+
+func report_coordination_execution(contract: Dictionary, state: StringName = &"", reason: StringName = &"") -> bool:
+	var assignment := coordination_assignment()
+	if not _same_coordination_execution(assignment): return false
+	if state.is_empty():
+		if not contract.get("valid", false): state = &"unavailable"
+		else: state = &"complete" if contract.get("complete", false) else (&"arrived" if contract.get("ready_for_phase", false) else &"moving")
+	var report := assignment.duplicate()
+	report.merge({"state": state,
+		"reason": reason, "position": actor.global_position, "progress": float(contract.get("progress", 0.0)),
+		"segment_boundary": contract.get("segment_boundary", true), "ready_for_phase": contract.get("ready_for_phase", false),
+		"execution_valid": contract.get("valid", false), "checked_points": contract.get("checked_points", PackedVector3Array())}, true)
+	var accepted: bool = cooperation.report_assignment(self, report)
+	if accepted and state == &"complete": _coordination_execution_completed = true
+	return accepted
 
 ## Basic coordination changes candidate eligibility, never its utility cost.
 ## An actor already standing somewhere can still defend itself while LocalMotion
 ## resolves physical spacing. Only proposed destinations acquire new occupancy.
 func coordination_choices(options: Array[Dictionary]) -> Array[Dictionary]:
+	var basic := _basic_coordination_choices(options)
+	var assignment := coordination_assignment()
+	if assignment.is_empty():
+		var independent: Array[Dictionary] = []
+		for candidate in basic:
+			if candidate.has("coordination_role"): continue
+			var choice := candidate.duplicate() if candidate.has("coordination_assignment") else candidate
+			choice.erase("coordination_assignment")
+			independent.append(choice)
+		return independent
+	var result: Array[Dictionary] = []
+	for candidate in basic:
+		if candidate.get("assignment_escape_verified", false):
+			var escape := candidate.duplicate()
+			escape.erase("coordination_assignment")
+			escape.erase("coordination_role")
+			escape.erase("coordination_offer_key")
+			result.append(escape)
+			continue
+		if candidate.get("id") != assignment.get("owner_action") or not assignment.get("allowed_offer_keys", []).has(candidate.get("coordination_offer_key", "")): continue
+		var choice := candidate.duplicate()
+		choice.coordination_assignment = assignment
+		result.append(choice)
+	return result
+
+func _basic_coordination_choices(options: Array[Dictionary]) -> Array[Dictionary]:
 	if cooperation == null or cooperation.registered_member_count() <= 1 or not _publish_coordination_versions():
 		var independent_choices: Array[Dictionary] = []
 		for candidate in options:
@@ -812,6 +939,12 @@ func _basic_coordination_offer(candidate: Dictionary) -> Dictionary:
 ## Prepare follows the action's live validate and precedes clearing its old
 ## execution. The pending token survives that clear; begin failure only rolls it back.
 func prepare_coordination_choice(candidate: Dictionary) -> Dictionary:
+	var assignment: Dictionary = candidate.get("coordination_assignment", {})
+	if not assignment.is_empty():
+		if cooperation == null or not cooperation.has_method("prepare_assignment"): return {"required": true, "token": {}}
+		var token: Dictionary = cooperation.prepare_assignment(self, assignment, candidate.get("coordination_offer_key", ""))
+		_coordination_pending_assignment = assignment if not token.is_empty() else {}
+		return {"required": true, "token": token, "assignment": assignment}
 	var offer: Dictionary = candidate.get("coordination_offer", {})
 	if offer.is_empty() or cooperation == null or cooperation.registered_member_count() <= 1: return {"required": false, "token": {}}
 	var path: PackedVector3Array = candidate.get("destination", {}).get("path", PackedVector3Array())
@@ -827,16 +960,29 @@ func prepare_coordination_choice(candidate: Dictionary) -> Dictionary:
 func commit_coordination_choice(transaction: Dictionary) -> bool:
 	if not transaction.get("required", false): return true
 	var token: Dictionary = transaction.get("token", {})
+	var assignment: Dictionary = transaction.get("assignment", {})
+	if not assignment.is_empty():
+		if cooperation == null or token.is_empty() or not cooperation.commit_assignment(self, assignment, token): return false
+		_coordination_execution = coordination_assignment()
+		_coordination_pending_assignment = {}
+		_coordination_execution_completed = false
+		return not _coordination_execution.is_empty()
 	if cooperation == null or token.is_empty() or not cooperation.commit_reservation(self, token): return false
 	_coordination_reservation = token
 	return true
 
 func rollback_coordination_choice(transaction: Dictionary) -> void:
+	if not transaction.get("assignment", {}).is_empty():
+		if cooperation != null: cooperation.rollback_assignment(self, transaction.assignment, transaction.get("token", {}))
+		_coordination_pending_assignment = {}
+		return
 	if cooperation != null and transaction.get("required", false): cooperation.rollback_reservation(self, transaction.get("token", {}))
 
 ## A continuing, already begun and currently validated action may acquire a new
 ## basic lease after its previous one expires. Existing leases never gain time.
 func maintain_coordination_choice(candidate: Dictionary) -> bool:
+	if not candidate.get("coordination_assignment", {}).is_empty():
+		return _same_coordination_execution(coordination_assignment()) and candidate.get("coordination_offer_key", "") == _coordination_execution.get("selected_offer_key", "")
 	var offer: Dictionary = candidate.get("coordination_offer", {})
 	if cooperation == null: return true
 	if offer.is_empty() or cooperation.registered_member_count() <= 1:

@@ -1,5 +1,10 @@
 extends "res://scripts/enemy/actions/enemy_cover_action.gd"
 
+func assignment_escape(candidate: Dictionary, visible: bool) -> bool:
+	if candidate.get("mode") != &"covering_retreat" or not visible or not context.fire.fire_while_moving or not actor.can_use_firearms(): return false
+	if actor.ammo.magazine_rounds <= 0 or actor.ammo.is_reloading: return false
+	return _defensive_cover_escape(candidate, visible)
+
 func collect_candidates(visible: bool) -> Array[Dictionary]:
 	var result: Array[Dictionary] = []
 	if not visible or not context.fire.fire_while_moving or actor.ammo.magazine_rounds <= 0 or actor.ammo.is_reloading:

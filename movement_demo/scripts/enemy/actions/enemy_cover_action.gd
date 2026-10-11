@@ -47,6 +47,20 @@ func transfer_candidates() -> Array:
 			destinations.append(current)
 	return destinations
 
+func assignment_escape(candidate: Dictionary, visible: bool) -> bool:
+	# Ordinary hide is the defensive choice; peek/burst/advance remain personal
+	# tactical choices even when they carry the same cover body or urgent label.
+	if candidate.get("mode", &"") != &"": return false
+	return _defensive_cover_escape(candidate, visible)
+
+func _defensive_cover_escape(candidate: Dictionary, visible: bool) -> bool:
+	if candidate.get("id") != action_id or candidate.get("plan", &"") != &"" or not is_enabled(): return false
+	if context.recent_damage_pressure <= 0.0 and context.nearby_shot_pressure <= 0.0: return false
+	if not actor.can_move() or actor.move_speed <= 0.0: return false
+	var destination: Dictionary = candidate.get("destination", {})
+	if not destination.get("hide") is Vector3 or not destination.hide.is_finite() or not is_instance_valid(destination.get("body")): return false
+	return validate(candidate, visible)
+
 func collect_candidates(visible: bool) -> Array[Dictionary]:
 	var options: Array[Dictionary] = []
 	var threat: Vector3 = context._known_reload_threat()

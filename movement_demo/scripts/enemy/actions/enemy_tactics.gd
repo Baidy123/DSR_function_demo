@@ -22,6 +22,10 @@ var _move_best_distance := INF
 var _move_stuck_seconds := 0.0
 var _melee_requested := false
 
+func assignment_escape(candidate: Dictionary, visible: bool) -> bool:
+	# This variant validates actual body cooldown, weapon reach and target access.
+	return candidate.get("id") == action_id and candidate.get("plan") == &"melee" and validate(candidate, visible)
+
 
 
 

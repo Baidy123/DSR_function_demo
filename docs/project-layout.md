@@ -66,6 +66,8 @@ movement_demo/
 
 阶段2基础位置预约仍位于原 `enemy_cooperation.gd`，Context 负责候选值快照和身份版本，AI 只加入通用资格集合及准备／提交／回滚接点。没有新增场景节点或身体控制器；`advanced_enabled` 不限制基础排重，关系接口同时区分物理空间与情报域。`enemy_team_board_test.gd` 检查46项身份、物理排重、期限与生命周期，`enemy_team_basic_runtime_test.gd` 检查高级OFF真实共享／移动／开火、单人和多转单，以及明确区分的事务与身体保护合同；实际高级岗位仍由后续阶段实现。
 
+阶段3通用岗位和自保协议放在原 `enemy_action.gd`，具体合法自保由原换弹、接敌、近战、掩体和撤退动作实现。Context 只处理值接口，AI 沿原选择器处理资格、连续性和事务，不按战术ID分派执行。`enemy_assignment_execution_test.gd` 的29项受控合同与 `enemy_action_coordination_protocol_test.gd` 的24项真实身体／候选条件检查分别验证通用接点和自保；它们不替代生产战术的实景验收。
+
 `enemy/services/enemy_cover_inspection_geometry.gd` 只从冻结的合法线索和直立盒形掩体生成两个可步行检查端点，复用原导航、胶囊扫掠和完整路径校验；不读取隐藏目标身体、不认领、不发射。原 `actions/enemy_search.gd` 消费分侧认领，执行接近、有限等待、绕端检查和真实观察；`enemy_cooperation.gd` 管理线索、端点互斥与完成事实。Context 接收的调查线索默认保留20秒，与5秒精确共享目击分离，不延长射击权限。两端任务默认16秒且受线索原期限限制，等候2秒、观察0.5秒均不续期；单人或不足两个合法端点时沿用普通搜索，不恢复出口压制。几何和路径候选有限缓存，提交及执行继续复核真实可行性。
 
 `enemy/services/enemy_flank_route.gd` 是协作动作使用的只读几何辅助：由合法已知锚点生成有限带转向弧线、逐段检查点与严格步行路径，拒绝直穿目标附近；不认领岗位、不执行身体、不决定最终 Utility 分数。`enemy_cooperation.gd` 继续统一持有冻结的包抄轮次、人数名额及不可变最终目的地，使用真实友军身体位置计算占侧；动作自己保留短段进度、前线保持和有限支援恢复等待。Context 与 Fire 发布即时火力及正常连射暂停的恢复事实，位置预约与实际火力射界分开，不新增控制整个小队的执行框架。

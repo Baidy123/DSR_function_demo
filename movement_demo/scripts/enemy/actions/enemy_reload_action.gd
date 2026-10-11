@@ -5,6 +5,12 @@ var _reload_claim: Dictionary = {}
 var _reload_started := false
 var _rounds_at_start := 0
 
+func assignment_escape(candidate: Dictionary, visible: bool) -> bool:
+	if candidate.get("id") != action_id or not is_enabled() or not actor.can_use_firearms(): return false
+	if actor.ammo.magazine_rounds != 0 or actor.is_dead or actor.is_vaulting() or actor.melee_active or actor.get_tree().paused: return false
+	if not actor.ammo.is_reloading and not actor.can_reload(): return false
+	return validate(candidate, visible)
+
 func _proactive_opportunity() -> Dictionary:
 	if not context.cooperation_enabled() or not actor.can_use_firearms(): return {}
 	if actor.ammo.magazine_rounds <= 0 or actor.ammo.magazine_rounds >= actor.weapon.magazine_capacity: return {}

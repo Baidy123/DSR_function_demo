@@ -167,6 +167,8 @@ func _physics_process(delta: float) -> void:
 	var moving: bool = not actor.get_local_movement_velocity().is_zero_approx() or Vector2(actor.velocity.x, actor.velocity.z).length_squared() > 0.0025
 	context.fire.update(delta, visible, moving, output.get("fire", {}))
 	context.cooperation_publish_execution(output)
+	if current_action != null and not context._coordination_execution.is_empty():
+		context.report_coordination_execution(current_action.execution_contract(visible))
 	frame_costs.execution = Time.get_ticks_usec() - stamp
 	if current_action != null and not output.get("running", true):
 		context.investigation_hint_allowed = true
@@ -179,18 +181,30 @@ func _update_utility_decision(delta: float, visible: bool) -> void:
 	_utility_timer -= delta
 	if actor.is_vaulting(): return
 	var valid: bool = current_action != null and current_action.valid(visible)
-	var execution_valid := valid
 	if _utility_timer > 0.0 and (valid or current_action == null): return
 	_utility_timer = utility_recheck_seconds
+	context.prepare_coordination_evaluation()
 	utility_options = action_selector.assess_options(self, visible)
+	_publish_coordination_inputs(visible)
+	var contract: Dictionary = current_action.execution_contract(visible) if current_action != null and not context._coordination_execution.is_empty() else {}
+	context.report_coordination_execution(contract)
+	var bound: bool = current_action != null and context.coordination_continuation(contract, current_action.action_id)
 	var choices: Array[Dictionary] = context.coordination_choices(utility_options)
+	if bound and not contract.get("segment_boundary", true):
+		choices = choices.filter(func(candidate): return candidate.get("assignment_escape_verified", false) or candidate.get("coordination_offer_key", "") == context._coordination_execution.get("selected_offer_key", ""))
 	var best: Dictionary = action_selector.choose_option(choices, utility_current)
 	var cost := INF
 	for candidate in utility_options:
-		if action_selector.same_option(candidate, utility_current):
-			cost = candidate.cost
+		if not action_selector.same_option(candidate, utility_current): continue
+		cost = candidate.cost
+		if bound:
+			# A refreshed score does not replace the accepted short segment.
+			utility_current = utility_current.duplicate()
+			utility_current.cost = candidate.cost
+			utility_current.breakdown = candidate.get("breakdown", {})
+		else:
 			utility_current = candidate
-			if current_action != null: current_action.plan = candidate
+		if current_action != null: current_action.plan = utility_current
 	var current_choice: Dictionary = {}
 	for candidate in choices:
 		if action_selector.same_option(candidate, utility_current):
@@ -198,24 +212,38 @@ func _update_utility_decision(delta: float, visible: bool) -> void:
 			break
 	valid = valid and is_finite(cost) and not current_choice.is_empty()
 	if valid: valid = context.maintain_coordination_choice(current_choice)
-	# Execution protection is independent of a transient candidate cache or a
-	# conflicting new reservation. Actual invalidation can still end old routes.
-	if current_action != null and (execution_valid or context.melee.is_active_for(current_action.action_id)) and not current_action.can_interrupt(best, visible): return
+	# Body/action protection is independent of candidate availability or orders.
+	if current_action != null and not current_action.can_interrupt(best, visible): return
+	if bound and best.is_empty(): return
 	if best.is_empty():
 		_cancel_utility_execution()
 		context.state = State.IDLE
 		return
-	if valid and action_selector.same_option(best, utility_current): return
-	if valid and not current_action.hold_released():
+	var transition: bool = context.assignment_requires_transition(best, utility_current)
+	if bound and not transition and action_selector.same_option(best, utility_current): return
+	if valid and not transition and action_selector.same_option(best, utility_current): return
+	if valid and not transition and not current_action.hold_released():
 		if _utility_elapsed < utility_hold_seconds:
-			# A useful asynchronously prepared route may arrive just before the
-			# hold expires. Recheck at that boundary instead of waiting another
-			# full interval while the moving actor invalidates the new route.
+			# Preserve the original bounded reconsideration at the hold boundary.
 			if not best.get("route", {}).is_empty() and best.cost + utility_switch_advantage < cost:
 				_utility_timer = minf(_utility_timer, utility_hold_seconds - _utility_elapsed)
 			return
 		if best.cost + utility_switch_advantage >= cost: return
 	_start_utility_option(best, visible)
+
+func _publish_coordination_inputs(visible: bool) -> void:
+	var offers: Array[Dictionary] = []
+	var assignment: Dictionary = context.coordination_assignment()
+	if context.cooperation_enabled() and context.cooperation != null and context.cooperation.registered_member_count() > 1:
+		for action in actions.values():
+			if action.is_enabled(): offers.append_array(action.coordination_offers(visible))
+	context.publish_coordination_offers(utility_options, offers)
+	for candidate in utility_options:
+		# Always overwrite caller metadata; an urgent label grants no permission.
+		candidate.assignment_escape_verified = false
+		if assignment.is_empty(): continue
+		var owner = actions.get(candidate.get("id"))
+		if owner != null: candidate.assignment_escape_verified = owner.assignment_escape(candidate, visible)
 
 func _start_utility_option(candidate: Dictionary, visible: bool) -> void:
 	var next = actions.get(candidate.get("id"))
@@ -226,7 +254,7 @@ func _start_utility_option(candidate: Dictionary, visible: bool) -> void:
 	if transaction.required and transaction.token.is_empty():
 		invalidate_utility()
 		return
-	_cancel_utility_execution()
+	_cancel_utility_execution(&"self_preservation" if candidate.get("assignment_escape_verified", false) and not context.coordination_assignment().is_empty() else &"switch")
 	current_action = next
 	utility_current = candidate
 	_utility_elapsed = 0.0
@@ -246,7 +274,7 @@ func _start_utility_option(candidate: Dictionary, visible: bool) -> void:
 
 func _cancel_utility_execution(reason: StringName = &"switch") -> void:
 	if current_action != null: current_action.cancel(reason)
-	context.cooperation_clear_execution()
+	context.cooperation_clear_execution(reason)
 	current_action = null
 	utility_current = {}
 	context.fire.request = {}

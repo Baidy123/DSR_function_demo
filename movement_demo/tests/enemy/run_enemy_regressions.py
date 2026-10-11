@@ -22,6 +22,8 @@ TESTS = [
     "enemy_team_planner_test",
     "enemy_team_board_test",
     "enemy_team_basic_runtime_test",
+    "enemy_assignment_execution_test",
+    "enemy_action_coordination_protocol_test",
     "enemy_cooperation_flank_service_test",
     "enemy_flank_route_test",
     "enemy_cooperation_support_test",
