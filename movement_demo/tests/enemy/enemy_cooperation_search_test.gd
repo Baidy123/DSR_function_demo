@@ -76,9 +76,13 @@ func _run() -> void:
 		first_ai._physics_process(STEP)
 		second_ai._physics_process(STEP)
 		stayed_alert = stayed_alert and first_ai.is_alerted and second_ai.is_alerted
-		if first_ai.utility_current.get("id") == &"search" and second_ai.utility_current.get("id") == &"search":
-			if not first_search._search_claim.is_empty() and not second_search._search_claim.is_empty():
-				separate = separate or first_search.utility_destination().distance_to(second_search.utility_destination()) > 0.9
+		var first_execution := _executing_search(first_ai, first_search)
+		var second_execution := _executing_search(second_ai, second_search)
+		if not first_execution.is_empty() and not second_execution.is_empty():
+			separate = separate or first_execution.position.distance_to(second_execution.position) > 0.9
+		if frame % 60 == 0:
+			print("COOP SEARCH frame=", frame, " first=", first.global_position, " task=", first_execution,
+				" second=", second.global_position, " task=", second_execution)
 		if frame == 60:
 			last_claim_count = second_ai.context.cooperation_snapshot().claims.size()
 			var target: Vector3 = second_search.utility_destination()
@@ -91,19 +95,43 @@ func _run() -> void:
 	check(stayed_alert and second_ai.context.has_combat_contact() and not second_ai.has_visual_memory, "仅团队目击的敌人超过普通调查时限仍持续搜索，个人目击保持独立")
 	check(immutable and last_claim_count >= 0, "反复收集候选不认领新任务、不重选目标或返还路段时限")
 	for frame in 120:
-		if not first_search._search_claim.is_empty(): break
+		if not _executing_search(first_ai, first_search).is_empty(): break
 		await physics_frame
 		first_ai._physics_process(STEP)
 		second_ai._physics_process(STEP)
-	var token: Dictionary = first_search._search_claim.duplicate()
+	var token := _executing_search(first_ai, first_search)
 	check(not token.is_empty(), "取消验证前确实存在正在执行的搜索认领")
-	first_search.cancel(&"switch")
-	check(first_search._search_claim.is_empty(), "暂时切换动作释放搜索岗位，保留个人调查进度")
-	if not token.is_empty():
-		check(second_ai.context.cooperation_search_available(token.position, 0.1), "同伴取消后原调查位置可以重新认领")
+	var remaining_samples: Array = first_search.coverage.uncovered.duplicate()
+	var sample_count: int = first_search.coverage.sample_count
+	first_ai._cancel_utility_execution(&"switch")
+	check(first_search._search_claim.is_empty() and first_ai.context._coordination_execution.is_empty()
+		and first_ai.context._coordination_reservation.is_empty() and not first_search._running
+		and first_search.coverage.uncovered == remaining_samples and first_search.coverage.sample_count == sample_count,
+		"暂时切换动作释放搜索岗位，保留个人调查进度")
+	check(not token.is_empty() and second_ai.context.cooperation_search_available(token.position, 0.1), "同伴取消后原调查位置可以重新认领")
 	barrier.queue_free()
 	print("ENEMY COOPERATION SEARCH: %d/%d passed" % [checks - failures, checks])
 	quit(1 if failures else 0)
+
+func _executing_search(ai, search) -> Dictionary:
+	# A board offer or unaccepted assignment is not an executing investigation.
+	if ai.current_action != search or ai.utility_current.get("id") != &"search" or not search._running: return {}
+	var position: Vector3 = search.utility_destination()
+	if not position.is_finite(): return {}
+	if not search._search_claim.is_empty(): return {"position": position, "role": &"personal", "assignment_id": 0}
+	var begun: Dictionary = {}
+	match search.plan.get("plan", &""):
+		&"search_sector": begun = search._sector_assignment
+		&"inspect_end": begun = search._inspection_claim
+	if begun.is_empty(): return {}
+	var assignment: Dictionary = ai.context.coordination_assignment()
+	var committed: Dictionary = ai.context._coordination_execution
+	if assignment.is_empty() or committed.is_empty() or not assignment.get("accepted", false): return {}
+	if assignment.get("owner_action") != &"search" or float(assignment.get("expires_at", 0.0)) <= ai.context.coordination_now(): return {}
+	for key in [&"generation", &"team_id", &"plan_id", &"assignment_id", &"assignment_revision"]:
+		if assignment.get(key) != begun.get(key) or assignment.get(key) != committed.get(key): return {}
+	if assignment.get("selected_offer_key", "") != search.plan.get("coordination_offer_key", ""): return {}
+	return {"position": position, "role": assignment.role, "assignment_id": assignment.assignment_id}
 
 func _check_negative_evidence(scene, first, second, player) -> void:
 	var a = first.get_node("AI").context

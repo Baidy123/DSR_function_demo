@@ -29,6 +29,7 @@ var utility_risk_weight := 3.0
 var utility_information_weight := 1.0
 var utility_cooperation_weight := 4.0
 var utility_threat_half_life_seconds := 4.0
+var tactical_map
 var cooperation
 var team_visual_contact := false
 var _shared_visual: Dictionary = {}
@@ -105,6 +106,7 @@ func refresh_environment() -> bool:
 		arena_zone = zone
 		navigation_region = navigation
 		cooperation = environment.get("cooperation")
+		tactical_map = environment.get("tactical_map")
 		_spawn_position = actor.global_position
 		_spawn_checked = false
 		_environment_warning = ""
@@ -126,6 +128,7 @@ func detach_environment() -> void:
 	_inspection_notification_id = -1
 	if cooperation != null: cooperation.unregister(actor.get_instance_id())
 	cooperation = null
+	tactical_map = null
 	_shared_visual.clear()
 	_shared_notification_position = Vector3.INF
 	team_visual_contact = false
@@ -224,6 +227,7 @@ func update_evidence(delta: float, visible: bool) -> void:
 	perception.update_close_cover(delta)
 	was_seeing_player = visible
 	_update_cooperation_evidence()
+	_publish_coordination_evidence()
 	if state == State.IDLE:
 		patrol_pause_timer = maxf(0.0, patrol_pause_timer - delta)
 
@@ -721,17 +725,17 @@ func cooperation_release(token: Dictionary) -> void:
 	if cooperation != null: cooperation.release(self, token)
 
 func cooperation_search_available(point: Vector3, radius: float = 1.0) -> bool:
-	return cooperation.search_available(self, point, radius) if cooperation_enabled() else true
+	return cooperation.search_available(self, point, radius) if cooperation != null else true
 
 func cooperation_claim_search(point: Vector3, duration: float = 6.0) -> Dictionary:
 	return cooperation_claim({"target_id": cooperation_target_id(), "kind": &"search", "position": point, "duration": duration,
 		"owner_action": utility_current.get("id", &"search"), "radius": float(setting(&"cooperation", &"search_claim_radius", 1.0))})
 
 func cooperation_publish_checked(points: PackedVector3Array) -> void:
-	if cooperation_enabled(): cooperation.publish_checked(self, points)
+	if cooperation_enabled() and not noise_search_origin.is_finite(): cooperation.publish_checked(self, points)
 
 func cooperation_checked_points() -> Array[Dictionary]:
-	if not cooperation_enabled(): return []
+	if not cooperation_enabled() or noise_search_origin.is_finite(): return []
 	var points: Array[Dictionary] = cooperation.checked_points(self)
 	var offset: float = evidence_elapsed_seconds - cooperation.elapsed
 	for item in points:
@@ -784,8 +788,50 @@ func coordination_offer_identity() -> Dictionary:
 func coordination_source(target_id: int = 0) -> Dictionary:
 	return cooperation.coordination_source(self, target_id) if cooperation != null and cooperation_enabled() and cooperation.has_method("coordination_source") else {}
 
+## Static templates remain hints; Actions validate them through Spatial.
+func coordination_search_templates(origin: Vector3, radius: float, layers: int, limit: int = 6) -> Array[Dictionary]:
+	return tactical_map.query_sectors(origin, radius, layers, limit) if tactical_map != null and cooperation_enabled() else []
+
+func coordination_search_template_valid(key: String, source_revision: int, navigation_revision: int) -> bool:
+	return tactical_map != null and tactical_map.navigation_revision() == navigation_revision and tactical_map.template_valid(key, source_revision)
+
+func coordination_search_revision() -> int:
+	return tactical_map.revision() if tactical_map != null else 0
+
+func coordination_checked_points(target_id: int = 0) -> Array[Dictionary]:
+	return cooperation.coordination_checked_points(self, target_id) if cooperation_enabled() else []
+
+func advance_coordination_map(max_points: int, deadline_usec: int, frame: int) -> int:
+	if tactical_map == null or not cooperation_enabled() or cooperation.registered_member_count() <= 1: return 0
+	return int(tactical_map.advance_preparation(max_points, deadline_usec, frame).points)
+
 func coordination_now() -> float:
 	return cooperation.elapsed if cooperation != null else evidence_elapsed_seconds
+
+## Forward only already acquired reports, with their original identities/times.
+## Team planning evidence never grants this actor personal firing permission.
+func publish_coordination_noise(position: Vector3) -> void:
+	if cooperation == null or not cooperation.has_method("publish_noise_source"): return
+	cooperation.publish_noise_source(self, position)
+
+func _publish_coordination_evidence() -> void:
+	if cooperation == null or cooperation.registered_member_count() <= 1 or not cooperation.has_method("publish_coordination_source"): return
+	if not _shared_visual.is_empty() and float(_shared_visual.get("valid_until", 0.0)) > evidence_elapsed_seconds:
+		cooperation.publish_coordination_source(self, {"source_id": int(_shared_visual.id), "source": &"shared_visual",
+			"target_id": cooperation_target_id(), "position": _shared_visual.position,
+			"captured_at": _shared_visual.captured_at, "valid_until": _shared_visual.valid_until})
+		# A captured observation also becomes a frozen planning clue. This uses
+		# the existing investigation lifetime; it never modifies precise intel,
+		# personal sight, suppression evidence or the original capture timestamp.
+		cooperation.publish_coordination_source(self, {"source_id": int(_shared_visual.id), "source": &"observation_memory",
+			"target_id": cooperation_target_id(), "position": _shared_visual.position,
+			"captured_at": _shared_visual.captured_at,
+			"valid_until": float(_shared_visual.captured_at) + maxf(0.1, float(setting(&"cooperation", &"cover_inspection_seconds", 20.0)))})
+	var inspection := cover_inspection_evidence()
+	if not inspection.is_empty():
+		cooperation.publish_coordination_source(self, {"source_id": int(inspection.id), "source": &"inspection",
+			"target_id": cooperation_target_id(), "position": inspection.position,
+			"captured_at": inspection.captured_at, "valid_until": inspection.valid_until})
 
 func publish_coordination_offers(options: Array[Dictionary], offers: Array[Dictionary]) -> void:
 	if cooperation == null or not cooperation.has_method("submit_offers") or not _publish_coordination_versions(): return

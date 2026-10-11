@@ -42,6 +42,7 @@ class TestActor extends Node3D:
 
 class TestContext extends RefCounted:
 	var actor
+	var arena: Node
 	var cooperation
 	var fire := TestFire.new()
 	var utility_horizon_seconds := 4.0
@@ -81,6 +82,7 @@ func _team(count: int) -> void:
 		actor.position = Vector3(-6.0, 0.0, (index - (count - 1) * 0.5) * 1.5)
 		var member := TestContext.new()
 		member.actor = actor
+		member.arena = root
 		member.fire.actor = actor
 		member.cooperation = board
 		members.append(member)

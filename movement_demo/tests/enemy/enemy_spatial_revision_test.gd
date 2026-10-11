@@ -27,6 +27,7 @@ class TestContext extends Node:
 	var begins := 0
 	var ends := 0
 	func _known_reload_threat() -> Vector3: return Vector3(5, 0, 0)
+	func advance_coordination_map(_max_points: int, _deadline_usec: int, _frame: int) -> int: return 0
 	func begin_geometry_evaluation() -> void: begins += 1
 	func end_geometry_evaluation() -> void: ends += 1
 
@@ -63,6 +64,11 @@ func _run() -> void:
 	collision.shape = CapsuleShape3D.new()
 	actor.add_child(collision)
 	var agent := NavigationAgent3D.new()
+	# This queue contract owns its map; unrelated world synchronization must not
+	# introduce a genuine global invalidation during a local-revision assertion.
+	var navigation_map := NavigationServer3D.map_create()
+	NavigationServer3D.map_set_active(navigation_map, true)
+	agent.set_navigation_map(navigation_map)
 	actor.add_child(agent)
 	root.add_child(actor)
 	var context := TestContext.new()
@@ -88,6 +94,8 @@ func _run() -> void:
 		var current_iteration: int = NavigationServer3D.map_get_iteration_id(agent.get_navigation_map())
 		if warmup >= 2 and current_iteration == iteration: break
 		iteration = current_iteration
+	# Equal consecutive frame samples can precede an asynchronous first sync.
+	NavigationServer3D.map_force_update(navigation_map)
 	spatial.advance_evaluation()
 	_check(Action.new().evaluation_revision() == 0, "existing actions have a stable default revision")
 	_check(dormant.builds == 1 and unchanged.builds == 1 and spatial.assessments(dormant).is_empty(), "the initial empty action queue is recorded without inventing candidates")
@@ -136,5 +144,6 @@ func _run() -> void:
 	_check(spatial.cached_candidate_count() == 0 and spatial.total_evaluated_count == 0, "reset still clears all previous evaluation progress")
 	actor.free()
 	context.free()
+	NavigationServer3D.free_rid(navigation_map)
 	print("SPATIAL REVISION: %d/%d passed" % [checks - failures, checks])
 	quit(1 if failures else 0)

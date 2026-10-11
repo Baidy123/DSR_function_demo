@@ -103,8 +103,11 @@ func advance_evaluation() -> void:
 	context.begin_geometry_evaluation()
 	var started := Time.get_ticks_usec()
 	last_evaluated_count = 0
+	var prepared: int = context.advance_coordination_map(mini(4, EVALUATION_POINTS_PER_FRAME), started + EVALUATION_BUDGET_USEC, frame)
+	last_evaluated_count += prepared
+	total_evaluated_count += prepared
 	# Route geometry shares the same frame budget, rather than running inside candidate collection.
-	if context.routes.has_pending() and frame % 4 == 0:
+	if context.routes.has_pending() and frame % 4 == 0 and Time.get_ticks_usec() - started < EVALUATION_BUDGET_USEC:
 		context.routes.advance_one()
 		last_evaluated_count += 1
 		total_evaluated_count += 1
@@ -112,6 +115,15 @@ func advance_evaluation() -> void:
 		job.owners = job.owners.filter(func(owner): return owner.get_ref() != null and owner.get_ref().is_enabled())
 		if not job.owners.is_empty(): job.owner = job.owners[0]
 	jobs = jobs.filter(func(job): return not job.owners.is_empty())
+	# Incremental personal search preparation uses the same admission counter.
+	# It cannot perform the old full-grid validation inside candidate collection.
+	for job in jobs:
+		if last_evaluated_count >= EVALUATION_POINTS_PER_FRAME or Time.get_ticks_usec() - started >= EVALUATION_BUDGET_USEC: break
+		var owner = job.owner.get_ref()
+		if owner.has_method("advance_preparation_one") and owner.advance_preparation_one():
+			last_evaluated_count += 1
+			total_evaluated_count += 1
+			break
 	var threat: Vector3 = context._known_reload_threat()
 	var geometry: Array = [NavigationServer3D.map_get_iteration_id(context.agent.get_navigation_map())]
 	for region in regions():

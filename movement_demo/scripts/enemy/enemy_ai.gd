@@ -237,7 +237,26 @@ func _publish_coordination_inputs(visible: bool) -> void:
 	if context.cooperation_enabled() and context.cooperation != null and context.cooperation.registered_member_count() > 1:
 		for action in actions.values():
 			if action.is_enabled(): offers.append_array(action.coordination_offers(visible))
-	context.publish_coordination_offers(utility_options, offers)
+	# Preview only work that the current execution can actually accept. An
+	# already accepted, valid segment keeps its own continuation while protected.
+	var publishable: Array[Dictionary] = utility_options
+	if context.cooperation_enabled() and context.cooperation != null and context.cooperation.registered_member_count() > 1:
+		publishable = []
+		var contract: Dictionary = current_action.execution_contract(visible) if current_action != null else {}
+		var continuing: bool = current_action != null and context.coordination_continuation(contract, current_action.action_id)
+		var acceptance_times: Dictionary = {}
+		for candidate in utility_options:
+			var same_execution: bool = continuing and candidate.get("id") == current_action.action_id and candidate.get("coordination_offer_key", "") == context._coordination_execution.get("selected_offer_key", "")
+			if same_execution or current_action == null or current_action.can_interrupt(candidate, visible):
+				publishable.append(candidate)
+			elif candidate.get("id") == current_action.action_id and contract.get("valid", false):
+				var remaining: float = float(contract.get("remaining_seconds", 0.0))
+				if is_finite(remaining) and remaining > 0.0:
+					publishable.append(candidate)
+					acceptance_times[candidate.get("coordination_offer_key", "")] = context.evidence_elapsed_seconds + remaining + utility_recheck_seconds
+		for offer in offers:
+			if acceptance_times.has(offer.get("offer_key", "")): offer.accept_after = acceptance_times[offer.offer_key]
+	context.publish_coordination_offers(publishable, offers)
 	for candidate in utility_options:
 		# Always overwrite caller metadata; an urgent label grants no permission.
 		candidate.assignment_escape_verified = false
@@ -269,6 +288,10 @@ func _start_utility_option(candidate: Dictionary, visible: bool) -> void:
 		_cancel_utility_execution(&"reservation_failed")
 		invalidate_utility()
 		return
+	# This same decision may have published previews before choosing a protected
+	# personal action. Withdraw those previews immediately; accepted work stays.
+	if context.cooperation_enabled() and context.cooperation != null and context.cooperation.registered_member_count() > 1 and context._coordination_execution.is_empty() and not current_action.can_interrupt({}, visible):
+		_publish_coordination_inputs(visible)
 	if debug_utility and actor.debug_settings.enabled:
 		print("[AI][Utility] ", candidate.id, " cost=", candidate.get("cost", 0.0), " ", candidate.get("breakdown", {}))
 
@@ -338,6 +361,7 @@ func _on_noise_heard(position: Vector3) -> void:
 	if NavigationServer3D.map_get_iteration_id(agent.get_navigation_map()) == 0: return
 	if context.noise_search_origin.is_finite() and context.noise_search_origin.distance_to(position) < 0.35: return
 	context.noise_search_origin = position
+	context.publish_coordination_noise(position)
 	context.last_known_position = position
 	context.is_alerted = true
 	_dispatch_event(&"noise", {"position": position})

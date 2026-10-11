@@ -62,9 +62,9 @@ movement_demo/
 
 2026-10-10 的两端检查、基础间距和射击节奏调整继续增强上述既有流程。[统一队伍规划器设计](superpowers/specs/2026-10-10-enemy-team-coordinator-design.md)分阶段接入，基础位置预约已完成接入验证，高级岗位尚未接管；现有局部认领、人数名额与身体避让不等于新规划器已统一分配战术。
 
-统一规划器阶段1已新增 `enemy/services/enemy_team_planner.gd`：纯值输入输出的有界组合 helper，负责排除冲突并提议互补岗位，不访问场景、找路、控制身体或制造任务期限。`tests/enemy/enemy_team_planner_test.gd` 覆盖65项纯协议。当前运行中的 board 尚未调用它，高级战术接入仍按后续阶段完成。
+统一规划器阶段1已新增 `enemy/services/enemy_team_planner.gd`：纯值输入输出的有界组合 helper，负责排除冲突并提议互补岗位，不访问场景、找路、控制身体或制造任务期限。`tests/enemy/enemy_team_planner_test.gd` 覆盖65项纯协议。当前 board 已调用它安排互补检查、侧翼／前线与地图搜索，动作仅执行被选择的合法岗位。
 
-阶段2基础位置预约仍位于原 `enemy_cooperation.gd`，Context 负责候选值快照和身份版本，AI 只加入通用资格集合及准备／提交／回滚接点。没有新增场景节点或身体控制器；`advanced_enabled` 不限制基础排重，关系接口同时区分物理空间与情报域。`enemy_team_board_test.gd` 检查46项身份、物理排重、期限与生命周期，`enemy_team_basic_runtime_test.gd` 检查高级OFF真实共享／移动／开火、单人和多转单，以及明确区分的事务与身体保护合同；实际高级岗位仍由后续阶段实现。
+阶段2基础位置预约仍位于原 `enemy_cooperation.gd`，Context 负责候选值快照和身份版本，AI 只加入通用资格集合及准备／提交／回滚接点。没有新增场景节点或身体控制器；`advanced_enabled` 不限制基础排重，关系接口同时区分物理空间与情报域。`enemy_team_board_test.gd` 检查46项身份、物理排重、期限与生命周期，`enemy_team_basic_runtime_test.gd` 检查高级OFF真实共享／移动／开火、单人和多转单，以及明确区分的事务与身体保护合同；高级岗位通过同一 board 与通用执行接口接入，基础预约不依赖高级开关。
 
 阶段3通用岗位和自保协议放在原 `enemy_action.gd`，具体合法自保由原换弹、接敌、近战、掩体和撤退动作实现。Context 只处理值接口，AI 沿原选择器处理资格、连续性和事务，不按战术ID分派执行。`enemy_assignment_execution_test.gd` 的29项受控合同与 `enemy_action_coordination_protocol_test.gd` 的24项真实身体／候选条件检查分别验证通用接点和自保；它们不替代生产战术的实景验收。
 
@@ -119,3 +119,5 @@ Spatial 的路线样本层仅在同步候选比较中复用同路径已实际观
 敌人基础执行的条件查询与互斥规则继续放在身体／服务中；行为不读取近战控制器的阶段枚举，表现适配器读取状态快照。两种压制共同使用的环境推断参数属于 `config/selection_settings.gd`，由 `services/enemy_cover_selection.gd` 读取，不放在某个可选动作的专用配置中。接口见 [敌人 AI](enemy-ai.md#基础执行接口与冲突规则)。
 
 2026-10-07 近战兵接敌扩展继续使用原三层装配：`actions/enemy_melee_cover_action.gd` 和 `enemy_melee_rush_action.gd` 是独立可选战术，定义在 `resources/enemy/actions/`，由近战兵目录提供、Training 解锁。共用只读路径与结果估计放在 `services/enemy_melee_approach.gd`；换弹观察属于原感知／记忆服务。`config/melee_tactics_settings.gd` 经训练的 `action_overrides` 配置，示例为 `resources/enemy/training/melee_assault.tres`。原协调器、选择器、评分公式、场景节点及基础挥击执行职责保持不变；完整规则见 [近战说明](gameplay/MELEE.md)。
+
+`enemy/services/enemy_tactical_map.gd` 由 `shooting_range.gd` 持有并通过环境接口提供给 Context。同区域共用一份静态模板；Spatial 在原预算内推进地图与增量搜索准备，coverage 保存个人覆盖数据。地图模板不替代身体与路线验证；玩家线索、岗位、期限和实际观察账本归 board 管理。

@@ -25,6 +25,10 @@ class Melee extends RefCounted:
 	func weapon_settings() -> Dictionary: return {"windup": 0.2, "recovery": 0.3, "distance": 1.5}
 
 class Fire extends RefCounted:
+	var fire_reaction_seconds := 0.3
+	func pause_after_no_fire_seconds() -> float: return 0.0
+	func shot_wait_seconds() -> float: return 0.0
+	func estimated_reset_steady_wait() -> float: return 0.0
 	func has_clear_firing_lane(_origin: Vector3, _direction: Vector3, _distance: float) -> bool: return true
 
 class Spatial extends RefCounted:

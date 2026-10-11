@@ -116,6 +116,17 @@ func _fixture(count: int, enabled: bool, narrow: bool = false) -> Dictionary:
 func _flanking(ai) -> bool:
 	return ai.utility_current.get("id", &"") == &"cooperate" and ai.utility_current.get("plan", &"") == &"opposite_flank"
 
+func _flank_owners(actors: Array, snapshot: Dictionary) -> Dictionary:
+	# The central assignment already reserves a departure before begin().
+	# Count actor identities once while legacy claims remain compatible.
+	var owners: Dictionary = {}
+	for claim: Dictionary in snapshot.get("claims", []):
+		if claim.get("kind", &"") == &"flank": owners[int(claim.owner_id)] = true
+	for actor in actors:
+		var assignment: Dictionary = actor.get_node("AI").context.coordination_assignment()
+		if assignment.get("role", &"") == &"flank": owners[actor.get_instance_id()] = true
+	return owners
+
 func _measure(count: int, enabled: bool) -> Dictionary:
 	var fixture: Dictionary = await _fixture(count, enabled)
 	var actors: Array = fixture.actors
@@ -150,11 +161,11 @@ func _measure(count: int, enabled: bool) -> Dictionary:
 			result.actor_max_height_error = maxf(result.actor_max_height_error, absf(actor.global_position.y - fixture.ground_y))
 		result.player_max_drift = maxf(result.player_max_drift, fixture.player.global_position.distance_to(anchor))
 		var snapshot: Dictionary = actors[0].get_node("AI").context.cooperation_snapshot()
-		var claims: Array = snapshot.claims.filter(func(claim): return claim.get("kind", &"") == &"flank")
-		result.max_claims = maxi(result.max_claims, claims.size())
+		var flank_owners := _flank_owners(actors, snapshot)
+		result.max_claims = maxi(result.max_claims, flank_owners.size())
 		var opposite := 0
 		var front := 0
-		var flank_active: bool = not claims.is_empty()
+		var flank_active: bool = not flank_owners.is_empty()
 		for actor in actors:
 			if actor.global_position.x < anchor.x - OPPOSITE_MARGIN: opposite += 1
 			if actor.global_position.x > anchor.x + OPPOSITE_MARGIN: front += 1
@@ -235,7 +246,7 @@ func _blocked_routes() -> void:
 			started = started or _flanking(ai)
 			opposite = opposite or actor.global_position.x < fixture.player.global_position.x - OPPOSITE_MARGIN
 		var snapshot: Dictionary = fixture.actors[0].get_node("AI").context.cooperation_snapshot()
-		claimed = claimed or snapshot.claims.any(func(claim): return claim.get("kind", &"") == &"flank")
+		claimed = claimed or not _flank_owners(fixture.actors, snapshot).is_empty()
 	for actor in fixture.actors: shots += actor.shot_count
 	check(player_frozen and fixture.player.global_position.distance_to(anchor) < 0.001, "The blocked-route fixture also keeps the real target fixed")
 	check(actor_max_height_error < 0.1, "The blocked-route fixture keeps every actor physically on the real floor")

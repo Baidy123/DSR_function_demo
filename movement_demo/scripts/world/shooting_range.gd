@@ -5,11 +5,14 @@ signal presentation_reset(region: Node)
 var players_inside: Array[Node3D] = []
 var enemies: Array[CharacterBody3D] = []
 var _combat_zone: Area3D
+var tactical_map = preload("res://scripts/enemy/services/enemy_tactical_map.gd").new()
 var cooperation = preload("res://scripts/enemy/services/enemy_cooperation.gd").new()
 
 
 func enemy_environment() -> Dictionary:
-	return {"zone": get_node_or_null("CombatZone"), "navigation": get_node_or_null("NavigationRegion3D"), "cooperation": cooperation}
+	var navigation := get_node_or_null("NavigationRegion3D") as NavigationRegion3D
+	tactical_map.bind_region(navigation)
+	return {"zone": get_node_or_null("CombatZone"), "navigation": navigation, "cooperation": cooperation, "tactical_map": tactical_map}
 
 
 func register_enemy(enemy: CharacterBody3D) -> void:
@@ -65,6 +68,7 @@ func _on_player_exited(body: Node3D) -> void:
 
 func _reset_targets() -> void:
 	cooperation.reset()
+	tactical_map.reset()
 	presentation_reset.emit(self)
 	# 直接子靶与注册的嵌套敌人去重，只刷新本区域。
 	var targets: Array[Node] = []
@@ -76,3 +80,7 @@ func _reset_targets() -> void:
 		# 重开卸载场景也会发出离场信号；已出树的目标无需刷新。
 		if target.is_inside_tree() and target.has_method("reset_target"):
 			target.reset_target()
+
+
+func _exit_tree() -> void:
+	tactical_map.release()

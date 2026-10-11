@@ -36,8 +36,18 @@ func propose(snapshot: Dictionary, limits: Dictionary = {}) -> Dictionary:
 		if not continuity.assignments.is_empty():
 			if continuity.invalid.is_empty():
 				if current.get("execution_valid", true) == false: return _result(work, &"none", &"plan_execution_invalid", current.get("tactic", &""))
+				if current.tactic == &"search":
+					var extension := _extend_search(work, current, continuity.assignments)
+					if not extension.assignments.is_empty(): return _with_basic(work, extension, continuity.assignments + extension.assignments)
 				# A missing offer or a cheaper unrelated option is not execution failure.
 				return _with_basic(work, _result(work, &"keep", &"execution_valid", current.get("tactic", &"")), continuity.assignments)
+			# Search slots are independent. A blocked member must not cancel the
+			# real observation already being executed in another reachable sector.
+			if current.tactic == &"search" and not continuity.protected.is_empty():
+				var extension := _extend_search(work, current, continuity.protected)
+				extension.removed_actor_ids = continuity.invalid.map(func(entry): return entry.actor_id)
+				extension.changed_actor_ids.append_array(extension.removed_actor_ids)
+				return _with_basic(work, extension, continuity.protected + extension.assignments)
 			var repair := _repair(work, current, continuity)
 			return _with_basic(work, repair, continuity.protected + repair.assignments)
 	var selected := _new_plan(work)
@@ -191,6 +201,15 @@ func _summary_valid(value: Variant) -> bool:
 		for item in value.get(key, []):
 			if not _text(item) and not _nonnegative_integer(item): return false
 	if value.has("body_radius") and (not _number(value.body_radius) or value.body_radius < 0.0): return false
+	# Optional full footprint is supplied by the board, from the current body.
+	# Old value-only callers keep their original radius/distance semantics.
+	if value.has("body_height") or value.has("spacing_margin"):
+		if not _number(value.get("body_radius")) or not _number(value.get("body_height")) or not _number(value.get("spacing_margin")): return false
+		if value.body_height < value.body_radius * 2.0 or value.spacing_margin < 0.0: return false
+	if value.has("firing_lane"):
+		if not value.firing_lane is Dictionary: return false
+		for key in [&"origin", &"endpoint"]:
+			if not value.firing_lane.get(key) is Vector3 or not value.firing_lane[key].is_finite(): return false
 	if value.has("side") and (typeof(value.side) != TYPE_INT or value.side not in [-1, 0, 1]): return false
 	for key in [&"holds_front", &"exclusive_corridor"]:
 		if value.has(key) and not value[key] is bool: return false
@@ -271,8 +290,15 @@ func _conflict(work: Dictionary, a: Dictionary, b: Dictionary) -> bool:
 	if a.get("position_set_key", "") == b.get("position_set_key", "") and _text(a.get("position_set_key")): return true
 	var left: Dictionary = a.get("path_summary", {})
 	var right: Dictionary = b.get("path_summary", {})
-	var clearance: float = maxf(0.0, float(left.get("body_radius", 0.35))) + maxf(0.0, float(right.get("body_radius", 0.35))) + 0.1
-	if a.position.distance_squared_to(b.position) < clearance * clearance: return true
+	if left.has("body_height") and right.has("body_height"):
+		var clearance: float = left.body_radius + right.body_radius + maxf(left.spacing_margin, right.spacing_margin)
+		var separation: Vector3 = a.position - b.position
+		var overlap: bool = a.position.y < b.position.y + right.body_height and b.position.y < a.position.y + left.body_height
+		if overlap and Vector2(separation.x, separation.z).length_squared() < clearance * clearance: return true
+		if _footprint_crosses_lane(a.position, left, right.get("firing_lane", {})) or _footprint_crosses_lane(b.position, right, left.get("firing_lane", {})): return true
+	else:
+		var clearance: float = maxf(0.0, float(left.get("body_radius", 0.35))) + maxf(0.0, float(right.get("body_radius", 0.35))) + 0.1
+		if a.position.distance_squared_to(b.position) < clearance * clearance: return true
 	var corridor: Variant = left.get("corridor_key", "")
 	if _text(corridor) and corridor == right.get("corridor_key") and (left.get("exclusive_corridor", false) or right.get("exclusive_corridor", false)): return true
 	if left.get("blocked_position_sets", []).has(b.get("position_set_key")) or right.get("blocked_position_sets", []).has(a.get("position_set_key")): return true
@@ -281,6 +307,15 @@ func _conflict(work: Dictionary, a: Dictionary, b: Dictionary) -> bool:
 		for sample in left.get("sample_ids", []):
 			if right.get("sample_ids", []).has(sample): return true
 	return false
+
+## Deterministic segment math, matching the board's actual capsule projection.
+## The segment is finite: it does not become an infinite promised firing ray.
+func _footprint_crosses_lane(position: Vector3, footprint: Dictionary, lane: Dictionary) -> bool:
+	if lane.is_empty() or lane.origin.distance_squared_to(lane.endpoint) <= 0.0001: return false
+	var bottom: Vector3 = position + Vector3.UP * footprint.body_radius
+	var top: Vector3 = position + Vector3.UP * (footprint.body_height - footprint.body_radius)
+	var nearest: PackedVector3Array = Geometry3D.get_closest_points_between_segments(bottom, top, lane.origin, lane.endpoint)
+	return nearest[0].distance_squared_to(nearest[1]) < pow(float(footprint.body_radius) + 0.1, 2.0)
 
 func _compatible(work: Dictionary, a: Dictionary, b: Dictionary) -> bool:
 	if a.actor_id == b.actor_id: return false
@@ -429,6 +464,32 @@ func _reserved_offer(offer: Dictionary) -> Dictionary:
 	return {"offer_key": offer.offer_key, "position_set_key": offer.position_set_key,
 		"position": offer.position, "role": offer.role, "path_summary": offer.path_summary.duplicate(true),
 		"fire_ready": offer.get("fire_ready", false), "measured_support_seconds": offer.get("measured_support_seconds", 0.0)}
+
+## Late prepared sectors can join a live search without replacing any member
+## or extending its fixed deadline. All trials share the original hard bound.
+func _extend_search(work: Dictionary, current: Dictionary, existing: Array) -> Dictionary:
+	var result := _result(work, &"extend", &"prepared_search_member", &"search")
+	var reserved: Array = []
+	var owners: Array = []
+	for entry: Dictionary in existing:
+		var bundle := _protected_bundle(entry)
+		if bundle.is_empty(): return _result(work, &"keep", &"execution_valid", &"search")
+		reserved.append(bundle)
+		owners.append(entry.actor_id)
+	for bundle: Dictionary in _pool(work, &"search_sector"):
+		if owners.has(bundle.actor_id): continue
+		if not _trial(work): break
+		var fits := true
+		for offer: Dictionary in bundle.offers:
+			if float(offer.travel_seconds) >= float(current.expires_at) - float(work.snapshot.now): fits = false
+		if not fits or not _free(work, bundle): continue
+		if reserved.any(func(other): return not _compatible(work, bundle, other)): continue
+		result.assignments.append(_assignment(bundle, owners.duplicate(), 0))
+		result.changed_actor_ids.append(bundle.actor_id)
+		owners.append(bundle.actor_id)
+		reserved.append(bundle)
+	result.required_participants = current.required_participants.duplicate()
+	return result
 
 func _current_header_valid(plan: Dictionary, snapshot: Dictionary) -> bool:
 	for key in [&"generation", &"team_id", &"domain", &"target_id", &"evidence_id"]:

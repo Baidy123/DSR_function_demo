@@ -179,14 +179,22 @@ var _trail_pending: Array[Vector3] = []
 var _checked_trail: Array[Vector3] = []
 var _search_claim: Dictionary = {}
 const InspectionGeometry = preload("res://scripts/enemy/services/enemy_cover_inspection_geometry.gd")
+const SearchBodyGeometry = preload("res://scripts/systems/character_geometry.gd")
 enum InspectionPhase { NONE, APPROACH, WAIT_PARTNER, CHECK, OBSERVE }
 var _inspection_phase := InspectionPhase.NONE
 var _inspection_claim: Dictionary = {}
+var _inspection_offers: Array[Dictionary] = []
+var _inspection_routes: Dictionary = {}
+var _inspection_complete := false
+var _inspection_checked := PackedVector3Array()
+var _resolved_inspection_source: Array = []
+var _resolved_inspection_until := 0.0
+var _inspection_ready := false
 var _inspection_route: Dictionary = {}
 var _inspection_remaining := 0.0
-var _inspection_wait := 0.0
 var _inspection_observe := 0.0
 var _inspection_stuck := 0.0
+var _inspection_ally_blocked := false
 var _inspection_best := INF
 var _inspection_waypoint := Vector3.INF
 var _inspection_recheck := 0.0
@@ -194,11 +202,26 @@ var _inspection_failed_until := 0.0
 var _inspection_geometry: Dictionary = {}
 var _inspection_geometry_key: Array = []
 var _inspection_geometry_retry := 0.0
-var _inspection_assignment_revision := -1
-var _inspection_assigned_end := 0
-var _inspection_cached_route: Dictionary = {}
 var _inspection_route_origin := Vector3.INF
 var _inspection_cached_route_until := 0.0
+## Team sectors keep their own progress; personal coverage retains its full denominator.
+var _sector_assignment: Dictionary = {}
+var _sector_plan: Dictionary = {}
+var _sector_offers: Array[Dictionary] = []
+var _sector_candidates_by_key: Dictionary = {}
+var _sector_index := 0
+var _sector_observing := false
+var _sector_boundary := false
+var _sector_observe_remaining := 0.0
+var _sector_checked: Dictionary = {}
+var _sector_checked_tick := PackedVector3Array()
+var _sector_complete := false
+var _sector_stuck := 0.0
+var _sector_best := INF
+var _sector_waypoint := Vector3.INF
+var _sector_recheck := 0.0
+var _sector_route_valid := false
+var _sector_failed_until := 0.0
 
 const Actor = preload("res://scripts/enemy/enemy_actor.gd")
 
@@ -234,6 +257,8 @@ func _release_search_claim() -> void:
 
 func _claim_search_point(point: Vector3, seconds: float) -> bool:
 	_release_search_claim()
+	# Targetless sound remains personal while its own evidence-domain offers warm.
+	if noise_search_origin.is_finite(): return true
 	if not context.cooperation_enabled(): return true
 	var default_seconds: float = float(context.setting(&"cooperation", &"search_claim_seconds", 6.0))
 	_search_claim = context.cooperation_claim_search(point, maxf(0.1, maxf(default_seconds, seconds)))
@@ -271,6 +296,7 @@ func has_committed_segment() -> bool:
 		release_segment()
 	if _segment_released:
 		return false
+	if not _sector_assignment.is_empty(): return not _sector_observing and not _sector_boundary and not _sector_complete and _sector_execution_valid(false)
 	if _inspection_phase != InspectionPhase.NONE: return _inspection_remaining > 0.0
 	if _segment_boundary_pending:
 		return false
@@ -300,6 +326,7 @@ func recover_unreachable_destination() -> void:
 
 
 func utility_destination() -> Vector3:
+	if not _sector_assignment.is_empty(): return _sector_destination()
 	if _inspection_phase != InspectionPhase.NONE:
 		return _inspection_route.entry if _inspection_phase in [InspectionPhase.APPROACH, InspectionPhase.WAIT_PARTNER] else _inspection_route.peek
 	if investigation_phase == context.State.TRACK and has_suspected_position:
@@ -902,7 +929,10 @@ func _process_search(delta: float) -> Vector3:
 
 
 func _build_systematic_area_search() -> void:
-	coverage.build(context, search_origin, search_radius, search_coverage_radius, search_nav_snap_tolerance)
+	if _inspection_coordinator_available() and coverage.has_method("begin_build"):
+		coverage.begin_build(context, search_origin, search_radius, search_coverage_radius, search_nav_snap_tolerance)
+	else:
+		coverage.build(context, search_origin, search_radius, search_coverage_radius, search_nav_snap_tolerance)
 	if _focused_evidence(): coverage.prepare_focus(_checked_trail)
 
 
@@ -952,6 +982,10 @@ func _advance_systematic_search_target() -> bool:
 	# 动态障碍使剩余目标失败时结束本轮，不把失败点当作已覆盖。
 	search_current_target_active = false
 	agent.target_position = actor.global_position
+	if coverage.has_method("has_pending_preparation") and coverage.has_pending_preparation():
+		search_is_pausing = true
+		search_pause_timer = 0.2
+		return true
 	if debug_systematic_search:
 		print("[AI][搜索] 无剩余可用目标，实际覆盖=", get_search_coverage())
 	return false
@@ -1032,13 +1066,19 @@ func _end_search() -> void:
 
 
 func reset() -> void:
+	_resolved_inspection_source.clear()
+	_resolved_inspection_until = 0.0
+	_end_sector(false)
+	_sector_offers.clear()
+	_sector_candidates_by_key.clear()
+	_sector_failed_until = 0.0
 	_end_inspection(false)
 	_inspection_failed_until = 0.0
 	_inspection_geometry.clear()
 	_inspection_geometry_key.clear()
 	_inspection_geometry_retry = 0.0
-	_inspection_cached_route.clear()
-	_inspection_assignment_revision = -1
+	_inspection_routes.clear()
+	_inspection_offers.clear()
 	_release_search_claim()
 	_exact_search_origin = Vector3.INF
 	route_motion.reset()
@@ -1087,11 +1127,13 @@ func step(delta: float) -> Vector3:
 
 
 func movement_multiplier() -> float:
+	if not _sector_assignment.is_empty(): return float(_sector_plan.get("speed", 1.0))
 	if _inspection_phase != InspectionPhase.NONE: return 1.0
 	return _segment_speed if _segment_speed >= 0.0 else _next_segment_speed()
 
 
 func state_label() -> String:
+	if not _sector_assignment.is_empty(): return "分区调查 %d/%d" % [mini(_sector_index + 1, _sector_plan.get("samples", []).size()), _sector_plan.get("samples", []).size()]
 	if _inspection_phase == InspectionPhase.WAIT_PARTNER: return "两端入位等待"
 	if _inspection_phase in [InspectionPhase.CHECK, InspectionPhase.OBSERVE]: return "分侧检查掩体"
 	if _inspection_phase == InspectionPhase.APPROACH: return "分侧接近掩体"
@@ -1138,12 +1180,19 @@ func investigate_noise(position: Vector3, fresh_evidence: bool = false) -> void:
 
 
 func collect_candidates(visible: bool) -> Array[Dictionary]:
-	if not visible:
-		var inspection := _inspection_candidate()
-		if not inspection.is_empty(): return [inspection]
+	_inspection_offers.clear()
+	_sector_offers.clear()
+	if not _sector_assignment.is_empty():
+		var active: Array[Dictionary] = []
+		if _sector_execution_valid(visible): active.append(plan.duplicate(true))
+		return active
+	var inspections: Array[Dictionary] = []
+	if not visible: inspections = _inspection_candidates()
+	if _inspection_phase != InspectionPhase.NONE: return inspections
+	if not visible: inspections.append_array(_collect_sector_candidates())
 	var threat: Vector3 = context._known_reload_threat()
 	if visible or not threat.is_finite():
-		return []
+		return inspections
 	var horizon: float = context.utility_horizon_seconds
 	var point := utility_destination()
 	var path: PackedVector3Array = PackedVector3Array() if is_observing() else context.routes.planning_path(actor.global_position, point)
@@ -1153,21 +1202,20 @@ func collect_candidates(visible: bool) -> Array[Dictionary]:
 		if not report.is_empty(): candidate.outcome.information_loss = context.shared_contact_information(actor.global_position, 0.0, report)
 		candidate.accepts_noise = true
 		candidate.search_recovery = not is_observing()
-		return [candidate]
+		inspections.append(candidate)
+		return inspections
 	var route: Dictionary = context.spatial.assess_route(context, path, threat, movement_multiplier(), context.spatial._reload_seconds(context) if actor.ammo.is_reloading else 0.0)
 	var candidate := option({}, horizon, route.exposure + context._reload_exposure(point, threat) * maxf(0.0, horizon - route.seconds))
 	var report: Dictionary = context.fresh_shared_contact()
 	if not report.is_empty(): candidate.outcome.information_loss = context.shared_contact_information(point, route.seconds, report)
 	candidate.accepts_noise = true
 	candidate.route_target = point
-	return [candidate]
+	inspections.append(candidate)
+	return inspections
 
 func begin(candidate: Dictionary, visible: bool) -> bool:
+	if candidate.get("plan", &"") == &"search_sector": return _begin_sector(candidate, visible)
 	if candidate.get("plan", &"") == &"inspect_end": return _begin_inspection(candidate, visible)
-	if candidate.get("plan", &"") == &"inspect_wait":
-		super.begin(candidate, visible)
-		agent.target_position = actor.global_position
-		return true
 	candidate.accepts_noise = true
 	super.begin(candidate, visible)
 	context.utility_suppression_pending = false
@@ -1188,13 +1236,13 @@ func begin(candidate: Dictionary, visible: bool) -> bool:
 	return true
 
 func valid(visible: bool) -> bool:
+	if not _sector_assignment.is_empty(): return _sector_execution_valid(visible)
+	if _inspection_phase != InspectionPhase.NONE: return _inspection_execution_valid(visible)
 	return _running and not visible and (context.is_alerted or noise_search_origin.is_finite())
 
 func tick(delta: float, _visible: bool) -> Dictionary:
+	if not _sector_assignment.is_empty(): return _tick_sector(delta, _visible)
 	if _inspection_phase != InspectionPhase.NONE: return _tick_inspection(delta)
-	if plan.get("plan", &"") == &"inspect_wait":
-		context.state = context.State.SEARCH
-		return motion(Vector3.ZERO, 1.0)
 	if plan.get("search_recovery", false):
 		plan.erase("search_recovery")
 		if not is_observing() and context.routes.planning_path(actor.global_position, utility_destination()).is_empty():
@@ -1202,6 +1250,11 @@ func tick(delta: float, _visible: bool) -> Dictionary:
 	if not context.is_alerted and not noise_search_origin.is_finite():
 		_running = false
 		return motion(Vector3.ZERO)
+	# Personal search may have chosen its point before the team plan existed.
+	# Recheck occupancy before moving so it cannot walk into a reserved end.
+	var personal_target := utility_destination()
+	if not is_observing() and personal_target.is_finite() and not context.cooperation_search_available(personal_target, 0.0):
+		recover_unreachable_destination()
 	var direction := step(delta)
 	_running = context.is_alerted or noise_search_origin.is_finite()
 	return motion(direction, movement_multiplier(), facing_direction(direction))
@@ -1209,6 +1262,7 @@ func tick(delta: float, _visible: bool) -> Dictionary:
 func cancel(reason: StringName = &"switch") -> void:
 	# 暂时被其他行动接管时保留搜索覆盖和已承诺的调查段；死亡/复位调用 reset。
 	_running = false
+	_end_sector(false)
 	_end_inspection(false)
 	_release_search_claim()
 	route_motion.reset()
@@ -1230,9 +1284,13 @@ func hold_released() -> bool:
 	return is_segment_released()
 
 func on_event(event: StringName, data: Dictionary) -> void:
+	if not _sector_assignment.is_empty() and event in [&"noise", &"threat", &"exact_cover_clue", &"cooperation_intel"]:
+		var source: Dictionary = context.coordination_source(int(_sector_assignment.get("target_id", 0)))
+		if not source.is_empty() and source.evidence_id == _sector_assignment.get("evidence_id"): return
+		_end_sector(false)
 	if _inspection_phase != InspectionPhase.NONE and event in [&"noise", &"threat", &"exact_cover_clue", &"cooperation_intel"]:
 		var evidence: Dictionary = context.cover_inspection_evidence()
-		if not evidence.is_empty() and int(evidence.id) == int(_inspection_claim.get("inspection_id", -1)): return
+		if not evidence.is_empty() and int(evidence.id) == int(_inspection_route.get("geometry", {}).get("inspection_id", -1)): return
 		_end_inspection(false)
 	if event == &"visibility" and data.visible:
 		_exact_search_origin = Vector3.INF
@@ -1282,139 +1340,200 @@ func route_tick(delta: float, visible: bool) -> Dictionary:
 	return motion(Vector3.ZERO, movement_multiplier())
 
 func expand_route_candidates(candidates: Array[Dictionary]) -> Array[Dictionary]:
-	if candidates.size() == 1 and candidates[0].get("plan", &"") in [&"inspect_end", &"inspect_wait"]: return candidates
-	return super.expand_route_candidates(candidates)
+	var walking: Array[Dictionary] = []
+	var ordinary: Array[Dictionary] = []
+	for candidate in candidates:
+		if candidate.get("plan", &"") in [&"inspect_end", &"search_sector"]: walking.append(candidate)
+		else: ordinary.append(candidate)
+	walking.append_array(super.expand_route_candidates(ordinary))
+	return walking
 
+func coordination_offers(_visible: bool) -> Array[Dictionary]:
+	var result: Array[Dictionary] = []
+	if not _inspection_coordinator_available(): return result
+	result.append_array(_inspection_offers)
+	result.append_array(_sector_offers)
+	return result.duplicate(true)
+
+## Compatibility inspection of execution, without the former local end allocator.
 func _inspection_candidate() -> Dictionary:
-	if not context.cooperation_enabled() or context.evidence_elapsed_seconds < _inspection_failed_until: return {}
-	if context.cooperation.registered_member_count() < 2: return {}
-	# The same eligibility as end allocation: shared radio facts do not grant
-	# advanced training or permission to move during a body-locked action.
-	if context.cooperation.inspection_eligible_count(context, context.cooperation_target_id()) < 2: return {}
+	return plan.duplicate(true) if _inspection_phase != InspectionPhase.NONE and _inspection_execution_valid(context.sees_player) else {}
+
+func _inspection_coordinator_available() -> bool:
+	return context.cooperation_enabled() and context.cooperation != null and context.cooperation.registered_member_count() > 1 and context.has_method("coordination_source")
+
+func _inspection_candidates() -> Array[Dictionary]:
+	var result: Array[Dictionary] = []
+	if not _inspection_coordinator_available() or not actor.can_move() or actor.is_vaulting() or actor.melee_active: return result
+	if _inspection_phase != InspectionPhase.NONE:
+		if _inspection_execution_valid(false): result.append(plan.duplicate(true))
+		return result
+	if context.evidence_elapsed_seconds < _inspection_failed_until: return result
+	var source: Dictionary = context.coordination_source(context.cooperation_target_id())
 	var evidence: Dictionary = context.cover_inspection_evidence()
-	if evidence.is_empty() or evidence.get("checked_ends", []).size() >= 2: return {}
-	var route: Dictionary = _inspection_route
-	if _inspection_phase == InspectionPhase.NONE:
-		var body = evidence.get("cover")
-		if body is WeakRef: body = body.get_ref()
-		var box: CollisionShape3D = body.get_node_or_null("CollisionShape3D") as CollisionShape3D if is_instance_valid(body) else null
-		var geometry_key: Array = [evidence.id, NavigationServer3D.map_get_iteration_id(agent.get_navigation_map()), actor.get_body_height(), box.global_transform if box != null else Transform3D.IDENTITY, box.shape.size if box != null and box.shape is BoxShape3D else Vector3.ZERO, box.disabled if box != null else true, body.collision_layer if is_instance_valid(body) else 0]
-		if geometry_key != _inspection_geometry_key or (_inspection_geometry.is_empty() and context.evidence_elapsed_seconds >= _inspection_geometry_retry):
-			_inspection_geometry_key = geometry_key
-			_inspection_geometry = InspectionGeometry.describe(context, evidence)
-			_inspection_geometry_retry = context.evidence_elapsed_seconds + 1.0
-			_inspection_cached_route.clear()
-			_inspection_cached_route_until = 0.0
-			_inspection_assignment_revision = -1
-		var geometry: Dictionary = _inspection_geometry
-		if geometry.is_empty(): return {}
-		var assignment_revision: int = context.cooperation.inspection_revision(context, int(evidence.id))
-		if assignment_revision != _inspection_assignment_revision:
-			_inspection_assignment_revision = assignment_revision
-			_inspection_assigned_end = context.cooperation.inspection_end(context, geometry)
-		var end: int = _inspection_assigned_end
-		if end == 0:
-			# Extra investigators keep their own legal space while the two end
-			# leases are occupied. The body may maintain friendly spacing.
-			var waiting := option({}, context.utility_horizon_seconds, context._reload_exposure(actor.global_position, evidence.position) * context.utility_horizon_seconds, context.utility_horizon_seconds, &"inspect_wait")
-			waiting.accepts_noise = true
-			return waiting
-		if context.evidence_elapsed_seconds >= _inspection_cached_route_until or (not _inspection_cached_route.is_empty() and int(_inspection_cached_route.end) != end) or actor.global_position.distance_to(_inspection_route_origin) > 0.5:
-			_inspection_cached_route = InspectionGeometry.route(context, geometry, end)
-			_inspection_route_origin = actor.global_position
-			_inspection_cached_route_until = context.evidence_elapsed_seconds + 1.0
-		route = _inspection_cached_route
-		if route.is_empty(): return {}
-		var limit: float = float(context.setting(&"cooperation", &"cover_inspection_plan_seconds", 16.0))
-		if route.length / maxf(0.1, actor.move_speed) + 0.5 > limit: return {}
-	elif not InspectionGeometry.valid(context, route.geometry) or int(evidence.id) != int(_inspection_claim.get("inspection_id", -1)):
-		return {}
-	var goal: Vector3 = route.entry if _inspection_phase in [InspectionPhase.NONE, InspectionPhase.APPROACH, InspectionPhase.WAIT_PARTNER] else route.peek
-	if not context.is_position_free(goal): return {}
-	var path: PackedVector3Array = selection._path_to(actor.global_position, goal)
-	if path.is_empty(): return {}
-	var travel: Dictionary = context.spatial.assess_route(context, path, evidence.position, 1.0, 0.0)
-	var horizon: float = context.utility_horizon_seconds
-	var remaining: float = route.length / maxf(0.1, actor.move_speed) if _inspection_phase == InspectionPhase.NONE else float(travel.seconds)
-	var candidate := option({"position": route.peek, "path": path}, horizon, float(travel.exposure) + context._reload_exposure(goal, evidence.position) * maxf(0.0, horizon - float(travel.seconds)), minf(horizon, remaining), &"inspect_end")
-	candidate.inspection = route
-	candidate.accepts_noise = true
-	if _inspection_phase in [InspectionPhase.APPROACH, InspectionPhase.CHECK] and actor.get_local_movement_velocity().length_squared() > 0.0001:
-		candidate.support_request = {"kind": &"advance", "duration": minf(horizon, _inspection_remaining), "lane_id": &"target"}
-	return candidate
+	if source.is_empty() or evidence.is_empty() or evidence.position.distance_to(source.position) > 0.5: return result
+	var body = evidence.get("cover")
+	if body is WeakRef: body = body.get_ref()
+	var box: CollisionShape3D = body.get_node_or_null("CollisionShape3D") as CollisionShape3D if is_instance_valid(body) else null
+	var geometry_key: Array = [evidence.id, NavigationServer3D.map_get_iteration_id(agent.get_navigation_map()), actor.get_body_height(), box.global_transform if box != null else Transform3D.IDENTITY, box.shape.size if box != null and box.shape is BoxShape3D else Vector3.ZERO, box.disabled if box != null else true, body.collision_layer if is_instance_valid(body) else 0]
+	if geometry_key != _inspection_geometry_key or (_inspection_geometry.is_empty() and context.evidence_elapsed_seconds >= _inspection_geometry_retry):
+		_inspection_geometry_key = geometry_key
+		_inspection_geometry = InspectionGeometry.describe(context, evidence)
+		_inspection_geometry_retry = context.evidence_elapsed_seconds + 1.0
+		_inspection_routes.clear()
+		_inspection_cached_route_until = 0.0
+	if _inspection_geometry.is_empty(): return result
+	if context.evidence_elapsed_seconds >= _inspection_cached_route_until or actor.global_position.distance_to(_inspection_route_origin) > 0.5:
+		_inspection_routes.clear()
+		# Both ends precede assignment. There is no local actor/slot allocator.
+		for end in [-1, 1]: _inspection_routes[end] = InspectionGeometry.route(context, _inspection_geometry, end)
+		_inspection_route_origin = actor.global_position
+		_inspection_cached_route_until = context.evidence_elapsed_seconds + 0.75
+	var identity: Dictionary = context.coordination_offer_identity()
+	if identity.is_empty(): return result
+	var lifetime: float = minf(float(context.setting(&"cooperation", &"cover_inspection_plan_seconds", 16.0)), float(source.valid_until) - context.coordination_now())
+	for end in [-1, 1]:
+		var route: Dictionary = _inspection_routes.get(end, {})
+		if route.is_empty() or not context.is_position_free(route.entry) or not context.is_position_free(route.peek): continue
+		var seconds: float = float(route.length) / maxf(0.1, actor.move_speed)
+		if seconds + 0.5 > lifetime: continue
+		var travel: Dictionary = context.spatial.assess_route(context, route.approach, evidence.position, 1.0, 0.0)
+		var horizon: float = context.utility_horizon_seconds
+		var candidate := option({"position": route.peek, "path": route.approach}, horizon, float(travel.exposure) + context._reload_exposure(route.entry, evidence.position) * maxf(0.0, horizon - float(travel.seconds)), minf(horizon, seconds), &"inspect_end")
+		var role: StringName = &"inspect_left" if end < 0 else &"inspect_right"
+		var tactical_key := "inspect:%s:%s" % [source.evidence_id, route.geometry.cover_id]
+		var offer_key := "%s:%s:%s:%s" % [actor.get_instance_id(), tactical_key, end, identity.navigation_revision]
+		candidate.inspection = route
+		candidate.accepts_noise = true
+		candidate.coordination_offer_key = offer_key
+		candidate.coordination_role = role
+		var offer: Dictionary = identity.duplicate()
+		offer.merge({"scope": &"tactical", "owner_action": action_id, "offer_key": offer_key, "role": role,
+			"position_set_key": "%s:%s" % [tactical_key, end], "position": route.peek,
+			"target_id": source.target_id, "evidence_id": source.evidence_id,
+			"path_summary": {"tactical_key": tactical_key, "side": end, "body_radius": route.geometry.radius,
+				"staging_position": route.entry, "staging_seconds": travel.seconds, "observation_points": [route.geometry.known]},
+			"travel_seconds": seconds, "unavailable_seconds": horizon, "exposed_seconds": candidate.outcome.exposed_seconds,
+			"information_loss": candidate.outcome.information_loss, "movement_possible": true, "fire_ready": false, "measured_support_seconds": 0.0,
+			"captured_at": context.evidence_elapsed_seconds, "valid_until": context.evidence_elapsed_seconds + minf(0.75, lifetime)})
+		_inspection_offers.append(offer)
+		result.append(candidate)
+	return result
+
+func validate(candidate: Dictionary, visible: bool) -> bool:
+	if candidate.get("plan", &"") == &"search_sector": return _validate_sector(candidate, visible)
+	if candidate.get("plan", &"") != &"inspect_end": return super.validate(candidate, visible)
+	if visible or not _inspection_coordinator_available() or not actor.can_move() or actor.is_vaulting() or actor.melee_active: return false
+	var route: Dictionary = candidate.get("inspection", {})
+	if route.is_empty() or not InspectionGeometry.valid(context, route.geometry): return false
+	var assignment: Dictionary = context.coordination_assignment()
+	if assignment.is_empty() or assignment.get("owner_action") != action_id or not assignment.get("allowed_offer_keys", []).has(candidate.get("coordination_offer_key", "")): return false
+	if _inspection_phase != InspectionPhase.NONE: return _inspection_execution_valid(visible)
+	return context.is_position_free(route.peek) and not InspectionGeometry.route(context, route.geometry, int(route.end)).is_empty()
 
 func _begin_inspection(candidate: Dictionary, visible: bool) -> bool:
-	if visible or not context.cooperation_enabled(): return false
-	var route: Dictionary = candidate.inspection
-	if not InspectionGeometry.valid(context, route.geometry) or InspectionGeometry.route(context, route.geometry, int(route.end)).is_empty(): return false
-	var geometry: Dictionary = route.geometry
-	var task := {"kind": &"inspect_end", "owner_action": &"search", "target_id": geometry.target_id,
-		"lane_id": "inspect:%s:%s" % [geometry.inspection_id, route.end], "inspection_id": geometry.inspection_id,
-		"end": route.end, "entry": route.entry, "peek": route.peek, "position": actor.global_position,
-		"cover": geometry.cover, "cover_transform": geometry.cover_transform, "cover_size": geometry.cover_size,
-		"geometry": geometry, "phase": InspectionPhase.APPROACH,
-		"duration": maxf(0.1, float(context.setting(&"cooperation", &"cover_inspection_plan_seconds", 16.0)))}
-	var token: Dictionary = context.cooperation_claim(task)
-	if token.is_empty(): return false
+	if not validate(candidate, visible): return false
+	var assignment: Dictionary = candidate.get("coordination_assignment", {})
+	if assignment.is_empty(): return false
+	# AI prepares and commits the sole board reservation around this begin.
 	_release_search_claim()
-	_inspection_claim = token
-	_inspection_route = route
+	_inspection_claim = assignment.duplicate(true)
+	_inspection_route = candidate.inspection
 	_inspection_phase = InspectionPhase.APPROACH
-	_inspection_remaining = float(token.expires_at) - context.cooperation.elapsed
-	_inspection_wait = maxf(0.0, float(context.setting(&"cooperation", &"cover_inspection_wait_seconds", 2.0)))
+	_inspection_remaining = maxf(0.0, float(assignment.expires_at) - context.coordination_now())
 	_inspection_observe = maxf(0.1, float(context.setting(&"cooperation", &"cover_inspection_observe_seconds", 0.5)))
 	_inspection_stuck = 0.0
 	_inspection_best = INF
+	_inspection_ally_blocked = false
 	_inspection_waypoint = Vector3.INF
 	_inspection_recheck = 0.0
+	_inspection_complete = false
+	_inspection_checked.clear()
+	_inspection_ready = false
 	_segment_released = false
 	context.is_alerted = true
 	context.state = context.State.TRACK
-	agent.target_position = route.entry
+	agent.target_position = _inspection_route.entry
 	return super.begin(candidate, visible)
+
+func _inspection_execution_valid(visible: bool) -> bool:
+	if not _running or visible or not _inspection_coordinator_available() or _inspection_route.is_empty(): return false
+	var assignment: Dictionary = context.coordination_assignment()
+	if assignment.is_empty() or not assignment.get("accepted", false) or float(assignment.expires_at) <= context.coordination_now(): return false
+	for key in [&"generation", &"team_id", &"plan_id", &"assignment_id", &"assignment_revision"]:
+		if assignment.get(key) != _inspection_claim.get(key): return false
+	return InspectionGeometry.valid(context, _inspection_route.geometry)
+
+func execution_contract(visible: bool) -> Dictionary:
+	if not _sector_assignment.is_empty(): return _sector_execution_contract(visible)
+	if _inspection_phase == InspectionPhase.NONE:
+		return {"valid": valid(visible), "segment_boundary": not has_committed_segment(), "remaining_seconds": maxf(0.0, track_timer if investigation_phase == context.State.TRACK else search_target_timer), "progress": 0.0, "ready_for_phase": false}
+	var assignment: Dictionary = context.coordination_assignment()
+	var executable := _inspection_execution_valid(visible)
+	var staged: bool = executable and _inspection_ready and _inspection_phase == InspectionPhase.WAIT_PARTNER and actor.global_position.distance_to(_inspection_route.entry) <= 0.18 and actor.can_move() and not actor.is_vaulting() and not actor.melee_active
+	return {"valid": executable, "segment_boundary": _inspection_phase in [InspectionPhase.WAIT_PARTNER, InspectionPhase.OBSERVE],
+		"remaining_seconds": maxf(0.0, float(assignment.get("expires_at", 0.0)) - context.coordination_now()),
+		"progress": 1.0 if _inspection_complete else (0.5 if _inspection_phase in [InspectionPhase.CHECK, InspectionPhase.OBSERVE] else 0.0),
+		"ready_for_phase": staged, "complete": executable and _inspection_complete, "checked_points": _inspection_checked.duplicate()}
 
 func _tick_inspection(delta: float) -> Dictionary:
 	plan.erase("support_request")
-	_inspection_remaining -= maxf(0.0, delta)
-	if _inspection_remaining <= 0.0 or not InspectionGeometry.valid(context, _inspection_route.geometry) or not context.cooperation_update(_inspection_claim, {"phase": _inspection_phase, "position": actor.global_position}):
+	var assignment: Dictionary = context.coordination_assignment()
+	_inspection_remaining = maxf(0.0, float(assignment.get("expires_at", 0.0)) - context.coordination_now())
+	if not _inspection_execution_valid(context.sees_player):
 		_end_inspection(true)
 		_running = false
 		return motion(Vector3.ZERO)
 	var known: Vector3 = _inspection_route.geometry.known
+	if _inspection_complete: return motion(Vector3.ZERO, 1.0, known - actor.global_position)
 	if _inspection_phase == InspectionPhase.WAIT_PARTNER:
-		_inspection_wait -= delta
-		if _inspection_wait <= 0.0 or context.cooperation.inspection_partner_ready(context, _inspection_claim):
-			_inspection_phase = InspectionPhase.CHECK
-			_inspection_best = INF
-			_inspection_waypoint = Vector3.INF
-			_inspection_stuck = 0.0
-			_inspection_recheck = 0.0
-			context.invalidate_utility()
-		return motion(Vector3.ZERO, 1.0, known - actor.global_position)
+		_inspection_recheck -= maxf(0.0, delta)
+		if _inspection_recheck <= 0.0:
+			_inspection_recheck = 0.25
+			var route_status := _inspection_route_status(_inspection_route.peek)
+			_inspection_ready = route_status > 0
+			if route_status < 0:
+				_end_inspection(true)
+				_running = false
+				return motion(Vector3.ZERO)
+			_set_inspection_ally_blocked(route_status == 0)
+		if _inspection_ally_blocked: return _wait_inspection_ally(delta, known)
+		if assignment.phase != &"executing" or float(assignment.release_at) < 0.0 or context.coordination_now() < float(assignment.release_at):
+			return motion(Vector3.ZERO, 1.0, known - actor.global_position)
+		# Continue within the first legal physics update after the shared release.
+		_inspection_phase = InspectionPhase.CHECK
+		_inspection_best = INF
+		_inspection_waypoint = Vector3.INF
+		_inspection_stuck = 0.0
+		_inspection_recheck = 0.0
 	if _inspection_phase == InspectionPhase.OBSERVE:
-		_inspection_observe -= delta
+		_inspection_observe -= maxf(0.0, delta)
 		if _inspection_observe <= 0.0:
-			var observed: bool = context.perception.can_observe_position(known)
-			if observed:
-				context.cooperation_publish_checked(PackedVector3Array([known]))
-				context.cooperation.complete_inspection(context, _inspection_claim)
-			_end_inspection(not observed)
-			_running = false
+			if context.perception.can_observe_position(known):
+				_inspection_complete = true
+				_inspection_checked = PackedVector3Array([known])
+			else:
+				_end_inspection(true)
+				_running = false
 		return motion(Vector3.ZERO, 1.0, known - actor.global_position)
 	var goal: Vector3 = _inspection_route.entry if _inspection_phase == InspectionPhase.APPROACH else _inspection_route.peek
 	var distance: float = context._horizontal_distance(goal)
-	if distance <= 0.18:
-		_inspection_phase = InspectionPhase.WAIT_PARTNER if _inspection_phase == InspectionPhase.APPROACH else InspectionPhase.OBSERVE
-		agent.target_position = actor.global_position
-		context.invalidate_utility()
-		return motion(Vector3.ZERO, 1.0, known - actor.global_position)
 	_inspection_recheck -= delta
-	if _inspection_recheck <= 0.0:
+	if _inspection_recheck <= 0.0 or distance <= 0.18:
 		_inspection_recheck = 0.25
-		if selection._path_to(actor.global_position, goal).is_empty() or not context.is_position_free(goal):
+		var route_status := _inspection_route_status(goal)
+		if route_status < 0:
 			_end_inspection(true)
 			_running = false
 			return motion(Vector3.ZERO)
+		_set_inspection_ally_blocked(route_status == 0)
+	if _inspection_ally_blocked: return _wait_inspection_ally(delta, known)
+	if distance <= 0.18:
+		_inspection_phase = InspectionPhase.WAIT_PARTNER if _inspection_phase == InspectionPhase.APPROACH else InspectionPhase.OBSERVE
+		_inspection_recheck = 0.0
+		agent.target_position = actor.global_position
+		context.invalidate_utility()
+		return motion(Vector3.ZERO, 1.0, known - actor.global_position)
 	agent.target_position = goal
 	var next: Vector3 = agent.get_next_path_position()
 	if distance <= 0.65 and not actor.test_move(actor.global_transform, Vector3(goal.x - actor.global_position.x, 0.0, goal.z - actor.global_position.z)): next = goal
@@ -1438,12 +1557,386 @@ func _tick_inspection(delta: float) -> Dictionary:
 		plan.support_request = {"kind": &"advance", "duration": minf(context.utility_horizon_seconds, _inspection_remaining), "lane_id": &"target"}
 	return motion(direction.normalized() * minf(1.0, distance / maxf(0.001, actor.move_speed * delta)), 1.0, known - actor.global_position)
 
+## An accepted route may wait for a passing ally, but never for missing navigation
+## or a static obstruction. This does not authorize motion through occupied space.
+func _inspection_route_status(goal: Vector3) -> int:
+	var ally_path_blocked: bool = selection._path_to(actor.global_position, goal).is_empty()
+	if ally_path_blocked and selection._query_path_to(actor.global_position, goal).is_empty(): return -1
+	if context.is_position_free(goal): return 0 if ally_path_blocked else 1
+	if context.cooperation == null: return -1
+	var collision: CollisionShape3D = actor.get_node("CollisionShape3D")
+	var capsule := CapsuleShape3D.new()
+	capsule.radius = collision.shape.radius
+	capsule.height = actor.get_posture_body_height(false)
+	var query := PhysicsShapeQueryParameters3D.new()
+	query.shape = capsule
+	query.transform = Transform3D(Basis.IDENTITY, goal + Vector3.UP * (capsule.height * 0.5 + 0.05))
+	query.collision_mask = actor.collision_mask
+	query.exclude = [actor.get_rid()]
+	if is_instance_valid(context.player) and context.player is CollisionObject3D:
+		query.exclude = [actor.get_rid(), context.player.get_rid()]
+	context.position_free_queries += 1
+	var hits: Array[Dictionary] = actor.get_world_3d().direct_space_state.intersect_shape(query, 8)
+	# A full result cannot prove that every obstruction is a friendly body.
+	if hits.is_empty() or hits.size() == 8: return -1
+	for hit: Dictionary in hits:
+		var other = hit.get("collider")
+		if not is_instance_valid(other) or not other is CharacterBody3D or not context.cooperation.can_share_space(actor.get_instance_id(), other.get_instance_id()): return -1
+	return 0
+
+func _set_inspection_ally_blocked(blocked: bool) -> void:
+	if _inspection_ally_blocked and not blocked:
+		_inspection_stuck = 0.0
+		_inspection_waypoint = Vector3.INF
+	_inspection_ally_blocked = blocked
+
+func _wait_inspection_ally(delta: float, known: Vector3) -> Dictionary:
+	_inspection_ready = false
+	_inspection_stuck += maxf(0.0, delta)
+	if _inspection_stuck > 1.5:
+		_end_inspection(true)
+		_running = false
+	return motion(Vector3.ZERO, 1.0, known - actor.global_position)
+
 func _end_inspection(failed: bool) -> void:
 	plan.erase("support_request")
-	if context != null and not _inspection_claim.is_empty(): context.cooperation_release(_inspection_claim)
+	# The Context transaction owns assignment/reservation release.
 	_inspection_claim = {}
 	_inspection_route = {}
 	_inspection_phase = InspectionPhase.NONE
 	_inspection_remaining = 0.0
 	_inspection_stuck = 0.0
+	_inspection_ally_blocked = false
+	_inspection_complete = false
+	_inspection_checked.clear()
+	_inspection_ready = false
 	if failed and context != null: _inspection_failed_until = context.evidence_elapsed_seconds + 1.5
+
+
+func _sector_source() -> Dictionary:
+	if not _inspection_coordinator_available() or not context.has_method("coordination_search_templates"): return {}
+	var source: Dictionary = context.coordination_source(0 if noise_search_origin.is_finite() else context.cooperation_target_id())
+	if source.is_empty() or noise_search_origin.is_finite(): return source
+	var clue: Dictionary = context.cover_inspection_evidence()
+	if clue.is_empty() or clue.position.distance_to(source.position) > 0.5: return source
+	var identity: Array = [source.evidence_id, clue.id, clue.position, clue.captured_at]
+	if identity == _resolved_inspection_source and context.coordination_now() < _resolved_inspection_until: return source
+	_resolved_inspection_source.clear()
+	_resolved_inspection_until = 0.0
+	var captured_at: float = float(clue.captured_at) + context.coordination_now() - context.evidence_elapsed_seconds
+	for checked: Dictionary in context.coordination_checked_points(int(source.target_id)):
+		if checked.evidence_id == source.evidence_id and checked.position.is_equal_approx(clue.position) and float(checked.observed_at) >= captured_at and float(checked.valid_until) > context.coordination_now():
+			# Remember only a real observation of this unchanged frozen clue. This
+			# unlocks broad search without canceling the partner's accepted task.
+			_resolved_inspection_source = identity
+			_resolved_inspection_until = float(checked.valid_until)
+			return source
+	# Exact cover investigation precedes broad map search. Reuse the geometry
+	# and routes already prepared by inspection, adding no spatial queries here.
+	if _inspection_geometry.get("inspection_id", 0) == clue.id and InspectionGeometry.valid(context, _inspection_geometry) and _inspection_routes.values().any(func(route): return not route.is_empty()): return {}
+	return source
+
+func evaluation_revision() -> int:
+	if not _inspection_coordinator_available() or not context.has_method("coordination_search_revision"): return 0
+	var source := _sector_source()
+	return hash([source.get("evidence_id", 0), source.get("target_id", 0), context.coordination_search_revision(), _inspection_phase, not _sector_assignment.is_empty()])
+
+func evaluation_priority_count() -> int:
+	return 2
+
+## Called only by Spatial's original point/time allowance.
+func advance_preparation_one() -> bool:
+	return coverage.advance_preparation_one() if coverage.has_method("advance_preparation_one") and coverage.has_pending_preparation() else false
+
+func evaluation_points() -> Array:
+	var points: Array = []
+	if context.sees_player or not is_enabled() or not _sector_assignment.is_empty() or _inspection_phase != InspectionPhase.NONE: return points
+	if not actor.can_move() or actor.is_vaulting() or actor.melee_active: return points
+	var source := _sector_source()
+	if source.is_empty(): return points
+	var templates: Array = context.coordination_search_templates(source.position, search_radius, agent.navigation_layers, 6)
+	for template: Dictionary in templates:
+		for index in mini(3, template.get("candidates", []).size()):
+			points.append({"sector_template": template, "source": source, "start_index": index})
+	return points
+
+func _sector_template_current(template: Dictionary) -> bool:
+	return not template.is_empty() and context.has_method("coordination_search_template_valid") and context.coordination_search_template_valid(String(template.sector_key), int(template.source_revision), int(template.navigation_revision))
+
+func _sector_body_radius() -> float:
+	var body: CollisionShape3D = actor.get_node("CollisionShape3D")
+	return body.shape.radius * maxf(body.global_basis.x.length(), body.global_basis.z.length())
+
+func _sector_walkable(path: PackedVector3Array) -> bool:
+	if path.is_empty(): return false
+	var previous: Vector3 = Vector3(path[0].x, actor.global_position.y, path[0].z)
+	var radius := _sector_body_radius()
+	for vertex: Vector3 in path:
+		# Baked navigation is slightly raised. A different storey is not the same
+		# ground sample, and may not be flattened into a fictitious straight route.
+		if absf(vertex.y - actor.global_position.y) > 0.5: return false
+		var point := Vector3(vertex.x, actor.global_position.y, vertex.z)
+		if not SearchBodyGeometry.can_sweep(actor, previous, point, actor.get_body_height(), radius, true): return false
+		previous = point
+	return true
+
+func evaluate_point(point: Variant) -> Dictionary:
+	if not point is Dictionary or not point.has("sector_template") or context.sees_player: return {}
+	var source := _sector_source()
+	var template: Dictionary = point.sector_template
+	if source.is_empty() or source.evidence_id != point.source.evidence_id or source.target_id != point.source.target_id or not _sector_template_current(template): return {}
+	var samples: Array = template.get("samples", [])
+	var ids: Array = template.get("sample_ids", [])
+	if samples.is_empty() or samples.size() > 3 or samples.size() != ids.size(): return {}
+	var stops := PackedVector3Array()
+	var required: Array[Vector3] = []
+	var sample_ids: Array[String] = []
+	var full_path := PackedVector3Array()
+	var first_path := PackedVector3Array()
+	var previous: Vector3 = actor.global_position
+	for offset in samples.size():
+		var index: int = (int(point.start_index) + offset) % samples.size()
+		var sample: Vector3 = samples[index]
+		if not sample.is_finite() or absf(sample.y - actor.global_position.y) > 0.5 or context._horizontal_distance_between(sample, source.position) > search_radius: return {}
+		var stop := Vector3(sample.x, actor.global_position.y, sample.z)
+		if context.is_utility_destination_blocked(stop) or not context.is_position_free(stop): return {}
+		var path: PackedVector3Array = selection._path_to(previous, stop)
+		if not _sector_walkable(path): return {}
+		if not selection.has_clear_line(actor.get_posture_eye_position(false, stop), actor.get_posture_eye_position(true, sample)): return {}
+		if first_path.is_empty(): first_path = path
+		for vertex: Vector3 in path:
+			if full_path.is_empty() or full_path[-1].distance_to(vertex) > 0.01: full_path.append(vertex)
+		stops.append(stop)
+		required.append(sample)
+		sample_ids.append(String(ids[index]))
+		previous = stop
+	var speed := maxf(search_move_speed_multiplier, 1.0 if _focused_evidence() else search_move_speed_multiplier)
+	var travel: Dictionary = context.spatial.assess_route(context, full_path, source.position, speed, 0.0)
+	var observation: float = maxf(0.1, _observation_seconds())
+	var duration: float = selection._path_length_from_path(full_path) / maxf(0.1, actor.move_speed * speed) + samples.size() * observation
+	if duration + 0.5 >= float(source.valid_until) - context.coordination_now(): return {}
+	var horizon: float = context.utility_horizon_seconds
+	var exposure: float = float(travel.exposure) + context._reload_exposure(stops[-1], source.position) * maxf(0.0, horizon - float(travel.seconds))
+	return {"destination": {"position": stops[0], "path": first_path}, "cost": context.spatial.score(horizon, exposure, minf(horizon, duration)),
+		"unavailable": horizon, "exposed": exposure, "information": minf(horizon, duration), "duration": duration,
+		"sector": {"template": template.duplicate(true), "stops": stops, "samples": required, "sample_ids": sample_ids,
+			"source": source.duplicate(true), "speed": speed, "observation_seconds": observation,
+			"ingress": _sector_ingress(first_path, template)}}
+
+## A short polygon edge becomes an exclusive entrance only after the actual
+## route crosses it and current body probes confirm that two lanes do not fit.
+func _sector_ingress(path: PackedVector3Array, template: Dictionary) -> Dictionary:
+	var radius := _sector_body_radius()
+	for edge: Dictionary in template.get("connection_summary", []):
+		var left: Vector3 = edge.get("from", Vector3.INF)
+		var right: Vector3 = edge.get("to", Vector3.INF)
+		if not left.is_finite() or not right.is_finite() or left.distance_to(right) > radius * 4.0 + 0.6: continue
+		var along := Vector3(right.x - left.x, 0.0, right.z - left.z).normalized()
+		if along.is_zero_approx(): continue
+		for index in range(1, mini(path.size(), 8)):
+			var crossed: Variant = Geometry2D.segment_intersects_segment(Vector2(path[index - 1].x, path[index - 1].z), Vector2(path[index].x, path[index].z), Vector2(left.x, left.z), Vector2(right.x, right.z))
+			if not crossed is Vector2: continue
+			var center := Vector3(crossed.x, actor.global_position.y, crossed.y)
+			var offset: Vector3 = along * (radius * 2.0 + 0.1)
+			if SearchBodyGeometry.can_occupy(actor, center + offset, actor.get_body_height(), radius, true) or SearchBodyGeometry.can_occupy(actor, center - offset, actor.get_body_height(), radius, true): continue
+			var ends: Array[String] = [str(left.snapped(Vector3.ONE * 0.01)), str(right.snapped(Vector3.ONE * 0.01))]
+			ends.sort()
+			return {"corridor_key": "%s:%s:%s" % [template.grid_key, ends[0], ends[1]], "exclusive_corridor": true}
+	return {}
+
+func _collect_sector_candidates() -> Array[Dictionary]:
+	var result: Array[Dictionary] = []
+	if not _inspection_coordinator_available() or context.evidence_elapsed_seconds < _sector_failed_until: return result
+	var assigned: Dictionary = context.coordination_assignment()
+	if assigned.get("owner_action") == action_id and assigned.get("role") == &"search_sector":
+		for key in assigned.get("allowed_offer_keys", []):
+			if _sector_candidates_by_key.has(key): result.append(_sector_candidates_by_key[key].duplicate(true))
+		return result
+	var source := _sector_source()
+	if source.is_empty(): return result
+	var identity: Dictionary = context.coordination_offer_identity()
+	if identity.is_empty(): return result
+	var checked: Dictionary = {}
+	if context.has_method("coordination_checked_points"):
+		for report: Dictionary in context.coordination_checked_points(int(source.target_id)):
+			if int(report.get("evidence_id", -1)) == int(source.evidence_id) and float(report.get("valid_until", 0.0)) > context.coordination_now(): checked[report.position] = true
+	for assessment: Dictionary in context.spatial.assessments(self):
+		var sector: Dictionary = assessment.get("sector", {})
+		if sector.is_empty() or sector.source.evidence_id != source.evidence_id or not _sector_template_current(sector.template): continue
+		var complete := true
+		for sample: Vector3 in sector.samples:
+			if not checked.has(sample): complete = false
+		if complete: continue
+		var lifetime: float = float(source.valid_until) - context.coordination_now()
+		if float(assessment.duration) + 0.5 >= lifetime: continue
+		var candidate := option(assessment.destination, assessment.unavailable, assessment.exposed, assessment.information, &"search_sector")
+		candidate.accepts_noise = true
+		candidate.sector = sector
+		var grid := "%s:%s:%s" % [sector.template.grid_key, sector.template.navigation_revision, source.position.snapped(Vector3.ONE * 0.01)]
+		var set_key := "sector:%s:%s:%s" % [source.evidence_id, sector.template.sector_key, sector.template.source_revision]
+		var key := "%s:%s:%s" % [actor.get_instance_id(), set_key, sector.stops[0]]
+		candidate.coordination_offer_key = key
+		candidate.coordination_role = &"search_sector"
+		var offer: Dictionary = identity.duplicate()
+		offer.merge({"scope": &"tactical", "owner_action": action_id, "role": &"search_sector", "offer_key": key,
+			"position_set_key": set_key, "position": candidate.destination.position, "target_id": source.target_id, "evidence_id": source.evidence_id,
+			"path_summary": {"grid_key": grid, "search_round_id": source.evidence_id, "sample_ids": sector.sample_ids.duplicate(),
+				"observation_points": sector.samples.duplicate(), "staging_position": actor.global_position, "staging_seconds": 0.0,
+				"body_radius": _sector_body_radius(), "sector_key": sector.template.sector_key, "source_revision": sector.template.source_revision},
+			"travel_seconds": assessment.duration, "unavailable_seconds": assessment.unavailable, "exposed_seconds": assessment.exposed,
+			"information_loss": assessment.information, "movement_possible": actor.can_move() and not actor.is_vaulting() and not actor.melee_active,
+			"fire_ready": false, "measured_support_seconds": 0.0, "captured_at": context.evidence_elapsed_seconds,
+			"valid_until": context.evidence_elapsed_seconds + minf(0.75, lifetime)})
+		offer.path_summary.template_navigation_revision = sector.template.navigation_revision
+		offer.path_summary.merge(sector.get("ingress", {}))
+		_sector_offers.append(offer)
+		_sector_candidates_by_key[key] = candidate.duplicate(true)
+		while _sector_candidates_by_key.size() > 12: _sector_candidates_by_key.erase(_sector_candidates_by_key.keys()[0])
+		result.append(candidate)
+	return result
+
+func _validate_sector(candidate: Dictionary, visible: bool) -> bool:
+	if visible or not is_enabled() or not _inspection_coordinator_available() or not actor.can_move() or actor.is_vaulting() or actor.melee_active: return false
+	var assignment: Dictionary = context.coordination_assignment()
+	var sector: Dictionary = candidate.get("sector", {})
+	if assignment.is_empty() or assignment.get("owner_action") != action_id or assignment.get("role") != &"search_sector" or not assignment.get("allowed_offer_keys", []).has(candidate.get("coordination_offer_key", "")): return false
+	if sector.is_empty() or not _sector_template_current(sector.template): return false
+	if not _sector_assignment.is_empty(): return _sector_execution_valid(visible)
+	var previous: Vector3 = actor.global_position
+	var length := 0.0
+	for stop: Vector3 in sector.stops:
+		var path: PackedVector3Array = selection._path_to(previous, stop)
+		if not context.is_position_free(stop) or not _sector_walkable(path): return false
+		length += selection._path_length_from_path(path)
+		previous = stop
+	return length / maxf(0.1, actor.move_speed * float(sector.speed)) + sector.samples.size() * float(sector.observation_seconds) < float(assignment.expires_at) - context.coordination_now()
+
+func _begin_sector(candidate: Dictionary, visible: bool) -> bool:
+	if not _validate_sector(candidate, visible) or candidate.get("coordination_assignment", {}).is_empty(): return false
+	_release_search_claim()
+	_end_sector(false)
+	_sector_assignment = candidate.coordination_assignment.duplicate(true)
+	_sector_plan = candidate.sector.duplicate(true)
+	_sector_route_valid = true
+	_sector_observe_remaining = float(_sector_plan.observation_seconds)
+	context.is_alerted = true
+	context.state = context.State.SEARCH
+	_segment_released = false
+	agent.target_position = actor.global_position
+	return super.begin(candidate, visible)
+
+func _sector_destination() -> Vector3:
+	var stops: PackedVector3Array = _sector_plan.get("stops", PackedVector3Array())
+	return stops[mini(_sector_index, stops.size() - 1)] if not stops.is_empty() else Vector3.INF
+
+func _sector_execution_valid(visible: bool) -> bool:
+	if not _running or visible or _sector_assignment.is_empty() or not _inspection_coordinator_available() or not _sector_route_valid: return false
+	var assignment: Dictionary = context.coordination_assignment()
+	if assignment.is_empty() or not assignment.get("accepted", false) or float(assignment.expires_at) <= context.coordination_now(): return false
+	for key in [&"generation", &"team_id", &"plan_id", &"assignment_id", &"assignment_revision"]:
+		if assignment.get(key) != _sector_assignment.get(key): return false
+	return _sector_template_current(_sector_plan.get("template", {}))
+
+func _sector_execution_contract(visible: bool) -> Dictionary:
+	var assignment: Dictionary = context.coordination_assignment()
+	var executable := _sector_execution_valid(visible)
+	return {"valid": executable, "segment_boundary": _sector_observing or _sector_boundary or _sector_complete,
+		"remaining_seconds": maxf(0.0, float(assignment.get("expires_at", 0.0)) - context.coordination_now()),
+		"progress": float(_sector_checked.size()) / maxf(1.0, float(_sector_plan.get("samples", []).size())),
+		"ready_for_phase": false, "complete": executable and _sector_complete, "checked_points": _sector_checked_tick.duplicate()}
+
+func _tick_sector(delta: float, visible: bool) -> Dictionary:
+	_sector_checked_tick.clear()
+	_sector_boundary = false
+	plan.erase("support_request")
+	if not _sector_execution_valid(visible):
+		_end_sector(false)
+		_running = false
+		return motion(Vector3.ZERO)
+	var assignment: Dictionary = context.coordination_assignment()
+	var source: Dictionary = _sector_plan.source
+	context.state = context.State.SEARCH
+	if _sector_complete: return motion(Vector3.ZERO, float(_sector_plan.speed), source.position - actor.global_position)
+	if assignment.phase != &"executing" or float(assignment.release_at) < 0.0 or context.coordination_now() < float(assignment.release_at):
+		return motion(Vector3.ZERO, float(_sector_plan.speed), source.position - actor.global_position)
+	var goal := _sector_destination()
+	var sample: Vector3 = _sector_plan.samples[_sector_index]
+	var distance: float = context._horizontal_distance(goal)
+	if distance <= minf(0.25, search_arrival_distance):
+		_sector_observing = true
+		agent.target_position = actor.global_position
+		_sector_observe_remaining -= maxf(0.0, delta)
+		if _sector_observe_remaining <= 0.0:
+			if not context.perception.can_observe_position(sample):
+				_end_sector(true)
+				_running = false
+				return motion(Vector3.ZERO)
+			_sector_checked[sample] = context.coordination_now()
+			_sector_checked_tick.append(sample)
+			if _sector_index + 1 >= _sector_plan.samples.size():
+				_sector_complete = true
+			else:
+				_sector_index += 1
+				_sector_observing = false
+				_sector_boundary = true
+				_sector_observe_remaining = float(_sector_plan.observation_seconds)
+				_sector_recheck = 0.0
+				_sector_best = INF
+				_sector_waypoint = Vector3.INF
+				_sector_stuck = 0.0
+				context.invalidate_utility()
+		return motion(Vector3.ZERO, float(_sector_plan.speed), sample - actor.global_position)
+	_sector_recheck -= maxf(0.0, delta)
+	if _sector_recheck <= 0.0:
+		_sector_recheck = 0.25
+		var path: PackedVector3Array = selection._path_to(actor.global_position, goal)
+		_sector_route_valid = context.is_position_free(goal) and _sector_walkable(path)
+		if not _sector_route_valid:
+			_end_sector(true)
+			_running = false
+			return motion(Vector3.ZERO)
+	agent.target_position = goal
+	var next: Vector3 = agent.get_next_path_position()
+	if distance <= 0.65 and not actor.test_move(actor.global_transform, Vector3(goal.x - actor.global_position.x, 0.0, goal.z - actor.global_position.z)): next = goal
+	if agent.is_navigation_finished() and distance > 0.65:
+		_end_sector(true)
+		_running = false
+		return motion(Vector3.ZERO)
+	var waypoint_distance: float = context._horizontal_distance(next)
+	if not _sector_waypoint.is_finite() or _sector_waypoint.distance_to(next) > 0.25:
+		_sector_waypoint = next
+		_sector_best = waypoint_distance
+		_sector_stuck = 0.0
+	elif waypoint_distance < _sector_best - search_stuck_min_progress_distance:
+		_sector_best = waypoint_distance
+		_sector_stuck = 0.0
+	else: _sector_stuck += maxf(0.0, delta)
+	if _sector_stuck >= search_stuck_repath_seconds:
+		_end_sector(true)
+		_running = false
+		return motion(Vector3.ZERO)
+	var direction: Vector3 = next - actor.global_position
+	direction.y = 0.0
+	if not direction.is_zero_approx() and actor.can_move(): plan.support_request = {"kind": &"advance", "duration": minf(context.utility_horizon_seconds, float(assignment.expires_at) - context.coordination_now()), "lane_id": &"target"}
+	return motion(direction.normalized() * minf(1.0, distance / maxf(0.001, actor.move_speed * float(_sector_plan.speed) * delta)), float(_sector_plan.speed), sample - actor.global_position)
+
+func _end_sector(failed: bool) -> void:
+	plan.erase("support_request")
+	if failed and context != null:
+		var point := _sector_destination()
+		if point.is_finite(): context.block_utility_destination(point)
+		_sector_failed_until = context.evidence_elapsed_seconds + 1.5
+	_sector_assignment = {}
+	_sector_plan = {}
+	_sector_index = 0
+	_sector_observing = false
+	_sector_boundary = false
+	_sector_observe_remaining = 0.0
+	_sector_checked.clear()
+	_sector_checked_tick.clear()
+	_sector_complete = false
+	_sector_stuck = 0.0
+	_sector_best = INF
+	_sector_waypoint = Vector3.INF
+	_sector_recheck = 0.0
+	_sector_route_valid = false

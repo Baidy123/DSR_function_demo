@@ -77,7 +77,7 @@ func _visual_loss_case(full_training: bool) -> void:
 			var ai = actor.get_node("AI")
 			var search = ai.actions[&"search"]
 			distance[index] = maxf(distance[index], actor.global_position.distance_to(starts[index]))
-			var token: Dictionary = search._inspection_claim
+			var token: Dictionary = search._inspection_route
 			var fire: Dictionary = ai.context.fire.request
 			if search._inspection_phase != search.InspectionPhase.NONE:
 				inspection_never_fires = inspection_never_fires and fire.is_empty() and actor.shot_count == previous_shots[index]
@@ -95,6 +95,9 @@ func _visual_loss_case(full_training: bool) -> void:
 				inspection_never_fires = inspection_never_fires and legal
 			previous_shots[index] = actor.shot_count
 			if not token.is_empty():
+				var assignment: Dictionary = ai.context.coordination_assignment()
+				check(not assignment.is_empty() and assignment.get("accepted", false)
+					and assignment.get("assignment_id") == search._inspection_claim.get("assignment_id"), "实际端点执行由已接受的中央指派授权") if assigned[index] == 0 else null
 				assigned[index] = int(token.end)
 				entries[index] = entries[index] or actor.global_position.distance_to(token.entry) <= 0.3
 				inspected[index] = inspected[index] or (actor.global_position.distance_to(token.peek) <= 0.3 and ai.context.perception.can_observe_position(known))
@@ -189,21 +192,22 @@ func _tick() -> void:
 	for actor in actors: actor.get_node("AI")._physics_process(STEP)
 
 func _protocol(contexts: Array, evidence: Dictionary) -> void:
-	var active_token: Dictionary = actors[0].get_node("AI").actions[&"search"]._inspection_claim
+	var active_search = actors[0].get_node("AI").actions[&"search"]
+	var active_token: Dictionary = active_search._inspection_route.duplicate(true)
 	if not active_token.is_empty():
 		var collision: CollisionShape3D = cover.get_node("CollisionShape3D")
 		var original_shape: Shape3D = collision.shape
 		collision.shape = SphereShape3D.new()
-		check(not arena.cooperation._claim_valid(active_token) and not Geometry.valid(contexts[0], active_token.geometry), "动态替换非Box形状使调查合同失效且不报错")
+		check(not active_search._inspection_execution_valid(false) and not Geometry.valid(contexts[0], active_token.geometry), "动态替换非Box形状使调查合同失效且不报错")
 		collision.shape = null
-		check(not arena.cooperation._claim_valid(active_token), "动态清空碰撞形状安全释放调查资格")
+		check(not active_search._inspection_execution_valid(false) and not Geometry.valid(contexts[0], active_token.geometry), "动态清空碰撞形状安全释放调查资格")
 		collision.shape = original_shape
 		var layer: int = cover.collision_layer
 		cover.collision_layer = 0
-		check(not arena.cooperation._claim_valid(active_token) and not Geometry.valid(contexts[0], active_token.geometry), "关闭掩体碰撞层不能保留旧端口合同")
+		check(not active_search._inspection_execution_valid(false) and not Geometry.valid(contexts[0], active_token.geometry), "关闭掩体碰撞层不能保留旧端口合同")
 		cover.collision_layer = layer
 		collision.disabled = true
-		check(not arena.cooperation._claim_valid(active_token), "禁用碰撞子节点不能保留旧端口合同")
+		check(not active_search._inspection_execution_valid(false) and not Geometry.valid(contexts[0], active_token.geometry), "禁用碰撞子节点不能保留旧端口合同")
 		collision.disabled = false
 		cover.remove_child(collision)
 		var replacement := Node3D.new()
@@ -211,7 +215,7 @@ func _protocol(contexts: Array, evidence: Dictionary) -> void:
 		cover.add_child(replacement)
 		var search = actors[0].get_node("AI").actions[&"search"]
 		search.reset()
-		check(not arena.cooperation._claim_valid(active_token) and search._inspection_candidate().is_empty(), "替换同名碰撞子节点时预览和原合同均安全失效")
+		check(not Geometry.valid(contexts[0], active_token.geometry) and search._inspection_candidate().is_empty(), "替换同名碰撞子节点时预览和原合同均安全失效")
 		replacement.free()
 		cover.add_child(collision)
 	for actor in actors: actor.get_node("AI").reset_actions()
@@ -262,7 +266,7 @@ func _exact_clue_case() -> void:
 			await _tick()
 			for index in 2:
 				var ai = actors[index].get_node("AI")
-				var token: Dictionary = ai.actions[&"search"]._inspection_claim
+				var token: Dictionary = ai.actions[&"search"]._inspection_route
 				if not token.is_empty():
 					assigned[index] = int(token.end)
 					observed[index] = observed[index] or (actors[index].global_position.distance_to(token.peek) <= 0.3 and ai.context.perception.can_observe_position(known))

@@ -11,6 +11,12 @@ var search_origin := Vector3.ZERO
 var search_radius := 1.0
 var search_coverage_radius := 1.0
 var search_nav_snap_tolerance := 0.65
+var _preparation: Dictionary = {}
+var _prepared_samples: Dictionary = {}
+var _incremental := false
+var _preparation_origin := Vector3.ZERO
+var _selection_request: Dictionary = {}
+var _selected_point: Dictionary = {}
 var actor:
 	get: return context.actor
 var agent:
@@ -21,8 +27,14 @@ func reset() -> void:
 	uncovered.clear()
 	focus_points.clear()
 	sample_count = 0
+	_preparation.clear()
+	_prepared_samples.clear()
+	_incremental = false
+	_selection_request.clear()
+	_selected_point.clear()
 
 func build(shared_context, origin: Vector3, radius_setting: float, coverage_radius: float, snap_tolerance: float) -> void:
+	reset()
 	context = shared_context
 	search_origin = origin
 	search_radius = radius_setting
@@ -56,7 +68,58 @@ func build(shared_context, origin: Vector3, radius_setting: float, coverage_radi
 	sample_count = uncovered.size()
 
 
-func _append_point(raw_point: Vector3) -> bool:
+## The advanced team path enumerates one raw grid entry per original Spatial
+## budget point. It never validates the whole area from candidate collection.
+## The same area, density and final denominator as build() are retained.
+func begin_build(shared_context, origin: Vector3, radius_setting: float, coverage_radius: float, snap_tolerance: float) -> void:
+	reset()
+	context = shared_context
+	search_origin = origin
+	search_radius = radius_setting
+	search_coverage_radius = coverage_radius
+	search_nav_snap_tolerance = snap_tolerance
+	_incremental = true
+	_preparation_origin = actor.global_position
+	var radius := maxf(1.0, search_radius)
+	var spacing := maxf(0.5, maxf(search_coverage_radius * 0.5, radius / 18.0))
+	var team_grid := _uses_team_grid()
+	var extent := ceili(radius / spacing)
+	var first := Vector2i(-extent, -extent)
+	var last := Vector2i(extent, extent)
+	if team_grid:
+		first = Vector2i(floori((origin.x - radius) / spacing), floori((origin.z - radius) / spacing))
+		last = Vector2i(ceili((origin.x + radius) / spacing), ceili((origin.z + radius) / spacing))
+	_preparation = {"first": first, "last": last, "cursor": 0,
+		"spacing": spacing, "radius": radius, "team_grid": team_grid,
+		"angle": 0.0 if team_grid else randf() * TAU}
+
+
+func has_pending_preparation() -> bool:
+	return not _preparation.is_empty() or not _selection_request.is_empty()
+
+
+## True means one queued grid entry or live route retry was consumed.
+func advance_preparation_one() -> bool:
+	if not _selection_request.is_empty(): return _advance_selection_one()
+	if _preparation.is_empty(): return false
+	var first: Vector2i = _preparation.first
+	var last: Vector2i = _preparation.last
+	var depth := last.y - first.y + 1
+	var total := (last.x - first.x + 1) * depth
+	var cursor: int = _preparation.cursor
+	var x := first.x + cursor / depth
+	var z := first.y + cursor % depth
+	var offset := Vector3(x * float(_preparation.spacing), 0.0, z * float(_preparation.spacing))
+	var point := Vector3(offset.x, search_origin.y, offset.z) if _preparation.team_grid \
+		else search_origin + offset.rotated(Vector3.UP, _preparation.angle)
+	if context._horizontal_distance_between(point, search_origin) <= float(_preparation.radius):
+		_append_point(point, true)
+	_preparation.cursor = cursor + 1
+	if cursor + 1 >= total: _preparation.clear()
+	return true
+
+
+func _append_point(raw_point: Vector3, incremental: bool = false) -> bool:
 	var nav_point: Vector3 = NavigationServer3D.region_get_closest_point(
 		context.navigation_region.get_rid(), raw_point
 	)
@@ -68,21 +131,41 @@ func _append_point(raw_point: Vector3) -> bool:
 	if not context.is_position_free(destination):
 		return false
 	# 只统计本轮起点所在连通区域内可达的地面。
-	var path: PackedVector3Array = NavigationServer3D.map_get_path(
-		agent.get_navigation_map(), actor.global_position, destination, true, agent.navigation_layers
-	)
+	var path: PackedVector3Array
+	if incremental:
+		# Same strict local route entry as ordinary tactical offers, including
+		# dynamic ally blockage memory; static templates cannot grant passage.
+		path = context.cover_selection._path_to(_preparation_origin, destination)
+	else:
+		path = NavigationServer3D.map_get_path(
+			agent.get_navigation_map(), actor.global_position, destination, true, agent.navigation_layers
+		)
 	if path.is_empty() or context._horizontal_distance_between(path[path.size() - 1], destination) > 0.2:
 		return false
-	for existing: Vector3 in pending:
-		if context._horizontal_distance_between(existing, destination) < 0.3:
-			return false
+	if incremental:
+		var cell := Vector2i(floori(destination.x / 0.3), floori(destination.z / 0.3))
+		for x in range(-1, 2):
+			for z in range(-1, 2):
+				for existing: Vector3 in _prepared_samples.get(cell + Vector2i(x, z), []):
+					if context._horizontal_distance_between(existing, destination) < 0.3: return false
+		var samples: Array = _prepared_samples.get(cell, [])
+		samples.append(destination)
+		_prepared_samples[cell] = samples
+		uncovered.append(destination)
+		sample_count += 1
+	else:
+		for existing: Vector3 in pending:
+			if context._horizontal_distance_between(existing, destination) < 0.3:
+				return false
 	pending.append(destination)
 	return true
 
 
 func fraction() -> float:
+	# A partial prepared set must never shrink the final area denominator.
+	if not _preparation.is_empty(): return 0.0
 	if sample_count == 0:
-		return 1.0
+		return 0.0 if _incremental else 1.0
 	return 1.0 - float(uncovered.size()) / float(sample_count)
 
 
@@ -189,6 +272,15 @@ func _take_focus(prediction: Vector3, checked: Dictionary = {}, evidence: Dictio
 
 
 func take_next(prediction: Vector3, prefer_focus: bool = false) -> Dictionary:
+	if _incremental:
+		if not _selected_point.is_empty():
+			var result := _selected_point
+			_selected_point = {}
+			return result
+		if _selection_request.is_empty() and (not pending.is_empty() or (prefer_focus and not focus_points.is_empty())):
+			_selection_request = {"prediction": prediction, "focus_index": focus_points.size() - 1 if prefer_focus else -1,
+				"best": {}, "best_cost": INF, "chosen_focus": -1}
+		return {}
 	var checked: Dictionary = {}
 	var evidence: Dictionary = context.cooperation_target_evidence()
 	if context.cooperation_enabled():
@@ -212,10 +304,68 @@ func take_next(prediction: Vector3, prefer_focus: bool = false) -> Dictionary:
 		if chosen_index < 0: return {}
 		var destination: Vector3 = pending[chosen_index]
 		pending.remove_at(chosen_index)
-		var path: PackedVector3Array = NavigationServer3D.map_get_path(
-			agent.get_navigation_map(), actor.global_position, destination, true, agent.navigation_layers
-		)
+		var path: PackedVector3Array
+		if _incremental:
+			path = context.cover_selection._path_to(actor.global_position, destination)
+		else:
+			path = NavigationServer3D.map_get_path(
+				agent.get_navigation_map(), actor.global_position, destination, true, agent.navigation_layers
+			)
 		if path.is_empty() or context._horizontal_distance_between(path[path.size() - 1], destination) > 0.2:
 			continue
 		return {"position": destination, "path": path}
 	return {}
+
+
+## Revalidation after a door/ally change belongs to the same Spatial queue as
+## initial preparation. Each admitted step performs at most one route query.
+func _advance_selection_one() -> bool:
+	var request := _selection_request
+	var evidence: Dictionary = context.cooperation_target_evidence()
+	var checked: Dictionary = {}
+	if context.cooperation_enabled():
+		for report: Dictionary in context.cooperation_checked_points():
+			var observed: Vector3 = report.get("position", Vector3.INF)
+			if observed.is_finite() and float(report.get("valid_until", 0.0)) > context.evidence_elapsed_seconds and float(report.get("observed_at", -INF)) >= float(evidence.get("captured_at", -INF)):
+				checked[observed.snapped(Vector3.ONE * 0.01)] = true
+	if int(request.focus_index) >= 0:
+		var index: int = mini(int(request.focus_index), focus_points.size() - 1)
+		request.focus_index = index - 1
+		if index >= 0:
+			var point: Vector3 = focus_points[index]
+			if _available(point, checked):
+				var path: PackedVector3Array = context.cover_selection._path_to(actor.global_position, point)
+				if path.is_empty() or not context.is_position_free(point):
+					focus_points.remove_at(index)
+					if request.chosen_focus > index: request.chosen_focus -= 1
+				else:
+					var cost: float = point_cost(point, request.prediction, evidence) + context.cover_selection._path_length_from_path(path) * 0.35
+					if cost < float(request.best_cost):
+						request.best_cost = cost
+						request.chosen_focus = index
+						request.best = {"position": point, "path": path}
+		if int(request.focus_index) < 0 and not request.best.is_empty():
+			focus_points.remove_at(int(request.chosen_focus))
+			_selected_point = request.best
+			_selection_request = {}
+		return true
+	var chosen := -1
+	var best_cost := INF
+	for index in pending.size():
+		if not _available(pending[index], checked): continue
+		var cost := point_cost(pending[index], request.prediction, evidence)
+		if cost < best_cost:
+			chosen = index
+			best_cost = cost
+	if chosen < 0:
+		_selection_request = {}
+		return true
+	var destination: Vector3 = pending[chosen]
+	pending.remove_at(chosen)
+	var path: PackedVector3Array = context.cover_selection._path_to(actor.global_position, destination)
+	if not path.is_empty() and context._horizontal_distance_between(path[-1], destination) <= 0.2:
+		_selected_point = {"position": destination, "path": path}
+		_selection_request = {}
+	elif pending.is_empty():
+		_selection_request = {}
+	return true
