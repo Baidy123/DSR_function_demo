@@ -13,6 +13,10 @@ var _checked: Dictionary = {}
 var _relations: Dictionary = {}
 var _flank_rounds: Dictionary = {}
 var _inspection_reports: Dictionary = {}
+var _reservations: Dictionary = {}
+var _member_serial := 0
+var _teams: Dictionary = {}
+var _team_by_member: Dictionary = {}
 const FLANK_SIDE_MARGIN := 0.5
 const FLANK_DESTINATION_SPACING := 1.2
 # A completed 140-degree flank still fits inside a rotated half-plane. This
@@ -20,6 +24,267 @@ const FLANK_DESTINATION_SPACING := 1.2
 const FLANK_SEPARATION_COSINE := -0.5 # cos(120 degrees), horizontal directions.
 const FLANK_GEOMETRY_MEMBER_STEP := 0.5
 const FLANK_GEOMETRY_TARGET_STEP := 0.25
+
+## Stage 2: positions are locally validated before this service reserves them.
+## A reservation carries no tactical assignment or permission to execute a body.
+const MAX_BASIC_RESERVATION_SECONDS := 30.0
+
+func _rebuild_teams() -> void:
+	var groups: Array = []
+	var ids: Array = _members.keys()
+	ids.sort()
+	for id: int in ids:
+		if not can_cooperate(id, id): continue
+		var placed := false
+		for group: Array in groups:
+			if group.all(func(other): return can_cooperate(id, int(other))):
+				group.append(id)
+				placed = true
+				break
+		if not placed: groups.append([id])
+	var next: Dictionary = {}
+	_team_by_member.clear()
+	for group: Array in groups:
+		var key := JSON.stringify(group)
+		var team: Dictionary = _teams.get(key, {})
+		if team.is_empty():
+			_serial += 1
+			team = {"team_id": _serial, "members": group.duplicate()}
+		next[key] = team
+		for id: int in group: _team_by_member[id] = int(team.team_id)
+	_teams = next
+
+func _reservation_member_valid(context) -> bool:
+	if context == null or not is_instance_valid(context.actor): return false
+	var id: int = context.actor.get_instance_id()
+	return (_members.has(id) and _context(id) == context and context.cooperation == self
+		and context.actor.is_inside_tree() and not context.actor.is_dead
+		and is_instance_valid(context.arena) and context.arena.is_ancestor_of(context.actor)
+		and _members[id].domain == _domain(context.actor))
+
+## Trusted Context glue publishes these revisions before it submits an offer.
+## Register alone remains compatible, but cannot silently authorize version zero.
+func publish_member_versions(context, versions: Dictionary) -> bool:
+	for key in [&"config_revision", &"environment_revision", &"navigation_revision"]:
+		if typeof(versions.get(key)) != TYPE_INT or int(versions[key]) < 0: return false
+	register(context)
+	if not _reservation_member_valid(context): return false
+	var member: Dictionary = _members[context.actor.get_instance_id()]
+	var changed: bool = not member.versions_published
+	for key in [&"config_revision", &"environment_revision", &"navigation_revision"]:
+		changed = changed or member[key] != versions[key]
+	if not changed: return true
+	_release_member_reservations(context.actor.get_instance_id(), true)
+	for key in [&"config_revision", &"environment_revision", &"navigation_revision"]: member[key] = versions[key]
+	member.versions_published = true
+	revision += 1
+	return true
+
+func coordination_identity(context) -> Dictionary:
+	if not _reservation_member_valid(context): return {}
+	var id: int = context.actor.get_instance_id()
+	var member: Dictionary = _members[id]
+	return {"actor_id": id, "generation": generation, "member_generation": member.member_generation,
+		"team_id": _team_by_member.get(id, 0), "domain": member.domain, "relation_revision": relation_revision,
+		"config_revision": member.config_revision, "environment_revision": member.environment_revision,
+		"navigation_revision": member.navigation_revision, "versions_published": member.versions_published}
+
+func _reservation_text(value: Variant) -> bool:
+	return (value is String or value is StringName) and not String(value).is_empty()
+
+func _reservation_number(value: Variant) -> bool:
+	return (typeof(value) == TYPE_FLOAT or typeof(value) == TYPE_INT) and is_finite(float(value))
+
+func _reservation_summary_valid(summary: Variant) -> bool:
+	if not summary is Dictionary: return false
+	if summary.has("corridor_key") and not (summary.corridor_key is String or summary.corridor_key is StringName): return false
+	if summary.has("exclusive_corridor") and not summary.exclusive_corridor is bool: return false
+	var blocked: Variant = summary.get("blocked_position_sets", [])
+	if not blocked is Array or blocked.size() > 32: return false
+	for key in blocked:
+		if not _reservation_text(key): return false
+	if summary.has("firing_lane"):
+		var lane: Variant = summary.firing_lane
+		if not lane is Dictionary: return false
+		for key in [&"origin", &"endpoint"]:
+			if not lane.get(key) is Vector3 or not lane[key].is_finite(): return false
+	return true
+
+func _reservation_summary(summary: Dictionary) -> Dictionary:
+	var result: Dictionary = {}
+	for key in [&"corridor_key", &"exclusive_corridor", &"blocked_position_sets"]:
+		if summary.has(key): result[key] = summary[key].duplicate() if summary[key] is Array else summary[key]
+	if summary.has("firing_lane"):
+		result.firing_lane = {"origin": summary.firing_lane.origin, "endpoint": summary.firing_lane.endpoint}
+	return result
+
+func _reservation_footprint(context, position: Vector3) -> Dictionary:
+	var shape_node = context.actor.get_node_or_null("CollisionShape3D")
+	var radius := 0.35
+	if shape_node is CollisionShape3D and shape_node.shape is CapsuleShape3D:
+		var scale: Vector3 = shape_node.global_basis.get_scale().abs()
+		radius = shape_node.shape.radius * maxf(scale.x, scale.z)
+	return {"position": position, "radius": radius,
+		"height": maxf(radius * 2.0, context.actor.get_body_height() * absf(context.actor.global_basis.get_scale().y)),
+		"margin": maxf(0.0, float(context.setting(&"cooperation", &"spacing_margin", 0.45)))}
+
+func _reservation_offer_valid(context, offer: Dictionary) -> bool:
+	if not _reservation_member_valid(context) or not _members[context.actor.get_instance_id()].versions_published: return false
+	if offer.get("scope") != &"basic" or offer.get("role") != &"independent_position": return false
+	for key in [&"offer_key", &"owner_action", &"position_set_key"]:
+		if not _reservation_text(offer.get(key)): return false
+	if not context.can_use_action(StringName(offer.owner_action)): return false
+	if not offer.get("position") is Vector3 or not offer.position.is_finite() or not _reservation_summary_valid(offer.get("path_summary", {})): return false
+	var identity := coordination_identity(context)
+	for key in [&"actor_id", &"generation", &"member_generation", &"config_revision", &"environment_revision", &"navigation_revision", &"relation_revision"]:
+		if typeof(offer.get(key)) != TYPE_INT or offer[key] != identity[key]: return false
+	for key in [&"target_id", &"evidence_id"]:
+		if typeof(offer.get(key)) != TYPE_INT or offer[key] < 0: return false
+	if offer.target_id != 0 and offer.target_id != context.cooperation_target_id(): return false
+	if not _reservation_number(offer.get("captured_at")) or not _reservation_number(offer.get("valid_until")): return false
+	return offer.captured_at >= 0.0 and offer.captured_at <= context.evidence_elapsed_seconds and offer.valid_until > context.evidence_elapsed_seconds
+
+func _reservation_valid(entry: Dictionary) -> bool:
+	var context = _context(int(entry.owner_id))
+	if not _reservation_member_valid(context) or entry.generation != generation or entry.expires_at <= elapsed: return false
+	if entry.phase == &"pending" and entry.accept_until <= elapsed: return false
+	if not context.can_use_action(StringName(entry.owner_action)): return false
+	if entry.target_id != 0 and context.cooperation_target_id() != entry.target_id: return false
+	var identity := coordination_identity(context)
+	for key in [&"member_generation", &"domain", &"config_revision", &"environment_revision", &"navigation_revision", &"relation_revision"]:
+		if entry[key] != identity[key]: return false
+	return true
+
+func _reservation_token(context, token: Dictionary) -> Dictionary:
+	if not _reservation_member_valid(context) or typeof(token.get("reservation_id")) != TYPE_INT: return {}
+	var entry: Dictionary = _reservations.get(token.reservation_id, {})
+	if entry.is_empty() or entry.owner_id != context.actor.get_instance_id() or not _reservation_valid(entry): return {}
+	for key in [&"generation", &"member_generation", &"owner_action", &"offer_key", &"position_set_key", &"position", &"created_at", &"expires_at"]:
+		if token.get(key) != entry[key]: return {}
+	return entry
+
+func _reservation_geometry_conflict(first: Dictionary, second: Dictionary) -> bool:
+	var a: Dictionary = first.get("path_summary", {})
+	var b: Dictionary = second.get("path_summary", {})
+	if _reservation_text(first.get("position_set_key")) and first.position_set_key == second.get("position_set_key"): return true
+	if a.get("blocked_position_sets", []).has(second.get("position_set_key")) or b.get("blocked_position_sets", []).has(first.get("position_set_key")): return true
+	if _reservation_text(a.get("corridor_key")) and a.corridor_key == b.get("corridor_key") and (a.get("exclusive_corridor", false) or b.get("exclusive_corridor", false)): return true
+	var vertical_overlap: bool = first.position.y < second.position.y + second.height and second.position.y < first.position.y + first.height
+	var separation: Vector3 = first.position - second.position
+	var clearance: float = first.radius + second.radius + maxf(first.margin, second.margin)
+	if vertical_overlap and Vector2(separation.x, separation.z).length_squared() < clearance * clearance: return true
+	if _reservation_lane_crosses(first, b.get("firing_lane", {})) or _reservation_lane_crosses(second, a.get("firing_lane", {})): return true
+	return false
+
+func _reservation_lane_crosses(footprint: Dictionary, lane: Dictionary) -> bool:
+	if lane.is_empty() or lane.origin.distance_squared_to(lane.endpoint) <= 0.0001: return false
+	var bottom: Vector3 = footprint.position + Vector3.UP * footprint.radius
+	var top: Vector3 = footprint.position + Vector3.UP * (footprint.height - footprint.radius)
+	var nearest: PackedVector3Array = Geometry3D.get_closest_points_between_segments(bottom, top, lane.origin, lane.endpoint)
+	return nearest[0].distance_squared_to(nearest[1]) < pow(float(footprint.radius) + 0.1, 2.0)
+
+func _reservation_position_available(context, entry: Dictionary, except_id: int = 0) -> bool:
+	var owner: int = context.actor.get_instance_id()
+	var current := entry.duplicate()
+	current.merge(_reservation_footprint(context, entry.position), true)
+	for other: Dictionary in _reservations.values():
+		if other.reservation_id == except_id or other.owner_id == owner or not _reservation_valid(other) or not can_share_space(owner, other.owner_id): continue
+		var actual := other.duplicate()
+		actual.merge(_reservation_footprint(_context(other.owner_id), other.position), true)
+		if _reservation_geometry_conflict(current, actual): return false
+	for id: int in _members:
+		if id == owner or not can_share_space(owner, id): continue
+		var other = _context(id)
+		if not _reservation_member_valid(other): continue
+		var body := _reservation_footprint(other, other.actor.global_position)
+		if _reservation_geometry_conflict(current, body): return false
+		var status: Dictionary = _members[id].status
+		if elapsed - float(status.get("updated_at", -INF)) <= 0.35 and status.get("ready", false):
+			var endpoint: Vector3 = status.get("aim_position", Vector3.INF)
+			if endpoint.is_finite() and _reservation_lane_crosses(current, {"origin": other.actor.get_shot_origin(), "endpoint": endpoint}): return false
+	return true
+
+## Candidate filtering is read-only. Callers keep no-destination personal
+## firing/self-preservation options outside this destination-reservation gate.
+func reservation_offer_available(context, offer: Dictionary) -> bool:
+	if not _reservation_offer_valid(context, offer): return false
+	var entry := _reservation_footprint(context, offer.position)
+	entry.position_set_key = offer.position_set_key
+	entry.path_summary = _reservation_summary(offer.get("path_summary", {}))
+	return _reservation_position_available(context, entry)
+
+## Offer times use the caller's evidence clock; token times use the board clock.
+## Prepare never releases the old accepted position or starts an action.
+func prepare_reservation(context, offer: Dictionary, duration: float = 4.0) -> Dictionary:
+	if not is_finite(duration) or duration <= 0.0 or not _reservation_offer_valid(context, offer): return {}
+	var owner: int = context.actor.get_instance_id()
+	for current: Dictionary in _reservations.values():
+		if current.owner_id == owner and current.phase == &"pending" and current.offer_key == offer.offer_key and current.position == offer.position and current.position_set_key == offer.position_set_key and current.owner_action == StringName(offer.owner_action) and current.path_summary == _reservation_summary(offer.get("path_summary", {})) and _reservation_valid(current):
+			return current.duplicate(true) if _reservation_position_available(context, current, current.reservation_id) else {}
+	var entry := _reservation_footprint(context, offer.position)
+	entry.merge(coordination_identity(context))
+	entry.merge({"owner_id": owner, "owner_action": StringName(offer.owner_action), "offer_key": offer.offer_key,
+		"scope": &"basic", "role": &"independent_position", "position_set_key": offer.position_set_key,
+		"path_summary": _reservation_summary(offer.get("path_summary", {})), "target_id": offer.target_id, "evidence_id": offer.evidence_id,
+		"phase": &"pending", "created_at": elapsed, "expires_at": elapsed + minf(duration, MAX_BASIC_RESERVATION_SECONDS),
+		"accept_until": elapsed + float(offer.valid_until) - context.evidence_elapsed_seconds})
+	entry.accept_until = minf(entry.accept_until, entry.expires_at)
+	if not _reservation_position_available(context, entry): return {}
+	for id in _reservations.keys():
+		if _reservations[id].owner_id == owner and _reservations[id].phase == &"pending": _reservations.erase(id)
+	_serial += 1
+	entry.reservation_id = _serial
+	_reservations[_serial] = entry
+	revision += 1
+	return entry.duplicate(true)
+
+func validate_reservation(context, token: Dictionary) -> bool:
+	var entry := _reservation_token(context, token)
+	return not entry.is_empty() and _reservation_position_available(context, entry, int(entry.reservation_id))
+
+## Called only after local validate/begin succeeds. No clock or offer is renewed.
+func commit_reservation(context, token: Dictionary) -> bool:
+	var entry := _reservation_token(context, token)
+	if entry.is_empty() or not _reservation_position_available(context, entry, int(entry.reservation_id)): return false
+	if entry.phase == &"accepted": return true
+	for id in _reservations.keys():
+		if id != entry.reservation_id and _reservations[id].owner_id == entry.owner_id and _reservations[id].phase == &"accepted": _reservations.erase(id)
+	entry.phase = &"accepted"
+	entry.accepted_at = elapsed
+	revision += 1
+	return true
+
+func rollback_reservation(context, token: Dictionary) -> void:
+	var entry := _reservation_token(context, token)
+	if not entry.is_empty() and entry.phase == &"pending":
+		_reservations.erase(entry.reservation_id)
+		revision += 1
+
+func release_reservation(context, token: Dictionary) -> void:
+	var entry := _reservation_token(context, token)
+	if not entry.is_empty():
+		_reservations.erase(entry.reservation_id)
+		revision += 1
+
+func _release_member_reservations(owner: int, include_pending: bool) -> void:
+	for id in _reservations.keys():
+		if _reservations[id].owner_id == owner and (include_pending or _reservations[id].phase == &"accepted"):
+			_reservations.erase(id)
+
+## Cross-radio callers see only friendly physical occupancy, never evidence,
+## target IDs, action intent or the endpoints of another group's firing lane.
+func reservation_snapshot(context) -> Array[Dictionary]:
+	var result: Array[Dictionary] = []
+	if not _reservation_member_valid(context): return result
+	var owner: int = context.actor.get_instance_id()
+	for entry: Dictionary in _reservations.values():
+		if not _reservation_valid(entry) or not can_share_space(owner, int(entry.owner_id)): continue
+		var footprint := _reservation_footprint(_context(entry.owner_id), entry.position)
+		result.append({"reservation_id": entry.reservation_id, "actor_id": entry.owner_id, "kind": &"reservation",
+			"phase": entry.phase, "position": entry.position, "radius": footprint.radius, "height": footprint.height,
+			"margin": footprint.margin, "position_set_key": entry.position_set_key, "created_at": entry.created_at,
+			"expires_at": entry.expires_at, "generation": entry.generation})
+	return result
 
 func advance(delta: float) -> void:
 	elapsed += maxf(0.0, delta)
@@ -38,6 +303,10 @@ func advance(delta: float) -> void:
 	for key in _inspection_reports.keys():
 		if elapsed >= float(_inspection_reports[key].valid_until): _inspection_reports.erase(key)
 	_maintain_flank_rounds()
+	for reservation_id in _reservations.keys():
+		if not _reservation_valid(_reservations[reservation_id]):
+			_reservations.erase(reservation_id)
+			revision += 1
 
 func reset() -> void:
 	generation += 1
@@ -47,6 +316,7 @@ func reset() -> void:
 	_checked.clear()
 	_flank_rounds.clear()
 	_inspection_reports.clear()
+	_reservations.clear()
 	for member in _members.values():
 		member.status = {}
 		member.activity = {}
@@ -55,19 +325,25 @@ func reset() -> void:
 func register(context) -> bool:
 	var id: int = context.actor.get_instance_id()
 	var domain: String = _domain(context.actor)
-	var changed: bool = _members.has(id) and _members[id].domain != domain
+	var changed: bool = _members.has(id) and (_members[id].domain != domain or _context(id) != context)
 	if changed: unregister(id)
 	if not _members.has(id):
-		_members[id] = {"context": weakref(context), "domain": domain, "faction": context.actor.faction_id, "group": context.actor.communication_group, "status": {}, "activity": {}}
+		_member_serial += 1
+		_members[id] = {"context": weakref(context), "domain": domain, "faction": context.actor.faction_id, "group": context.actor.communication_group, "status": {}, "activity": {},
+			"member_generation": _member_serial, "versions_published": false, "config_revision": 0, "environment_revision": 0, "navigation_revision": 0}
+		_rebuild_teams()
 		revision += 1
 	return changed
 
 func unregister(id: int) -> void:
+	if not _members.has(id): return
 	release_member(id)
 	_members.erase(id)
+	_rebuild_teams()
 	revision += 1
 
 func release_member(id: int) -> void:
+	_release_member_reservations(id, true)
 	for token in _claims.keys():
 		if _claims[token].owner_id == id or _claims[token].get("beneficiary_id", 0) == id: _claims.erase(token)
 	if _members.has(id): _members[id].status = {}
@@ -76,6 +352,7 @@ func release_member(id: int) -> void:
 ## Ending an action is not ending the body's reload or leaving the team.
 ## Dependent allies keep their finite leases while the same real need exists.
 func clear_execution(id: int) -> void:
+	_release_member_reservations(id, false)
 	for token in _claims.keys():
 		if int(_claims[token].owner_id) == id: _claims.erase(token)
 	if _members.has(id):
@@ -119,8 +396,11 @@ func _key(domain: String, target: int) -> String:
 	return "%s:%s:%s" % [generation, domain, target]
 
 func set_relation(first: StringName, second: StringName, relation: StringName) -> void:
+	if _relations.get([first, second]) == relation and _relations.get([second, first]) == relation: return
 	_relations[[first, second]] = relation
 	_relations[[second, first]] = relation
+	_reservations.clear()
+	_rebuild_teams()
 	_claims.clear()
 	_flank_rounds.clear()
 	_inspection_reports.clear()

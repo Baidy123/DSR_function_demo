@@ -34,6 +34,10 @@ var team_visual_contact := false
 var _shared_visual: Dictionary = {}
 var _shared_notification_position := Vector3.INF
 var _cooperation_identity: Array = []
+var _coordination_configuration_revision := 0
+var _coordination_environment_revision := 0
+var _coordination_environment_signature: Array = []
+var _coordination_reservation: Dictionary = {}
 var _inspection_shared_report_id := -1
 var _inspection_notification_id := -1
 var avoid_position := Vector3.INF
@@ -746,6 +750,104 @@ func cooperation_support_pressure() -> float:
 
 func cooperation_clear_execution() -> void:
 	if cooperation != null: cooperation.clear_execution(actor.get_instance_id())
+	_coordination_reservation = {}
+
+## Basic coordination changes candidate eligibility, never its utility cost.
+## An actor already standing somewhere can still defend itself while LocalMotion
+## resolves physical spacing. Only proposed destinations acquire new occupancy.
+func coordination_choices(options: Array[Dictionary]) -> Array[Dictionary]:
+	if cooperation == null or cooperation.registered_member_count() <= 1 or not _publish_coordination_versions():
+		var independent_choices: Array[Dictionary] = []
+		for candidate in options:
+			var independent := candidate.duplicate() if candidate.has("coordination_offer") else candidate
+			independent.erase("coordination_offer")
+			independent_choices.append(independent)
+		return independent_choices
+	var result: Array[Dictionary] = []
+	var available: Dictionary = {}
+	for candidate in options:
+		var offer := _basic_coordination_offer(candidate)
+		if offer.is_empty():
+			var independent := candidate.duplicate() if candidate.has("coordination_offer") else candidate
+			independent.erase("coordination_offer")
+			result.append(independent)
+			continue
+		if not available.has(offer.position): available[offer.position] = cooperation.reservation_offer_available(self, offer)
+		if not available[offer.position]: continue
+		var choice := candidate.duplicate()
+		choice.coordination_offer = offer
+		result.append(choice)
+	return result
+
+func _publish_coordination_versions() -> bool:
+	if cooperation == null or not is_instance_valid(navigation_region): return false
+	var map: RID = agent.get_navigation_map()
+	var navigation_revision: int = NavigationServer3D.map_get_iteration_id(map) if map.is_valid() else 0
+	var signature: Array = [navigation_region.get_instance_id(), spatial._geometry, navigation_revision]
+	if signature != _coordination_environment_signature:
+		_coordination_environment_signature = signature
+		_coordination_environment_revision += 1
+	return cooperation.publish_member_versions(self, {"config_revision": _coordination_configuration_revision,
+		"environment_revision": _coordination_environment_revision, "navigation_revision": navigation_revision})
+
+func coordination_configuration_changed() -> void:
+	_coordination_configuration_revision += 1
+
+func _basic_coordination_offer(candidate: Dictionary) -> Dictionary:
+	var destination: Dictionary = candidate.get("destination", {})
+	var point: Vector3 = candidate.get("route_target", destination.get("position", destination.get("hide", Vector3.INF)))
+	if not point.is_finite(): return {}
+	if _horizontal_distance(point) <= 0.12 and absf(actor.global_position.y - point.y) <= 0.5: return {}
+	var identity: Dictionary = cooperation.coordination_identity(self)
+	if identity.is_empty(): return {}
+	var owner: StringName = candidate.get("id", &"")
+	var offer: Dictionary = identity.duplicate()
+	var key := str([owner, candidate.get("plan", &""), candidate.get("mode", &""), point])
+	offer.merge({"scope": &"basic", "role": &"independent_position", "offer_key": key,
+		"owner_action": owner, "position_set_key": str(point), "position": point,
+		"target_id": 0, "evidence_id": 0, "path_summary": {},
+		"captured_at": evidence_elapsed_seconds, "valid_until": evidence_elapsed_seconds + 0.5})
+	return offer
+
+## Prepare follows the action's live validate and precedes clearing its old
+## execution. The pending token survives that clear; begin failure only rolls it back.
+func prepare_coordination_choice(candidate: Dictionary) -> Dictionary:
+	var offer: Dictionary = candidate.get("coordination_offer", {})
+	if offer.is_empty() or cooperation == null or cooperation.registered_member_count() <= 1: return {"required": false, "token": {}}
+	var path: PackedVector3Array = candidate.get("destination", {}).get("path", PackedVector3Array())
+	var length := 0.0
+	var previous: Vector3 = actor.global_position
+	for point: Vector3 in path:
+		length += _horizontal_distance_between(previous, point)
+		previous = point
+	if path.is_empty(): length = _horizontal_distance(offer.position)
+	var duration := clampf(length / maxf(0.1, actor.move_speed) + utility_horizon_seconds, 4.0, 30.0)
+	return {"required": true, "token": cooperation.prepare_reservation(self, offer, duration)}
+
+func commit_coordination_choice(transaction: Dictionary) -> bool:
+	if not transaction.get("required", false): return true
+	var token: Dictionary = transaction.get("token", {})
+	if cooperation == null or token.is_empty() or not cooperation.commit_reservation(self, token): return false
+	_coordination_reservation = token
+	return true
+
+func rollback_coordination_choice(transaction: Dictionary) -> void:
+	if cooperation != null and transaction.get("required", false): cooperation.rollback_reservation(self, transaction.get("token", {}))
+
+## A continuing, already begun and currently validated action may acquire a new
+## basic lease after its previous one expires. Existing leases never gain time.
+func maintain_coordination_choice(candidate: Dictionary) -> bool:
+	var offer: Dictionary = candidate.get("coordination_offer", {})
+	if cooperation == null: return true
+	if offer.is_empty() or cooperation.registered_member_count() <= 1:
+		if not _coordination_reservation.is_empty(): cooperation.release_reservation(self, _coordination_reservation)
+		_coordination_reservation = {}
+		return true
+	if not _coordination_reservation.is_empty() and _coordination_reservation.get("offer_key") == offer.offer_key and cooperation.validate_reservation(self, _coordination_reservation): return true
+	var transaction := prepare_coordination_choice(candidate)
+	if commit_coordination_choice(transaction): return true
+	rollback_coordination_choice(transaction)
+	return false
 
 func cooperation_line_safe(origin: Vector3, endpoint: Vector3) -> bool:
 	if not _cooperation_preview_snapshot.is_empty():

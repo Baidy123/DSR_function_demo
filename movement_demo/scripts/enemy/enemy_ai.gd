@@ -118,6 +118,7 @@ func refresh_configuration(force: bool = false) -> void:
 		_implementations[id] = action.get_script()
 		context.spatial.register(action)
 	context.spatial.reset_evaluation()
+	context.coordination_configuration_changed()
 	invalidate_utility()
 
 func _physics_process(delta: float) -> void:
@@ -178,23 +179,33 @@ func _update_utility_decision(delta: float, visible: bool) -> void:
 	_utility_timer -= delta
 	if actor.is_vaulting(): return
 	var valid: bool = current_action != null and current_action.valid(visible)
+	var execution_valid := valid
 	if _utility_timer > 0.0 and (valid or current_action == null): return
 	_utility_timer = utility_recheck_seconds
 	utility_options = action_selector.assess_options(self, visible)
-	var best: Dictionary = action_selector.choose_option(utility_options, utility_current)
+	var choices: Array[Dictionary] = context.coordination_choices(utility_options)
+	var best: Dictionary = action_selector.choose_option(choices, utility_current)
 	var cost := INF
 	for candidate in utility_options:
 		if action_selector.same_option(candidate, utility_current):
 			cost = candidate.cost
 			utility_current = candidate
 			if current_action != null: current_action.plan = candidate
-	valid = valid and is_finite(cost)
+	var current_choice: Dictionary = {}
+	for candidate in choices:
+		if action_selector.same_option(candidate, utility_current):
+			current_choice = candidate
+			break
+	valid = valid and is_finite(cost) and not current_choice.is_empty()
+	if valid: valid = context.maintain_coordination_choice(current_choice)
+	# Execution protection is independent of a transient candidate cache or a
+	# conflicting new reservation. Actual invalidation can still end old routes.
+	if current_action != null and (execution_valid or context.melee.is_active_for(current_action.action_id)) and not current_action.can_interrupt(best, visible): return
 	if best.is_empty():
 		_cancel_utility_execution()
 		context.state = State.IDLE
 		return
 	if valid and action_selector.same_option(best, utility_current): return
-	if valid and not current_action.can_interrupt(best, visible): return
 	if valid and not current_action.hold_released():
 		if _utility_elapsed < utility_hold_seconds:
 			# A useful asynchronously prepared route may arrive just before the
@@ -211,13 +222,23 @@ func _start_utility_option(candidate: Dictionary, visible: bool) -> void:
 	if next == null or not next.validate(candidate, visible):
 		invalidate_utility()
 		return
+	var transaction: Dictionary = context.prepare_coordination_choice(candidate)
+	if transaction.required and transaction.token.is_empty():
+		invalidate_utility()
+		return
 	_cancel_utility_execution()
 	current_action = next
 	utility_current = candidate
 	_utility_elapsed = 0.0
 	if not next.begin(candidate, visible):
+		context.rollback_coordination_choice(transaction)
 		_cancel_utility_execution(&"failed")
 		context.state = State.IDLE
+		invalidate_utility()
+		return
+	if not context.commit_coordination_choice(transaction):
+		context.rollback_coordination_choice(transaction)
+		_cancel_utility_execution(&"reservation_failed")
 		invalidate_utility()
 		return
 	if debug_utility and actor.debug_settings.enabled:
