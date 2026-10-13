@@ -63,6 +63,8 @@ class BoardProbe extends RefCounted:
 	var commit_ok := true
 	var available := true
 	var submitted: Array = []
+	func has_team_binding(_context) -> bool: return false
+	func team_level(context, _legacy_level: int = 0) -> int: return 2 if context.cooperation_enabled() else 0
 	func registered_member_count() -> int: return member_count
 	func coordination_identity(context) -> Dictionary:
 		return {"actor_id": context.actor.get_instance_id(), "generation": 1, "member_generation": 1,

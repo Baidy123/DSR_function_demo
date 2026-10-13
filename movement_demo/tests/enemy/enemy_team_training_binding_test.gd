@@ -73,6 +73,24 @@ func _run() -> void:
 	check(board.team_configuration_revision(contexts[0]) > before and contexts.all(func(c): return c.coordinated_cooperation_enabled()), "Hot level change reaches the whole squad and advances its configuration revision")
 	check(contexts[0].training.selected_tactics == selected[0] and contexts[1].training.selected_tactics == selected[1], "Shared permission never rewrites any personal selection")
 	check(not Library.resolve(contexts[0].unit, contexts[0].training, {"level": 0}).definitions.has(&"cooperate") and Library.resolve(contexts[0].unit, contexts[0].training).definitions.has(&"cooperate"), "Pure resolver retains unbound legacy compatibility")
+	# Allies may share observations while retaining separately bound commands.
+	beta.faction_id = &"allied_test"
+	beta.communication_group = &"alpha"
+	actors[2].faction_id = &"allied_test"
+	actors[2].communication_group = &"alpha"
+	arena.enemy_environment()
+	board.set_relation(&"enemy", &"allied_test", &"allied")
+	board.register(contexts[2])
+	board.publish_status(contexts[2], {"position": actors[2].global_position, "target_id": player.get_instance_id(), "melee_threat_seconds": 2.0})
+	var allied_snapshot: Dictionary = board.snapshot(contexts[0], player.get_instance_id())
+	check(board.can_share_intel(actors[0].get_instance_id(), actors[2].get_instance_id()) and not board.can_cooperate(actors[0].get_instance_id(), actors[2].get_instance_id()), "Allied factions may share intel without merging their bound squads")
+	check(allied_snapshot.members.any(func(member): return member.id == actors[2].get_instance_id() and not member.can_cooperate) and allied_snapshot.threats.is_empty(), "A different bound squad cannot silently become promised fire or melee support")
+	beta.faction_id = &"enemy"
+	beta.communication_group = &"beta"
+	actors[2].faction_id = &"enemy"
+	actors[2].communication_group = &"beta"
+	arena.enemy_environment()
+	board.register(contexts[2])
 	var saved := "user://team_binding_test.tres"
 	check(ResourceSaver.save(alpha, saved) == OK, "Squad binding saves as a normal resource")
 	var restored = ResourceLoader.load(saved, "", ResourceLoader.CACHE_MODE_IGNORE)

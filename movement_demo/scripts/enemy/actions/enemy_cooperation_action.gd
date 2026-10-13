@@ -66,6 +66,9 @@ func _personal_advance_allowed(point: Vector3) -> bool:
 	return (point - source.position).dot(source.front_axis) >= 0.5
 
 func _support_cycle() -> bool:
+	if not _coordination_assignment.is_empty():
+		var assigned: Dictionary = context.coordination_support_state()
+		if assigned.get("linked", false): return assigned.get("cycle_valid", false) and float(assigned.get("resume_seconds", INF)) <= float(_setting(&"support_recovery_seconds", 2.0))
 	for member: Dictionary in _allies():
 		if member.get("support_cycle_valid", false) and not member.get("moving", false) and float(member.get("support_resume_seconds", INF)) <= float(_setting(&"support_recovery_seconds", 2.0)): return true
 	return false
@@ -91,6 +94,9 @@ func _support_ready(segment_seconds: float = -1.0) -> bool:
 	if segment_seconds < 0.0:
 		segment_seconds = context._horizontal_distance(destination) / maxf(0.1, actor.move_speed) if destination.is_finite() else 0.5
 	var required := minf(0.1, maxf(0.01, segment_seconds))
+	if not _coordination_assignment.is_empty():
+		var assigned: Dictionary = context.coordination_support_state()
+		if assigned.get("linked", false): return assigned.get("ready", false) and float(assigned.get("support_seconds", 0.0)) >= required
 	for member: Dictionary in _allies():
 		if member.get("ready", false) and not member.get("moving", false) and float(member.get("support_seconds", 0.0)) >= required: return true
 	return false
@@ -738,7 +744,8 @@ func _attach_tactical_offer(candidate: Dictionary, source: Dictionary, role: Str
 	if identity.is_empty(): return false
 	var point: Vector3 = candidate.destination.get("position", Vector3.INF)
 	var side: float = (point - source.position).dot(source.front_axis)
-	if (role == &"flank" and side >= -0.5) or (role == &"front_support" and side <= 0.5): return false
+	if role == &"flank" and side >= -0.5: return false
+	if role == &"front_support" and side <= 0.5 and not _deployment_enabled(): return false
 	if role == &"flank":
 		if candidate.destination.get("flank_anchor", Vector3.INF).distance_to(source.position) > 0.001 or candidate.destination.get("flank_axis", Vector3.ZERO).distance_to(source.front_axis) > 0.001: return false
 	var lifetime: float = float(source.valid_until) - context.coordination_now()
@@ -756,7 +763,7 @@ func _attach_tactical_offer(candidate: Dictionary, source: Dictionary, role: Str
 	offer.merge({"scope": &"tactical", "owner_action": action_id, "offer_key": offer_key, "role": role,
 		"position_set_key": position_key, "position": point, "target_id": source.target_id, "evidence_id": source.evidence_id,
 		"path_summary": {"tactical_key": tactical_key, "tactical_anchor": source.position, "tactical_axis": source.front_axis,
-			"side": -1 if role == &"flank" else 1, "holds_front": role == &"front_support",
+			"side": 1 if side > 0.5 else (-1 if side < -0.5 else 0), "holds_front": role == &"front_support",
 			"posture": candidate.destination.get("team_posture", &"disperse" if role == &"flank" else &"hold"),
 			"expected_fire_seconds": float(candidate.cooperation.get("support_seconds", 0.0)) if actor.can_use_firearms() else 0.0,
 			"staging_position": candidate.coordination_staging_position, "staging_seconds": seconds if role in [&"front_support", &"team_position"] else 0.0},
@@ -766,8 +773,12 @@ func _attach_tactical_offer(candidate: Dictionary, source: Dictionary, role: Str
 		"fire_ready": actual.ready, "measured_support_seconds": actual.seconds if actual.ready else 0.0,
 		"captured_at": context.evidence_elapsed_seconds, "valid_until": context.evidence_elapsed_seconds + minf(0.75, lifetime)})
 	_coordination_offers.append(offer)
+	_coordination_local_candidates.erase(offer_key)
 	_coordination_local_candidates[offer_key] = candidate.duplicate(true)
-	while _coordination_local_candidates.size() > 12: _coordination_local_candidates.erase(_coordination_local_candidates.keys()[0])
+	# One position can offer both maneuver and fire support. Keep the complete
+	# bounded input batch so generating a thirteenth preview cannot evict the
+	# current firing post that the board is about to assign.
+	while _coordination_local_candidates.size() > 32: _coordination_local_candidates.erase(_coordination_local_candidates.keys()[0])
 	return true
 
 func _validate_coordinated(candidate: Dictionary, visible: bool) -> bool:
@@ -844,8 +855,9 @@ func _begin_coordinated(candidate: Dictionary, visible: bool) -> bool:
 	_hold_remaining = _remaining
 	_checkpoints = candidate.destination.get("checkpoints", PackedVector3Array())
 	_segment = 0
-	_segment_committed = assignment.role != &"flank"
-	phase = Phase.WAIT_SUPPORT if assignment.role == &"flank" else (Phase.HOLD if _checkpoints.is_empty() else Phase.MOVE)
+	var supported_move: bool = assignment.role == &"flank" or (assignment.role == &"team_position" and not assignment.get("support_links", []).is_empty())
+	_segment_committed = not supported_move
+	phase = Phase.WAIT_SUPPORT if supported_move else (Phase.HOLD if _checkpoints.is_empty() else Phase.MOVE)
 	if assignment.role == &"front_support":
 		_front_contact_until = context.coordination_now() + maxf(0.0, float(_setting(&"support_recovery_seconds", 2.0)))
 	_route_position = actor.global_position
@@ -943,12 +955,12 @@ func _tick_coordinated(delta: float, visible: bool) -> Dictionary:
 		_had_support = true
 	if not _segment_committed:
 		_checkpoint_wait = maxf(0.0, _checkpoint_wait - delta)
-		if assignment.role == &"flank" and not _support_continues():
+		if assignment.role in [&"flank", &"team_position"] and not _support_continues():
 			if _checkpoint_wait <= 0.0: _finish(false)
 			return motion(Vector3.ZERO, 1.0, _known - actor.global_position, _fire(visible) if _running else {})
 		_segment_committed = true
 	var distance: float = context._horizontal_distance(target)
-	if assignment.role == &"flank" and _had_support and not _support_continues() and distance > 1.5:
+	if assignment.role in [&"flank", &"team_position"] and _had_support and not _support_continues() and distance > 1.5:
 		_finish(false)
 		return motion(Vector3.ZERO)
 	if distance <= 0.15:

@@ -5,6 +5,16 @@ var _reload_claim: Dictionary = {}
 var _reload_started := false
 var _rounds_at_start := 0
 
+func _team_reload_offer_available() -> bool:
+	return _team_orders_enabled() and actor.can_use_firearms() and actor.ammo.can_reload() and not actor.ammo.is_reloading and actor.ammo.magazine_rounds > 0 and float(actor.ammo.magazine_rounds) / maxf(1.0, actor.weapon.magazine_capacity) <= float(context.setting(&"cooperation", &"reload_rounds_ratio", 0.35))
+
+func _team_reload_can_start() -> bool:
+	if actor.ammo.magazine_rounds == 0 or actor.ammo.is_reloading: return true
+	var support: Dictionary = context.coordination_support_state()
+	if support.get("released", false) and support.get("ready", false) and float(support.get("support_seconds", 0.0)) >= float(context.setting(&"cooperation", &"reload_min_support_seconds", 0.5)): return true
+	# Real concealment at the current body is an independent safe alternative.
+	return context._reload_exposure(actor.global_position, context._known_reload_threat(), -1.0, actor.is_crouching()) <= 0.01
+
 func assignment_escape(candidate: Dictionary, visible: bool) -> bool:
 	if candidate.get("id") != action_id or not is_enabled() or not actor.can_use_firearms(): return false
 	if actor.ammo.magazine_rounds != 0 or actor.is_dead or actor.is_vaulting() or actor.melee_active or actor.get_tree().paused: return false
@@ -24,7 +34,7 @@ func _can_offer_reload() -> bool:
 	if not actor.can_use_firearms(): return false
 	if actor.ammo.is_reloading or _running: return true
 	if not actor.ammo.can_reload(): return false
-	return actor.ammo.magazine_rounds == 0 or _proactive_opportunity().get("allowed", false)
+	return actor.ammo.magazine_rounds == 0 or _team_reload_offer_available() or _proactive_opportunity().get("allowed", false)
 
 func _reload_seconds() -> float:
 	# 公共 _reload_seconds 表示当前开火被换弹阻止的时间；余弹主动方案另算其真实耗时。
@@ -71,13 +81,15 @@ func evaluate_point(point: Variant) -> Dictionary:
 	return assessment
 
 func collect_candidates(visible: bool) -> Array[Dictionary]:
+	_team_offers.clear()
 	var result: Array[Dictionary] = []
+	if _running and plan.has("coordination_role") and _team_assignment_valid(plan): return [plan.duplicate(true)]
 	if not _can_offer_reload():
 		return result
 	var proactive: bool = plan.get("proactive_reload", false) if _running else actor.ammo.magazine_rounds > 0 and not actor.ammo.is_reloading
 	var opportunity := _proactive_opportunity() if proactive else {}
 	# 已经真正开始的基础换弹可以完成；未开始的主动补弹须保有合法支持机会。
-	if proactive and not actor.ammo.is_reloading and not _reload_completed() and not opportunity.get("allowed", false): return result
+	if proactive and not actor.ammo.is_reloading and not _reload_completed() and not opportunity.get("allowed", false) and not _team_reload_offer_available(): return result
 	var horizon: float = context.utility_horizon_seconds
 	var threat: Vector3 = context._known_reload_threat()
 	var seconds := _reload_seconds()
@@ -111,6 +123,8 @@ func collect_candidates(visible: bool) -> Array[Dictionary]:
 				support = minf(seconds, maxf(0.0, float(opportunity.get("support_seconds", 0.0)) - maxf(0.0, float(candidate.outcome.unavailable_seconds) - seconds)))
 			candidate.outcome.cooperation_seconds = clampf(support, 0.0, horizon)
 			candidate.cooperation = {"kind": &"reload", "target_id": context.cooperation_target_id(), "provider_id": opportunity.get("provider_id", 0), "request_id": opportunity.get("request_id", 0), "support_seconds": 0.0, "quality": 1.0}
+			if _team_orders_enabled():
+				_offer_team_candidate(candidate, &"assisted_reload", {"action_seconds": seconds, "travel_seconds": maxf(0.0, float(candidate.outcome.unavailable_seconds) - seconds)})
 	return result
 
 func _destination_candidates(destination: Dictionary, visible: bool, threat: Vector3) -> Array[Dictionary]:
@@ -194,12 +208,15 @@ func expand_route_candidates(candidates: Array[Dictionary]) -> Array[Dictionary]
 	return result
 
 func validate(candidate: Dictionary, visible: bool) -> bool:
+	if candidate.has("coordination_role"):
+		return _team_assignment_valid(candidate) and actor.can_use_firearms() and super.validate(candidate, visible) and (candidate.destination.is_empty() or (context.can_use_action(&"cover") and context.spatial.cover_valid(candidate.destination)))
 	if candidate.get("proactive_reload", false) and not actor.ammo.is_reloading and not _proactive_opportunity().get("allowed", false): return false
 	return actor.can_use_firearms() and super.validate(candidate, visible) and (candidate.destination.is_empty() or (context.can_use_action(&"cover") and context.spatial.cover_valid(candidate.destination)))
 
 func begin(candidate: Dictionary, visible: bool) -> bool:
+	if candidate.has("coordination_role") and not validate(candidate, visible): return false
 	_release_reload_claim()
-	if candidate.get("proactive_reload", false) and not actor.ammo.is_reloading:
+	if candidate.get("proactive_reload", false) and not candidate.has("coordination_role") and not actor.ammo.is_reloading:
 		_reload_claim = context.cooperation_claim_reload(maxf(_reload_seconds(), float(candidate.outcome.unavailable_seconds)) + 3.0)
 		if _reload_claim.is_empty(): return false
 	_rounds_at_start = actor.ammo.magazine_rounds
@@ -214,19 +231,25 @@ func begin(candidate: Dictionary, visible: bool) -> bool:
 	else:
 		context.utility_suppression_pending = false
 		transfer.start_reload_transfer(candidate.destination, context._known_reload_threat())
-	if _mode(candidate) != &"after_cover": _reload_started = actor.request_reload() or _reload_started
+	if _mode(candidate) != &"after_cover" and (not candidate.has("coordination_role") or _team_reload_can_start()): _reload_started = actor.request_reload() or _reload_started
 	return true
 
 func valid(_visible: bool) -> bool:
+	if plan.has("coordination_role"):
+		return _running and _team_assignment_valid(plan) and actor.can_use_firearms() and (plan.destination.is_empty() or transfer.is_active())
 	# 已经开始的身体换弹可以收尾；途中尚未开始时，支持消失立即重新决策。
 	if plan.get("proactive_reload", false) and not actor.ammo.is_reloading and not _reload_completed() and not _proactive_opportunity().get("allowed", false): return false
 	return _running and actor.can_use_firearms() and (plan.destination.is_empty() or (context.can_use_action(&"cover") and transfer.is_active()))
 
 func tick(delta: float, visible: bool) -> Dictionary:
+	if plan.has("coordination_role") and not _reload_started:
+		if not _team_reload_can_start(): return _team_wait_fire(visible)
+		if _mode(plan) != &"after_cover": _reload_started = actor.request_reload()
 	var arrived: bool = plan.destination.is_empty() or transfer.phase == transfer.Phase.HIDE
 	var proactive: bool = plan.get("proactive_reload", false)
 	var completed := _reload_completed()
 	if arrived and not actor.ammo.is_reloading and completed:
+		if plan.has("coordination_role"): return motion(Vector3.ZERO)
 		_running = false
 		_release_reload_claim()
 		context.avoid_position = Vector3.INF
@@ -240,13 +263,21 @@ func tick(delta: float, visible: bool) -> Dictionary:
 			context.avoid_position = plan.destination.hide
 			return motion(Vector3.ZERO)
 	if arrived and (actor.ammo.magazine_rounds == 0 or proactive) and not actor.ammo.is_reloading:
-		_reload_started = actor.request_reload() or _reload_started
+		if not plan.has("coordination_role") or _team_reload_can_start(): _reload_started = actor.request_reload() or _reload_started
 	var facing: Vector3 = direction if not direction.is_zero_approx() else context.last_known_position - actor.global_position
 	var output := motion(direction, transfer.movement_multiplier() if not plan.destination.is_empty() else 1.0, facing)
 	if plan.destination.is_empty() and not plan.get("crouch", false) and _crouch_cover_here(context._known_reload_threat()) != null:
 		plan.crouch = true
 	output.crouch = transfer.wants_crouch() if not plan.destination.is_empty() else plan.get("crouch", actor.is_crouching())
 	return output
+
+func execution_contract(visible: bool) -> Dictionary:
+	if not plan.has("coordination_role"): return super.execution_contract(visible)
+	var assignment: Dictionary = context.coordination_assignment()
+	var arrived: bool = plan.destination.is_empty() or transfer.phase == transfer.Phase.HIDE
+	return {"valid": valid(visible), "segment_boundary": not actor.ammo.is_reloading,
+		"ready_for_phase": not _reload_started, "remaining_seconds": maxf(0.0, float(assignment.get("expires_at", 0.0)) - context.coordination_now()),
+		"progress": actor.ammo.reload_progress, "complete": _reload_started and _reload_completed() and arrived and not actor.ammo.is_reloading}
 
 func reset() -> void:
 	_release_reload_claim()

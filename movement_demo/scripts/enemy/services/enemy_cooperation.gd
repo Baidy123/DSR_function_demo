@@ -778,10 +778,9 @@ func snapshot(context, target: int) -> Dictionary:
 			member.support_seconds = 0.0
 			member.support_cycle_valid = false
 			member.support_resume_seconds = -1.0
-		# can_cooperate is the same predicate already checked above, with no
-		# mutation or await between these reads.
-		member.can_cooperate = true
+		member.can_cooperate = can_cooperate(other_id, id)
 		result.members.append(member)
+		if not member.can_cooperate: continue
 		if int(member.get("target_id", 0)) != target: continue
 		var threat_seconds: float = maxf(0.0, float(member.get("melee_threat_seconds", 0.0)) - maxf(0.0, elapsed - float(member.updated_at)))
 		if threat_seconds > 0.0:
@@ -811,8 +810,8 @@ func snapshot(context, target: int) -> Dictionary:
 	var source := coordination_source(context, target)
 	if not source.is_empty():
 		for need: Dictionary in _coordination_requests(_coordination_team_members(source.team_id), source):
-			if need.kind != &"advance" or need.actor_id == id: continue
-			result.requests.append({"id": need.request_id, "request_id": need.request_id, "kind": &"advance",
+			if not need.get("accepted", false) or need.actor_id == id: continue
+			result.requests.append({"id": need.request_id, "request_id": need.request_id, "kind": need.kind, "preparing": not need.get("actual", false),
 				"target_id": target, "beneficiary_id": need.actor_id, "lane_id": &"target",
 				"position": _context(need.actor_id).actor.global_position, "remaining": maxf(0.0, need.valid_until - elapsed)})
 	return result
@@ -1183,6 +1182,7 @@ func candidate_seconds(context, candidate: Dictionary) -> float:
 			gain = maxf(gain, overlap * quality)
 	for request in data.requests:
 		if request.beneficiary_id == id: continue
+		if has_team_binding(context) and request.get("preparing", false): continue
 		if task.get("request_id", 0) != 0 and task.request_id != request.request_id: continue
 		if String(task.get("lane_id", "target")) != String(request.get("lane_id", "target")): continue
 		var stationary_required := _request_requires_stationary(request)
@@ -1406,6 +1406,9 @@ func _coordination_roles(context, target_id: int) -> Array:
 		if target_id != 0:
 			result.append(&"inspect_left")
 			result.append(&"inspect_right")
+	if target_id != 0 and context.coordinated_cooperation_enabled() and has_team_binding(context):
+		if context.actor.can_use_firearms() and context.can_use_action(&"reload"): result.append(&"assisted_reload")
+		if mobile and context.can_use_action(&"covering_retreat"): result.append(&"assisted_retreat")
 	if target_id != 0 and context.can_use_action(&"cooperate"):
 		if mobile and coordination_source(context, target_id).get("flank_clustered", false): result.append(&"flank")
 		if mobile and context.coordinated_cooperation_enabled() and has_team_binding(context): result.append(&"team_position")
@@ -1420,8 +1423,12 @@ func _coordination_offer_valid(context, offer: Dictionary, board_time: bool = fa
 	for key in [&"offer_key", &"owner_action", &"position_set_key", &"role"]:
 		if not _reservation_text(offer.get(key)): return false
 	if not context.can_use_action(StringName(offer.owner_action)): return false
-	var expected: StringName = &"search" if offer.role in [&"inspect_left", &"inspect_right", &"search_sector"] else &"cooperate"
-	if offer.owner_action != expected: return false
+	var owners: Array = [&"search"] if offer.role in [&"inspect_left", &"inspect_right", &"search_sector"] else [&"cooperate"]
+	if has_team_binding(context) and context.coordinated_cooperation_enabled():
+		if offer.role == &"front_support": owners.append(&"suppression")
+		elif offer.role == &"assisted_reload": owners = [&"reload"]
+		elif offer.role == &"assisted_retreat": owners = [&"covering_retreat"]
+	if not owners.has(offer.owner_action): return false
 	var identity := coordination_identity(context)
 	for key in [&"actor_id", &"generation", &"member_generation", &"config_revision", &"environment_revision", &"navigation_revision", &"relation_revision"]:
 		if typeof(offer.get(key)) != TYPE_INT or offer[key] != identity[key]: return false
@@ -1438,7 +1445,7 @@ func _coordination_offer_valid(context, offer: Dictionary, board_time: bool = fa
 		if not context.has_method("coordination_search_template_valid") or not context.coordination_search_template_valid(String(summary.sector_key), int(summary.get("source_revision", -1)), int(summary.get("template_navigation_revision", -1))): return false
 	if not summary.get("staging_position") is Vector3 or not summary.staging_position.is_finite(): return false
 	if not _reservation_number(summary.get("staging_seconds")) or summary.staging_seconds < 0.0: return false
-	if not _coordination_frame_valid(summary, source, StringName(offer.role), offer.position): return false
+	if not _coordination_frame_valid(summary, source, StringName(offer.role), offer.position, has_team_binding(context) and context.coordinated_cooperation_enabled()): return false
 	if offer.role in [&"inspect_left", &"inspect_right", &"search_sector"]:
 		var observations: Variant = summary.get("observation_points")
 		if not observations is Array or observations.is_empty() or observations.size() > 64: return false
@@ -1448,7 +1455,7 @@ func _coordination_offer_valid(context, offer: Dictionary, board_time: bool = fa
 		if not _reservation_number(offer.get(key)): return false
 		if key != &"cost" and offer[key] < 0.0: return false
 	if not offer.get("movement_possible") is bool or not offer.get("fire_ready") is bool: return false
-	if offer.role != &"front_support" and not offer.movement_possible: return false
+	if offer.role not in [&"front_support", &"assisted_reload"] and not offer.movement_possible: return false
 	var now: float = elapsed if board_time else context.evidence_elapsed_seconds
 	if offer.has("accept_after"):
 		if not _reservation_number(offer.accept_after) or not _reservation_number(offer.get("captured_at")): return false
@@ -1563,6 +1570,34 @@ func assignment(context) -> Dictionary:
 	result.release_at = plan.release_at
 	result.stage_until = plan.stage_until
 	result.tactic = plan.tactic
+	result.support_links = plan.get("support_links", []).filter(func(link): return link.provider_id == entry.actor_id or link.beneficiary_id == entry.actor_id).duplicate(true)
+	return result
+
+## Read actual assigned fire at consumption time. A planned position, a pending
+## replacement and an old phase report never authorize a dependent action.
+func assignment_support(context) -> Dictionary:
+	var result := {"linked": false, "ready": false, "support_seconds": 0.0, "provider_id": 0,
+		"cycle_valid": false, "resume_seconds": -1.0, "released": false}
+	var entry := _assignment_for_owner(context.actor.get_instance_id())
+	if entry.is_empty(): return result
+	var plan: Dictionary = _coordination_plans[entry.team_id]
+	for link: Dictionary in plan.get("support_links", []):
+		if link.beneficiary_id != entry.actor_id or link.expires_at <= elapsed: continue
+		result.linked = true
+		result.provider_id = link.provider_id
+		result.released = plan.phase == &"executing" and plan.release_at >= 0.0 and plan.release_at <= elapsed
+		if link.has("pending_provider_id"): return result
+		var provider_entry := _assignment_for_owner(link.provider_id)
+		var provider = _context(link.provider_id)
+		if provider_entry.is_empty() or not provider_entry.accepted or provider_entry.role != &"front_support" or provider_entry.plan_id != plan.plan_id: return result
+		var actual := _coordination_actual(provider, plan.target_id)
+		var status: Dictionary = _members[link.provider_id].status
+		var age: float = elapsed - float(status.get("updated_at", -INF))
+		result.ready = actual.fire_ready and not status.get("moving", false)
+		result.support_seconds = actual.measured_support_seconds if result.ready else 0.0
+		result.cycle_valid = age <= COORDINATION_REPORT_SECONDS and status.get("support_cycle_valid", false) and not status.get("moving", false) and not provider.actor.ammo.is_reloading and provider.actor.ammo.magazine_rounds > 0
+		result.resume_seconds = maxf(0.0, float(status.get("support_resume_seconds", 0.0)) - age) if result.cycle_valid else -1.0
+		return result
 	return result
 
 ## Internal previews can be large. Exclude them before copying public values;
@@ -1695,7 +1730,8 @@ func report_assignment(context, report: Dictionary) -> bool:
 		return true
 	if report.get("execution_valid", true) != true: return false
 	if state == &"arrived":
-		if context.actor.global_position.distance_to(entry.staging_position) > 0.35 or not context.actor.can_move() or context.actor.is_vaulting() or context.actor.melee_active: return false
+		if context.actor.global_position.distance_to(entry.staging_position) > 0.35 or context.actor.is_vaulting() or context.actor.melee_active: return false
+		if entry.role not in [&"front_support", &"assisted_reload"] and not context.actor.can_move(): return false
 	if state == &"complete":
 		if entry.complete: return true
 		if entry.role in [&"flank", &"inspect_left", &"inspect_right"] and context.actor.global_position.distance_to(entry.selected_position) > 0.35: return false
@@ -1789,22 +1825,26 @@ func _coordination_requests(ids: Array, source: Dictionary) -> Array:
 	var plan: Dictionary = _coordination_plans.get(source.team_id, {})
 	if not plan.is_empty():
 		for entry: Dictionary in plan.assignments:
-			if not entry.accepted or entry.complete or not entry.role in [&"flank", &"inspect_left", &"inspect_right", &"search_sector"] or not _coordination_assignment_valid(plan, entry): continue
+			if not entry.accepted or entry.complete or not entry.role in [&"flank", &"team_position", &"assisted_reload", &"assisted_retreat", &"inspect_left", &"inspect_right", &"search_sector"] or not _coordination_assignment_valid(plan, entry): continue
 			var status: Dictionary = _members[entry.actor_id].status
 			var moving: bool = elapsed - float(status.get("updated_at", -INF)) <= 0.35 and status.get("moving", false)
-			if not moving and elapsed > float(entry.get("support_prepare_until", -INF)): continue
-			result.append({"request_id": entry.assignment_id, "actor_id": entry.actor_id, "kind": &"advance", "accepted": true,
+			var kind: StringName = &"reload" if entry.role == &"assisted_reload" else (&"retreat" if entry.role == &"assisted_retreat" else &"advance")
+			var actual: bool = status.get("reloading", false) if kind == &"reload" else moving
+			if not actual and elapsed > float(entry.get("support_prepare_until", -INF)): continue
+			result.append({"request_id": entry.assignment_id, "assignment_id": entry.assignment_id, "actor_id": entry.actor_id, "kind": kind, "accepted": true, "actual": actual,
 				"target_id": source.target_id, "evidence_id": source.evidence_id, "captured_at": entry.accepted_at,
-				"valid_until": minf(entry.expires_at, plan.stage_until)})
+				"valid_until": entry.expires_at if actual else minf(entry.expires_at, float(entry.get("support_prepare_until", entry.expires_at)))})
 	return result.slice(0, 32)
 
-func _coordination_frame_valid(summary: Dictionary, source: Dictionary, role: StringName, position: Vector3) -> bool:
+func _coordination_frame_valid(summary: Dictionary, source: Dictionary, role: StringName, position: Vector3, support_any_side: bool = false) -> bool:
 	if role not in [&"flank", &"front_support"] or not summary.has("tactical_key"): return true
 	var anchor: Variant = summary.get("tactical_anchor")
 	var axis: Variant = summary.get("tactical_axis")
 	if not anchor is Vector3 or not axis is Vector3 or not anchor.is_finite() or not axis.is_finite(): return false
 	if anchor.distance_to(source.position) > 0.001 or axis.distance_to(source.front_axis) > 0.001 or absf(axis.y) > 0.001 or absf(axis.length() - 1.0) > 0.001: return false
 	var side: float = (position - anchor).dot(axis)
+	if role == &"front_support" and support_any_side:
+		return summary.get("side", 0) == (1 if side > FLANK_SIDE_MARGIN else (-1 if side < -FLANK_SIDE_MARGIN else 0))
 	return side < -FLANK_SIDE_MARGIN if role == &"flank" else side > FLANK_SIDE_MARGIN
 
 func _coordination_offer_observed(source: Dictionary, offer: Dictionary) -> bool:
@@ -1861,6 +1901,7 @@ func _coordination_snapshot(team_id: int, source: Dictionary, ids: Array) -> Dic
 			"advisory_active": _recommendations.get(id, {}).get("accepted", false),
 			"personal_baseline": _coordination_baselines.get(id, {}).duplicate(true),
 			"status": {"rounds": int(status.get("rounds", 0)), "magazine_capacity": int(status.get("magazine_capacity", 0)),
+				"needs_fire_handoff": float(status.get("rounds", 0)) / maxf(1.0, float(status.get("magazine_capacity", 0))) <= float(context.setting(&"cooperation", &"reload_rounds_ratio", 0.35)),
 				"health_ratio": float(status.get("health_ratio", 1.0)), "pressure": float(status.get("pressure", 0.0)),
 				"reloading": bool(status.get("reloading", false)), "can_move": context.actor.can_move()}})
 	var snapshot_value := {"now": elapsed, "generation": generation, "team_id": team_id, "domain": "team:%s" % team_id,
@@ -1961,6 +2002,9 @@ func _coordination_plan_duration(proposal: Dictionary) -> float:
 func _install_coordination_proposal(team_id: int, source: Dictionary, proposal: Dictionary) -> void:
 	var previous: Dictionary = _coordination_plans.get(team_id, {})
 	if proposal.operation == &"keep": return
+	if proposal.operation == &"handoff" and not previous.is_empty():
+		_install_support_handoff(previous, proposal)
+		return
 	if proposal.operation == &"none":
 		if not previous.is_empty(): _drop_coordination_plan(team_id, StringName(proposal.reason))
 		return
@@ -2011,6 +2055,21 @@ func _install_coordination_proposal(team_id: int, source: Dictionary, proposal: 
 			if not extending: entry.ready_for_phase = false
 			retained.append(entry)
 	plan.assignments = retained + new_entries
+	if not repairing:
+		plan.support_links = proposal.get("support_links", []).duplicate(true)
+		for link: Dictionary in plan.support_links:
+			link.expires_at = plan.expires_at
+			link.revision = 1
+			for entry: Dictionary in plan.assignments:
+				if entry.actor_id == link.beneficiary_id and link.request_id == 0: link.request_id = entry.assignment_id
+	elif not extending:
+		for link: Dictionary in plan.get("support_links", []):
+			var previous_provider: int = link.get("pending_provider_id", link.provider_id)
+			if replaced.has(previous_provider): link.pending_provider_id = replaced[previous_provider]
+			link.beneficiary_id = replaced.get(link.beneficiary_id, link.beneficiary_id)
+			link.revision += 1
+			for entry: Dictionary in new_entries:
+				if entry.actor_id == link.beneficiary_id and link.kind != &"support": link.request_id = entry.assignment_id
 	# Atomic install: every selected preview was validated above. The planner
 	# has checked mutual conflicts; transactions recheck current physical facts.
 	if not previous.is_empty():
@@ -2050,12 +2109,82 @@ func _record_coordination_failure(entry: Dictionary, plan: Dictionary) -> void:
 		"valid_until": elapsed + 2.0, "team_id": plan.team_id, "target_id": plan.target_id, "evidence_id": plan.evidence_id})
 	if _coordination_failures.size() > 128: _coordination_failures.pop_front()
 
+func _install_support_handoff(plan: Dictionary, proposal: Dictionary) -> void:
+	if not plan.get("handoff", {}).is_empty() or proposal.assignments.size() != 1: return
+	var entry := _coordination_entry(proposal.assignments[0], plan)
+	if entry.is_empty(): return
+	var handoff: Dictionary = proposal.handoff.duplicate(true)
+	var travel := 0.0
+	for offer: Dictionary in entry.raw_offers: travel = maxf(travel, float(offer.travel_seconds))
+	handoff.expires_at = minf(plan.expires_at, elapsed + travel + COORDINATION_WAIT_SECONDS)
+	plan.handoff = handoff
+	plan.assignments.append(entry)
+	_reservations[entry.reservation_id] = _coordination_reservation(_context(entry.actor_id), entry, plan)
+	revision += 1
+
+func _support_assignment_ready(entry: Dictionary, plan: Dictionary) -> bool:
+	if entry.is_empty() or not entry.accepted or entry.get("report_phase_id", -1) != plan.phase_id or elapsed - float(entry.last_report_at) > COORDINATION_REPORT_SECONDS: return false
+	var provider = _context(entry.actor_id)
+	return provider != null and provider.actor.global_position.distance_to(entry.get("staging_position", Vector3.INF)) <= 0.35 and _coordination_actual(provider, plan.target_id).fire_ready and not _members[entry.actor_id].status.get("moving", false)
+
+func _advance_support_handoff(plan: Dictionary) -> bool:
+	# Repair replaces a failed slot, not the last established covering fire.
+	# Keep that identity unavailable until its replacement really reaches/fire.
+	for link: Dictionary in plan.get("support_links", []):
+		if link.has("pending_provider_id") and _support_assignment_ready(_assignment_for_owner(link.pending_provider_id), plan):
+			link.provider_id = link.pending_provider_id
+			link.erase("pending_provider_id")
+			link.revision += 1
+			revision += 1
+	var handoff: Dictionary = plan.get("handoff", {})
+	if not handoff.is_empty():
+		var replacement := _assignment_for_owner(handoff.replacement_provider_id)
+		var available := _support_assignment_ready(replacement, plan)
+		if available:
+			for link: Dictionary in plan.get("support_links", []):
+				if link.provider_id == handoff.previous_provider_id:
+					link.provider_id = handoff.replacement_provider_id
+					link.revision += 1
+			_remove_support_assignment(plan, handoff.previous_provider_id)
+			plan.required_participants = plan.required_participants.map(func(id): return handoff.replacement_provider_id if id == handoff.previous_provider_id else id)
+			plan.handoff = {}
+			plan.handoff_wait = {}
+			revision += 1
+		elif replacement.is_empty() or handoff.expires_at <= elapsed:
+			_remove_support_assignment(plan, handoff.replacement_provider_id)
+			plan.handoff = {}
+			# Keep the old dependency only until its original bounded recovery.
+			plan.handoff_wait = {"provider_id": handoff.previous_provider_id, "until": elapsed}
+	var waiting: Dictionary = plan.get("handoff_wait", {})
+	if waiting.is_empty():
+		for link: Dictionary in plan.get("support_links", []):
+			if link.has("pending_provider_id"): continue
+			var provider = _context(link.provider_id)
+			if provider == null or not provider.actor.can_use_firearms(): continue
+			var ratio: float = float(provider.actor.ammo.magazine_rounds) / maxf(1.0, provider.actor.weapon.magazine_capacity)
+			if ratio <= float(provider.setting(&"cooperation", &"reload_rounds_ratio", 0.35)):
+				plan.handoff_wait = {"provider_id": link.provider_id, "until": minf(plan.expires_at, elapsed + COORDINATION_WAIT_SECONDS)}
+				break
+	elif waiting.until <= elapsed and plan.get("handoff", {}).is_empty():
+		_drop_coordination_plan(plan.team_id, &"support_handoff_unavailable")
+		return false
+	return true
+
+func _remove_support_assignment(plan: Dictionary, owner_id: int) -> void:
+	for entry: Dictionary in plan.assignments:
+		if entry.actor_id == owner_id:
+			_reservations.erase(entry.reservation_id)
+			_reservations.erase(entry.get("pending_reservation_id", 0))
+	plan.assignments = plan.assignments.filter(func(entry): return entry.actor_id != owner_id)
+	for entry: Dictionary in plan.assignments: entry.partner_ids = entry.partner_ids.filter(func(id): return id != owner_id)
+
 func _advance_coordination_phase(plan: Dictionary) -> void:
 	if plan.expires_at <= elapsed or _coordination_plan_source(plan).is_empty():
 		for entry: Dictionary in plan.assignments:
 			if not entry.complete: _record_coordination_failure(entry, plan)
 		_drop_coordination_plan(plan.team_id, &"expired")
 		return
+	if not _advance_support_handoff(plan): return
 	var all_accepted := true
 	var all_complete := true
 	var movers_complete := true
@@ -2082,7 +2211,7 @@ func _advance_coordination_phase(plan: Dictionary) -> void:
 			if not ready: unready.append(entry)
 	# Front fire supports the actual maneuver; it need not invent a separate
 	# completion movement or wait until the whole lease expires after arrival.
-	if all_complete or (plan.tactic in [&"flank", &"concentrate", &"disperse"] and mover_count > 0 and movers_complete):
+	if all_complete or (plan.tactic in [&"flank", &"concentrate", &"disperse", &"reload", &"retreat"] and mover_count > 0 and movers_complete):
 		_drop_coordination_plan(plan.team_id, &"complete")
 		return
 	if plan.phase == &"assigning" and all_accepted:
@@ -2092,6 +2221,7 @@ func _advance_coordination_phase(plan: Dictionary) -> void:
 		for entry: Dictionary in plan.assignments:
 			for offer: Dictionary in entry.raw_offers: longest = maxf(longest, float(offer.path_summary.staging_seconds))
 		plan.stage_until = minf(plan.expires_at, elapsed + longest + COORDINATION_WAIT_SECONDS)
+		for entry: Dictionary in plan.assignments: entry.support_prepare_until = minf(entry.expires_at, plan.stage_until)
 		# Non-synchronized support/search tasks start after acceptance; inspect
 		# and flank wait on real same-phase entry facts, never preview ready.
 		if plan.required_participants.is_empty(): required_ready = true

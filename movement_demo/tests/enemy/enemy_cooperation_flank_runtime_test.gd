@@ -64,6 +64,12 @@ func _fixture(count: int, enabled: bool, narrow: bool = false) -> Dictionary:
 			body.remove_from_group("cover_region")
 	root.add_child(scene)
 	current_scene = scene
+	# CoverRegion._ready() registers itself again on tree entry. The fixture's
+	# disabled saved props must also leave the spatial registry after _ready;
+	# otherwise an open navigation rectangle still prepares ghost cover points.
+	for body in region.get_node("Environment").get_children():
+		if body is StaticBody3D and body.name != "Floor" and body.collision_layer == 0:
+			body.remove_from_group("cover_region")
 	# Nodes with a physics callback are registered during tree entry. Freeze the
 	# completed scene as the original probe does, not only its pre-tree instance.
 	player.set_physics_process(false)

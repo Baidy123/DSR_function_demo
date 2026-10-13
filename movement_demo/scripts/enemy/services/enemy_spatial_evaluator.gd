@@ -193,6 +193,13 @@ func destinations(action) -> Array:
 			return _cached_destinations(job.cache)
 	return []
 
+## Read-only initial preparation state; the existing frame budget does the work.
+func initial_preparation_pending(channel: StringName) -> bool:
+	for job in jobs:
+		if job.channel == channel:
+			return job.completed_passes == 0 and not job.points.is_empty() and job.cache.is_empty()
+	return false
+
 ## 已在预算内完成的几何结果；候选收集只重算共同代价，提交执行时再精确复核。
 func assessments(action) -> Array:
 	for job in jobs:

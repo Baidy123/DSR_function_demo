@@ -6,6 +6,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from regression_runner import suite_main
 
 TESTS = [
+    "enemy_team_support_execution_test",
+    "enemy_team_support_planner_test",
     "enemy_team_posture_runtime_test",
     "enemy_team_posture_planner_test",
     "enemy_team_awareness_levels_runtime_test",
@@ -121,7 +123,8 @@ def main():
     return suite_main(directory, directory.parents[1], TESTS, "enemy_regressions",
                       "Enemy regressions",
                       {"enemy_cooperation_flank_runtime_test": 300, "cooperation_runtime_test": 180,
-                       "enemy_team_awareness_levels_runtime_test": 240})
+                       "enemy_team_awareness_levels_runtime_test": 240,
+                       "enemy_team_support_execution_test": 240})
 
 if __name__ == "__main__":
     raise SystemExit(main())

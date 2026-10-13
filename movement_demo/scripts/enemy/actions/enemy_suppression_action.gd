@@ -74,6 +74,9 @@ func _support_request(preferred: int = 0) -> Dictionary:
 
 func _purpose(mode: StringName, basis: Dictionary, preferred: int = 0) -> Dictionary:
 	if not _evidence_live(basis) or not _basis_aim(basis).is_finite(): return {}
+	if _team_orders_enabled():
+		var assignment: Dictionary = context.coordination_assignment()
+		if assignment.get("owner_action") == action_id and assignment.get("role") == &"front_support": return {"reason": &"team_support"}
 	# A committed wave keeps its original reason and beneficiary. A different
 	# opportunity may enter a new Utility decision only after this wave ends.
 	if active:
@@ -148,12 +151,28 @@ func _slot_available(task: Dictionary) -> bool:
 	return true
 
 func collect_candidates(visible: bool) -> Array[Dictionary]:
+	_team_offers.clear()
 	var result: Array[Dictionary] = []
 	if not is_enabled() or not actor.can_use_firearms() or context.is_executing_cover_plan(): return result
+	if active and plan.has("coordination_role") and _team_assignment_valid(plan) and valid(visible): return [plan.duplicate(true)]
 	_sync_generation()
 	var mode: StringName = _current_mode() if active else &"visible" if visible else &"point"
 	if (mode == &"visible") != visible: return result
 	var basis: Dictionary = _basis() if active or not visible else context.cooperation_target_evidence()
+	if _team_orders_enabled():
+		var support := preview_candidate(mode, basis)
+		if not support.is_empty():
+			var preview := _preview(mode, basis)
+			var prediction := _support_prediction(mode, preview, maxf(0.1, duration_min), true)
+			if prediction.support_seconds > 0.0:
+				support.suppression_reason = &"team_support"
+				support.erase("cooperation")
+				support.support_intent = true
+				var source: Dictionary = context.coordination_source(context.cooperation_target_id())
+				var side: float = (actor.global_position - source.get("position", actor.global_position)).dot(source.get("front_axis", Vector3.ZERO))
+				if not source.is_empty() and _offer_team_candidate(support, &"front_support", {"holds_front": true, "expected_fire_seconds": prediction.support_seconds,
+					"tactical_key": "flank:%s" % source.evidence_id, "tactical_anchor": source.position, "tactical_axis": source.front_axis,
+					"side": 1 if side > 0.5 else (-1 if side < -0.5 else 0)}): result.append(support)
 	if _purpose(mode, basis, _request_id if active else 0).is_empty(): return result
 	var candidate := preview_candidate(mode, basis)
 	if not candidate.is_empty() and _slot_available(candidate.get("cooperation", {})): result.append(candidate)
@@ -183,6 +202,7 @@ func preview_candidate(mode: StringName, basis: Dictionary = {}, duration: float
 	return candidate
 
 func validate(candidate: Dictionary, visible: bool) -> bool:
+	if candidate.has("coordination_role") and not _team_assignment_valid(candidate): return false
 	if not is_enabled() or candidate.get("target_id", context.cooperation_target_id()) != context.cooperation_target_id(): return false
 	var mode: StringName = candidate.get("plan", default_mode())
 	var basis: Dictionary = candidate.get("suppression_evidence", _basis())
@@ -218,7 +238,8 @@ func begin(candidate: Dictionary, visible: bool) -> bool:
 	if _reason == &"personal_loss": context.consume_suppression(basis)
 	if _reason == &"close": _close_available_at = context.evidence_elapsed_seconds + maxf(duration_min, context.fire.burst_pause_seconds)
 	remaining = minf(randf_range(maxf(0.1, duration_min), maxf(maxf(0.1, duration_min), duration_max)), float(basis.valid_until) - context.evidence_elapsed_seconds)
-	_shots_remaining = mini(actor.ammo.magazine_rounds, maxi(1, context.fire.burst_shots_remaining(_reason == &"support")))
+	if candidate.has("coordination_role"): remaining = minf(remaining, float(candidate.coordination_assignment.expires_at) - context.coordination_now())
+	_shots_remaining = mini(actor.ammo.magazine_rounds, maxi(1, context.fire.burst_shots_remaining(_reason in [&"support", &"team_support"])))
 	target_center = preview.center
 	_clear_targets.assign(preview.targets)
 	active = true
@@ -270,8 +291,16 @@ func tick(delta: float, visible: bool) -> Dictionary:
 	_running = active
 	var fire: Dictionary = {}
 	if active:
-		fire = {"owner": action_id, "mode": &"visible", "support_intent": true} if mode_visible() else {"owner": action_id, "mode": &"memory", "point": aim_point, "support_intent": _reason == &"support"}
+		fire = {"owner": action_id, "mode": &"visible", "support_intent": true} if mode_visible() else {"owner": action_id, "mode": &"memory", "point": aim_point, "support_intent": _reason in [&"support", &"team_support"]}
 	return motion(Vector3.ZERO, 1.0, aim_point - actor.global_position, fire)
+
+func execution_contract(visible: bool) -> Dictionary:
+	if not plan.has("coordination_role"): return super.execution_contract(visible)
+	var ready := false
+	for member: Dictionary in context.cooperation_snapshot().get("members", []):
+		if member.id == actor.get_instance_id(): ready = member.get("ready", false) and not member.get("moving", false)
+	return {"valid": valid(visible) and _team_assignment_valid(plan), "segment_boundary": false,
+		"remaining_seconds": maxf(0.0, remaining), "ready_for_phase": ready, "progress": 0.0}
 
 func on_shot_fired() -> void:
 	if not active: return

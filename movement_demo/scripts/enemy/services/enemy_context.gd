@@ -792,6 +792,9 @@ func coordination_assignment() -> Dictionary:
 	if cooperation == null or not coordinated_cooperation_enabled() or cooperation.registered_member_count() <= 1 or not cooperation.has_method("assignment"): return {}
 	return cooperation.assignment(self)
 
+func coordination_support_state() -> Dictionary:
+	return cooperation.assignment_support(self) if coordinated_cooperation_enabled() else {}
+
 func coordination_recommendation() -> Dictionary:
 	return cooperation.recommendation(self) if cooperation_enabled() and cooperation_level() == 1 else {}
 
@@ -866,6 +869,8 @@ func publish_coordination_offers(options: Array[Dictionary], offers: Array[Dicti
 		if raw.get("owner_action") != candidate.get("id"): continue
 		var offer := raw.duplicate(true)
 		offer.cost = candidate.cost
+		offer.cooperation_weight = maxf(0.0, utility_cooperation_weight)
+		offer.scored_cooperation_seconds = maxf(0.0, float(candidate.get("breakdown", {}).get("cooperation_seconds", 0.0)))
 		var role: StringName = offer.get("role", &"")
 		if not roles.has(role): roles[role] = []
 		roles[role].append(offer)
@@ -929,6 +934,11 @@ func coordination_choices(options: Array[Dictionary]) -> Array[Dictionary]:
 				baseline = {"cost": float(candidate.cost), "horizon": utility_horizon_seconds,
 					"unavailable_seconds": float(outcome.get("unavailable_seconds", utility_horizon_seconds)),
 					"exposed_seconds": float(outcome.get("exposed_seconds", 0.0)), "information_loss": float(outcome.get("information_loss", 0.0))}
+		if not baseline.is_empty():
+			# A hurt member's first defensive alternatives must enter comparison
+			# before the squad commits it to a long maneuver. Personal AI continues
+			# while the same finite spatial queue prepares those alternatives.
+			baseline.preparation_ready = not (sees_player and can_use_action(&"covering_retreat") and _reload_risk_aversion() > 0.01 and spatial.initial_preparation_pending(&"shelter_geometry"))
 		cooperation.publish_personal_baseline(self, baseline)
 	var assignment := coordination_assignment()
 	if assignment.is_empty():

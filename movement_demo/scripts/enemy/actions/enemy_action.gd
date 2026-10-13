@@ -9,6 +9,7 @@ var route_motion = preload("res://scripts/enemy/actions/enemy_route_motion.gd").
 var plan: Dictionary = {}
 var _running := false
 var _standalone_settings: Dictionary = {}
+var _team_offers: Array[Dictionary] = []
 var actor:
 	get: return context.actor if context != null else null
 var enemy:
@@ -46,7 +47,52 @@ func collect_candidates(_visible: bool) -> Array[Dictionary]:
 ## Offers are already prepared pure values, never new geometry work or candidates.
 ## Ordinary actions do not acquire a tactical role by implementing this protocol.
 func coordination_offers(_visible: bool) -> Array[Dictionary]:
-	return []
+	return _team_offers.duplicate(true)
+
+func _team_orders_enabled() -> bool:
+	return context != null and context.cooperation != null and context.cooperation.has_team_binding(context) and context.coordinated_cooperation_enabled()
+
+## Concrete actions supply only candidates they already assessed. This helper
+## serializes the common protocol; it never creates a route or a firing fact.
+func _offer_team_candidate(candidate: Dictionary, role: StringName, summary: Dictionary) -> bool:
+	if not _team_orders_enabled() or not candidate.get("route", {}).is_empty(): return false
+	var source: Dictionary = context.coordination_source(context.cooperation_target_id())
+	var identity: Dictionary = context.coordination_offer_identity()
+	if source.is_empty() or identity.is_empty(): return false
+	var point: Vector3 = candidate.get("destination", {}).get("position", candidate.get("destination", {}).get("hide", actor.global_position))
+	if not point.is_finite(): return false
+	var key := "%s:%s:%s:%s:%s:%s" % [actor.get_instance_id(), action_id, role, candidate.get("plan", &""), point, source.evidence_id]
+	var actual: Dictionary = {}
+	for member: Dictionary in context.cooperation_snapshot().get("members", []):
+		if member.id == actor.get_instance_id(): actual = member
+	var path_summary := summary.duplicate(true)
+	path_summary.staging_position = actor.global_position
+	path_summary.staging_seconds = 0.0
+	var offer := identity.duplicate()
+	offer.merge({"scope": &"tactical", "owner_action": action_id, "offer_key": key, "role": role,
+		"position_set_key": "%s:%s" % [action_id, point], "position": point, "target_id": source.target_id, "evidence_id": source.evidence_id,
+		"path_summary": path_summary, "travel_seconds": float(summary.get("travel_seconds", 0.0)),
+		"unavailable_seconds": float(candidate.outcome.unavailable_seconds), "exposed_seconds": float(candidate.outcome.exposed_seconds),
+		"information_loss": float(candidate.outcome.get("information_loss", 0.0)),
+		"movement_possible": actor.can_move() and not actor.is_vaulting() and not actor.melee_active,
+		"fire_ready": actual.get("ready", false) and not actual.get("moving", false),
+		"measured_support_seconds": float(actual.get("support_seconds", 0.0)) if not actual.get("moving", false) else 0.0,
+		"captured_at": context.evidence_elapsed_seconds,
+		"valid_until": context.evidence_elapsed_seconds + minf(0.75, float(source.valid_until) - context.coordination_now())})
+	candidate.coordination_offer_key = key
+	candidate.coordination_role = role
+	candidate.coordination_staging_position = actor.global_position
+	_team_offers.append(offer)
+	return true
+
+func _team_assignment_valid(candidate: Dictionary) -> bool:
+	if not _team_orders_enabled(): return false
+	var assignment: Dictionary = context.coordination_assignment()
+	return assignment.get("owner_action") == action_id and assignment.get("role") == candidate.get("coordination_role") and assignment.get("allowed_offer_keys", []).has(candidate.get("coordination_offer_key", ""))
+
+func _team_wait_fire(visible: bool) -> Dictionary:
+	var fire := {"owner": action_id, "mode": &"visible"} if visible and actor.can_use_firearms() and not actor.ammo.is_reloading and actor.ammo.magazine_rounds > 0 else {}
+	return motion(Vector3.ZERO, 1.0, context.last_known_position - actor.global_position, fire)
 
 ## An override confirms actual self-preservation; caller labels grant no exception.
 func assignment_escape(_candidate: Dictionary, _visible: bool) -> bool:
