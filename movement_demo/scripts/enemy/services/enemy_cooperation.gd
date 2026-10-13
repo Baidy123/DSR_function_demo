@@ -19,6 +19,11 @@ var _reservations: Dictionary = {}
 var _member_serial := 0
 var _teams: Dictionary = {}
 var _team_by_member: Dictionary = {}
+var _team_settings: Dictionary = {}
+var _team_setting_versions: Dictionary = {}
+var _team_bindings_fingerprint := 0
+var _team_bindings_initialized := false
+var _team_config_serial := 0
 # Tactical draft: shared observations and proposals are values. No action/body
 # reference is retained or invoked by the planner or assignment transaction.
 var _coordination_sources: Dictionary = {}
@@ -49,6 +54,78 @@ const FLANK_GEOMETRY_TARGET_STEP := 0.25
 ## Stage 2: positions are locally validated before this service reserves them.
 ## A reservation carries no tactical assignment or permission to execute a body.
 const MAX_BASIC_RESERVATION_SECONDS := 30.0
+
+## One value snapshot per squad, never one mutable Training per member.
+func configure_team_bindings(bindings: Array) -> void:
+	var fingerprints: Array = []
+	for binding in bindings: fingerprints.append(binding.fingerprint() if binding is EnemyTeamCooperationBinding else 0)
+	var fingerprint := hash(fingerprints)
+	if _team_bindings_initialized and fingerprint == _team_bindings_fingerprint: return
+	_team_bindings_initialized = true
+	_team_bindings_fingerprint = fingerprint
+	var next: Dictionary = {}
+	for binding in bindings:
+		if not binding is EnemyTeamCooperationBinding: continue
+		var key: String = binding.squad_key()
+		if next.has(key):
+			next[key].diagnostic = "同一小队存在重复绑定，战术安排已停用。"
+			next[key].level = 0
+			continue
+		var profile = binding.profile
+		next[key] = {"level": int(profile.level) if profile != null else 0,
+			"values": profile.values() if profile != null else {},
+			"overridden": profile.overridden.duplicate() if profile != null else PackedStringArray(),
+			"diagnostic": "小队缺少团队意识配置。" if profile == null else ""}
+	var changed: Array = []
+	for key in _team_settings:
+		if not next.has(key): changed.append(key)
+	for key in next:
+		if next[key] != _team_settings.get(key, {}): changed.append(key)
+	if changed.is_empty(): return
+	for key in changed:
+		_team_config_serial += 1
+		_team_setting_versions[key] = _team_config_serial
+	for id: int in _members:
+		if not changed.has(_members[id].domain): continue
+		release_member(id)
+		_drop_coordination_plan(int(_team_by_member.get(id, 0)), &"team_configuration")
+	_team_settings = next
+	_rebuild_teams()
+	revision += 1
+
+func _team_setting_key(context) -> String:
+	if context == null or not is_instance_valid(context.actor): return ""
+	var member: Dictionary = _members.get(context.actor.get_instance_id(), {})
+	return member.domain if not member.is_empty() and _member_domain_matches(context.actor, member) else _domain(context.actor)
+
+func has_team_binding(context) -> bool:
+	return _team_settings.has(_team_setting_key(context))
+
+func team_abilities(context) -> Dictionary:
+	var key := _team_setting_key(context)
+	if not _team_settings.has(key): return {}
+	var settings: Dictionary = _team_settings[key]
+	return {"level": settings.level, "squad_key": key, "team_config_revision": _team_setting_versions[key], "diagnostic": settings.diagnostic}
+
+func team_level(context, legacy_level: int = 0) -> int:
+	var settings: Dictionary = _team_settings.get(_team_setting_key(context), {})
+	return int(settings.get("level", legacy_level))
+
+func team_configuration_revision(context) -> int:
+	return int(_team_setting_versions.get(_team_setting_key(context), 0))
+
+func team_setting(context, key: StringName, fallback: Variant, unit_defaults: Dictionary = {}) -> Variant:
+	var settings: Dictionary = _team_settings.get(_team_setting_key(context), {})
+	if key == &"level": return settings.get("level", fallback)
+	var values: Dictionary = settings.get("values", {})
+	if values.has(key) and (settings.overridden.has(String(key)) or not unit_defaults.has(key)): return values[key]
+	return unit_defaults.get(key, fallback)
+
+func team_configuration_diagnostics() -> Dictionary:
+	var result: Dictionary = {}
+	for key in _team_settings:
+		if not String(_team_settings[key].diagnostic).is_empty(): result[key] = _team_settings[key].diagnostic
+	return result
 
 func _rebuild_teams() -> void:
 	var groups: Array = []
@@ -110,7 +187,8 @@ func coordination_identity(context) -> Dictionary:
 	return {"actor_id": id, "generation": generation, "member_generation": member.member_generation,
 		"team_id": _team_by_member.get(id, 0), "domain": member.domain, "relation_revision": relation_revision,
 		"config_revision": member.config_revision, "environment_revision": member.environment_revision,
-		"navigation_revision": member.navigation_revision, "versions_published": member.versions_published}
+		"navigation_revision": member.navigation_revision, "versions_published": member.versions_published,
+		"team_config_revision": team_configuration_revision(context)}
 
 func _reservation_text(value: Variant) -> bool:
 	return (value is String or value is StringName) and not String(value).is_empty()
@@ -153,6 +231,7 @@ func _reservation_footprint(context, position: Vector3) -> Dictionary:
 
 func _reservation_offer_valid(context, offer: Dictionary) -> bool:
 	if not _reservation_member_valid(context) or not _members[context.actor.get_instance_id()].versions_published: return false
+	if int(offer.get("team_config_revision", 0)) != team_configuration_revision(context): return false
 	if offer.get("scope") != &"basic" or offer.get("role") != &"independent_position": return false
 	for key in [&"offer_key", &"owner_action", &"position_set_key"]:
 		if not _reservation_text(offer.get(key)): return false
@@ -171,6 +250,7 @@ func _reservation_valid(entry: Dictionary) -> bool:
 	if entry.get("scope") == &"tactical" and not _tactical_reservation_valid(entry): return false
 	var context = _context(int(entry.owner_id))
 	if not _reservation_member_valid(context) or entry.generation != generation or entry.expires_at <= elapsed: return false
+	if int(entry.get("team_config_revision", 0)) != team_configuration_revision(context): return false
 	if entry.phase == &"pending" and entry.accept_until <= elapsed: return false
 	if not context.can_use_action(StringName(entry.owner_action)): return false
 	if entry.target_id != 0 and context.cooperation_target_id() != entry.target_id: return false
@@ -458,7 +538,10 @@ func can_share_intel(sender_id: int, receiver_id: int) -> bool:
 	return first.group == second.group and (first.faction == second.faction or _relations.get([first.faction, second.faction], &"") == &"allied")
 
 func can_cooperate(first_id: int, second_id: int) -> bool:
-	return can_share_intel(first_id, second_id)
+	if not can_share_intel(first_id, second_id): return false
+	var first: String = _members[first_id].domain
+	var second: String = _members[second_id].domain
+	return first == second or (not _team_settings.has(first) and not _team_settings.has(second))
 
 ## Physical courtesy does not require belonging to the same radio group.
 func can_share_space(first_id: int, second_id: int) -> bool:
@@ -1302,7 +1385,7 @@ func _coordination_roles(context, target_id: int) -> Array:
 	if not context.is_alerted and not context.noise_search_origin.is_finite(): return result
 	if target_id != 0 and context.cooperation_target_id() != target_id: return result
 	var mobile: bool = context.actor.can_move() and not context.actor.is_vaulting() and not context.actor.melee_active
-	if mobile and not context.sees_player and context.can_use_action(&"search") and (context.is_alerted or context.noise_search_origin.is_finite()):
+	if context.coordinated_cooperation_enabled() and mobile and not context.sees_player and context.can_use_action(&"search") and (context.is_alerted or context.noise_search_origin.is_finite()):
 		result.append(&"search_sector")
 		if target_id != 0:
 			result.append(&"inspect_left")
@@ -1315,6 +1398,7 @@ func _coordination_roles(context, target_id: int) -> Array:
 
 func _coordination_offer_valid(context, offer: Dictionary, board_time: bool = false) -> bool:
 	if not _reservation_member_valid(context) or not _members[context.actor.get_instance_id()].versions_published: return false
+	if int(offer.get("team_config_revision", 0)) != team_configuration_revision(context): return false
 	if offer.get("scope") != &"tactical": return false
 	for key in [&"offer_key", &"owner_action", &"position_set_key", &"role"]:
 		if not _reservation_text(offer.get(key)): return false
@@ -1423,6 +1507,7 @@ func _coordination_assignment_valid(plan: Dictionary, entry: Dictionary) -> bool
 	var context = _context(int(entry.actor_id))
 	if _coordination_plan_source(plan).is_empty() or plan.expires_at <= elapsed or entry.expires_at <= elapsed: return false
 	if not _reservation_member_valid(context) or _coordination_team(context) != plan.team_id: return false
+	if int(entry.get("team_config_revision", 0)) != team_configuration_revision(context): return false
 	if not _coordination_roles(context, plan.target_id).has(entry.role) or not context.can_use_action(entry.owner_action): return false
 	var identity := coordination_identity(context)
 	for key in [&"member_generation", &"config_revision", &"environment_revision", &"navigation_revision", &"relation_revision"]:
@@ -2007,6 +2092,9 @@ func _advance_coordination() -> void:
 			continue
 		var source := _coordination_find_source(team_id, ids)
 		if source.is_empty(): continue
+		if team_level(_context(ids[0]), 2) != 2:
+			_drop_coordination_plan(team_id, &"team_level")
+			continue
 		var snapshot_value := _coordination_snapshot(team_id, source, ids)
 		var proposal: Dictionary = _team_planner.propose(snapshot_value)
 		_coordination_counters[team_id] = proposal.get("counters", {}).duplicate(true)

@@ -36,7 +36,7 @@ func _run() -> void:
 	var scene = load("res://scenes/main.tscn").instantiate()
 	root.add_child(scene)
 	current_scene = scene
-	var actor = scene.get_node("Arena/Enemy")
+	var actor = preload("res://tests/enemy/enemy_fire_fixture.gd").primary_enemy(scene)
 	var ai = actor.get_node("AI")
 	var player = scene.get_node("Player")
 	ai.set_physics_process(false)
@@ -134,11 +134,11 @@ func _run() -> void:
 		configured_slots.primary_weapon = MeleeWeapon
 		configured_slots.secondary_weapon = gun if has_fallback else MeleeWeapon
 		configured_slots.starting_slot = 0
-		configured.get_node("Arena/Enemy").weapon = MeleeWeapon
+		preload("res://tests/enemy/enemy_fire_fixture.gd").primary_enemy(configured).weapon = MeleeWeapon
 		root.add_child(configured)
 		current_scene = configured
 		check(configured.get_node("Player/Combat").weapon == (gun if has_fallback else null), "玩家出生误配时选择有效备用槽或保持无武器")
-		check(configured.get_node("Arena/Enemy").weapon == null, "远程兵出生误配纯近战时按未装备处理")
+		check(preload("res://tests/enemy/enemy_fire_fixture.gd").primary_enemy(configured).weapon == null, "远程兵出生误配纯近战时按未装备处理")
 		configured.queue_free()
 		await process_frame
 		await process_frame

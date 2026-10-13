@@ -11,7 +11,7 @@ func _run() -> void:
 	root.add_child(scene)
 	current_scene = scene
 	var arena = scene.get_node("Arena")
-	var enemy = arena.get_node("Enemy")
+	var enemy = preload("res://tests/enemy/enemy_fire_fixture.gd").primary_enemy(arena)
 	var ai = enemy.get_node("AI")
 	var player = scene.get_node("Player")
 	ai.set_physics_process(false)

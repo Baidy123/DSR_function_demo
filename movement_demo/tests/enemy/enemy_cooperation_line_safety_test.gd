@@ -19,7 +19,7 @@ func _run() -> void:
 	arena = scene.get_node("Arena")
 	root.add_child(scene)
 	current_scene = scene
-	first = arena.get_node("Enemy")
+	first = preload("res://tests/enemy/enemy_fire_fixture.gd").primary_enemy(arena)
 	second = load("res://scenes/enemy/enemy.tscn").instantiate()
 	arena.add_child(second)
 	for actor in [first, second]:

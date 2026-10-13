@@ -17,7 +17,7 @@ func _run() -> void:
 
 func _check_loadout(invalid_melee: bool) -> void:
 	var scene = load("res://scenes/main.tscn").instantiate()
-	var enemy = scene.get_node("Arena/Enemy")
+	var enemy = preload("res://tests/enemy/enemy_fire_fixture.gd").primary_enemy(scene)
 	var ai = enemy.get_node("AI")
 	var player = scene.get_node("Player")
 	var melee := WeaponData.new()

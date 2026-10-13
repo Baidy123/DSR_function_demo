@@ -206,7 +206,7 @@ func test_real_scene() -> void:
 	await settle()
 	var actor = scene.get_node("Player")
 	var combat = actor.get_node("Combat")
-	var enemy = scene.get_node("Arena/Enemy")
+	var enemy = preload("res://tests/enemy/enemy_fire_fixture.gd").primary_enemy(scene)
 	enemy.get_node("AI").set_physics_process(false)
 	actor.set_physics_process(false)
 	var view = actor.get_node("Visual/Presentation")

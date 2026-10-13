@@ -37,7 +37,7 @@ func _fixture(count: int, enabled: bool, narrow: bool = false) -> Dictionary:
 	seed(8423)
 	var scene = load("res://scenes/main.tscn").instantiate()
 	var arena = scene.get_node("Arena")
-	var first = arena.get_node("Enemy")
+	var first = preload("res://tests/enemy/enemy_fire_fixture.gd").primary_enemy(arena)
 	# Keep the declared population independent of unsaved/local arena duplicates.
 	for child in arena.get_children():
 		if child != first and child.has_node("AI"): child.free()

@@ -39,7 +39,7 @@ func _mesh() -> NavigationMesh:
 func _fixture(receiver_z: float = 0.0) -> Dictionary:
 	var scene = load("res://scenes/main.tscn").instantiate()
 	var arena = scene.get_node("Arena")
-	var observer = arena.get_node("Enemy")
+	var observer = preload("res://tests/enemy/enemy_fire_fixture.gd").primary_enemy(arena)
 	for child in arena.get_children():
 		if child != observer and child.has_node("AI"): child.free()
 	observer.position = Vector3(4, 0, 4)

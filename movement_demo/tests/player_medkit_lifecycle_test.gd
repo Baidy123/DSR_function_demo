@@ -110,7 +110,7 @@ func _bind() -> void:
 	player = scene.get_node("Player")
 	health = player.get_node("Health")
 	medkit = health.get_node("Medkit")
-	var enemy = scene.get_node("Arena/Enemy")
+	var enemy = preload("res://tests/enemy/enemy_fire_fixture.gd").primary_enemy(scene)
 	enemy.shooting_enabled = false
 	enemy.set_physics_process(false)
 	enemy.get_node("AI").set_physics_process(false)

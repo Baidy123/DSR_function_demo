@@ -15,7 +15,7 @@ func _run() -> void:
 	root.add_child(scene)
 	current_scene = scene
 	# 本组只验证原行为；射击与玩家死亡联动由 enemy_shooting_test 覆盖。
-	scene.get_node("Arena/Enemy").shooting_enabled = false
+	preload("res://tests/enemy/enemy_fire_fixture.gd").primary_enemy(scene).shooting_enabled = false
 	await process_frame
 	var player = scene.get_node("Player")
 	var health = player.get_node_or_null("Health")
@@ -48,7 +48,7 @@ func _run() -> void:
 		await physics_frame
 	_check("死亡前实际进入战斗区", player.get_node("Combat").can_combat() and scene.get_node("Arena").players_inside.has(player))
 	player.stamina = 10.0
-	var enemy = scene.get_node("Arena/Enemy")
+	var enemy = preload("res://tests/enemy/enemy_fire_fixture.gd").primary_enemy(scene)
 	enemy.receive_hit(10000.0, player.global_position)
 	var target_a = scene.get_node("CombatTest/TargetA")
 	var target_b = scene.get_node("CombatTest/TargetB")
@@ -95,7 +95,7 @@ func _run() -> void:
 	_check("重开回出生点与朝向", player.global_transform.is_equal_approx(spawn))
 	_check("重开隐藏死亡界面", not health.get_node("DeathScreen").visible)
 	_check("重开保留对话选择", game_state.talked_to_a and game_state.help_choice == "accepted")
-	enemy = scene.get_node("Arena/Enemy")
+	enemy = preload("res://tests/enemy/enemy_fire_fixture.gd").primary_enemy(scene)
 	_check("重开恢复敌人且场外不激活", not enemy.is_dead and enemy.health == enemy.max_health and not enemy.get_node("AI").is_arena_active())
 	target_a = scene.get_node("CombatTest/TargetA")
 	target_b = scene.get_node("CombatTest/TargetB")

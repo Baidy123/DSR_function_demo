@@ -30,7 +30,7 @@ func _setup() -> void:
 	player.set_physics_process(false)
 	player.combat.set_physics_process(false)
 	player.global_position = arena.to_global(Vector3(6, 0, 7))
-	actors.append(arena.get_node("Enemy"))
+	actors.append(preload("res://tests/enemy/enemy_fire_fixture.gd").primary_enemy(arena))
 	var second = load("res://scenes/enemy/enemy.tscn").instantiate()
 	second.position = Vector3(0, 0, 0)
 	arena.add_child(second)

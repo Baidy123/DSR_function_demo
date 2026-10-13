@@ -24,7 +24,7 @@ func check(ok: bool, label: String) -> void:
 func _run() -> void:
 	scene = load("res://scenes/main.tscn").instantiate()
 	arena = scene.get_node("Arena")
-	shooter = arena.get_node("Enemy")
+	shooter = preload("res://tests/enemy/enemy_fire_fixture.gd").primary_enemy(arena)
 	shooter.get_node("UnitType").profile = preload("res://resources/enemy/units/ranged.tres").duplicate(true)
 	shooter.weapon = WeaponData.new()
 	shooter.position = Vector3(5, 0, 0)

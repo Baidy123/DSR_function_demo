@@ -21,7 +21,7 @@ func _measure(count: int) -> void:
 	player.set_physics_process(false)
 	player.combat.set_physics_process(false)
 	player.health.debug_invincible = true
-	var actors: Array = [arena.get_node("Enemy")]
+	var actors: Array = [preload("res://tests/enemy/enemy_fire_fixture.gd").primary_enemy(arena)]
 	for index in range(1, count):
 		var actor = load("res://scenes/enemy/enemy.tscn").instantiate()
 		actor.get_node("UnitType").profile = load("res://resources/enemy/units/ranged.tres")

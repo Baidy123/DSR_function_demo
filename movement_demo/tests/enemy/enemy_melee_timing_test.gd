@@ -40,7 +40,7 @@ func _fixture() -> void:
 	await _dispose()
 	scene = load("res://scenes/main.tscn").instantiate()
 	var arena = scene.get_node("Arena")
-	actor = arena.get_node("Enemy")
+	actor = preload("res://tests/enemy/enemy_fire_fixture.gd").primary_enemy(arena)
 	for child in arena.get_children():
 		if child != actor and child.has_node("AI"): child.free()
 	root.add_child(scene)

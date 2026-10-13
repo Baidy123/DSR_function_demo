@@ -6,6 +6,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from regression_runner import suite_main
 
 TESTS = [
+    "enemy_team_training_binding_test",
     "enemy_route_evaluation_batch_test",
     "enemy_ally_spacing_test",
     "enemy_ally_spacing_runtime_test",

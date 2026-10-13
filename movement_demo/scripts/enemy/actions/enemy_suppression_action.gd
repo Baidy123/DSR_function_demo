@@ -57,7 +57,7 @@ func _basis_aim(basis: Dictionary, diagnostic: bool = false) -> Vector3:
 	return basis.get("position", Vector3.INF) + Vector3.UP * 0.8 if diagnostic else Vector3.INF
 
 func _support_request(preferred: int = 0) -> Dictionary:
-	if not context.cooperation_enabled(): return {}
+	if not context.coordinated_cooperation_enabled(): return {}
 	var snapshot: Dictionary = context.cooperation_snapshot()
 	for item: Dictionary in snapshot.get("requests", []):
 		var id: int = item.get("request_id", item.get("id", 0))

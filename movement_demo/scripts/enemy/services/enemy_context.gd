@@ -78,8 +78,20 @@ func setup(body: CharacterBody3D, perception_node: Node, selection_node: Node) -
 	last_known_position = body.global_position
 	last_seen_position = body.global_position
 
-func setting(section: StringName, key: StringName, fallback: Variant = null) -> Variant:
-	return training.setting(section, key, fallback) if training != null else fallback
+func setting(section: StringName, key: StringName, fallback: Variant = null, unit_defaults: Dictionary = {}) -> Variant:
+	if section == &"cooperation" and cooperation != null and cooperation.has_team_binding(self):
+		return cooperation.team_setting(self, key, fallback, unit_defaults)
+	return training.setting(section, key, fallback, unit_defaults) if training != null else unit_defaults.get(key, fallback)
+
+func team_cooperation_abilities() -> Dictionary:
+	return cooperation.team_abilities(self) if cooperation != null else {}
+
+func cooperation_level() -> int:
+	if cooperation == null: return 0
+	return cooperation.team_level(self, 2 if can_use_action(&"cooperate") else 0)
+
+func coordinated_cooperation_enabled() -> bool:
+	return cooperation_enabled() and cooperation_level() == 2
 
 func get_tree() -> SceneTree:
 	return actor.get_tree()
@@ -567,7 +579,7 @@ func _record_cover_inspection(evidence: Dictionary, cover: Object = null) -> voi
 	if cooperation != null: cooperation.publish_inspection(self, clue)
 
 func _receive_shared_inspection() -> void:
-	if not cooperation_enabled() or sees_player: return
+	if not coordinated_cooperation_enabled() or sees_player: return
 	var clue: Dictionary = cooperation.inspection_evidence(self, cooperation_target_id())
 	if clue.is_empty() or int(clue.id) == _inspection_notification_id: return
 	_inspection_notification_id = int(clue.id)
@@ -585,7 +597,7 @@ func _receive_shared_inspection() -> void:
 	invalidate_utility()
 
 func cover_inspection_evidence() -> Dictionary:
-	if not cooperation_enabled() or sees_player: return {}
+	if not coordinated_cooperation_enabled() or sees_player: return {}
 	var clue: Dictionary = cooperation.inspection_evidence(self, cooperation_target_id())
 	if not clue.is_empty():
 		var offset: float = evidence_elapsed_seconds - cooperation.elapsed
@@ -596,7 +608,7 @@ func cover_inspection_evidence() -> Dictionary:
 	return clue if clue.get("target_id", 0) == cooperation_target_id() and evidence_elapsed_seconds < float(clue.get("valid_until", -INF)) else {}
 
 func cooperation_enabled() -> bool:
-	return cooperation != null and can_use_action(&"cooperate") and not actor.is_dead
+	return cooperation != null and cooperation_level() > 0 and can_use_action(&"cooperate") and not actor.is_dead
 
 func has_combat_contact() -> bool:
 	return has_visual_memory or team_visual_contact
@@ -728,14 +740,15 @@ func cooperation_search_available(point: Vector3, radius: float = 1.0) -> bool:
 	return cooperation.search_available(self, point, radius) if cooperation != null else true
 
 func cooperation_claim_search(point: Vector3, duration: float = 6.0) -> Dictionary:
+	if not coordinated_cooperation_enabled(): return {}
 	return cooperation_claim({"target_id": cooperation_target_id(), "kind": &"search", "position": point, "duration": duration,
 		"owner_action": utility_current.get("id", &"search"), "radius": float(setting(&"cooperation", &"search_claim_radius", 1.0))})
 
 func cooperation_publish_checked(points: PackedVector3Array) -> void:
-	if cooperation_enabled() and not noise_search_origin.is_finite(): cooperation.publish_checked(self, points)
+	if coordinated_cooperation_enabled() and not noise_search_origin.is_finite(): cooperation.publish_checked(self, points)
 
 func cooperation_checked_points() -> Array[Dictionary]:
-	if not cooperation_enabled() or noise_search_origin.is_finite(): return []
+	if not coordinated_cooperation_enabled() or noise_search_origin.is_finite(): return []
 	var points: Array[Dictionary] = cooperation.checked_points(self)
 	var offset: float = evidence_elapsed_seconds - cooperation.elapsed
 	for item in points:
@@ -744,7 +757,7 @@ func cooperation_checked_points() -> Array[Dictionary]:
 	return points
 
 func cooperation_reload_opportunity() -> Dictionary:
-	return cooperation.reload_opportunity(self) if cooperation_enabled() else {"allowed": false, "support_seconds": 0.0, "provider_id": 0, "request_id": 0}
+	return cooperation.reload_opportunity(self) if coordinated_cooperation_enabled() else {"allowed": false, "support_seconds": 0.0, "provider_id": 0, "request_id": 0}
 
 func cooperation_claim_reload(duration: float) -> Dictionary:
 	if not cooperation_reload_opportunity().allowed: return {}
@@ -776,7 +789,7 @@ func _clear_coordination_memory() -> void:
 ## Called outside the selector's synchronous read-only evaluation. Context never
 ## holds or calls action instances; AI verifies each action's escape permission.
 func coordination_assignment() -> Dictionary:
-	if cooperation == null or not cooperation_enabled() or cooperation.registered_member_count() <= 1 or not cooperation.has_method("assignment"): return {}
+	if cooperation == null or not coordinated_cooperation_enabled() or cooperation.registered_member_count() <= 1 or not cooperation.has_method("assignment"): return {}
 	return cooperation.assignment(self)
 
 func prepare_coordination_evaluation() -> void:
@@ -790,7 +803,7 @@ func coordination_source(target_id: int = 0) -> Dictionary:
 
 ## Static templates remain hints; Actions validate them through Spatial.
 func coordination_search_templates(origin: Vector3, radius: float, layers: int, limit: int = 6) -> Array[Dictionary]:
-	return tactical_map.query_sectors(origin, radius, layers, limit) if tactical_map != null and cooperation_enabled() else []
+	return tactical_map.query_sectors(origin, radius, layers, limit) if tactical_map != null and coordinated_cooperation_enabled() else []
 
 func coordination_search_template_valid(key: String, source_revision: int, navigation_revision: int) -> bool:
 	return tactical_map != null and tactical_map.navigation_revision() == navigation_revision and tactical_map.template_valid(key, source_revision)
@@ -802,7 +815,7 @@ func coordination_checked_points(target_id: int = 0) -> Array[Dictionary]:
 	return cooperation.coordination_checked_points(self, target_id) if cooperation_enabled() else []
 
 func advance_coordination_map(max_points: int, deadline_usec: int, frame: int) -> int:
-	if tactical_map == null or not cooperation_enabled() or cooperation.registered_member_count() <= 1: return 0
+	if tactical_map == null or not coordinated_cooperation_enabled() or cooperation.registered_member_count() <= 1: return 0
 	return int(tactical_map.advance_preparation(max_points, deadline_usec, frame).points)
 
 func coordination_now() -> float:

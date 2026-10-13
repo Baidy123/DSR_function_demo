@@ -19,7 +19,7 @@ func _run() -> void:
 	combat = player.get_node("Combat")
 	slots = player.get_node("WeaponSlots")
 	player.set_physics_process(false)
-	var enemy = scene.get_node("Arena/Enemy")
+	var enemy = preload("res://tests/enemy/enemy_fire_fixture.gd").primary_enemy(scene)
 	enemy.set_physics_process(false)
 	enemy.get_node("AI").set_physics_process(false)
 	for target in get_nodes_in_group("combat_target"):

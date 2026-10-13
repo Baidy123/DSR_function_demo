@@ -219,7 +219,7 @@ func _real_equipment_adapters() -> void:
 	var slots = actor.get_node("WeaponSlots")
 	var combat = actor.get_node("Combat")
 	var view = actor.get_node("Visual/Presentation")
-	var enemy = scene.get_node("Arena/Enemy")
+	var enemy = preload("res://tests/enemy/enemy_fire_fixture.gd").primary_enemy(scene)
 	var enemy_view = enemy.get_node("Presentation")
 	actor.set_physics_process(false)
 	combat.set_physics_process(false)

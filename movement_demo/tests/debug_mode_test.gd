@@ -16,7 +16,7 @@ func _run() -> void:
 	root.add_child(scene)
 	current_scene = scene
 	var player = scene.get_node("Player")
-	var enemy = scene.get_node("Arena/Enemy")
+	var enemy = preload("res://tests/enemy/enemy_fire_fixture.gd").primary_enemy(scene)
 	var health = player.get_node("Health")
 	var combat = player.get_node("Combat")
 	var noise = health.get_node("NoiseRanges")

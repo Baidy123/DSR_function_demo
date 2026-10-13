@@ -5,7 +5,7 @@ const Fixture = preload("res://tests/enemy/enemy_fire_fixture.gd")
 func _run() -> void:
 	var scene = load("res://scenes/main.tscn").instantiate()
 	var arena = scene.get_node("Arena")
-	var actor = arena.get_node("Enemy")
+	var actor = preload("res://tests/enemy/enemy_fire_fixture.gd").primary_enemy(arena)
 	for child in arena.get_children():
 		if child != actor and child.has_node("AI"): child.free()
 	root.add_child(scene)

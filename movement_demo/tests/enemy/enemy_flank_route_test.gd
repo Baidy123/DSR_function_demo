@@ -82,7 +82,7 @@ func _fixture(distance: float, anchor_z: float = 0.0) -> Dictionary:
 	seed(9137)
 	var scene = load("res://scenes/main.tscn").instantiate()
 	var arena = scene.get_node("Arena")
-	var flanker = arena.get_node("Enemy")
+	var flanker = preload("res://tests/enemy/enemy_fire_fixture.gd").primary_enemy(arena)
 	for child in arena.get_children():
 		if child != flanker and child.has_node("AI"): child.free()
 	flanker.position = Vector3(distance, 0, anchor_z)

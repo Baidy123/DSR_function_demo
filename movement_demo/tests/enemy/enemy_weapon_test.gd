@@ -9,7 +9,7 @@ func _run() -> void:
 	var scene = load("res://scenes/main.tscn").instantiate()
 	root.add_child(scene)
 	current_scene = scene
-	var enemy = scene.get_node("Arena/Enemy")
+	var enemy = preload("res://tests/enemy/enemy_fire_fixture.gd").primary_enemy(scene)
 	enemy.get_node("AI").set_physics_process(false)
 	var player = scene.get_node("Player")
 	player.set_physics_process(false)
@@ -76,7 +76,7 @@ func _run() -> void:
 	_check("运行状态不修改共享资源", weapon.initial_accuracy == 0.9 and weapon.shot_accuracy_penalty == 0.15)
 	var other_arena = load("res://scenes/arena.tscn").instantiate()
 	root.add_child(other_arena)
-	var other = other_arena.get_node("Enemy")
+	var other = preload("res://tests/enemy/enemy_fire_fixture.gd").primary_enemy(other_arena)
 	other.get_node("AI").set_physics_process(false)
 	other.equip_weapon(weapon)
 	_check("两个敌人共享配置但稳定度各自独立", other.weapon == enemy.weapon and is_equal_approx(other.get_center_probability(), 0.9) and enemy.get_center_probability() < 0.9)

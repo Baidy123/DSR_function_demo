@@ -22,7 +22,7 @@ func _run() -> void:
 	root.add_child(scene)
 	current_scene = scene
 	root.get_node("DebugSettings").enabled = false
-	var actor = scene.get_node("Arena/Enemy")
+	var actor = preload("res://tests/enemy/enemy_fire_fixture.gd").primary_enemy(scene)
 	var ai = actor.get_node("AI")
 	ai.set_physics_process(false)
 	var player = scene.get_node("Player")

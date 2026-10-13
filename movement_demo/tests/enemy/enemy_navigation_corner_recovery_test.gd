@@ -20,7 +20,7 @@ func _case(cooperation: bool) -> void:
 	var scene = load("res://scenes/main.tscn").instantiate()
 	var arena = scene.get_node("Arena")
 	for child in arena.get_children():
-		if child != arena.get_node("Enemy") and child.has_method("move_character"): child.free()
+		if child != preload("res://tests/enemy/enemy_fire_fixture.gd").primary_enemy(arena) and child.has_method("move_character"): child.free()
 	var navigation: NavigationRegion3D = arena.get_node("NavigationRegion3D")
 	for body in navigation.get_node("Environment").get_children():
 		if body is StaticBody3D and body.name != "Floor":
@@ -42,7 +42,7 @@ func _case(cooperation: bool) -> void:
 	mesh.vertices = PackedVector3Array([Vector3(-8, 0.3, -4), Vector3(-4.75, 0.3, -3), Vector3(-4.5, 0.3, 5), Vector3(-8, 0.3, 5)])
 	mesh.add_polygon(PackedInt32Array([0, 1, 2, 3]))
 	navigation.navigation_mesh = mesh
-	var enemy = arena.get_node("Enemy")
+	var enemy = preload("res://tests/enemy/enemy_fire_fixture.gd").primary_enemy(arena)
 	# Validate a legal spawn first; the captured body reached START through a
 	# preceding slide and remained within the agent's existing 0.4m tolerance.
 	enemy.position = Vector3(-5.3, 0, 4.7)

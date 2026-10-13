@@ -19,7 +19,7 @@ func _run() -> void:
 	combat = player.get_node("Combat")
 	slots = player.get_node("WeaponSlots")
 	player.set_physics_process(false)
-	scene.get_node("Arena/Enemy/AI").set_physics_process(false)
+	preload("res://tests/enemy/enemy_fire_fixture.gd").primary_enemy(scene).get_node("AI").set_physics_process(false)
 	player.get_node("Health").debug_invincible = false
 	weapon = WeaponData.new()
 	weapon.reload_seconds = 2.0

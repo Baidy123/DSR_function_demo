@@ -25,7 +25,7 @@ func _run() -> void:
 	player = scene.get_node("Player")
 	combat = player.get_node("Combat")
 	slots = player.get_node("WeaponSlots")
-	enemy = scene.get_node("Arena/Enemy")
+	enemy = preload("res://tests/enemy/enemy_fire_fixture.gd").primary_enemy(scene)
 	player.set_physics_process(false)
 	for item in get_nodes_in_group("combat_target"):
 		if item.has_method("move_character"):
@@ -63,7 +63,7 @@ func _run() -> void:
 	var restarted = load("res://scenes/main.tscn").instantiate()
 	root.add_child(restarted)
 	current_scene = restarted
-	_check(restarted.get_node("Player").get_melee_movement_multiplier() == 1.0 and restarted.get_node("Arena/Enemy").get_melee_movement_multiplier() == 1.0, "重开场景没有遗留减速")
+	_check(restarted.get_node("Player").get_melee_movement_multiplier() == 1.0 and preload("res://tests/enemy/enemy_fire_fixture.gd").primary_enemy(restarted).get_melee_movement_multiplier() == 1.0, "重开场景没有遗留减速")
 	restarted.queue_free()
 	await process_frame
 	print("Melee hit effects: %d/%d passed" % [checks - failures, checks])

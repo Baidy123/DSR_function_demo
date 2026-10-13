@@ -124,7 +124,7 @@ func _setup(full_training: bool = false) -> void:
 	scene = load("res://scenes/main.tscn").instantiate()
 	arena = scene.get_node("Arena")
 	for child in arena.get_children():
-		if child != arena.get_node("Enemy") and child.has_method("move_character"): child.free()
+		if child != preload("res://tests/enemy/enemy_fire_fixture.gd").primary_enemy(arena) and child.has_method("move_character"): child.free()
 	var navigation: NavigationRegion3D = arena.get_node("NavigationRegion3D")
 	for body in navigation.get_node("Environment").get_children():
 		if body is StaticBody3D and body.name != "Floor":
@@ -147,7 +147,7 @@ func _setup(full_training: bool = false) -> void:
 	navigation.add_child(cover)
 	var screen = _box(Vector3(5.2, 1.5, 0), Vector3(0.2, 3, 16), false)
 	navigation.add_child(screen)
-	var first = arena.get_node("Enemy")
+	var first = preload("res://tests/enemy/enemy_fire_fixture.gd").primary_enemy(arena)
 	first.position = Vector3(-0.65, 0, 2.4)
 	var second = load("res://scenes/enemy/enemy.tscn").instantiate()
 	second.position = Vector3(0.65, 0, 2.4)

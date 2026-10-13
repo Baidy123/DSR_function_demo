@@ -1360,7 +1360,7 @@ func _inspection_candidate() -> Dictionary:
 	return plan.duplicate(true) if _inspection_phase != InspectionPhase.NONE and _inspection_execution_valid(context.sees_player) else {}
 
 func _inspection_coordinator_available() -> bool:
-	return context.cooperation_enabled() and context.cooperation != null and context.cooperation.registered_member_count() > 1 and context.has_method("coordination_source")
+	return context.coordinated_cooperation_enabled() and context.cooperation != null and context.cooperation.registered_member_count() > 1 and context.has_method("coordination_source")
 
 func _inspection_candidates() -> Array[Dictionary]:
 	var result: Array[Dictionary] = []

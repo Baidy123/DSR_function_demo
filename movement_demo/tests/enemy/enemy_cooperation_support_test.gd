@@ -23,7 +23,7 @@ func check(ok: bool, label: String) -> void:
 func _run() -> void:
 	scene = load("res://scenes/main.tscn").instantiate()
 	var arena = scene.get_node("Arena")
-	shooter = arena.get_node("Enemy")
+	shooter = preload("res://tests/enemy/enemy_fire_fixture.gd").primary_enemy(arena)
 	for child in arena.get_children():
 		if child != shooter and child.has_node("AI"): child.free()
 	shooter.position = Vector3(5, 0, 0)

@@ -10,7 +10,7 @@ func _run() -> void:
 	var scene = load("res://scenes/main.tscn").instantiate()
 	root.add_child(scene)
 	current_scene = scene
-	var enemy = scene.get_node("Arena/Enemy")
+	var enemy = preload("res://tests/enemy/enemy_fire_fixture.gd").primary_enemy(scene)
 	var ai = enemy.get_node("AI")
 	var player = scene.get_node("Player")
 	ai.set_physics_process(false)
@@ -110,7 +110,7 @@ func _check_charge_case(mode: StringName) -> void:
 	var scene = load("res://scenes/main.tscn").instantiate()
 	root.add_child(scene)
 	current_scene = scene
-	var enemy = scene.get_node("Arena/Enemy")
+	var enemy = preload("res://tests/enemy/enemy_fire_fixture.gd").primary_enemy(scene)
 	var ai = enemy.get_node("AI")
 	var player = scene.get_node("Player")
 	ai.set_physics_process(false)

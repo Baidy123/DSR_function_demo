@@ -18,7 +18,7 @@ func _run() -> void:
 	scene = load("res://scenes/main.tscn").instantiate()
 	root.add_child(scene)
 	current_scene = scene
-	enemy = scene.get_node("Arena/Enemy")
+	enemy = preload("res://tests/enemy/enemy_fire_fixture.gd").primary_enemy(scene)
 	ai = enemy.get_node("AI")
 	player = scene.get_node("Player")
 	ai.set_physics_process(false)

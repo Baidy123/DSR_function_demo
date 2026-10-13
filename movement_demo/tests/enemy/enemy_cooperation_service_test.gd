@@ -20,7 +20,7 @@ func _run() -> void:
 	root.add_child(scene)
 	current_scene = scene
 	var arena = scene.get_node("Arena")
-	var first = arena.get_node("Enemy")
+	var first = preload("res://tests/enemy/enemy_fire_fixture.gd").primary_enemy(arena)
 	var second = load("res://scenes/enemy/enemy.tscn").instantiate()
 	arena.add_child(second)
 	var player = scene.get_node("Player")

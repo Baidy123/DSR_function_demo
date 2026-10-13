@@ -24,7 +24,7 @@ func _run() -> void:
 	combat = player.get_node("Combat")
 	slots = player.get_node("WeaponSlots")
 	player.set_physics_process(false)
-	scene.get_node("Arena/Enemy/AI").set_physics_process(false)
+	preload("res://tests/enemy/enemy_fire_fixture.gd").primary_enemy(scene).get_node("AI").set_physics_process(false)
 	check(combat.has_method("request_reload"), "玩家提供主动换弹接口")
 	if failed > 0:
 		finish()

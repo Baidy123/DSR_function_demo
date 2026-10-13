@@ -16,7 +16,7 @@ func _run() -> void:
 	for region in get_nodes_in_group("cover_region"):
 		region.collision_layer = 0
 		region.remove_from_group("cover_region")
-	var e = scene.get_node("Arena/Enemy")
+	var e = preload("res://tests/enemy/enemy_fire_fixture.gd").primary_enemy(scene)
 	var ai = e.get_node("AI")
 	Fixture.configure_timing(e)
 	# 本测试验证固定交战位置的射击节奏；主动占位的移动与开火由独立行为测试覆盖。
@@ -127,7 +127,7 @@ func _check_real_frames() -> void:
 	var scene = load("res://scenes/main.tscn").instantiate()
 	root.add_child(scene)
 	current_scene = scene
-	var e = scene.get_node("Arena/Enemy")
+	var e = preload("res://tests/enemy/enemy_fire_fixture.gd").primary_enemy(scene)
 	var ai = e.get_node("AI")
 	Fixture.configure_timing(e)
 	# 本组固定射击位验证节奏；专项选位与失视压制由各自的实走／射击测试覆盖。

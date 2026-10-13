@@ -1,7 +1,7 @@
 extends RefCounted
 
 ## 纯配置解析；既不创建运行对象，也不访问场景。检查器与游戏使用同一结果。
-static func resolve(unit: EnemyUnitProfile, training: EnemyTrainingProfile) -> Dictionary:
+static func resolve(unit: EnemyUnitProfile, training: EnemyTrainingProfile, team_abilities: Dictionary = {}) -> Dictionary:
 	var result := {"definitions": {}, "included_by": {}, "errors": []}
 	if unit == null:
 		return result
@@ -25,13 +25,20 @@ static func resolve(unit: EnemyUnitProfile, training: EnemyTrainingProfile) -> D
 	for definition in unit.default_behaviors:
 		if definition != null and catalog.has(definition.action_id) and unit.supports(definition.required_capabilities):
 			result.definitions[definition.action_id] = definition
-	for id in selected_tactics(training, unit):
+	var selected := selected_tactics(training, unit)
+	if team_abilities.has("level"):
+		selected.erase(&"cooperate")
+		if int(team_abilities.level) > 0: selected.append(&"cooperate")
+	for id in selected:
 		if not catalog.has(id) or catalog[id].category != EnemyActionDefinition.Category.TACTICAL:
 			continue # 保留旧兵种选择，但不参与当前装配。
 		var closure: Dictionary = {}
 		var error := _expand(id, catalog, unit, [], closure)
 		if not error.is_empty():
 			result.errors.append(error)
+			continue
+		if closure.has(&"cooperate") and team_abilities.has("level") and int(team_abilities.level) == 0:
+			result.errors.append("小队未授权动作依赖的团队协作：" + String(id))
 			continue
 		for included in closure:
 			result.definitions[included] = closure[included]

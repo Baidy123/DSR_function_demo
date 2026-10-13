@@ -4,6 +4,13 @@ extends SceneTree
 var checks := 0
 var failed := 0
 
+class Member extends Node:
+	var faction_id: StringName = &"allies"
+	var communication_group: StringName = &"test"
+
+class Area extends Node:
+	var team_cooperation_bindings: Array = []
+
 func _initialize() -> void:
 	_run.call_deferred()
 
@@ -18,7 +25,7 @@ func _run() -> void:
 	await create_timer(1.0).timeout
 	while EditorInterface.get_resource_filesystem().is_scanning():
 		await process_frame
-	var host := Node.new()
+	var host := Member.new()
 	var unit = preload("res://scripts/enemy/enemy_unit_type.gd").new()
 	unit.name = "UnitType"
 	unit.profile = preload("res://resources/enemy/units/ranged.tres").duplicate(true)
@@ -86,6 +93,35 @@ func _run() -> void:
 	standalone.preview_unit = preload("res://resources/enemy/units/ranged.tres")
 	standalone.refresh(true)
 	check(_checks(standalone).size() == 5, "独立资源显式选择预览兵种后提供受限候选")
+	var area := Area.new()
+	area.add_child(host)
+	var binding = preload("res://scripts/enemy/config/team_cooperation_binding.gd").new()
+	binding.faction_id = &"allies"
+	binding.communication_group = &"test"
+	binding.profile.level = 2
+	area.team_cooperation_bindings.append(binding)
+	panel.refresh(true)
+	var shared = _find(panel, "团队协作")
+	check(shared != null and shared.disabled and shared.button_pressed and shared.text.contains("小队"), "绑定后团队协作由小队提供且不能单独取消")
+	before = training.profile.selected_tactics.duplicate()
+	panel._toggle(false, training.profile, &"cooperate")
+	check(training.profile.selected_tactics == before, "继承权限不会改写个人训练")
+	check(standalone.team_binding().is_empty(), "独立训练资源预览不虚构所属小队")
+	manager.create_action("更改整队团队意识", UndoRedo.MERGE_DISABLE, binding.profile)
+	manager.add_do_property(binding.profile, &"level", 0)
+	manager.add_undo_property(binding.profile, &"level", 2)
+	manager.commit_action()
+	panel.refresh(true)
+	check(not _find(panel, "团队协作").button_pressed, "整队降档立即更新检查器权限")
+	var team_history = manager.get_history_undo_redo(manager.get_object_history_id(binding.profile))
+	check(team_history.undo(), "共享配置支持原生撤销")
+	panel.refresh(true)
+	check(_find(panel, "团队协作").button_pressed, "撤销恢复整队等级")
+	check(team_history.redo(), "共享配置支持原生重做")
+	panel.refresh(true)
+	check(not _find(panel, "团队协作").button_pressed, "重做恢复整队降档")
+	area.remove_child(host)
+	area.free()
 	standalone.free()
 	panel.free()
 	host.free()

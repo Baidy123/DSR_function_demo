@@ -10,7 +10,7 @@ func _run() -> void:
 	var scene = load("res://scenes/main.tscn").instantiate()
 	root.add_child(scene)
 	current_scene = scene
-	var ai = scene.get_node("Arena/Enemy/AI")
+	var ai = preload("res://tests/enemy/enemy_fire_fixture.gd").primary_enemy(scene).get_node("AI")
 	var actor = ai.actor
 	ai.set_physics_process(false)
 	ai.player.set_physics_process(false)

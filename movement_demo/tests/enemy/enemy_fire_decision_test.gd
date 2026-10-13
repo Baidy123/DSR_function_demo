@@ -15,7 +15,7 @@ func _run() -> void:
 	for region in get_nodes_in_group("cover_region"):
 		region.collision_layer = 0
 		region.remove_from_group("cover_region")
-	var e = scene.get_node("Arena/Enemy")
+	var e = preload("res://tests/enemy/enemy_fire_fixture.gd").primary_enemy(scene)
 	Fixture.configure_decision(e)
 	var ai = e.get_node("AI")
 	var t = ai.context.fire
@@ -117,7 +117,7 @@ func _check_live_moving_target() -> void:
 	var scene = load("res://scenes/main.tscn").instantiate()
 	root.add_child(scene)
 	current_scene = scene
-	var e = scene.get_node("Arena/Enemy")
+	var e = preload("res://tests/enemy/enemy_fire_fixture.gd").primary_enemy(scene)
 	var ai = e.get_node("AI")
 	ai.set_physics_process(false)
 	Fixture.configure_decision(e)

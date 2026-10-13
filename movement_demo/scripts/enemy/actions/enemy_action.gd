@@ -30,8 +30,8 @@ func is_enabled() -> bool:
 	return context != null and context.can_use_action(action_id)
 
 func _setting(key: StringName, fallback: Variant) -> Variant:
-	if context != null and context.training != null:
-		return context.training.setting(config_section, key, fallback, definition.parameters if definition != null else {})
+	if context != null and (context.training != null or (config_section == &"cooperation" and context.cooperation != null and context.cooperation.has_team_binding(context))):
+		return context.setting(config_section, key, fallback, definition.parameters if definition != null else {})
 	return _standalone_settings.get(key, definition.parameters.get(key, fallback) if definition != null else fallback)
 
 func _set_setting(key: StringName, value: Variant) -> void:

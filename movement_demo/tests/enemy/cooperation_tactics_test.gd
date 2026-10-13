@@ -22,7 +22,7 @@ func check(ok: bool, label: String) -> void:
 func _run() -> void:
 	scene = load("res://scenes/main.tscn").instantiate()
 	arena = scene.get_node("Arena")
-	first = arena.get_node("Enemy")
+	first = preload("res://tests/enemy/enemy_fire_fixture.gd").primary_enemy(arena)
 	first_ai = first.get_node("AI")
 	first_ai.set_physics_process(false)
 	first.position = Vector3(5, 0, -0.9)

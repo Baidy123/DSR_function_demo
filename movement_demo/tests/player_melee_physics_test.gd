@@ -20,7 +20,7 @@ func _run() -> void:
 	var player = scene.get_node("Player")
 	player.set_physics_process(false)
 	player.global_position = Vector3(10, 0, 10)
-	var actor = scene.get_node("Arena/Enemy")
+	var actor = preload("res://tests/enemy/enemy_fire_fixture.gd").primary_enemy(scene)
 	actor.get_node("AI").set_physics_process(false)
 	for target in get_nodes_in_group("combat_target"):
 		if target != actor: target.global_position = Vector3(30, 0, 30)

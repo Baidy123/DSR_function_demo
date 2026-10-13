@@ -31,7 +31,7 @@ func trace(interfaces: bool) -> Array:
 	root.add_child(scene)
 	current_scene = scene
 	player.set_physics_process(false)
-	scene.get_node("Arena/Enemy/AI").set_physics_process(false)
+	preload("res://tests/enemy/enemy_fire_fixture.gd").primary_enemy(scene).get_node("AI").set_physics_process(false)
 	player.position = Vector3(0, 0, 2)
 	for i in 3: await physics_frame
 	var result: Array = []

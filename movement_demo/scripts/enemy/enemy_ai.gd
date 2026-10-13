@@ -89,12 +89,13 @@ func _ready() -> void:
 func refresh_configuration(force: bool = false) -> void:
 	var unit: EnemyUnitProfile = unit_type.profile
 	var profile: EnemyTrainingProfile = training.profile
-	var fingerprint := hash([unit.fingerprint() if unit != null else 0, profile.fingerprint() if profile != null else 0])
+	var team_abilities: Dictionary = context.team_cooperation_abilities()
+	var fingerprint := hash([unit.fingerprint() if unit != null else 0, profile.fingerprint() if profile != null else 0, team_abilities])
 	if not force and fingerprint == _configuration: return
 	_configuration = fingerprint
 	context.unit = unit
 	context.training = profile
-	var resolved := Library.resolve(unit, profile)
+	var resolved := Library.resolve(unit, profile, team_abilities)
 	context.permitted = resolved.definitions
 	for error in resolved.errors: push_warning(error)
 	for id in actions.keys():

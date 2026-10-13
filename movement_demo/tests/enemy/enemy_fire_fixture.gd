@@ -1,5 +1,17 @@
 extends RefCounted
 
+## Locate the saved test member without assuming the user's instance name.
+## Do not rename, spawn, remove, or reconfigure any scene node here.
+static func primary_enemy(scene: Node) -> Node:
+	var arena := scene.get_node_or_null("Arena")
+	if arena == null: arena = scene
+	var original := arena.get_node_or_null("Enemy")
+	if original != null: return original
+	for child in arena.get_children():
+		if child.has_node("AI") and child.has_node("UnitType") and child.has_node("Training"): return child
+	push_error("The fixture requires an AI member in its arena.")
+	return null
+
 static func advance_evaluation(ai, visible: bool) -> void:
 	ai.context.sees_player = visible
 	ai.context.spatial.advance_evaluation()

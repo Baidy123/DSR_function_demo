@@ -18,7 +18,7 @@ func _run() -> void:
 	slots.primary_weapon = slots.primary_weapon.duplicate()
 	slots.primary_weapon.melee_range = 1.6
 	slots.select_slot(0)
-	var enemy = scene.get_node("Arena/Enemy")
+	var enemy = preload("res://tests/enemy/enemy_fire_fixture.gd").primary_enemy(scene)
 	var target = scene.get_node("CombatTest/TargetB")
 	player.set_physics_process(false)
 	enemy.set_physics_process(false)

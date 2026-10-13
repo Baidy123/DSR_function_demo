@@ -2,6 +2,9 @@ extends Node3D
 
 signal presentation_reset(region: Node)
 
+## Match members by faction and communication group; only team awareness is shared.
+@export var team_cooperation_bindings: Array[EnemyTeamCooperationBinding] = []
+
 var players_inside: Array[Node3D] = []
 var enemies: Array[CharacterBody3D] = []
 var _combat_zone: Area3D
@@ -10,6 +13,7 @@ var cooperation = preload("res://scripts/enemy/services/enemy_cooperation.gd").n
 
 
 func enemy_environment() -> Dictionary:
+	cooperation.configure_team_bindings(team_cooperation_bindings)
 	var navigation := get_node_or_null("NavigationRegion3D") as NavigationRegion3D
 	tactical_map.bind_region(navigation)
 	return {"zone": get_node_or_null("CombatZone"), "navigation": navigation, "cooperation": cooperation, "tactical_map": tactical_map}
@@ -30,6 +34,7 @@ func _ready() -> void:
 
 
 func _physics_process(delta: float) -> void:
+	cooperation.configure_team_bindings(team_cooperation_bindings)
 	_bind_combat_zone()
 	for player in players_inside:
 		if is_instance_valid(player) and not player.is_dead() and not player.is_in_dialogue:

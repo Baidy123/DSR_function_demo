@@ -1,6 +1,14 @@
 @tool
 extends "res://scripts/enemy/config/module_settings.gd"
 
+enum Level { INTEL_ONLY, TACTICAL, COORDINATED }
+
+## Shared squad permission; an unbound legacy Training keeps its old switch.
+@export_enum("仅视野共享", "战术配合", "强配合") var level: int = Level.INTEL_ONLY:
+	set(value):
+		level = clampi(value, Level.INTEL_ONLY, Level.COORDINATED)
+		mark_override(&"level")
+
 func _init() -> void:
 	section = &"cooperation"
 
