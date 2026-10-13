@@ -30,5 +30,6 @@
 - [相机视野、武器绑定与遮挡透明](docs/gameplay/CAMERA.md)
 - [敌人 AI 结构、维护与使用部署](docs/enemy-ai.md)
 - [项目目录结构](docs/project-layout.md)
+- [统一测试入口与维护](docs/testing.md)
 
 运行脚本按职责位于 `movement_demo/scripts/`，敌人测试集中在 `movement_demo/tests/enemy/`。旧敌人实现和未引用的玩家射击原型已清理。

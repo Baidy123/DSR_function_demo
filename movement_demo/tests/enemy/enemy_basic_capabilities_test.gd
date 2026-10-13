@@ -17,6 +17,8 @@ func _run() -> void:
 	var unit = enemy.get_node("UnitType")
 	var training = enemy.get_node("Training")
 	var player = scene.get_node("Player")
+	var navigation = scene.get_node("Arena/NavigationRegion3D")
+	_check("主场景包含竞技场及已烘焙导航", navigation.navigation_mesh != null and navigation.navigation_mesh.get_polygon_count() > 0)
 	ai.set_physics_process(false)
 	player.set_physics_process(false)
 	player.get_node("Health").debug_invincible = true
@@ -29,6 +31,9 @@ func _run() -> void:
 		await physics_frame
 	var target: Vector3 = player.global_position + Vector3.UP * 0.8
 	_check("测试站位有真实视线", ai.perception.can_see_player())
+	enemy.rotation.y += PI
+	_check("近身范围外的背后玩家不被视野发现", not ai.perception.can_see_player())
+	enemy.look_at(player.global_position)
 
 	unit.profile = load("res://resources/enemy/units/melee.tres").duplicate(true)
 	enemy.update_weapon(1.0, target)
@@ -108,6 +113,10 @@ func _run() -> void:
 	enemy.update_weapon(1.0, target)
 	enemy.receive_hit(enemy.health)
 	_check("死亡立即拒绝基础开火", not enemy.try_fire())
+	var dead_position: Vector3 = enemy.global_position
+	enemy.move_character(Vector3.RIGHT, 0.25)
+	for frame in range(6): await physics_frame
+	_check("死亡停止移动并退出锁定组", enemy.is_dead and not enemy.is_in_group("combat_target") and enemy.global_position.distance_to(dead_position) < 0.01)
 	enemy.reset_target()
 	enemy.look_at(player.global_position)
 	enemy.update_weapon(1.0, target)

@@ -1,8 +1,9 @@
 """Run the modular enemy regression suite; script errors fail even if Godot exits 0."""
-import argparse
-import json
 from pathlib import Path
-import subprocess
+import sys
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from regression_runner import suite_main
 
 TESTS = [
     "enemy_route_evaluation_batch_test",
@@ -112,43 +113,10 @@ TESTS = [
 
 
 def main():
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--godot", required=True, help="Godot console executable")
-    parser.add_argument("tests", nargs="*", help="Optional test names, without .gd")
-    args = parser.parse_args()
-    test_directory = Path(__file__).resolve().parent
-    project = test_directory.parents[1]
-    logs = project / "logs" / "enemy_regressions"
-    logs.mkdir(parents=True, exist_ok=True)
-    results = []
-    for name in args.tests or TESTS:
-        if not (test_directory / (name + ".gd")).is_file():
-            parser.error("Unknown test: " + name)
-        command = [args.godot, "--headless", "--path", str(project),
-                   "--log-file", str(logs / (name + ".log")),
-                   "--script", "res://tests/enemy/" + name + ".gd"]
-        try:
-            timeout = 300 if name == "enemy_cooperation_flank_runtime_test" else 180 if name == "cooperation_runtime_test" else 75
-            run = subprocess.run(command, capture_output=True, timeout=timeout)
-            output = (run.stdout + run.stderr).decode("utf-8", errors="replace")
-            code = run.returncode
-        except subprocess.TimeoutExpired as error:
-            output = ((error.stdout or b"") + (error.stderr or b"")).decode("utf-8", errors="replace")
-            code = "timeout"
-        (logs / (name + "_stdout.log")).write_text(output, encoding="utf-8")
-        errors = [line for line in output.splitlines()
-                  if "SCRIPT ERROR:" in line or line.startswith("FAIL ")
-                  or (line.startswith("ERROR:") and "root certificate store" not in line)]
-        result = {"test": name, "passed": code == 0 and not errors,
-                  "exit": code, "errors": errors[:20]}
-        results.append(result)
-        print(("PASS " if result["passed"] else "FAIL ") + name, flush=True)
-        for line in errors[:3]:
-            print("  " + line, flush=True)
-        (logs / "results.json").write_text(json.dumps(results, ensure_ascii=False, indent=2), encoding="utf-8")
-    print(f"Enemy regressions: {sum(r['passed'] for r in results)}/{len(results)} suites passed")
-    return 0 if all(r["passed"] for r in results) else 1
-
+    directory = Path(__file__).resolve().parent
+    return suite_main(directory, directory.parents[1], TESTS, "enemy_regressions",
+                      "Enemy regressions",
+                      {"enemy_cooperation_flank_runtime_test": 300, "cooperation_runtime_test": 180})
 
 if __name__ == "__main__":
     raise SystemExit(main())

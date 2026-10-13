@@ -51,6 +51,8 @@ movement_demo/
 │   └── dialogue/          NPC 对话、导入元数据与原有剧情源文件
 ├── tests/
 │   ├── enemy/             敌人测试、公共辅助和回归运行器
+│   ├── run_regressions.py  统一清单检查与分组回归入口
+│   ├── regression_runner.py 共用进程执行与失败判定
 │   └── 其他系统测试与测试资源
 ├── addons/                编辑器插件及第三方依赖
 └── logs/                  运行日志与验证输出，Git 忽略
@@ -60,13 +62,13 @@ movement_demo/
 
 敌人协作由 `world/shooting_range.gd` 持有每战斗区一份 `enemy/services/enemy_cooperation.gd`；Context 提供值快照与任务接口，服务不访问其他行为实例或执行身体命令。`actions/enemy_cooperation_action.gd` / `resources/enemy/actions/cooperate.tres` 是训练解锁的协作战术，内部提供有限侧移、另一侧包抄和原地掩护方案；分工搜索与主动补弹仍属于原搜索／换弹模块。统一压制保留旧出口脚本 UID 作为兼容入口，默认目录只装配一个压制实例。参数位于 `config/cooperation_settings.gd`，详见 [敌人协作](enemy-ai.md#敌人协作)。
 
-2026-10-10 的两端检查、基础间距和射击节奏调整继续增强上述既有流程。[统一队伍规划器设计](superpowers/specs/2026-10-10-enemy-team-coordinator-design.md)分阶段接入，基础位置预约已完成接入验证，高级岗位尚未接管；现有局部认领、人数名额与身体避让不等于新规划器已统一分配战术。
+[统一队伍规划器设计](superpowers/specs/2026-10-10-enemy-team-coordinator-design.md)已接入基础预约、高级岗位和共同阶段。个人 Utility、原动作、身体与 Fire 继续负责执行；功能接入不代表性能及所有旧行为验收已完成。阶段结果与未完成项统一见 [敌人测试](enemy-tests.md#当前回归)及 [实施记录](superpowers/plans/2026-10-10-enemy-team-coordinator.md#实施记录)。
 
-统一规划器阶段1已新增 `enemy/services/enemy_team_planner.gd`：纯值输入输出的有界组合 helper，负责排除冲突并提议互补岗位，不访问场景、找路、控制身体或制造任务期限。`tests/enemy/enemy_team_planner_test.gd` 覆盖65项纯协议。当前 board 已调用它安排互补检查、侧翼／前线与地图搜索，动作仅执行被选择的合法岗位。
+`enemy/services/enemy_team_planner.gd` 是纯值输入输出的有界组合 helper，负责排除冲突并提议互补岗位，不访问场景、找路、控制身体或制造任务期限。当前 board 调用它安排互补检查、侧翼／前线与地图搜索，动作仅执行被选择的合法岗位；纯协议由 `enemy_team_planner_test.gd` 验证。
 
-阶段2基础位置预约仍位于原 `enemy_cooperation.gd`，Context 负责候选值快照和身份版本，AI 只加入通用资格集合及准备／提交／回滚接点。没有新增场景节点或身体控制器；`advanced_enabled` 不限制基础排重，关系接口同时区分物理空间与情报域。`enemy_team_board_test.gd` 检查46项身份、物理排重、期限与生命周期，`enemy_team_basic_runtime_test.gd` 检查高级OFF真实共享／移动／开火、单人和多转单，以及明确区分的事务与身体保护合同；高级岗位通过同一 board 与通用执行接口接入，基础预约不依赖高级开关。
+基础位置预约位于原 `enemy_cooperation.gd`，Context 负责候选值快照和身份版本，AI 使用通用资格集合及准备／提交／回滚接点。没有新增场景节点或身体控制器；`advanced_enabled` 不限制基础排重，关系接口同时区分物理空间与情报域。`enemy_team_board_test.gd` 检查身份、物理排重、期限与生命周期，`enemy_team_basic_runtime_test.gd` 检查高级OFF真实共享／移动／开火、单人和多转单，以及明确区分的事务与身体保护合同；高级岗位通过同一 board 与通用执行接口接入，基础预约不依赖高级开关。
 
-阶段3通用岗位和自保协议放在原 `enemy_action.gd`，具体合法自保由原换弹、接敌、近战、掩体和撤退动作实现。Context 只处理值接口，AI 沿原选择器处理资格、连续性和事务，不按战术ID分派执行。`enemy_assignment_execution_test.gd` 的29项受控合同与 `enemy_action_coordination_protocol_test.gd` 的24项真实身体／候选条件检查分别验证通用接点和自保；它们不替代生产战术的实景验收。
+通用岗位和自保协议放在原 `enemy_action.gd`，具体合法自保由原换弹、接敌、近战、掩体和撤退动作实现。Context 只处理值接口，AI 沿原选择器处理资格、连续性和事务，不按战术ID分派执行。`enemy_assignment_execution_test.gd` 的受控合同与 `enemy_action_coordination_protocol_test.gd` 的真实身体／候选条件检查分别验证通用接点和自保；它们不替代生产战术的实景验收。
 
 `enemy/services/enemy_cover_inspection_geometry.gd` 只从冻结的合法线索和直立盒形掩体生成两个可步行检查端点，复用原导航、胶囊扫掠和完整路径校验；不读取隐藏目标身体、不认领、不发射。原 `actions/enemy_search.gd` 消费分侧认领，执行接近、有限等待、绕端检查和真实观察；`enemy_cooperation.gd` 管理线索、端点互斥与完成事实。Context 接收的调查线索默认保留20秒，与5秒精确共享目击分离，不延长射击权限。两端任务默认16秒且受线索原期限限制，等候2秒、观察0.5秒均不续期；单人或不足两个合法端点时沿用普通搜索，不恢复出口压制。几何和路径候选有限缓存，提交及执行继续复核真实可行性。
 
@@ -84,7 +86,7 @@ movement_demo/
 
 `enemy_melee_timing_test.gd` 通过真实 Fire 与身体执行核对挥击和射击冷却并行、重新反应／稳枪、取消换弹和支援点射退出；预测仍由原 `enemy_tactics.gd` 消费 Fire 的只读时间查询。该合同不替代原 `enemy_melee_approach_test.gd` 的自主挥击验证，不增加近战动作或改变统一评分。
 
-`enemy_route_evaluation_batch_test.gd` 核对共同路线／暴露／风险的同步只读批次边界、同帧真实环境变更和返回值隔离，以及掩体候选在旋转、缩放、尺寸变化后的全部点位与顺序。对应优化继续位于 Context、Spatial 和原 `world/cover_region.gd`。Spatial 另在队列准备时按完整当前输入保留最多一份纯掩体坐标表，深复制给消费者，复位与离场释放；不保存路径、射界或评分，尚不是拟实施的区域共享地图索引。
+`enemy_route_evaluation_batch_test.gd` 核对共同路线／暴露／风险的同步只读批次边界、同帧真实环境变更和返回值隔离，以及掩体候选在旋转、缩放、尺寸变化后的全部点位与顺序。对应优化继续位于 Context、Spatial 和原 `world/cover_region.gd`。Spatial 另在队列准备时按完整当前输入保留最多一份纯掩体坐标表，深复制给消费者，复位与离场释放；不保存路径、射界或评分。该坐标缓存与已接入的区域共享静态地图索引分别维护。
 
 Spatial 的路线样本层仅在同步候选比较中复用同路径已实际观察的点与曝光值，保留原半米采样及逐样本累计顺序；空间预算扫描不建立该层，仍复用原完整结果／曝光缓存。速度、换弹与火控等待按每个候选重新计算，外层批次返回即清空。原换弹动作同时省去已经换弹时不会产生候选的 `after_cover` 路线计算，不增加独立路线或评分模块。
 
@@ -100,7 +102,7 @@ Spatial 的路线样本层仅在同步候选比较中复用同路径已实际观
 
 `docs/enemy-ai.md` 是敌人结构、维护和使用部署说明；`docs/gameplay/` 保留移动、武器、掩体等专项说明，`docs/TODO.md` 记录后续方向，`docs/superpowers/` 保存仍有价值的设计与验收记录。第三方插件自带文档留在插件目录，以保留其使用说明和许可。
 
-敌人配置与扩展见 [敌人 AI](enemy-ai.md)，验证入口见 [敌人测试](enemy-tests.md)，未完成方向见 [待办](TODO.md)。
+敌人配置与扩展见 [敌人 AI](enemy-ai.md)，统一清单和运行方式见 [测试维护](testing.md)，敌人验收结果见 [敌人测试](enemy-tests.md)，未完成方向见 [待办](TODO.md)。`tests/` 中的编辑器脚本、场景辅助与导航写入工具按清单区分；日志副本由 `logs/.gdignore` 排除，Dialogue Manager 的本地扫描补丁见 [插件维护记录](../movement_demo/addons/dialogue_manager/LOCAL_CHANGES.md)。
 
 玩家、敌人和 NPC 的表现适配器放在各自脚本目录，掩体复用公共表现组件。美术素材接入与空配置回退见 [模型动画与命中特效](gameplay/PRESENTATION.md)。外部模型可按用途放入 `resources/models/`，不改玩法碰撞或导航几何。
 
