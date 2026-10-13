@@ -111,6 +111,7 @@ func _plan(snapshot: Dictionary, proposal: Dictionary) -> Dictionary:
 		"required_participants": proposal.required_participants.duplicate(), "plan_id": 81, "plan_version": 2}
 	for key in [&"generation", &"team_id", &"domain", &"target_id", &"evidence_id"]: plan[key] = snapshot[key]
 	if proposal.has("request_id"): plan.request_id = proposal.request_id
+	if snapshot.has("team_config_revision"): plan.team_config_revision = snapshot.team_config_revision
 	for assignment in plan.assignments:
 		assignment.execution_valid = true
 		assignment.assignment_id = 100 + assignment.actor_id

@@ -920,6 +920,16 @@ func report_coordination_execution(contract: Dictionary, state: StringName = &""
 ## resolves physical spacing. Only proposed destinations acquire new occupancy.
 func coordination_choices(options: Array[Dictionary]) -> Array[Dictionary]:
 	var basic := _basic_coordination_choices(options)
+	if coordinated_cooperation_enabled() and cooperation.has_team_binding(self):
+		var baseline: Dictionary = {}
+		for candidate: Dictionary in basic:
+			if candidate.has("coordination_role") or not is_finite(float(candidate.get("cost", INF))): continue
+			if baseline.is_empty() or float(candidate.cost) < float(baseline.cost):
+				var outcome: Dictionary = candidate.get("outcome", {})
+				baseline = {"cost": float(candidate.cost), "horizon": utility_horizon_seconds,
+					"unavailable_seconds": float(outcome.get("unavailable_seconds", utility_horizon_seconds)),
+					"exposed_seconds": float(outcome.get("exposed_seconds", 0.0)), "information_loss": float(outcome.get("information_loss", 0.0))}
+		cooperation.publish_personal_baseline(self, baseline)
 	var assignment := coordination_assignment()
 	if assignment.is_empty():
 		var independent: Array[Dictionary] = []
@@ -1110,7 +1120,8 @@ func cooperation_publish_execution(output: Dictionary) -> void:
 		"support_cycle_valid": cycle_resume >= 0.0, "support_resume_seconds": cycle_resume,
 		"melee_threat_seconds": melee.support_window(sees_player),
 		"aim_position": target, "forward": actor.aim_direction, "moving": moving,
-		"health_ratio": actor.health / maxf(1.0, actor.max_health), "lane_id": &"target",
+		"health_ratio": actor.health / maxf(1.0, actor.max_health), "pressure": recent_damage_pressure + nearby_shot_pressure,
+		"magazine_capacity": actor.weapon.magazine_capacity if firearms else 0, "can_move": actor.can_move(), "lane_id": &"target",
 		"position_lane_id": task.get("lane_id", &""),
 		"beneficiary_id": task.get("beneficiary_id", 0), "request_id": task.get("request_id", 0),
 		"support_request": utility_current.get("support_request", {}),

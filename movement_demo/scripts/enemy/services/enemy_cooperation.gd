@@ -30,6 +30,7 @@ var _coordination_sources: Dictionary = {}
 var _coordination_source_pool: Dictionary = {}
 var _coordination_receipts: Dictionary = {}
 var _coordination_offers: Dictionary = {}
+var _coordination_baselines: Dictionary = {}
 var _coordination_plans: Dictionary = {}
 var _coordination_environments: Dictionary = {}
 var _coordination_due: Dictionary = {}
@@ -101,19 +102,22 @@ func _team_setting_key(context) -> String:
 	return member.domain if not member.is_empty() and _member_domain_matches(context.actor, member) else _domain(context.actor)
 
 func has_team_binding(context) -> bool:
-	return _team_settings.has(_team_setting_key(context))
+	return not _team_settings.is_empty() and _team_settings.has(_team_setting_key(context))
 
 func team_abilities(context) -> Dictionary:
+	if _team_settings.is_empty(): return {}
 	var key := _team_setting_key(context)
 	if not _team_settings.has(key): return {}
 	var settings: Dictionary = _team_settings[key]
 	return {"level": settings.level, "squad_key": key, "team_config_revision": _team_setting_versions[key], "diagnostic": settings.diagnostic}
 
 func team_level(context, legacy_level: int = 0) -> int:
+	if _team_settings.is_empty(): return legacy_level
 	var settings: Dictionary = _team_settings.get(_team_setting_key(context), {})
 	return int(settings.get("level", legacy_level))
 
 func team_configuration_revision(context) -> int:
+	if _team_setting_versions.is_empty(): return 0
 	return int(_team_setting_versions.get(_team_setting_key(context), 0))
 
 func team_setting(context, key: StringName, fallback: Variant, unit_defaults: Dictionary = {}) -> Variant:
@@ -176,6 +180,7 @@ func publish_member_versions(context, versions: Dictionary) -> bool:
 	if not changed: return true
 	_release_member_reservations(context.actor.get_instance_id(), true)
 	_coordination_offers.erase(context.actor.get_instance_id())
+	_coordination_baselines.erase(context.actor.get_instance_id())
 	_invalidate_coordination_member(context.actor.get_instance_id(), &"member_version_changed")
 	for key in [&"config_revision", &"environment_revision", &"navigation_revision"]: member[key] = versions[key]
 	member.versions_published = true
@@ -456,6 +461,7 @@ func unregister(id: int) -> void:
 
 func release_member(id: int) -> void:
 	_recommendations.erase(id)
+	_coordination_baselines.erase(id)
 	_release_member_reservations(id, true)
 	_coordination_offers.erase(id)
 	_invalidate_coordination_member(id, &"member_released")
@@ -1238,6 +1244,7 @@ func support_pressure(context) -> float:
 # Unified tactical bridge. Offers are published after the caller's read-only
 # evaluation batch. None of these functions runs an action, navigates or fires.
 func _clear_coordination() -> void:
+	_coordination_baselines.clear()
 	_recommendations.clear()
 	_recommendation_cooldowns.clear()
 	_coordination_sources.clear()
@@ -1401,6 +1408,7 @@ func _coordination_roles(context, target_id: int) -> Array:
 			result.append(&"inspect_right")
 	if target_id != 0 and context.can_use_action(&"cooperate"):
 		if mobile and coordination_source(context, target_id).get("flank_clustered", false): result.append(&"flank")
+		if mobile and context.coordinated_cooperation_enabled() and has_team_binding(context): result.append(&"team_position")
 		if context.actor.can_use_firearms() and context.actor.shooting_enabled and not context.actor.is_vaulting() and not context.actor.melee_active:
 			result.append(&"front_support")
 	return result
@@ -1807,6 +1815,20 @@ func _coordination_offer_observed(source: Dictionary, offer: Dictionary) -> bool
 		if checked.is_empty() or checked.valid_until <= elapsed or checked.target_id != source.target_id or checked.get("navigation_revision", -1) != offer.navigation_revision: return false
 	return true
 
+func publish_personal_baseline(context, summary: Dictionary) -> void:
+	if not _reservation_member_valid(context): return
+	var id: int = context.actor.get_instance_id()
+	if summary.is_empty():
+		_coordination_baselines.erase(id)
+		return
+	for key in [&"cost", &"horizon", &"unavailable_seconds", &"exposed_seconds", &"information_loss"]:
+		if not _reservation_number(summary.get(key)): return
+	if summary.horizon <= 0.0: return
+	var value := summary.duplicate(true)
+	value.captured_at = elapsed
+	value.valid_until = elapsed + 1.5
+	_coordination_baselines[id] = value
+
 func _coordination_snapshot(team_id: int, source: Dictionary, ids: Array) -> Dictionary:
 	var environment := _coordination_environment(team_id, ids)
 	var current: Dictionary = _coordination_plans.get(team_id, {})
@@ -1831,11 +1853,16 @@ func _coordination_snapshot(team_id: int, source: Dictionary, ids: Array) -> Dic
 				if raw.path_summary.get("holds_front", false) and _members[id].status.get("moving", false): normalized.fire_ready = false
 			offers.append(normalized)
 		var far: bool = context.cooperation_target_id() == source.target_id and not frame.is_empty() and (context.actor.global_position - frame.anchor).dot(frame.axis) < -FLANK_SIDE_MARGIN
+		var status: Dictionary = _members[id].status
 		members.append({"actor_id": id, "member_generation": identity.member_generation, "config_revision": identity.config_revision,
 			"navigation_revision": identity.navigation_revision, "position": context.actor.global_position,
 			"advanced_enabled": context.cooperation_enabled(), "eligible_roles": _coordination_roles(context, source.target_id),
 			"offers": offers, "actual_support": actual, "on_far_side": far,
-			"advisory_active": _recommendations.get(id, {}).get("accepted", false)})
+			"advisory_active": _recommendations.get(id, {}).get("accepted", false),
+			"personal_baseline": _coordination_baselines.get(id, {}).duplicate(true),
+			"status": {"rounds": int(status.get("rounds", 0)), "magazine_capacity": int(status.get("magazine_capacity", 0)),
+				"health_ratio": float(status.get("health_ratio", 1.0)), "pressure": float(status.get("pressure", 0.0)),
+				"reloading": bool(status.get("reloading", false)), "can_move": context.actor.can_move()}})
 	var snapshot_value := {"now": elapsed, "generation": generation, "team_id": team_id, "domain": "team:%s" % team_id,
 		"target_id": source.target_id, "evidence_id": source.evidence_id, "environment_revision": environment,
 		"navigation_revision": int(_members[ids[0]].navigation_revision), "relation_revision": relation_revision,
@@ -1947,6 +1974,9 @@ func _install_coordination_proposal(team_id: int, source: Dictionary, proposal: 
 			"tactic": proposal.tactic, "phase": &"assigning", "phase_id": 1, "release_at": -1.0,
 			"created_at": elapsed, "expires_at": minf(source.valid_until, elapsed + _coordination_plan_duration(proposal)),
 			"stage_until": elapsed + COORDINATION_ACCEPT_SECONDS, "assignments": [], "tactical_frame": {}}
+		plan.posture = proposal.get("posture", &"hold")
+		plan.decision = proposal.get("decision", {}).duplicate(true)
+		plan.team_config_revision = team_configuration_revision(_context(_coordination_team_members(team_id)[0]))
 		plan.stage_until = minf(plan.stage_until, plan.expires_at)
 	elif not extending:
 		# Repair never extends the original overall deadline or unaffected leases.
@@ -2052,7 +2082,7 @@ func _advance_coordination_phase(plan: Dictionary) -> void:
 			if not ready: unready.append(entry)
 	# Front fire supports the actual maneuver; it need not invent a separate
 	# completion movement or wait until the whole lease expires after arrival.
-	if all_complete or (plan.tactic == &"flank" and mover_count > 0 and movers_complete):
+	if all_complete or (plan.tactic in [&"flank", &"concentrate", &"disperse"] and mover_count > 0 and movers_complete):
 		_drop_coordination_plan(plan.team_id, &"complete")
 		return
 	if plan.phase == &"assigning" and all_accepted:

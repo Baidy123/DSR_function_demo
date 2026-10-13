@@ -95,3 +95,9 @@ func _init() -> void:
 	set(value):
 		spacing_margin = value
 		mark_override(&"spacing_margin")
+
+## A candidate support spacing, still subject to actual capsules and gun lanes.
+@export_range(1.5, 5.0, 0.1) var deployment_spacing := 2.5:
+	set(value):
+		deployment_spacing = value
+		mark_override(&"deployment_spacing")
