@@ -11,6 +11,8 @@ var current_action
 var utility_options: Array[Dictionary] = []
 var _utility_timer := 0.0
 var _utility_elapsed := 0.0
+var _initial_geometry_revision := 0
+var _team_decision_revision := 0
 var _configuration := 0
 var _implementations: Dictionary = {}
 var _enabled_last_frame := false
@@ -150,6 +152,16 @@ func _physics_process(delta: float) -> void:
 	frame_costs.perception = Time.get_ticks_usec() - stamp
 	stamp = Time.get_ticks_usec()
 	context.spatial.advance_evaluation()
+	if _initial_geometry_revision != context.spatial.initial_ready_revision:
+		_initial_geometry_revision = context.spatial.initial_ready_revision
+		# A newly prepared squad option can disappear as this member walks before
+		# the ordinary timer elapses. Reconsider once through the normal selector;
+		# this does not scan extra points, force an action or release a body lock.
+		if context.team_cooperation_abilities().get("level", 0) == 2 and context.cooperation.registered_member_count() > 1: invalidate_utility()
+	var team_revision: int = context.coordination_decision_revision()
+	if _team_decision_revision != team_revision:
+		_team_decision_revision = team_revision
+		invalidate_utility()
 	frame_costs.spatial = Time.get_ticks_usec() - stamp
 	stamp = Time.get_ticks_usec()
 	_update_utility_decision(delta, visible)

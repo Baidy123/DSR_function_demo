@@ -9,7 +9,7 @@ func _initialize() -> void:
 
 
 func _run() -> void:
-	var scene = load("res://scenes/main.tscn").instantiate()
+	var scene = preload("res://tests/enemy/enemy_fire_fixture.gd").legacy_scene()
 	root.add_child(scene)
 	current_scene = scene
 	# 固定射击节奏测试使用无遮挡环境；地图射界另有专项回归。
@@ -124,7 +124,7 @@ func _run() -> void:
 
 func _check_real_frames() -> void:
 	current_scene.free()
-	var scene = load("res://scenes/main.tscn").instantiate()
+	var scene = preload("res://tests/enemy/enemy_fire_fixture.gd").legacy_scene()
 	root.add_child(scene)
 	current_scene = scene
 	var e = preload("res://tests/enemy/enemy_fire_fixture.gd").primary_enemy(scene)

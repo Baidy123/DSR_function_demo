@@ -24,7 +24,7 @@ func check(ok: bool, label: String) -> void:
 	print(("PASS " if ok else "FAIL ") + label)
 
 func _run() -> void:
-	scene = load("res://scenes/main.tscn").instantiate()
+	scene = preload("res://tests/enemy/enemy_fire_fixture.gd").legacy_scene()
 	var arena = scene.get_node("Arena")
 	shooter = preload("res://tests/enemy/enemy_fire_fixture.gd").primary_enemy(arena)
 	for child in arena.get_children():

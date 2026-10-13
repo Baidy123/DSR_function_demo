@@ -62,7 +62,7 @@ func _run() -> void:
 	var reloaded = ResourceLoader.load(saved, "", ResourceLoader.CACHE_MODE_IGNORE)
 	check(reloaded.selected_tactics == training.selected_tactics and reloaded.setting(&"tactics", &"ranged_min_distance") == 3.0, "保存重载保留选择与显式参数")
 	check(reloaded.setting(&"tactics", &"ranged_max_distance", 0.0, {&"ranged_max_distance": 12.0}) == 12.0, "保存不能把未设置的默认数值变成显式覆盖")
-	var scene = load("res://scenes/main.tscn").instantiate()
+	var scene = preload("res://tests/enemy/enemy_fire_fixture.gd").legacy_scene()
 	root.add_child(scene)
 	current_scene = scene
 	var enemy = preload("res://tests/enemy/enemy_fire_fixture.gd").primary_enemy(scene)

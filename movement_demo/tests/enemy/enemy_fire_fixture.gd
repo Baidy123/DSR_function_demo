@@ -1,5 +1,26 @@
 extends RefCounted
 
+## Old action fixtures explicitly exercise the personal Training compatibility path.
+## The saved arena's shared default is covered by the team scene integration test.
+static func legacy_scene() -> Node:
+	var scene = load("res://scenes/main.tscn").instantiate()
+	var arena: Node = scene.get_node("Arena")
+	# Also usable with the pre-migration runtime in paired baseline comparisons.
+	if arena.get("team_cooperation_bindings") is Array:
+		arena.team_cooperation_bindings.clear()
+	return scene
+
+## Opt-in fixture for a solo benchmark, or a benchmark that spawns N-1 peers.
+## Preserve the primary actor's complete behavior; remove unmeasured saved peers
+## before they enter the tree so the declared population is the real population.
+static func single_member_scene() -> Node:
+	var scene := legacy_scene()
+	var arena := scene.get_node("Arena")
+	var primary := primary_enemy(scene)
+	for child in arena.get_children():
+		if child != primary and child.has_node("AI"): child.free()
+	return scene
+
 ## Locate the saved test member without assuming the user's instance name.
 ## Do not rename, spawn, remove, or reconfigure any scene node here.
 static func primary_enemy(scene: Node) -> Node:

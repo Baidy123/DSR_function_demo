@@ -14,7 +14,7 @@ func _run() -> void:
 	quit(1 if failures else 0)
 
 func _check_solo(enabled: bool) -> void:
-	var scene = load("res://scenes/main.tscn").instantiate()
+	var scene = preload("res://tests/enemy/enemy_fire_fixture.gd").legacy_scene()
 	root.add_child(scene)
 	current_scene = scene
 	var actor = preload("res://tests/enemy/enemy_fire_fixture.gd").primary_enemy(scene)

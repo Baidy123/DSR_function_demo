@@ -35,7 +35,7 @@ func _run() -> void:
 	quit(1 if failures else 0)
 
 func _setup() -> void:
-	scene = load("res://scenes/main.tscn").instantiate()
+	scene = preload("res://tests/enemy/enemy_fire_fixture.gd").legacy_scene()
 	arena = scene.get_node("Arena")
 	var first = preload("res://tests/enemy/enemy_fire_fixture.gd").primary_enemy(arena)
 	for child in arena.get_children():

@@ -1,0 +1,9 @@
+[gd_resource type="Resource" format=3 uid="uid://wf82uaxorlji"]
+
+[ext_resource type="Script" uid="uid://cqdvipxtj05rx" path="res://scripts/enemy/config/cooperation_settings.gd" id="settings"]
+
+[resource]
+resource_name = "强配合"
+script = ExtResource("settings")
+level = 2
+overridden = PackedStringArray("level")

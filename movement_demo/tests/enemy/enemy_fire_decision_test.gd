@@ -8,7 +8,7 @@ func _initialize() -> void:
 
 func _run() -> void:
 	seed(82)
-	var scene = load("res://scenes/main.tscn").instantiate()
+	var scene = preload("res://tests/enemy/enemy_fire_fixture.gd").legacy_scene()
 	root.add_child(scene)
 	current_scene = scene
 	# 这部分独立验证稳枪评分，避免地图改动使固定射击位失效。
@@ -114,7 +114,7 @@ func _run() -> void:
 
 func _check_live_moving_target() -> void:
 	current_scene.free()
-	var scene = load("res://scenes/main.tscn").instantiate()
+	var scene = preload("res://tests/enemy/enemy_fire_fixture.gd").legacy_scene()
 	root.add_child(scene)
 	current_scene = scene
 	var e = preload("res://tests/enemy/enemy_fire_fixture.gd").primary_enemy(scene)

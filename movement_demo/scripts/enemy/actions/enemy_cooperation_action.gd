@@ -213,7 +213,11 @@ func evaluate_point(point: Variant) -> Dictionary:
 	if not actor.can_use_firearms():
 		var progress: float = actor.global_position.distance_to(known) - position.distance_to(known)
 		if progress > 0.5: quality = maxf(quality, clampf(progress / maxf(0.5, float(_setting(&"flank_distance", 3.0))), 0.0, 1.0))
-	if quality <= 0.0: return {}
+	# Establishing fire from occlusion need not increase the flanking angle.
+	# Keep it a support-only offer; it does not claim a dispersion benefit or
+	# become a personal advance merely because the future gun line is usable.
+	var support_only: bool = quality <= 0.0 and point.has("team_posture") and _deployment_enabled() and actor.can_use_firearms() and not context.sees_player
+	if quality <= 0.0 and not support_only: return {}
 	var target: Vector3 = context.known_target_point(known)
 	var fire_quality := 0.0
 	var protection := -1.0
@@ -238,6 +242,9 @@ func evaluate_point(point: Variant) -> Dictionary:
 		var approach: Vector3 = known - position
 		movement_qualified = Vector2(approach.x, approach.z).length() <= maxf(0.1, actor.weapon.melee_range) and absf(approach.y) <= actor.weapon.melee_height_tolerance
 		movement_qualified = movement_qualified and selection.has_clear_line(position + Vector3.UP * 0.8, known + Vector3.UP * 0.8)
+	if support_only:
+		if fire_quality <= 0.0: return {}
+		quality = fire_quality
 	var route: Dictionary = context.spatial.assess_route(context, path, known, 1.0, context.spatial._reload_seconds(context), context.sees_player)
 	var horizon: float = context.utility_horizon_seconds
 	var wait: float = 0.0 if point.has("team_posture") or context.cooperation_level() == 1 or _support_ready(route.seconds) else maxf(0.0, float(_setting(&"wait_seconds", 1.2)))
@@ -259,6 +266,7 @@ func evaluate_point(point: Variant) -> Dictionary:
 	if point.get("body") != null: result.destination.body = point.body
 	if point.has("team_posture"):
 		result.destination.team_posture = point.team_posture
+		if support_only: result.destination.support_only = true
 		result.destination.ally_id = point.get("ally_id", 0)
 		result.destination.route_seconds = route.seconds
 		result.destination.checkpoints = FlankRoute._short_checkpoints(path)
@@ -438,7 +446,7 @@ func collect_candidates(_visible: bool) -> Array[Dictionary]:
 		if assessment.cooperation.kind == &"flank":
 			if not _unified_coordinator() or _attach_tactical_offer(candidate, source, &"flank"): flanks.append(candidate)
 		elif candidate.destination.has("team_posture") and _deployment_enabled():
-			if _attach_tactical_offer(candidate, source, &"team_position"): result.append(candidate)
+			if not candidate.destination.get("support_only", false) and _attach_tactical_offer(candidate, source, &"team_position"): result.append(candidate)
 			if actor.can_use_firearms() and not actor.ammo.is_reloading and actor.ammo.magazine_rounds > 0:
 				var support_position := candidate.duplicate(true)
 				if _attach_tactical_offer(support_position, source, &"front_support"): result.append(support_position)
@@ -757,6 +765,11 @@ func _attach_tactical_offer(candidate: Dictionary, source: Dictionary, role: Str
 	candidate.coordination_role = role
 	candidate.coordination_staging_position = point if role in [&"front_support", &"team_position"] else actor.global_position
 	candidate.known_position = source.position
+	# A validated firing approach to fresh shared contact can replace an earlier
+	# investigation through the existing Search contract, just like shared_contact.
+	# It still needs central selection, route validation and real fire on arrival.
+	if role == &"front_support" and _deployment_enabled() and not context.fresh_shared_contact().is_empty():
+		candidate.combat_contact = true
 	var actual := _own_actual_support() if role == &"front_support" else {"ready": false, "seconds": 0.0}
 	var seconds: float = float(candidate.destination.get("route_seconds", 0.0))
 	var offer: Dictionary = identity.duplicate()

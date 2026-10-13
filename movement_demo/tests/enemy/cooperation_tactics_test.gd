@@ -20,7 +20,7 @@ func check(ok: bool, label: String) -> void:
 	print(("PASS " if ok else "FAIL ") + label)
 
 func _run() -> void:
-	scene = load("res://scenes/main.tscn").instantiate()
+	scene = preload("res://tests/enemy/enemy_fire_fixture.gd").legacy_scene()
 	arena = scene.get_node("Arena")
 	first = preload("res://tests/enemy/enemy_fire_fixture.gd").primary_enemy(arena)
 	first_ai = first.get_node("AI")

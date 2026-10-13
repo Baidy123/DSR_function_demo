@@ -14,7 +14,7 @@ func check(ok: bool, label: String) -> void:
 	print(("PASS " if ok else "FAIL ") + label)
 
 func _run() -> void:
-	var scene = load("res://scenes/main.tscn").instantiate()
+	var scene = preload("res://tests/enemy/enemy_fire_fixture.gd").legacy_scene()
 	var arena = scene.get_node("Arena")
 	for child in arena.get_children():
 		if child.has_node("AI"): child.free()

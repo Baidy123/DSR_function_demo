@@ -121,7 +121,7 @@ func _visual_loss_case(full_training: bool) -> void:
 	await physics_frame
 
 func _setup(full_training: bool = false) -> void:
-	scene = load("res://scenes/main.tscn").instantiate()
+	scene = preload("res://tests/enemy/enemy_fire_fixture.gd").legacy_scene()
 	arena = scene.get_node("Arena")
 	for child in arena.get_children():
 		if child != preload("res://tests/enemy/enemy_fire_fixture.gd").primary_enemy(arena) and child.has_method("move_character"): child.free()

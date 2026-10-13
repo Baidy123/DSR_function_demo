@@ -110,7 +110,7 @@ func _build_fixture(enemy_position: Vector3) -> void:
 	scene = Node3D.new()
 	scene.name = "VaultHitResetFixture"
 	# Reuse real actor subtrees, but no user arena layout or saved tuning.
-	var donor = load("res://scenes/main.tscn").instantiate()
+	var donor = preload("res://tests/enemy/enemy_fire_fixture.gd").legacy_scene()
 	player = donor.get_node("Player")
 	donor.remove_child(player)
 	donor.free()

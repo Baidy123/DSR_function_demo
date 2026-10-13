@@ -25,7 +25,6 @@ func _support_case(kind: StringName) -> Dictionary:
 	var f: Dictionary = await _fixture(2 if kind in [&"transfer", &"retreat", &"handoff_unavailable"] else 3, false)
 	var binding = preload("res://scripts/enemy/config/team_cooperation_binding.gd").new()
 	binding.profile.level = 2
-	if kind == &"transfer": binding.profile.deployment_spacing = 1.5
 	f.arena.team_cooperation_bindings.assign([binding])
 	f.arena.enemy_environment()
 	if kind in [&"retreat", &"transfer"]: _retreat_cover(f, kind)
@@ -53,7 +52,9 @@ func _support_case(kind: StringName) -> Dictionary:
 			actor.global_position = Vector3(27, f.ground_y, (index - 1) * 4)
 			actor.look_at(f.player.global_position)
 		if kind == &"transfer" and index == 1:
-			actor.global_position = Vector3(27.4, f.ground_y, 2.5)
+			# Start inside the occluded sector; the wider wall below requires a
+			# real transfer even after normal search has begun during preparation.
+			actor.global_position = Vector3(27.4, f.ground_y, 3.5)
 			actor.look_at(f.player.global_position)
 	f.arena.cooperation.reset()
 	var result := {"kind": kind, "roles": [], "proactive": false, "filled": false, "reload_shots": 0,
@@ -83,6 +84,8 @@ func _support_case(kind: StringName) -> Dictionary:
 		var before: Dictionary = {}
 		for actor in f.actors: before[actor.get_instance_id()] = actor.get_node("AI").context.coordination_support_state()
 		for actor in f.actors: actor.get_node("AI")._physics_process(STEP)
+		if kind == &"transfer" and frame == 0:
+			check(not f.actors[1].get_node("AI").context.sees_player, "The transferring provider begins with real target occlusion")
 		var active_proactive := 0
 		for actor in f.actors:
 			var id: int = actor.get_instance_id()
@@ -164,11 +167,14 @@ func _retreat_cover(f: Dictionary, kind: StringName) -> void:
 	var cover = load("res://scenes/world/cover.tscn").instantiate()
 	cover.position = Vector3(4, 1.1, 1.5) if kind == &"retreat" else Vector3(6, 1.1, 3.5)
 	cover.rotation.y = PI * 0.5
+	if kind == &"transfer":
+		cover.get_node("CollisionShape3D").shape.size.x = 5.0
+		cover.get_node("Mesh").mesh.size.x = 5.0
 	region.add_child(cover)
 	var mesh := NavigationMesh.new()
 	var vertices := PackedVector3Array()
 	var xs: Array[float] = [-8.0, 5.1, 6.9, 8.0]
-	var zs: Array[float] = [-8.0, 1.1, 5.9, 8.0]
+	var zs: Array[float] = [-8.0, 0.1, 6.9, 8.0]
 	if kind == &"retreat":
 		xs = [-8.0, 3.1, 4.9, 8.0]
 		zs = [-8.0, -0.9, 3.9, 8.0]

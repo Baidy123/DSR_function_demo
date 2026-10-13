@@ -18,7 +18,7 @@ func _initialize() -> void:
 	_run.call_deferred()
 
 func _run() -> void:
-	var original: Node = load("res://scenes/main.tscn").instantiate()
+	var original: Node = preload("res://tests/enemy/enemy_fire_fixture.gd").legacy_scene()
 	player = original.get_node("Player")
 	original.remove_child(player)
 	original.free()

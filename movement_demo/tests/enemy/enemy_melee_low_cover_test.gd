@@ -254,7 +254,7 @@ func _build_fixture() -> void:
 	scene.name = "LowWallMeleeFixture"
 	# Reuse the actual player subtree only. No saved arena layout, navigation,
 	# scene override or user weapon/training settings enter this fixture.
-	var donor = load("res://scenes/main.tscn").instantiate()
+	var donor = preload("res://tests/enemy/enemy_fire_fixture.gd").legacy_scene()
 	player = donor.get_node("Player")
 	donor.remove_child(player)
 	donor.free()

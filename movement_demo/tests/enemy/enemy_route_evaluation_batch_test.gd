@@ -62,7 +62,7 @@ class RouteScopeQueue extends RefCounted:
 
 ## Read-only route contracts with real collision geometry, not tactical selection.
 func _run() -> void:
-	var scene = load("res://scenes/main.tscn").instantiate()
+	var scene = preload("res://tests/enemy/enemy_fire_fixture.gd").legacy_scene()
 	root.add_child(scene)
 	current_scene = scene
 	root.get_node("DebugSettings").enabled = false

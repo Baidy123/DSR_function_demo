@@ -25,7 +25,7 @@ func settle() -> void:
 		await physics_frame
 
 func run_checks() -> void:
-	var scene := load("res://scenes/main.tscn").instantiate() as Node3D
+	var scene := preload("res://tests/enemy/enemy_fire_fixture.gd").legacy_scene() as Node3D
 	root.add_child(scene)
 	var player := scene.get_node("Player") as CharacterBody3D
 	player.set_physics_process(false)

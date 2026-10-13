@@ -41,6 +41,7 @@ movement_demo/
 │   ├── enemy/
 │   │   ├── actions/       可配置动作 .tres
 │   │   ├── units/         兵种模板 .tres
+│   │   ├── cooperation/   三档团队意识模板与区域小队绑定 .tres
 │   │   └── training/      训练配置 .tres
 │   ├── weapons/           玩家与敌人的武器 .tres
 │   ├── player/            玩家医疗包效果与时间等静态配置
@@ -60,7 +61,9 @@ movement_demo/
 
 新增运行脚本按职责放入对应目录；新增敌人动作实现放 `scripts/enemy/actions/`，其定义资源放 `resources/enemy/actions/`。新增交互效果放 `scripts/world/interactions/`，具体交互物场景放 `scenes/world/objects/`；交互物与效果只通过 `InteractionContext` 使用注入的状态，不直接查找全局节点。测试或临时诊断不要放回工程根目录，也不要混入运行脚本目录。
 
-敌人协作由 `world/shooting_range.gd` 持有每战斗区一份 `enemy/services/enemy_cooperation.gd`；Context 提供值快照与任务接口，服务不访问其他行为实例或执行身体命令。`actions/enemy_cooperation_action.gd` / `resources/enemy/actions/cooperate.tres` 是训练解锁的协作战术，内部提供有限侧移、另一侧包抄和原地掩护方案；分工搜索与主动补弹仍属于原搜索／换弹模块。统一压制保留旧出口脚本 UID 作为兼容入口，默认目录只装配一个压制实例。参数位于 `config/cooperation_settings.gd`，详见 [敌人协作](enemy-ai.md#敌人协作)。
+三档团队意识沿用上述分层：`config/team_cooperation_binding.gd` 仅保存阵营、通信组与 cooperation 配置引用；现有 Arena 脚本的 `team_cooperation_bindings` 提供给区域 board。`resources/enemy/cooperation/` 提供三档模板和当前竞技场绑定；个人 Training 继续独立。纯 planner 决定建议、集中／分散部署和行动支援链接，原动作、身体及 Fire 执行实际移动、换弹和射击，不增加管理节点或独立团队执行循环。默认场景接入由 `enemy_team_scene_integration_test.gd` 验证；旧行为测试通过公共 `legacy_scene()` 明确保留原个人配置前提，不能用兼容夹具代替当前绑定的实景验收。明确人数的专项可选择 `single_member_scene()` 再添加所需队员，避免保存地图额外成员干扰单人合同和多人性能计数；此辅助只改变测试实例。
+
+敌人协作由 `world/shooting_range.gd` 持有每战斗区一份 `enemy/services/enemy_cooperation.gd`；Context 提供值快照与任务接口，服务不访问其他行为实例或执行身体命令。`actions/enemy_cooperation_action.gd` / `resources/enemy/actions/cooperate.tres` 提供有限侧移、另一侧包抄和射击支援候选；新绑定小队的权限统一来自团队意识，未绑定旧场景保留个人训练开关。分工搜索与主动补弹仍属于原搜索／换弹模块。统一压制保留旧出口脚本 UID 作为兼容入口，默认目录只装配一个压制实例。参数位于 `config/cooperation_settings.gd`，详见 [敌人协作](enemy-ai.md#敌人协作)。
 
 [统一队伍规划器设计](superpowers/specs/2026-10-10-enemy-team-coordinator-design.md)已接入基础预约、高级岗位和共同阶段。个人 Utility、原动作、身体与 Fire 继续负责执行；功能接入不代表性能及所有旧行为验收已完成。阶段结果与未完成项统一见 [敌人测试](enemy-tests.md#当前回归)及 [实施记录](superpowers/plans/2026-10-10-enemy-team-coordinator.md#实施记录)。
 

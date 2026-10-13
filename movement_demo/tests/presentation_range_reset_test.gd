@@ -5,7 +5,7 @@ func _initialize() -> void:
 
 
 func run() -> void:
-	var scene = load("res://scenes/main.tscn").instantiate()
+	var scene = preload("res://tests/enemy/enemy_fire_fixture.gd").legacy_scene()
 	root.add_child(scene)
 	current_scene = scene
 	var result: Dictionary = await load("res://tests/range_reset_test.gd").new().run(scene)

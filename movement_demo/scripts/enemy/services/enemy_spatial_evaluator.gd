@@ -10,6 +10,7 @@ var last_evaluation_usec := 0
 var last_evaluated_count := 0
 var total_evaluated_count := 0
 var completed_passes := 0
+var initial_ready_revision := 0
 var _visible := false
 var _frame := -1
 var _cursor := 0
@@ -34,7 +35,7 @@ func register(action) -> void:
 			if job.owners.any(func(owner): return owner.get_ref() == action): return
 			job.owners.append(weakref(action))
 			return
-	jobs.append({"owner": weakref(action), "owners": [weakref(action)], "channel": action.evaluation_channel(), "revision": 0, "points": [], "cursor": 0, "priority": 0, "priority_cursor": 0, "completed_passes": 0, "cache": []})
+	jobs.append({"owner": weakref(action), "owners": [weakref(action)], "channel": action.evaluation_channel(), "revision": 0, "points": [], "cursor": 0, "priority": 0, "priority_cursor": 0, "completed_passes": 0, "initial_ready_reported": false, "cache": []})
 	_position = Vector3.INF
 
 ## 显式撤销注册，不能依靠旧实例是否还被调试器或其他观察者持有来决定生命周期。
@@ -58,6 +59,7 @@ func reset_evaluation() -> void:
 		job.points.clear()
 		job.cursor = 0
 		job.completed_passes = 0
+		job.initial_ready_reported = false
 		job.priority = 0
 	_position = Vector3.INF
 	_frame = -1
@@ -85,6 +87,7 @@ func _rebuild_job(job: Dictionary, initial: bool) -> void:
 	job.revision = action.evaluation_revision()
 	job.cursor %= maxi(1, job.points.size())
 	if initial or empty:
+		job.initial_ready_reported = false
 		job.priority = mini(job.points.size(), action.evaluation_priority_count())
 		job.priority_cursor = 0
 		if job.priority > 0: job.cursor = job.priority % job.points.size()
@@ -181,6 +184,11 @@ func advance_evaluation() -> void:
 			completed_passes += 1
 		if not assessment.is_empty():
 			_store_candidate(job.cache, assessment.destination, assessment.cost, assessment)
+			# Announce the first usable result, not every point or moving-origin
+			# rebuild. Consumers may reconsider using this already-paid geometry.
+			if not job.get("initial_ready_reported", false) and not job.cache.is_empty():
+				job.initial_ready_reported = true
+				initial_ready_revision += 1
 		last_evaluated_count += 1
 		total_evaluated_count += 1
 	last_evaluation_usec = Time.get_ticks_usec() - started

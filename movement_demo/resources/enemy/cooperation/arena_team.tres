@@ -1,0 +1,11 @@
+[gd_resource type="Resource" script_class="EnemyTeamCooperationBinding" format=3]
+
+[ext_resource type="Script" uid="uid://cmn0ulhy7ud2a" path="res://scripts/enemy/config/team_cooperation_binding.gd" id="binding"]
+[ext_resource type="Resource" path="res://resources/enemy/cooperation/coordinated.tres" id="profile"]
+
+[resource]
+resource_name = "竞技场小队"
+script = ExtResource("binding")
+faction_id = &"enemy"
+communication_group = &""
+profile = ExtResource("profile")

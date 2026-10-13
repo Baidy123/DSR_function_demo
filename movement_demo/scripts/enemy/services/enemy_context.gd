@@ -792,6 +792,10 @@ func coordination_assignment() -> Dictionary:
 	if cooperation == null or not coordinated_cooperation_enabled() or cooperation.registered_member_count() <= 1 or not cooperation.has_method("assignment"): return {}
 	return cooperation.assignment(self)
 
+func coordination_decision_revision() -> int:
+	if cooperation == null or not cooperation.has_team_binding(self) or not coordinated_cooperation_enabled() or not cooperation.has_method("assignment_decision_revision"): return 0
+	return cooperation.assignment_decision_revision(self)
+
 func coordination_support_state() -> Dictionary:
 	return cooperation.assignment_support(self) if coordinated_cooperation_enabled() else {}
 

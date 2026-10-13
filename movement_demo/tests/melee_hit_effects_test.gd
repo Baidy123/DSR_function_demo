@@ -19,7 +19,7 @@ func _initialize() -> void:
 
 
 func _run() -> void:
-	scene = load("res://scenes/main.tscn").instantiate()
+	scene = preload("res://tests/enemy/enemy_fire_fixture.gd").legacy_scene()
 	root.add_child(scene)
 	current_scene = scene
 	player = scene.get_node("Player")
@@ -60,7 +60,7 @@ func _run() -> void:
 	scene.queue_free()
 	await process_frame
 	await process_frame
-	var restarted = load("res://scenes/main.tscn").instantiate()
+	var restarted = preload("res://tests/enemy/enemy_fire_fixture.gd").legacy_scene()
 	root.add_child(restarted)
 	current_scene = restarted
 	_check(restarted.get_node("Player").get_melee_movement_multiplier() == 1.0 and preload("res://tests/enemy/enemy_fire_fixture.gd").primary_enemy(restarted).get_melee_movement_multiplier() == 1.0, "重开场景没有遗留减速")

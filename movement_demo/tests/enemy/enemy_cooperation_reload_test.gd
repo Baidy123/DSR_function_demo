@@ -9,7 +9,7 @@ func _initialize() -> void:
 	_run.call_deferred()
 
 func _run() -> void:
-	var scene = load("res://scenes/main.tscn").instantiate()
+	var scene = preload("res://tests/enemy/enemy_fire_fixture.gd").single_member_scene()
 	root.add_child(scene)
 	current_scene = scene
 	var arena = scene.get_node("Arena")
@@ -17,6 +17,7 @@ func _run() -> void:
 	var second = load("res://scenes/enemy/enemy.tscn").instantiate()
 	second.position = arena.to_local(Vector3(18, 0, 2))
 	arena.add_child(second)
+	check(arena.get_children().filter(func(child): return child.has_node("AI")).size() == 2, "Coordinated reload fixture contains exactly its two declared participants")
 	var player = scene.get_node("Player")
 	player.set_physics_process(false)
 	player.combat.set_physics_process(false)

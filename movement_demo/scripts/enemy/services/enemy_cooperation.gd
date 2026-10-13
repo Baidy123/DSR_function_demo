@@ -1543,6 +1543,16 @@ func _coordination_assignment_valid(plan: Dictionary, entry: Dictionary) -> bool
 	if not entry.accepted and entry.accept_until <= elapsed: return false
 	return true
 
+## A cheap decision hint only. Acceptance still uses the complete live contract;
+## this never grants permission or exposes the internal assignment dictionaries.
+func assignment_decision_revision(context) -> int:
+	var owner_id: int = context.actor.get_instance_id()
+	var plan: Dictionary = _coordination_plans.get(_team_by_member.get(owner_id, 0), {})
+	for entry: Dictionary in plan.get("assignments", []):
+		if entry.actor_id == owner_id:
+			return hash([generation, plan.plan_id, entry.assignment_id, entry.assignment_revision])
+	return 0
+
 func _assignment_for_owner(owner_id: int) -> Dictionary:
 	var plan: Dictionary = _coordination_plans.get(_team_by_member.get(owner_id, 0), {})
 	if plan.is_empty(): return {}

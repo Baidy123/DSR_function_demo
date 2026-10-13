@@ -6,7 +6,7 @@ var _reload_started := false
 var _rounds_at_start := 0
 
 func _team_reload_offer_available() -> bool:
-	return _team_orders_enabled() and actor.can_use_firearms() and actor.ammo.can_reload() and not actor.ammo.is_reloading and actor.ammo.magazine_rounds > 0 and float(actor.ammo.magazine_rounds) / maxf(1.0, actor.weapon.magazine_capacity) <= float(context.setting(&"cooperation", &"reload_rounds_ratio", 0.35))
+	return _team_orders_enabled() and context.cooperation.registered_member_count() > 1 and actor.can_use_firearms() and actor.ammo.can_reload() and not actor.ammo.is_reloading and actor.ammo.magazine_rounds > 0 and float(actor.ammo.magazine_rounds) / maxf(1.0, actor.weapon.magazine_capacity) <= float(context.setting(&"cooperation", &"reload_rounds_ratio", 0.35))
 
 func _team_reload_can_start() -> bool:
 	if actor.ammo.magazine_rounds == 0 or actor.ammo.is_reloading: return true
@@ -125,6 +125,11 @@ func collect_candidates(visible: bool) -> Array[Dictionary]:
 			candidate.cooperation = {"kind": &"reload", "target_id": context.cooperation_target_id(), "provider_id": opportunity.get("provider_id", 0), "request_id": opportunity.get("request_id", 0), "support_seconds": 0.0, "quality": 1.0}
 			if _team_orders_enabled():
 				_offer_team_candidate(candidate, &"assisted_reload", {"action_seconds": seconds, "travel_seconds": maxf(0.0, float(candidate.outcome.unavailable_seconds) - seconds)})
+	# A team-only preview without a live source/identity is not an executable
+	# personal reload. Otherwise it can repeatedly win Utility, fail validate,
+	# and prevent an isolated member from continuing its ordinary search.
+	if proactive and _team_orders_enabled() and not actor.ammo.is_reloading and not (_running and _reload_completed()) and not opportunity.get("allowed", false):
+		return result.filter(func(candidate): return candidate.has("coordination_role"))
 	return result
 
 func _destination_candidates(destination: Dictionary, visible: bool, threat: Vector3) -> Array[Dictionary]:

@@ -212,7 +212,7 @@ func _skeletal_character_scene() -> PackedScene:
 
 
 func _real_equipment_adapters() -> void:
-	var scene = load("res://scenes/main.tscn").instantiate()
+	var scene = preload("res://tests/enemy/enemy_fire_fixture.gd").legacy_scene()
 	root.add_child(scene)
 	current_scene = scene
 	var actor = scene.get_node("Player")

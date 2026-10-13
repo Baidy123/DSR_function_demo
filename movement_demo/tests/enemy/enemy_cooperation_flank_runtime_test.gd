@@ -35,7 +35,7 @@ func _navigation_mesh(half_width: float = 8.0) -> NavigationMesh:
 
 func _fixture(count: int, enabled: bool, narrow: bool = false) -> Dictionary:
 	seed(8423)
-	var scene = load("res://scenes/main.tscn").instantiate()
+	var scene = preload("res://tests/enemy/enemy_fire_fixture.gd").legacy_scene()
 	var arena = scene.get_node("Arena")
 	var first = preload("res://tests/enemy/enemy_fire_fixture.gd").primary_enemy(arena)
 	# Keep the declared population independent of unsaved/local arena duplicates.

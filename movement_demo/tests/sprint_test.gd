@@ -94,7 +94,7 @@ func _reset() -> void:
 	_release_inputs()
 	if is_instance_valid(scene):
 		scene.free()
-	scene = load("res://scenes/main.tscn").instantiate()
+	scene = preload("res://tests/enemy/enemy_fire_fixture.gd").legacy_scene()
 	root.add_child(scene)
 	player = scene.get_node("Player")
 	visual = player.get("visual")

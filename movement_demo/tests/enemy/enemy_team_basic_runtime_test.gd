@@ -44,7 +44,7 @@ func _run() -> void:
 	quit(1 if failures else 0)
 
 func _fixture(count: int, advanced: bool) -> Dictionary:
-	var scene = load("res://scenes/main.tscn").instantiate()
+	var scene = preload("res://tests/enemy/enemy_fire_fixture.gd").legacy_scene()
 	var arena = scene.get_node("Arena")
 	for child in arena.get_children():
 		if child.has_node("AI"): child.free()

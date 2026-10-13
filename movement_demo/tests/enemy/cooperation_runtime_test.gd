@@ -13,7 +13,7 @@ func _run() -> void:
 	quit(1 if failures else 0)
 
 func _measure(count: int) -> void:
-	var scene = load("res://scenes/main.tscn").instantiate()
+	var scene = preload("res://tests/enemy/enemy_fire_fixture.gd").single_member_scene()
 	root.add_child(scene)
 	current_scene = scene
 	var arena = scene.get_node("Arena")
@@ -28,6 +28,7 @@ func _measure(count: int) -> void:
 		actor.weapon = load("res://resources/weapons/test_pistol.tres")
 		arena.add_child(actor)
 		actors.append(actor)
+	check(arena.get_children().filter(func(child): return child.has_node("AI")).size() == count, "%d-member benchmark has exactly its declared AI population" % count)
 	player.global_position = Vector3(20, 0, 0)
 	for index in actors.size():
 		var actor = actors[index]

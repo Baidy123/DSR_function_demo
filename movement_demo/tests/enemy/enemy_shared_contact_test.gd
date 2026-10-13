@@ -37,7 +37,7 @@ func _mesh() -> NavigationMesh:
 	return mesh
 
 func _fixture(receiver_z: float = 0.0) -> Dictionary:
-	var scene = load("res://scenes/main.tscn").instantiate()
+	var scene = preload("res://tests/enemy/enemy_fire_fixture.gd").legacy_scene()
 	var arena = scene.get_node("Arena")
 	var observer = preload("res://tests/enemy/enemy_fire_fixture.gd").primary_enemy(arena)
 	for child in arena.get_children():

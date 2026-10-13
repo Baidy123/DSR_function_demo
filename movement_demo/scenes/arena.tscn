@@ -5,6 +5,8 @@
 [ext_resource type="PackedScene" path="res://scenes/world/cover.tscn" id="5_cover"]
 [ext_resource type="PackedScene" path="res://scenes/world/low_cover.tscn" id="low_cover"]
 [ext_resource type="PackedScene" uid="uid://cu5pdeu3u7v5m" path="res://scenes/enemy/enemy.tscn" id="enemy_scene"]
+[ext_resource type="Script" uid="uid://cmn0ulhy7ud2a" path="res://scripts/enemy/config/team_cooperation_binding.gd" id="team_binding"]
+[ext_resource type="Resource" path="res://resources/enemy/cooperation/arena_team.tres" id="team_profile"]
 
 [sub_resource type="StandardMaterial3D" id="FloorMaterial"]
 albedo_color = Color(0.26, 0.24, 0.3, 1)
@@ -90,6 +92,7 @@ size = Vector3(22.44934, 3, 15.852051)
 
 [node name="Arena" type="Node3D" unique_id=1563628380]
 script = ExtResource("3_reset")
+team_cooperation_bindings = Array[ExtResource("team_binding")]([ExtResource("team_profile")])
 
 [node name="NavigationRegion3D" type="NavigationRegion3D" parent="." unique_id=134180129]
 navigation_mesh = ExtResource("2")
