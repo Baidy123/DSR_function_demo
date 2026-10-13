@@ -36,6 +36,8 @@ var _coordination_due: Dictionary = {}
 var _coordination_failures: Array[Dictionary] = []
 var _coordination_counters: Dictionary = {}
 var _coordination_checked: Dictionary = {}
+var _recommendations: Dictionary = {}
+var _recommendation_cooldowns: Dictionary = {}
 var _team_planner = TeamPlanner.new()
 const COORDINATION_PERIOD := 0.2 # Implementation default, not a user constraint.
 const COORDINATION_ACCEPT_SECONDS := 1.0
@@ -415,6 +417,7 @@ func advance(delta: float) -> void:
 		if not _reservation_valid(_reservations[reservation_id]):
 			_reservations.erase(reservation_id)
 			revision += 1
+	_maintain_recommendations()
 	_advance_coordination()
 
 func reset() -> void:
@@ -452,6 +455,7 @@ func unregister(id: int) -> void:
 	revision += 1
 
 func release_member(id: int) -> void:
+	_recommendations.erase(id)
 	_release_member_reservations(id, true)
 	_coordination_offers.erase(id)
 	_invalidate_coordination_member(id, &"member_released")
@@ -464,6 +468,9 @@ func release_member(id: int) -> void:
 ## Dependent allies keep their finite leases while the same real need exists.
 func clear_execution(id: int) -> void:
 	_release_member_reservations(id, false)
+	var advice: Dictionary = _recommendations.get(id, {})
+	if advice.get("accepted", false) and not _reservations.values().any(func(entry): return entry.owner_id == id and entry.phase == &"pending" and entry.get("recommendation_id") == advice.recommendation_id):
+		_recommendations.erase(id)
 	for token in _claims.keys():
 		if int(_claims[token].owner_id) == id: _claims.erase(token)
 	if _members.has(id):
@@ -1231,6 +1238,8 @@ func support_pressure(context) -> float:
 # Unified tactical bridge. Offers are published after the caller's read-only
 # evaluation batch. None of these functions runs an action, navigates or fires.
 func _clear_coordination() -> void:
+	_recommendations.clear()
+	_recommendation_cooldowns.clear()
 	_coordination_sources.clear()
 	_coordination_source_pool.clear()
 	_coordination_receipts.clear()
@@ -1825,12 +1834,18 @@ func _coordination_snapshot(team_id: int, source: Dictionary, ids: Array) -> Dic
 		members.append({"actor_id": id, "member_generation": identity.member_generation, "config_revision": identity.config_revision,
 			"navigation_revision": identity.navigation_revision, "position": context.actor.global_position,
 			"advanced_enabled": context.cooperation_enabled(), "eligible_roles": _coordination_roles(context, source.target_id),
-			"offers": offers, "actual_support": actual, "on_far_side": far})
+			"offers": offers, "actual_support": actual, "on_far_side": far,
+			"advisory_active": _recommendations.get(id, {}).get("accepted", false)})
 	var snapshot_value := {"now": elapsed, "generation": generation, "team_id": team_id, "domain": "team:%s" % team_id,
 		"target_id": source.target_id, "evidence_id": source.evidence_id, "environment_revision": environment,
 		"navigation_revision": int(_members[ids[0]].navigation_revision), "relation_revision": relation_revision,
 		"members": members, "occupancy": _coordination_occupancy(representative), "requests": _coordination_requests(ids, source),
 		"failures": _coordination_failures.filter(func(entry): return entry.team_id == team_id and entry.target_id == source.target_id and entry.evidence_id == source.evidence_id).duplicate(true), "flank_owner_ids": [], "current_plan": {}}
+	if has_team_binding(representative):
+		snapshot_value.cooperation_level = team_level(representative)
+		snapshot_value.team_config_revision = team_configuration_revision(representative)
+	for id: int in ids:
+		if _recommendations.get(id, {}).get("accepted", false): snapshot_value.flank_owner_ids.append(id)
 	if not current.is_empty():
 		var projected := current.duplicate()
 		projected.erase("assignments")
@@ -2092,10 +2107,78 @@ func _advance_coordination() -> void:
 			continue
 		var source := _coordination_find_source(team_id, ids)
 		if source.is_empty(): continue
-		if team_level(_context(ids[0]), 2) != 2:
-			_drop_coordination_plan(team_id, &"team_level")
-			continue
 		var snapshot_value := _coordination_snapshot(team_id, source, ids)
 		var proposal: Dictionary = _team_planner.propose(snapshot_value)
 		_coordination_counters[team_id] = proposal.get("counters", {}).duplicate(true)
-		_install_coordination_proposal(team_id, source, proposal)
+		if proposal.operation == &"recommend":
+			_drop_coordination_plan(team_id, &"advisory_mode")
+			_install_recommendations(team_id, source, proposal)
+		else: _install_coordination_proposal(team_id, source, proposal)
+
+func _recommendation_valid(context, entry: Dictionary) -> bool:
+	if entry.is_empty() or not _reservation_member_valid(context) or context.cooperation_level() != 1 or not context.cooperation_enabled(): return false
+	if entry.expires_at <= elapsed or (not entry.accepted and entry.accept_until <= elapsed): return false
+	var identity := coordination_identity(context)
+	for key in [&"generation", &"member_generation", &"team_id", &"config_revision", &"team_config_revision", &"environment_revision", &"navigation_revision", &"relation_revision"]:
+		if entry.get(key) != identity.get(key): return false
+	var source := _active_coordination_source(_coordination_key(entry.team_id, entry.target_id))
+	return not source.is_empty() and source.evidence_id == entry.evidence_id and entry.target_id == context.cooperation_target_id()
+
+func recommendation(context) -> Dictionary:
+	var entry: Dictionary = _recommendations.get(context.actor.get_instance_id(), {})
+	return entry.duplicate(true) if _recommendation_valid(context, entry) else {}
+
+func recommendation_available(context, identity: Dictionary, offer_key: String) -> bool:
+	var entry: Dictionary = _recommendations.get(context.actor.get_instance_id(), {})
+	if not _recommendation_valid(context, entry) or entry.recommendation_id != identity.get("recommendation_id") or not entry.allowed_offer_keys.has(offer_key): return false
+	if entry.accepted: return true
+	var summary: Dictionary = entry.reserved_offers[0].path_summary
+	var anchor: Vector3 = summary.tactical_anchor
+	var axis: Vector3 = summary.tactical_axis
+	var eligible := 0
+	var owners: Dictionary = {context.actor.get_instance_id(): true}
+	var front := false
+	for id: int in _coordination_team_members(entry.team_id):
+		var other = _context(id)
+		if not other.cooperation_enabled(): continue
+		eligible += 1
+		if (other.actor.global_position - anchor).dot(axis) < -FLANK_SIDE_MARGIN or _recommendations.get(id, {}).get("accepted", false): owners[id] = true
+		elif id != context.actor.get_instance_id() and (other.actor.global_position - anchor).dot(axis) > FLANK_SIDE_MARGIN: front = true
+	return front and owners.size() <= floori(float(eligible) / 2.0)
+
+func prepare_recommendation(context, advice: Dictionary, key: String, offer: Dictionary, duration: float) -> Dictionary:
+	if not recommendation_available(context, advice, key): return {}
+	var token := prepare_reservation(context, offer, duration)
+	if token.is_empty(): return {}
+	var stored: Dictionary = _reservations[token.reservation_id]
+	stored.recommendation_id = advice.recommendation_id
+	stored.expires_at = minf(stored.expires_at, float(_recommendations[context.actor.get_instance_id()].expires_at))
+	return stored.duplicate(true)
+
+func accept_recommendation(context, advice: Dictionary, token: Dictionary) -> bool:
+	var entry: Dictionary = _recommendations.get(context.actor.get_instance_id(), {})
+	if not _recommendation_valid(context, entry) or entry.recommendation_id != advice.get("recommendation_id") or token.get("recommendation_id") != entry.recommendation_id: return false
+	if not commit_reservation(context, token): return false
+	entry.accepted = true
+	return true
+
+func _maintain_recommendations() -> void:
+	for id: int in _recommendations.keys():
+		var entry: Dictionary = _recommendations[id]
+		if _recommendation_valid(_context(id), entry): continue
+		_recommendation_cooldowns[id] = elapsed + COORDINATION_PERIOD
+		_recommendations.erase(id)
+	for id in _recommendation_cooldowns.keys():
+		if not _members.has(id) or _recommendation_cooldowns[id] <= elapsed: _recommendation_cooldowns.erase(id)
+
+func _install_recommendations(team_id: int, source: Dictionary, proposal: Dictionary) -> void:
+	for item: Dictionary in proposal.get("recommendations", []):
+		var context = _context(item.actor_id)
+		if _recommendations.has(item.actor_id) or _recommendation_cooldowns.has(item.actor_id) or not _reservation_member_valid(context): continue
+		var entry := item.duplicate(true)
+		entry.merge(coordination_identity(context))
+		_serial += 1
+		entry.merge({"recommendation_id": _serial, "team_id": team_id, "target_id": source.target_id, "evidence_id": source.evidence_id,
+			"created_at": elapsed, "accept_until": elapsed + COORDINATION_ACCEPT_SECONDS,
+			"expires_at": minf(source.valid_until, elapsed + maxf(4.0, float(context.setting(&"cooperation", &"flank_plan_seconds", 14.0)))), "accepted": false})
+		_recommendations[item.actor_id] = entry

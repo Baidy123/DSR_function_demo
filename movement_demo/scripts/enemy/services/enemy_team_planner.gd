@@ -27,6 +27,8 @@ func propose(snapshot: Dictionary, limits: Dictionary = {}) -> Dictionary:
 	if not _collect_members(work): return _result(work, &"none", &"invalid_members")
 	if not _collect_occupancy(work): return _result(work, &"none", &"invalid_occupancy")
 	if not _collect_requests(work): return _result(work, &"none", &"invalid_requests")
+	if snapshot.get("cooperation_level", 2) == 0: return _with_basic(work, _result(work, &"none", &"intel_only"), [])
+	if snapshot.get("cooperation_level", 2) == 1: return _recommend_positions(work)
 	var current: Dictionary = snapshot.get("current_plan", {})
 	if not current.is_empty():
 		if not _current_header_valid(current, snapshot): return _result(work, &"none", &"invalid_current_plan")
@@ -84,6 +86,8 @@ func _nonnegative_integer(value: Variant) -> bool:
 	return typeof(value) == TYPE_INT and value >= 0
 
 func _header_valid(snapshot: Dictionary) -> bool:
+	if snapshot.has("cooperation_level"):
+		if typeof(snapshot.cooperation_level) != TYPE_INT or snapshot.cooperation_level not in [0, 1, 2] or not _nonnegative_integer(snapshot.get("team_config_revision")): return false
 	for key in [&"generation", &"team_id", &"target_id", &"evidence_id", &"environment_revision", &"navigation_revision", &"relation_revision"]:
 		if not _nonnegative_integer(snapshot.get(key)): return false
 	return (_number(snapshot.get("now")) and snapshot.now >= 0.0 and snapshot.team_id > 0
@@ -108,7 +112,8 @@ func _collect_members(work: Dictionary) -> bool:
 		if not member is Dictionary or not _nonnegative_integer(member.get("actor_id")) or member.actor_id == 0: return false
 		if not _nonnegative_integer(member.get("member_generation")) or not _nonnegative_integer(member.get("config_revision")): return false
 		if member.has("navigation_revision") and not _nonnegative_integer(member.navigation_revision): return false
-		if not member.get("position") is Vector3 or not member.get("advanced_enabled") is bool: return false
+		if not member.get("position") is Vector3: return false
+		if not work.snapshot.has("cooperation_level") and not member.get("advanced_enabled") is bool: return false
 		if not member.get("eligible_roles", []) is Array or not member.get("offers", []) is Array: return false
 		if member.get("offers", []).size() > MAX_INPUT_OFFERS: return false
 		for role in member.get("eligible_roles", []):
@@ -161,6 +166,7 @@ func _collect_members(work: Dictionary) -> bool:
 
 func _offer_valid(work: Dictionary, member: Dictionary, offer: Dictionary) -> bool:
 	var snapshot: Dictionary = work.snapshot
+	if snapshot.has("team_config_revision") and offer.get("team_config_revision", 0) != snapshot.team_config_revision: return false
 	for key in [&"offer_key", &"owner_action", &"position_set_key"]:
 		if not _text(offer.get(key)): return false
 	if not _text(offer.get("role")) or not ROLES.has(StringName(offer.role)) or not offer.get("position") is Vector3: return false
@@ -180,7 +186,7 @@ func _offer_valid(work: Dictionary, member: Dictionary, offer: Dictionary) -> bo
 	if role == &"independent_position":
 		if offer.get("scope") != &"basic": return false
 	else:
-		if offer.get("scope") != &"tactical" or not member.advanced_enabled or not member.get("eligible_roles", []).has(role): return false
+		if offer.get("scope") != &"tactical" or not _member_enabled(work, member) or not member.get("eligible_roles", []).has(role): return false
 		if snapshot.target_id == 0 and snapshot.evidence_id == 0: return false
 		if role in [&"inspect_left", &"inspect_right", &"flank", &"search_sector"] and not offer.movement_possible: return false
 	if role == &"search_sector":
@@ -338,7 +344,7 @@ func _flank_allowed(work: Dictionary, bundles: Array) -> bool:
 	var available := 0
 	var owners := {}
 	for member in work.members.values():
-		if member.advanced_enabled and (member.get("eligible_roles", []).has(&"flank") or member.get("eligible_roles", []).has(&"front_support")): available += 1
+		if _member_enabled(work, member) and (member.get("eligible_roles", []).has(&"flank") or member.get("eligible_roles", []).has(&"front_support")): available += 1
 		if member.get("on_far_side", false): owners[member.actor_id] = true
 	for actor_id in work.snapshot.get("flank_owner_ids", []): owners[actor_id] = true
 	for bundle in bundles:
@@ -352,6 +358,39 @@ func _front_holds(work: Dictionary, bundle: Dictionary) -> bool:
 	for offer in bundle.offers:
 		if not offer.get("fire_ready", false) or float(offer.get("measured_support_seconds", 0.0)) <= 0.0 or not offer.path_summary.get("holds_front", false): return false
 	return true
+
+func _member_enabled(work: Dictionary, member: Dictionary) -> bool:
+	return int(work.snapshot.cooperation_level) > 0 if work.snapshot.has("cooperation_level") else bool(member.get("advanced_enabled", false))
+
+## Advice uses physical allies, not a promise that they will accept a front role.
+## The receiver still compares ordinary options; no reservation or barrier exists.
+func _recommend_positions(work: Dictionary) -> Dictionary:
+	var result := _result(work, &"recommend", &"complementary_positions")
+	result.recommendations = []
+	var selected: Array = []
+	if work.members.size() < 2: return result
+	for bundle: Dictionary in _pool(work, &"flank"):
+		if not _trial(work): break
+		if work.members[bundle.actor_id].get("advisory_active", false): continue
+		if selected.any(func(other): return other.actor_id == bundle.actor_id): continue
+		if not _flank_allowed(work, selected + [bundle]) or not _free(work, bundle): continue
+		if selected.any(func(other): return not _compatible(work, other, bundle)): continue
+		var summary: Dictionary = bundle.offers[0].path_summary
+		var anchor: Vector3 = summary.get("tactical_anchor", Vector3.ZERO)
+		var axis: Vector3 = summary.get("tactical_axis", Vector3.ZERO)
+		var front_remains := false
+		for member: Dictionary in work.members.values():
+			if member.actor_id == bundle.actor_id or selected.any(func(other): return other.actor_id == member.actor_id): continue
+			if member.get("advisory_active", false): continue
+			if (member.position - anchor).dot(axis) > 0.5: front_remains = true
+		if not front_remains: continue
+		selected.append(bundle)
+		var recommendation := _assignment(bundle, [])
+		recommendation.erase("partner_ids")
+		recommendation.erase("beneficiary_id")
+		result.recommendations.append(recommendation)
+	result.counters = work.counters.duplicate(true)
+	return result
 
 func _opposite(front: Dictionary, flank: Dictionary) -> bool:
 	for a in front.offers:
@@ -384,7 +423,7 @@ func _new_plan(work: Dictionary) -> Dictionary:
 	if work.members.size() < 2: return _result(work, &"none", &"solo")
 	var advanced := 0
 	for member in work.members.values():
-		if member.advanced_enabled and not member.get("eligible_roles", []).is_empty(): advanced += 1
+		if _member_enabled(work, member) and not member.get("eligible_roles", []).is_empty(): advanced += 1
 	var front := _pool(work, &"front_support")
 	var search := _pool(work, &"search_sector")
 	var queues: Array = []
@@ -517,7 +556,7 @@ func _current_assignments(work: Dictionary, plan: Dictionary) -> Dictionary:
 		owners[assignment.get("actor_id")] = true
 		result.assignments.append(assignment)
 		var member: Dictionary = work.members.get(assignment.get("actor_id"), {})
-		var valid: bool = not member.is_empty() and member.advanced_enabled and member.get("eligible_roles", []).has(assignment.get("role"))
+		var valid: bool = not member.is_empty() and _member_enabled(work, member) and member.get("eligible_roles", []).has(assignment.get("role"))
 		valid = valid and assignment.execution_valid
 		if assignment.has("expires_at"): valid = valid and assignment.expires_at > work.snapshot.now
 		if assignment.has("member_generation"): valid = valid and not member.is_empty() and assignment.member_generation == member.member_generation

@@ -792,6 +792,9 @@ func coordination_assignment() -> Dictionary:
 	if cooperation == null or not coordinated_cooperation_enabled() or cooperation.registered_member_count() <= 1 or not cooperation.has_method("assignment"): return {}
 	return cooperation.assignment(self)
 
+func coordination_recommendation() -> Dictionary:
+	return cooperation.recommendation(self) if cooperation_enabled() and cooperation_level() == 1 else {}
+
 func prepare_coordination_evaluation() -> void:
 	if cooperation != null and cooperation.registered_member_count() > 1: _publish_coordination_versions()
 
@@ -920,8 +923,15 @@ func coordination_choices(options: Array[Dictionary]) -> Array[Dictionary]:
 	var assignment := coordination_assignment()
 	if assignment.is_empty():
 		var independent: Array[Dictionary] = []
+		var advice := coordination_recommendation()
 		for candidate in basic:
-			if candidate.has("coordination_role"): continue
+			if candidate.has("coordination_role"):
+				if advice.is_empty() or candidate.get("id") != advice.get("owner_action") or not advice.allowed_offer_keys.has(candidate.get("coordination_offer_key", "")): continue
+				var advised := candidate.duplicate()
+				advised.erase("coordination_assignment")
+				advised.coordination_recommendation = advice
+				independent.append(advised)
+				continue
 			var choice := candidate.duplicate() if candidate.has("coordination_assignment") else candidate
 			choice.erase("coordination_assignment")
 			independent.append(choice)
@@ -1014,6 +1024,9 @@ func prepare_coordination_choice(candidate: Dictionary) -> Dictionary:
 		previous = point
 	if path.is_empty(): length = _horizontal_distance(offer.position)
 	var duration := clampf(length / maxf(0.1, actor.move_speed) + utility_horizon_seconds, 4.0, 30.0)
+	var advice: Dictionary = candidate.get("coordination_recommendation", {})
+	if not advice.is_empty():
+		return {"required": true, "token": cooperation.prepare_recommendation(self, advice, candidate.get("coordination_offer_key", ""), offer, duration), "recommendation": advice}
 	return {"required": true, "token": cooperation.prepare_reservation(self, offer, duration)}
 
 func commit_coordination_choice(transaction: Dictionary) -> bool:
@@ -1026,7 +1039,10 @@ func commit_coordination_choice(transaction: Dictionary) -> bool:
 		_coordination_pending_assignment = {}
 		_coordination_execution_completed = false
 		return not _coordination_execution.is_empty()
-	if cooperation == null or token.is_empty() or not cooperation.commit_reservation(self, token): return false
+	if cooperation == null or token.is_empty(): return false
+	if not transaction.get("recommendation", {}).is_empty():
+		if not cooperation.accept_recommendation(self, transaction.recommendation, token): return false
+	elif not cooperation.commit_reservation(self, token): return false
 	_coordination_reservation = token
 	return true
 

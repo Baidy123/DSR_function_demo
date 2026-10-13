@@ -17,6 +17,7 @@ func _run() -> void:
 	_continuity_contract()
 	_input_and_budget_contract()
 	_output_isolation_contract()
+	_awareness_modes()
 	print("TEAM PLANNER: %d/%d passed" % [checks - failures, checks])
 	quit(1 if failures else 0)
 
@@ -24,6 +25,38 @@ func check(value: bool, label: String) -> void:
 	checks += 1
 	if not value: failures += 1
 	print(("PASS " if value else "FAIL ") + label)
+
+func _awareness_modes() -> void:
+	var flank := _offer(2, &"flank", Vector3(-4, 0, 3), "advised_flank")
+	flank.team_config_revision = 3
+	flank.path_summary.tactical_anchor = Vector3.ZERO
+	flank.path_summary.tactical_axis = Vector3.RIGHT
+	var snapshot := _snapshot([_member(1, []), _member(2, [flank], false)])
+	snapshot.members[0].eligible_roles = [&"front_support"]
+	snapshot.members[0].actual_support.fire_ready = false
+	snapshot.cooperation_level = 0
+	snapshot.team_config_revision = 3
+	check(planner.propose(snapshot).assignments.is_empty(), "Intel-only squad cannot issue tactical assignments")
+	snapshot.cooperation_level = 1
+	var frozen := snapshot.duplicate(true)
+	var result: Dictionary = planner.propose(snapshot)
+	check(result.operation == &"recommend" and result.recommendations.size() == 1 and result.assignments.is_empty() and result.required_participants.is_empty(), "Tactical mode proposes a flank without assignments, waiting participants or promised fire")
+	check(snapshot == frozen and result.counters.pair_trials <= 36 and result.counters.conflict_checks <= 2048, "Advice is values-only and shares the original work limits")
+	result.recommendations[0].reserved_offers[0].path_summary.side = 99
+	check(flank.path_summary.side == -1, "Recommendation output cannot mutate a member's prepared geometry")
+	snapshot.members[0].position = Vector3(-5, 0, 0)
+	snapshot.members[0].on_far_side = true
+	check(planner.propose(snapshot).recommendations.is_empty(), "Changing actual ally position to the far side removes the next flank recommendation")
+	snapshot = frozen.duplicate(true)
+	snapshot.members[1].offers[0].team_config_revision = 2
+	check(planner.propose(snapshot).recommendations.is_empty(), "Stale squad configuration cannot authorize advice")
+	snapshot = frozen.duplicate(true)
+	snapshot.now = 9.0
+	check(planner.propose(snapshot).recommendations.is_empty(), "Expired member offers cannot become new advice")
+	snapshot = frozen.duplicate(true)
+	check(planner.propose(snapshot, {"max_pair_trials": 0}).recommendations.is_empty(), "Zero combination budget does not issue advice")
+	snapshot.members[1].eligible_roles = []
+	check(planner.propose(snapshot).recommendations.is_empty(), "Shared awareness cannot supply a unit's missing role capability")
 
 func _offer(actor_id: int, role: StringName, point: Vector3, key: String, cost: float = 1.0, group: String = "") -> Dictionary:
 	var summary := {"body_radius": 0.3, "tactical_key": "wall_round_1", "side": -1 if role == &"flank" else 1,

@@ -24,7 +24,8 @@ SUITES = {
     "combat": (DIRECTORY, COMBAT_TESTS),
     "enemy": (DIRECTORY / "enemy", ENEMY_TESTS),
 }
-TIMEOUTS = {"enemy_cooperation_flank_runtime_test": 300, "cooperation_runtime_test": 180}
+TIMEOUTS = {"enemy_cooperation_flank_runtime_test": 300, "cooperation_runtime_test": 180,
+            "enemy_team_awareness_levels_runtime_test": 240}
 
 # These entries need their documented harness; never glob-run every .gd file.
 SPECIAL = {
