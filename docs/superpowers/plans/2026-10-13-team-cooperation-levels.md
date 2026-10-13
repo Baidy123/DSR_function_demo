@@ -1,0 +1,122 @@
+# 小队三档团队意识实施计划
+
+2026-10-13。[设计](../specs/2026-10-13-team-cooperation-levels-design.md)已由用户在阅读聊天摘要后确认。用户已确认按本计划在当前会话串行实施，各阶段验证后独立提交和普通推送；连续推进，不逐阶段重复征求授权。
+
+## 目标与实施边界
+
+完成小队统一的视野共享、战术配合、强配合三档。个人 Training、兵种及武器保持独立；小队只共享团队意识参数。第二档由调节器提供互补站位建议，第三档由调节器组织部署、岗位、等待和行动支援；实际路径与开火由原动作、身体和 Fire 执行。
+
+继续使用每战斗区一个 board 和纯值 planner。不增加指挥官节点，不迁移现有脚本／UID，不把个人评分器改成按战术名称强选，不读取隐藏目标。未来友方 AI 使用同样的小队协议；本轮不扩展成完整多阵营感知与伤害系统。
+
+本地已有场景、武器、Training、插件升级和交互原型删除等用户修改。以当前本地工程为基线；不 pull、不合并或检出远端内容。阶段暂存仅覆盖本任务核对过的差异，不上传这些已有修改。
+
+## 阶段零 建立可比较的本地基线
+
+1. 在被 Git 与 Godot 忽略的 `movement_demo/logs/` 下记录初始状态和文件哈希，按当前工作区内容创建基线与候选验证副本。仅复制运行必需的工程文件，不递归复制历史日志副本。
+2. 使用当前 `Godot_v4.7.2-stable_win64_console.exe` 完成独立导入；APPDATA 与日志输出隔离，记录首次导入错误及后续完成情况。不得通过编辑器测试改写用户主工程资源。
+3. 运行完整敌人基线及相关配置、协作、复位专项，记录失败、超时与性能数据。当前本地场景使用 `Enemy2/3/4`，部分旧测试固定访问 `Arena/Enemy`；此类失败单独记录，不通过重命名或覆盖用户场景消除。
+4. 新实景测试复用现有程序化 floor／navigation 夹具，显式构造测试成员和训练，不依赖用户保存场景的单个节点名。若必须修复旧夹具，保持原行为断言，独立验证并说明其改变的是夹具定位。
+
+此阶段输出是基线记录，不把运行基线本身作为产品功能提交。首次完整基线之后，仅对实际出现的差异做有目的的对照，避免反复运行挑选通过结果。
+
+## 阶段一 接通小队共享配置与三档权限
+
+涉及文件：
+
+- 新增 `scripts/enemy/config/team_cooperation_binding.gd` 及 UID。
+- 修改 `scripts/enemy/config/cooperation_settings.gd`、`scripts/world/shooting_range.gd`。
+- 修改 `scripts/enemy/services/enemy_cooperation.gd`、`enemy_context.gd`。
+- 修改 `scripts/enemy/enemy_action_library.gd`、`enemy_ai.gd`、`actions/enemy_action.gd`。
+- 修改 `addons/enemy_training_inspector/inspector.gd`、`tactics_panel.gd`，按需要新增小队绑定的检查器控件。
+
+实施步骤：
+
+1. 在 cooperation 参数中增加 `level`，明确 `INTEL_ONLY=0`、`TACTICAL=1`、`COORDINATED=2`。新绑定默认采用第一档；未绑定的旧配置继续通过兼容入口解释原 `cooperate` 开关，不因新增字段自动改档。字段遵守现有 setter、`mark_override` 和保存重载规则。
+2. 绑定资源只保存 `faction_id`、`communication_group` 和 cooperation 配置引用。战斗区新增 `team_cooperation_bindings`，提供给 board；不新增场景节点。board 按绑定键缓存一份团队配置快照与 `team_config_revision`，不是每个成员一份。
+3. 小队绑定参与共同计划的分域；友方关系与通信仍通过现有接口检查。两个小队即使引用同一配置模板也不合并计划。重复绑定只使对应小队战术安排不可用，返回明确配置诊断，不影响其他小队或基础作战。
+4. Context 增加小队模式、配置版本与团队参数查询。参数读取统一接受动作定义的默认参数；`EnemyAction._setting()` 当前直接调用个人 `training.setting()`，必须接入统一查询，否则协作动作会继续读取旧个人参数。绑定队伍的 cooperation 段优先读取团队快照；其他参数段严格保留个人训练和动作默认值的优先级。
+5. `Library.resolve()` 增加可选的纯值团队能力输入，缺省保持旧调用兼容。只由该输入统一提供或撤销 `cooperate`；其他战术仍取个人 Training。现有兵种目录、能力要求与 includes 检查不能被绕过，也不能直接改写个人 `selected_tactics`。
+6. AI 的配置指纹纳入团队配置版本，并沿原装配／清理流程更新动作。配置切换清除过期建议、岗位、预约及旧反馈；身体不可打断阶段按原合同完成，禁止借旧任务继续未经授权的团队行为。
+7. 检查器显示所属小队、生效等级及共享参数入口；绑定后原个人“团队协作”行显示为由小队提供，其他战术仍可单独编辑。保留资源保存、撤销和重做。无兵种上下文的独立 Training 预览不虚构一个小队。
+
+先完成第一档的隔离语义：保留目击共享、间距、位置排重与友军枪线检查，关闭包抄建议、共同搜索分区、主动队友支援与换弹排班。自己的普通攻击、失视压制等已授权个人行为仍按原条件判断。
+
+新增验证：`enemy_team_training_binding_test.gd` 检查同队不同兵种／Training、跨队模板复用、重复绑定、保存重载及热切档；对应扩展 `enemy_training_inspector_test.gd`。运行原模块合同、配置生命周期／清理、基础 board、基础实景、共享接敌、单人和枪线专项。该阶段仅声明配置与权限接通，不声明中高档新行为已完成。
+
+## 阶段二 实现第二档的自主配合
+
+涉及 `enemy_team_planner.gd`、`enemy_cooperation.gd`、`enemy_context.gd`、`enemy_cooperation_action.gd`；AI 仅按通用协议接入。
+
+实施步骤：
+
+1. planner 快照使用队伍统一的 `cooperation_level` 和配置版本，成员保留实际能力与合法候选。旧 `advanced_enabled` 只由兼容适配解释；新模式不再依据某个成员的个人开关决定。
+2. 在已有候选组合预算内，利用目标合法已知锚点、真实友军站位、射界与路线摘要，为合适成员提供另一侧或互补射界建议。建议包含 `recommendation_id`、目标／证据／配置版本、`allowed_offer_keys`、`created_at`、`expires_at`；它不产生强配合岗位或共同阶段。
+3. board 保存短期建议，但仅在成员实际选中并通过 `validate/begin` 后沿原事务预约执行位置。拒绝或过期的建议不占用位置，不被其他成员当作未来火力承诺；失败位置沿原有限记录避免立即重复推荐。
+4. Context 的候选集合保留所有基础合法个人选项，再允许本人被建议的合法协作候选参选。建议不强制切换、不授予身体中断许可，也不扩大协作评分权重来确保必选。
+5. 协作动作复用原弧线、导航与短段执行，增加自主建议的执行路径。第二档不进入强配合的 `WAIT_SUPPORT` 或共同释放屏障；真实已有火力可计入当前收益，没有支援时按真实暴露评估是否仍能独立行动。
+6. 保持前线与原半队包抄名额检查，结合已在另一侧的真实身体，避免多个建议依次让全队绕走。路线不合法或收益不足时保留普通个人选择。
+
+新增 `enemy_team_awareness_levels_runtime_test.gd`，用相同 1／2／3／6 人夹具比较第一档与第二档：共享情报一致，第二档会随友军站位产生不同建议和实际移动，队友未就位不造成同步等待，拒绝建议不会锁住个人动作。扩展纯 planner 测试验证预算、身份、过期、选择互补与返回值隔离；复核原包抄几何、基础间距和枪线测试。
+
+## 阶段三 实现强配合的部署与连续执行
+
+涉及纯 planner、board、Context 和原协作／搜索动作。继续沿原 `assignment`、`coordination_choices`、`execution_contract` 与准备／提交／回滚接口执行。
+
+实施步骤：
+
+1. 由 Context 发布有限的个人最佳合法方案摘要，以及弹药、压力、当前可用射界和移动能力。未获岗位成员的个人基准也参与整队比较，禁止直接比较单人支援代价与多人包抄代价之和。
+2. 在已有空间预算内产生集中支援位、互补射界位和保持当前部署的可行候选。位置几何由个人动作与现有 Spatial 生成，planner 不读取导航服务或重新扫描地图。
+3. planner 在相同成员集合和同一时间窗口下比较保持、集中、分散组合，记录选择理由和成本分项。继续使用已有火力缺失、暴露、信息与有依据的协作收益；不改个人全局评分公式，不给予模式固定的必胜加分。
+4. 岗位继续保存职责与少量合法备选位置。补充通用的团队转移位置职责供集中／分散使用，由原协作动作执行；仍以各人能力筛选，不能把位置模板当作身体可达事实。
+5. 区分“预计到位后可射击”与“此刻真正能提供火力”。前线候选允许包含有限转移路线；到位后由动作与 Fire 重新校验，再报告真实就绪，不能在规划阶段提前计算已经发生的掩护。
+6. 有效执行段保持原岗位连续性。在段边界优先修改本人备选位置，必要时局部改派，最后才替换全队部署；改变相关共同命令更新版本，旧反馈不能释放新阶段。未受影响岗位保留原期限。
+7. 同步只覆盖必要参与者。接受、接近入口、就位、释放和完成都在原计划总期限内；普通候选暂缺、分数波动和正常连射暂停不构成全队重排理由。
+
+新增 `enemy_team_posture_planner_test.gd` 与 `enemy_team_posture_runtime_test.gd`，分别验证纯值选择及真实集中／分散／保持位置、前线保留和身体间距。扩展现有两端、侧翼、共同阶段和地图搜索测试，观察真实起步、到位、局部失败后的继续执行，以及无合法组合时的个人回退。
+
+## 阶段四 将行动与掩护统一安排
+
+涉及 board／planner、`enemy_cooperation_action.gd`、`enemy_suppression_action.gd`、`enemy_reload_action.gd`、`enemy_covering_retreat_action.gd` 及原接敌／掩体动作的必要岗位接点。Fire 只提供事实与执行，不负责小队分工。
+
+实施步骤：
+
+1. 在同一队伍计划中增加有界的 `support_links`：行动岗位、支援岗位、受援者、请求身份、准备条件和固定有效期。验证依赖不成环、成员不能同时承诺互斥动作；依赖数量与岗位数同样受现有队伍上限约束。
+2. 原换弹、推进、撤退动作提供自身已经验证的候选与执行合同；原压制动作提供合法支援 offer。中央只选择和关联这些候选，不调用另一成员的动作实例，也不替其创建武器或移动状态。
+3. 允许已接受的行动计划在实际起步前产生有限准备请求，让支援者先去位置或建立火力。准备状态不计为实际移动或支援收益；请求的身份、受援者和整轮期限固定。
+4. 需要掩护的推进段等待指定支援者实际就绪。双端检查等待实际到达各自入口；无同步需求的队员继续执行自己的任务。
+5. 非紧急主动换弹先安排可用掩护或安全遮蔽，再允许补装，并保持至少仍然实际可用的火力。空匣换弹不受排班禁止；全队空匣时选择可行遮蔽与补弹，不能产生虚构火力。
+6. 计划撤退由其他可用成员支援；紧急自保沿原动作校验立即执行，随后补充支援。支援者需要转移／换弹时，先让替代者实际建立火力再交接；无替代者则解除依赖或有限降级。
+7. 正常射频停顿仍为零有效火力，按既有有限恢复规则保持执行连续性。失视、硬遮挡、弹药耗尽、队友死亡或权限改变时及时失效，不能通过心跳、换阶段或反复规划续写期限。
+8. 新字段统一描述成员、友军与目标；玩家专用视线等事实由原 Context 适配。纯 planner 不添加对玩家节点名、敌人阵营名或身体类型的依赖。
+
+新增 `enemy_team_support_execution_test.gd`：通过正常 AI 决策观察推进、撤退、换弹与真实射击的重叠，覆盖先转移再支援、普通射击、已解锁压制、支援交接和全员空匣。复核原压制目的、射频、补弹、支援生命周期、共同阶段失效、自保与身体执行合同。
+
+## 阶段五 接入当前工程并完成整体验收
+
+1. 提供可复用的三档团队意识资源，使用既有 `resources/enemy/` 分类。仅为用户当前小队添加必要的配置绑定，不重设敌人出生位置、个人 Training、武器或导航。绑定档位按当前已启用高级协作的用途选择强配合；其余两档通过同一入口切换。
+2. 新测试及 UID 加入 `tests/enemy/run_enemy_regressions.py`；统一入口直接消费这份清单。运行 `--check` 检查登记、辅助脚本分类与路径完整性。
+3. 用准确的当前候选副本运行完整敌人组、玩家战斗组、相关表现／区域复位和训练检查器；保留所有退出码、标准输出、Godot 日志及汇总。新测试要由完整 AI 循环选案，不用直接强选动作替代行为验收。
+4. 对全量失败做必要基线对照，区分既有功能失败、旧夹具路径问题与新增回归。阶段三／四的新增功能验收和受影响合同必须通过；已有失败不准删除、过滤或改弱断言后宣称全绿。
+5. 运行原 `utility_budget_test`、`utility_runtime_test`、`cooperation_runtime_test`，保留原门槛，分别记录规划器、个人 AI 和 1／2／3／6 人整队开销。所有新策略共用既有每轮 36 次组合、2048 次冲突检查等上限；不为各模式增加一套额外预算。
+6. 更新 `docs/enemy-ai.md`、`docs/project-layout.md`、`docs/enemy-tests.md`、`docs/TODO.md` 和实际配置说明，区分已实现、已验证、旧失败与尚未完成的性能项。文档里的三档使用方式必须能对应实际检查器入口。
+7. 审查本任务补丁与初始哈希，验证暂存文件与已测源码一致。普通提交并 push `origin/main`；推送冲突时保留本地成果并报告，不自行同步远端。
+
+## 验证命令
+
+以下命令在对应的独立验证副本根目录执行，新增测试完成登记后再运行；日志输出选择新的目录。
+
+```powershell
+python -B movement_demo/tests/run_regressions.py --check
+python -B movement_demo/tests/enemy/run_enemy_regressions.py --godot E:/Godot/Godot_v4.7.2-stable_win64_console.exe enemy_team_training_binding_test enemy_team_planner_test enemy_team_board_test enemy_configuration_lifecycle_test enemy_configuration_cleanup_test
+python -B movement_demo/tests/enemy/run_enemy_regressions.py --godot E:/Godot/Godot_v4.7.2-stable_win64_console.exe enemy_team_awareness_levels_runtime_test enemy_team_posture_planner_test enemy_team_posture_runtime_test enemy_team_support_execution_test enemy_team_sync_runtime_test
+python -B movement_demo/tests/run_regressions.py --godot E:/Godot/Godot_v4.7.2-stable_win64_console.exe --suite enemy --suite combat
+& E:/Godot/Godot_v4.7.2-stable_win64_console.exe --headless --editor --path movement_demo --script res://tests/enemy/enemy_training_inspector_test.gd
+```
+
+原定向运行器的固定输出目录需在下一次运行前另存，本计划不修改其已有语义。最终汇报同时给出功能、结构和性能结果；新增岗位字段存在、单套通过或局部变快均不等同于完整验收。
+
+## 当前状态与执行方式
+
+设计、实际接口核对、实施计划和串行执行方式已确认。由主 agent 在当前会话串行实施，各阶段验证并提交；没有启动子 agent。开始阶段零，产品代码尚未变更。
+
+规划辅助技能 `writing-plans` 在当前技能目录、插件目录及旧技能位置未找到。本计划依据已确认设计、仓库规则与实际调用链手工整理，不声称调用过该技能。用户已审阅并同意采用此手工计划实施。
