@@ -103,6 +103,8 @@ Spatial 的路线样本层仅在同步候选比较中复用同路径已实际观
 
 空间评估的重复物理查询由 Context、Selection、Fire 各自管理同步只读批次缓存：选择器和空间扫描成对开启／结束，嵌套批次共用结果，最外层返回即清除。动作提交、身体移动及实际开火恢复实时查询，不用整帧缓存代替执行检查。团队服务的友军射线检查只读取必要的成员位置，不构建完整任务快照。
 
+支援时序查询由 Context `cooperation_support_snapshot()` 接入区域 `enemy_cooperation.gd` 的精简 `support_snapshot()`；区域与完整快照共用实时资格、新鲜度及火力检查，精简读取不复制无关成员、身体、威胁和声明字段。`squad_coordination.gd` 仍持有任务并补齐有效请求，以静止／可移动两类最长覆盖计算压力。Context 只沿用既有候选预览观察，不新增缓存生命周期或调度节点。`enemy_cooperation_query_test.gd` 对照原完整快照算法，验证状态失效、不同目标、只读投影、声明与接受计划的期限。
+
 `docs/enemy-ai.md` 是敌人结构、维护和使用部署说明；`docs/gameplay/` 保留移动、武器、掩体等专项说明，`docs/TODO.md` 记录后续方向，`docs/superpowers/` 保存仍有价值的设计与验收记录。第三方插件自带文档留在插件目录，以保留其使用说明和许可。
 
 敌人配置与扩展见 [敌人 AI](enemy-ai.md)，统一清单和运行方式见 [测试维护](testing.md)，敌人验收结果见 [敌人测试](enemy-tests.md)，未完成方向见 [待办](TODO.md)。`tests/` 中的编辑器脚本、场景辅助与导航写入工具按清单区分；日志副本由 `logs/.gdignore` 排除，Dialogue Manager 的本地扫描补丁见 [插件维护记录](../movement_demo/addons/dialogue_manager/LOCAL_CHANGES.md)。

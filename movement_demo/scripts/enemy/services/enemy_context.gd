@@ -758,6 +758,14 @@ func cooperation_snapshot(target_id: int = 0) -> Dictionary:
 	if not _cooperation_preview_snapshot.is_empty() and (target_id == 0 or target_id == cooperation_target_id()): return _cooperation_preview_snapshot
 	return cooperation.snapshot(self, cooperation_target_id() if target_id == 0 else target_id)
 
+
+## The existing candidate preview already shares a read-only observation.
+## Outside that scope, support timing reads fresh requests and fire windows.
+func cooperation_support_snapshot() -> Dictionary:
+	if cooperation == null: return {"requests": [], "supports": []}
+	if not _cooperation_preview_snapshot.is_empty(): return _cooperation_preview_snapshot
+	return cooperation.support_snapshot(self, cooperation_target_id())
+
 func cooperation_claim(task: Dictionary) -> Dictionary:
 	return _coordinator().claim(self, task) if cooperation_enabled() else {}
 

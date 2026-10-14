@@ -633,6 +633,10 @@ func can_share_intel(sender_id: int, receiver_id: int) -> bool:
 
 func can_cooperate(first_id: int, second_id: int) -> bool:
 	if not can_share_intel(first_id, second_id): return false
+	return _cooperation_domains_match(first_id, second_id)
+
+## Only after the same synchronous read has validated both live identities.
+func _cooperation_domains_match(first_id: int, second_id: int) -> bool:
 	var first_squad: int = _members[first_id].get("squad_id", 0)
 	var second_squad: int = _members[second_id].get("squad_id", 0)
 	if first_squad != 0 or second_squad != 0: return first_squad != 0 and first_squad == second_squad
@@ -789,35 +793,51 @@ func publish_status(context, status: Dictionary) -> void:
 	if changed: revision += 1
 
 func snapshot(context, target: int) -> Dictionary:
+	return _snapshot(context, target, false)
+
+## Fire timing only needs current requests and support windows. Use the same
+## live validation as the full snapshot without copying unrelated member data.
+func support_snapshot(context, target: int) -> Dictionary:
+	return _snapshot(context, target, true)
+
+func _snapshot(context, target: int, support_only: bool) -> Dictionary:
 	var id: int = context.actor.get_instance_id()
-	var result := {"members": [], "physical_members": [], "requests": [], "claims": [], "supports": [], "threats": [], "revision": revision, "generation": generation, "elapsed": elapsed}
+	var result := {"requests": [], "supports": []} if support_only else {"members": [], "physical_members": [], "requests": [], "claims": [], "supports": [], "threats": [], "revision": revision, "generation": generation, "elapsed": elapsed}
 	for other_id in _members:
+		if support_only and other_id == id: continue
 		var other = _context(other_id)
 		if other == null or not is_instance_valid(other.actor) or other.actor.is_dead or not other.actor.is_inside_tree(): continue
 		var status: Dictionary = _members[other_id].status
 		if status.is_empty() or elapsed - float(status.updated_at) > 0.35: continue
 		var shares_intel := can_share_intel(other_id, id)
-		if shares_intel or can_share_space(other_id, id): result.physical_members.append({"id": other_id, "position": status.position})
+		if not support_only and (shares_intel or can_share_space(other_id, id)): result.physical_members.append({"id": other_id, "position": status.position})
 		if not shares_intel: continue
-		var member := status.duplicate(true)
-		var age: float = maxf(0.0, elapsed - float(member.updated_at))
-		member.support_seconds = maxf(0.0, float(member.get("support_seconds", 0.0)) - age)
-		member.support_resume_seconds = maxf(0.0, float(member.get("support_resume_seconds", 0.0)) - age) if member.get("support_cycle_valid", false) else -1.0
-		if member.support_seconds <= 0.0: member.ready = false
-		if other.actor.ammo.is_reloading or other.actor.ammo.magazine_rounds <= 0 or not other.actor.shooting_enabled or other.actor.is_vaulting() or other.actor.melee_active:
-			member.ready = false
-			member.support_seconds = 0.0
-			member.support_cycle_valid = false
-			member.support_resume_seconds = -1.0
-		member.can_cooperate = can_cooperate(other_id, id)
-		result.members.append(member)
-		if not member.can_cooperate: continue
+		var cooperative := _cooperation_domains_match(other_id, id)
+		if support_only and (not cooperative or int(status.get("target_id", 0)) != target): continue
+		var age: float = maxf(0.0, elapsed - float(status.updated_at))
+		var support_seconds: float = maxf(0.0, float(status.get("support_seconds", 0.0)) - age)
+		var fire_unavailable: bool = other.actor.ammo.is_reloading or other.actor.ammo.magazine_rounds <= 0 or not other.actor.shooting_enabled or other.actor.is_vaulting() or other.actor.melee_active
+		if fire_unavailable: support_seconds = 0.0
+		# Reduced queries only read stored status; all returned values are new.
+		var member: Dictionary = status if support_only else status.duplicate(true)
+		if not support_only:
+			member.support_seconds = support_seconds
+			if support_seconds <= 0.0: member.ready = false
+			member.support_resume_seconds = maxf(0.0, float(member.get("support_resume_seconds", 0.0)) - age) if member.get("support_cycle_valid", false) else -1.0
+			if fire_unavailable:
+				member.support_cycle_valid = false
+				member.support_resume_seconds = -1.0
+			member.can_cooperate = cooperative
+			result.members.append(member)
+		if not cooperative: continue
+		# Requests retain their published duration; only support windows age here.
 		if int(member.get("target_id", 0)) != target: continue
-		var threat_seconds: float = maxf(0.0, float(member.get("melee_threat_seconds", 0.0)) - maxf(0.0, elapsed - float(member.updated_at)))
-		if threat_seconds > 0.0:
-			result.threats.append({"owner_id": other_id, "support_seconds": threat_seconds, "lane_id": &"target", "position": member.position, "kind": &"melee"})
-		if member.get("ready", false):
-			var support := member.duplicate(true)
+		if not support_only:
+			var threat_seconds: float = maxf(0.0, float(member.get("melee_threat_seconds", 0.0)) - age)
+			if threat_seconds > 0.0:
+				result.threats.append({"owner_id": other_id, "support_seconds": threat_seconds, "lane_id": &"target", "position": member.position, "kind": &"melee"})
+		if member.get("ready", false) and support_seconds > 0.0:
+			var support: Dictionary = {"support_seconds": support_seconds, "moving": member.get("moving", false), "lane_id": member.get("lane_id", &"target")} if support_only else member.duplicate(true)
 			support.owner_id = other_id
 			result.supports.append(support)
 		if member.get("reloading", false) and other_id != id:
@@ -827,7 +847,7 @@ func snapshot(context, target: int) -> Dictionary:
 		if not need.is_empty() and other_id != id:
 			result.requests.append({"id": member.support_request_id, "request_id": member.support_request_id, "kind": need.get("kind", &"move"), "target_id": target, "beneficiary_id": other_id,
 				"position": member.position, "remaining": maxf(0.0, float(need.get("duration", 0.0))), "lane_id": need.get("lane_id", &"target")})
-	coordinator_for(context).append_snapshot(context, target, result)
+	coordinator_for(context).append_snapshot(context, target, result, not support_only)
 	return result
 
 ## Physical safety spans friendly radio groups; it shares no target intelligence.

@@ -133,13 +133,14 @@ func crossed_flank(context, previous: Vector3, current: Vector3) -> bool:
 		if _flank_round_matches(round, context) and _flank_opposite(round, previous) != _flank_opposite(round, current): return true
 	return false
 
-func append_snapshot(context, target: int, result: Dictionary) -> void:
+func append_snapshot(context, target: int, result: Dictionary, include_claims: bool = true) -> void:
 	var id: int = context.actor.get_instance_id()
 	for claim in _claims.values():
+		if not include_claims and (claim.kind not in [&"advance", &"flank"] or claim.owner_id == id): continue
 		if claim.target_id != target or not _claim_valid(claim) or not can_cooperate(claim.owner_id, id): continue
 		var copy: Dictionary = claim.duplicate(true)
 		copy.remaining = claim.expires_at - elapsed
-		result.claims.append(copy)
+		if include_claims: result.claims.append(copy)
 		if claim.kind in [&"advance", &"flank"] and claim.owner_id != id:
 			var request := copy.duplicate(true)
 			request.request_id = claim.id
@@ -147,7 +148,9 @@ func append_snapshot(context, target: int, result: Dictionary) -> void:
 			request.lane_id = &"target"
 			result.requests.append(request)
 	var source := coordination_source(context, target)
-	if not source.is_empty():
+	# Only accepted plan requests are appended below. Raw status requests were
+	# already projected by the area, so an absent plan needs no second member scan.
+	if not source.is_empty() and _coordination_plans.has(source.team_id):
 		for need: Dictionary in _coordination_requests(_coordination_team_members(source.team_id), source):
 			if not need.get("accepted", false) or need.actor_id == id: continue
 			result.requests.append({"id": need.request_id, "request_id": need.request_id, "kind": need.kind, "preparing": not need.get("actual", false),
@@ -612,16 +615,18 @@ func _request_requires_stationary(request: Dictionary) -> bool:
 
 func support_pressure(context) -> float:
 	if not context.cooperation_enabled(): return 0.0
-	var data: Dictionary = context.cooperation_snapshot()
+	var data: Dictionary = context.cooperation_support_snapshot()
 	var id: int = context.actor.get_instance_id()
+	var covered_any := 0.0
+	var covered_stationary := 0.0
+	for support in data.supports:
+		if support.owner_id == id or support.get("lane_id", &"target") != &"target": continue
+		covered_any = maxf(covered_any, float(support.support_seconds))
+		if not support.get("moving", false): covered_stationary = maxf(covered_stationary, float(support.support_seconds))
 	var need := 0.0
 	for request in data.requests:
 		if request.beneficiary_id == id: continue
-		var covered := 0.0
-		for support in data.supports:
-			if support.owner_id == id or support.get("lane_id", &"target") != &"target": continue
-			if _request_requires_stationary(request) and support.get("moving", false): continue
-			covered = maxf(covered, float(support.support_seconds))
+		var covered := covered_stationary if _request_requires_stationary(request) else covered_any
 		need = maxf(need, maxf(0.0, float(request.get("remaining", 0.0)) - covered))
 	return clampf(need / maxf(0.1, context.utility_horizon_seconds), 0.0, 1.0)
 
