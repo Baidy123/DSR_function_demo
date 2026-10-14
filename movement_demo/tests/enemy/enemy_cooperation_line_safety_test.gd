@@ -83,7 +83,7 @@ func _run() -> void:
 	var original_preview: Dictionary = preview.duplicate(true)
 	var preview_matches := true
 	for repeat in 10:
-		preview_matches = preview_matches and not observer.cooperation_line_safe(origin, endpoint) and board.line_safe_from_members(observer, origin, endpoint, preview.members) == _legacy_safe(origin, endpoint)
+		preview_matches = preview_matches and not observer.cooperation_line_safe(origin, endpoint) and board.line_safe_from_members(observer, origin, endpoint, preview.physical_members) == _snapshot_safe(origin, endpoint)
 	check(preview_matches and preview == original_preview, "同一只读候选批次复用已验证成员，几何结果等价且不修改快照")
 	observer.end_cooperation_preview()
 	second.global_position = Vector3(20, 0, 2)
@@ -93,12 +93,12 @@ func _run() -> void:
 	_publish(partner)
 
 	second.communication_group = &"separate_radio"
-	check(_matches(origin, endpoint) and board.line_safe(observer, origin, endpoint), "通信身份改变但尚未重新注册时旧身份不能授权查询")
+	check(_matches(origin, endpoint) and not board.can_share_intel(second.get_instance_id(), first.get_instance_id()) and not board.line_safe(observer, origin, endpoint), "通信身份改变立即撤销旧情报资格，友军枪线仍受保护")
 	board.register(partner)
 	_publish(partner)
-	check(_matches(origin, endpoint) and board.line_safe(observer, origin, endpoint), "异通信组保持旧snapshot过滤规则")
+	check(_matches(origin, endpoint) and not board.can_share_intel(second.get_instance_id(), first.get_instance_id()) and not board.line_safe(observer, origin, endpoint), "异通信组继续隔离情报，但不移除公共身体保护")
 	first.communication_group = &"separate_radio"
-	check(_matches(origin, endpoint) and board.line_safe(observer, origin, endpoint), "查询者身份改变同样立即使旧注册失效")
+	check(_matches(origin, endpoint) and not board.can_share_intel(second.get_instance_id(), first.get_instance_id()) and not board.line_safe(observer, origin, endpoint), "查询者换组立即使旧情报注册失效，不能借此穿过友军开火")
 	board.register(observer)
 	_publish(observer)
 	check(_matches(origin, endpoint) and not board.line_safe(observer, origin, endpoint), "双方以相同新身份重新注册后恢复原友军阻挡")
@@ -138,11 +138,12 @@ func _publish(context) -> void:
 	context.cooperation_publish_execution({})
 
 func _matches(origin: Vector3, endpoint: Vector3) -> bool:
-	return board.line_safe(observer, origin, endpoint) == _legacy_safe(origin, endpoint)
+	return board.line_safe(observer, origin, endpoint) == _snapshot_safe(origin, endpoint)
 
-# Keep the former public implementation as the independent behavioral oracle.
-func _legacy_safe(origin: Vector3, endpoint: Vector3) -> bool:
-	for member in board.snapshot(observer, observer.cooperation_target_id()).members:
+# Keep the original geometric oracle and freshness checks; the approved squad
+# design separates physical safety membership from radio/intelligence membership.
+func _snapshot_safe(origin: Vector3, endpoint: Vector3) -> bool:
+	for member in board.snapshot(observer, observer.cooperation_target_id()).physical_members:
 		if member.id == first.get_instance_id(): continue
 		var torso: Vector3 = member.position + Vector3.UP * 0.9
 		var closest := Geometry3D.get_closest_point_to_segment(torso, origin, endpoint)

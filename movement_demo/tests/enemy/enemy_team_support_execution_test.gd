@@ -23,9 +23,8 @@ func _run() -> void:
 
 func _support_case(kind: StringName) -> Dictionary:
 	var f: Dictionary = await _fixture(2 if kind in [&"transfer", &"retreat", &"handoff_unavailable"] else 3, false)
-	var binding = preload("res://scripts/enemy/config/team_cooperation_binding.gd").new()
-	binding.profile.level = 2
-	f.arena.team_cooperation_bindings.assign([binding])
+	preload("res://tests/enemy/enemy_fire_fixture.gd").attach_squad(f.arena, f.actors, 2)
+	await physics_frame
 	f.arena.enemy_environment()
 	if kind in [&"retreat", &"transfer"]: _retreat_cover(f, kind)
 	if kind == &"retreat": f.player.global_position = Vector3(20, f.ground_y, -1)
@@ -129,7 +128,7 @@ func _support_case(kind: StringName) -> Dictionary:
 		result.double_proactive = result.double_proactive or active_proactive > 1
 		for actor in f.actors: shots[actor.get_instance_id()] = actor.shot_count
 		result.all_empty_started = empty_started.size() == f.actors.size()
-		for shared: Dictionary in f.arena.cooperation._coordination_plans.values():
+		for shared: Dictionary in f.arena.cooperation.coordination_debug_snapshot(&"_coordination_plans").values():
 			if deadlines.has(shared.plan_id): result.fixed = result.fixed and deadlines[shared.plan_id] == shared.expires_at
 			else: deadlines[shared.plan_id] = shared.expires_at
 			if not shared.get("handoff", {}).is_empty(): result.handoffs += 1
@@ -137,7 +136,8 @@ func _support_case(kind: StringName) -> Dictionary:
 				var key: Array = [shared.plan_id, link.beneficiary_id]
 				if providers.has(key) and providers[key] != link.provider_id:
 					result.completed_handoffs += 1
-					var actual: Dictionary = f.arena.cooperation._coordination_actual(f.arena.cooperation._context(link.provider_id), shared.target_id)
+					var provider = f.arena.cooperation._context(link.provider_id)
+					var actual: Dictionary = provider.squad_coordinator._coordination_actual(provider, shared.target_id)
 					result.premature_handoff = result.premature_handoff or not actual.fire_ready
 				providers[key] = link.provider_id
 				if kind in [&"handoff", &"handoff_unavailable"] and not lowered and shared.phase == &"executing" and (kind == &"handoff_unavailable" or (shared.tactic == &"flank" and shared.assignments.size() < f.actors.size() and shared.expires_at - f.arena.cooperation.elapsed > 3.0)):
@@ -149,14 +149,14 @@ func _support_case(kind: StringName) -> Dictionary:
 					lowered = true
 					failed_plan = shared.plan_id
 					lowered_at = f.arena.cooperation.elapsed
-		if kind == &"handoff_unavailable" and lowered and result.failed_handoff_seconds < 0.0 and not f.arena.cooperation._coordination_plans.values().any(func(shared): return shared.plan_id == failed_plan):
+		if kind == &"handoff_unavailable" and lowered and result.failed_handoff_seconds < 0.0 and not f.arena.cooperation.coordination_debug_snapshot(&"_coordination_plans").values().any(func(shared): return shared.plan_id == failed_plan):
 			result.failed_handoff_seconds = f.arena.cooperation.elapsed - lowered_at
 		if frame % 60 == 0:
 			var row: Array = [frame]
 			for actor in f.actors:
 				var ai = actor.get_node("AI")
 				row.append({"action": ai.utility_current.get("id"), "role": ai.context.coordination_assignment().get("role"), "rounds": actor.ammo.magazine_rounds, "reload": actor.ammo.is_reloading, "support": ai.context.coordination_support_state(),
-					"retreat_options": ai.utility_options.filter(func(choice): return choice.id == &"covering_retreat").map(func(choice): return {"role": choice.get("coordination_role"), "cost": choice.cost, "position": choice.destination.hide}), "baseline": ai.context.cooperation._coordination_baselines.get(actor.get_instance_id(), {})})
+					"retreat_options": ai.utility_options.filter(func(choice): return choice.id == &"covering_retreat").map(func(choice): return {"role": choice.get("coordination_role"), "cost": choice.cost, "position": choice.destination.hide}), "baseline": ai.context.squad_coordinator._coordination_baselines.get(actor.get_instance_id(), {})})
 			result.trace.append(row)
 	print("SUPPORT_SAMPLE ", JSON.stringify(result))
 	await _dispose(f)

@@ -49,7 +49,7 @@ func _posture_case(scenario: StringName) -> Dictionary:
 			if actor.global_position.x < fixture.player.global_position.x - 0.5: far += 1
 		result.maximum_far = maxi(result.maximum_far, far)
 		result.nearest = minf(result.nearest, actors[0].global_position.distance_to(actors[1].global_position))
-		for plan_value: Dictionary in fixture.arena.cooperation._coordination_plans.values():
+		for plan_value: Dictionary in fixture.arena.cooperation.coordination_debug_snapshot(&"_coordination_plans").values():
 			result.plans += 1
 			if not result.postures.has(plan_value.get("posture")): result.postures.append(plan_value.get("posture"))
 			if deadlines.has(plan_value.plan_id): result.fixed_deadlines = result.fixed_deadlines and deadlines[plan_value.plan_id] == plan_value.expires_at

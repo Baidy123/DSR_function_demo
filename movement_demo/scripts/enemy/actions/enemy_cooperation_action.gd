@@ -37,7 +37,7 @@ var _coordination_route_valid := false
 var _front_contact_until := -INF
 
 func evaluation_revision() -> int:
-	if context == null or context.cooperation == null or context.cooperation.registered_member_count() < 2: return 0
+	if context == null or context.cooperation == null or context.cooperation_member_count() < 2: return 0
 	if _unified_coordinator():
 		var source: Dictionary = context.coordination_source(context.cooperation_target_id())
 		return hash([source.get("evidence_id", 0), source.get("position", Vector3.INF), source.get("front_axis", Vector3.ZERO), _running])
@@ -85,7 +85,7 @@ func _live_evidence(evidence: Dictionary) -> bool:
 	return not evidence.is_empty() and evidence.get("position", Vector3.INF).is_finite() and context.evidence_elapsed_seconds < float(evidence.get("valid_until", -INF))
 
 func _allies() -> Array:
-	if context.cooperation == null or context.cooperation.registered_member_count() < 2: return []
+	if context.cooperation == null or context.cooperation_member_count() < 2: return []
 	var snapshot: Dictionary = context.cooperation_snapshot()
 	return snapshot.get("members", []).filter(func(member): return member.get("id", 0) != actor.get_instance_id() and member.get("can_cooperate", false) and member.get("target_id", 0) == context.cooperation_target_id())
 
@@ -721,7 +721,7 @@ func state_label() -> String:
 
 
 func coordination_offers(_visible: bool) -> Array[Dictionary]:
-	return _coordination_offers.duplicate(true) if _unified_coordinator() and context.cooperation_enabled() and context.cooperation.registered_member_count() > 1 else []
+	return _coordination_offers.duplicate(true) if _unified_coordinator() and context.cooperation_enabled() and context.cooperation_member_count() > 1 else []
 
 func _own_actual_support() -> Dictionary:
 	for member: Dictionary in context.cooperation_snapshot().get("members", []):

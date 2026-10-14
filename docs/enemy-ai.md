@@ -1,10 +1,16 @@
 # 敌人 AI：代码结构、维护与使用部署
 
-2026-10-13 三档团队意识已接入：`Arena.team_cooperation_bindings` 按 `faction_id` 与 `communication_group` 绑定 `EnemyTeamCooperationBinding`，其 `profile` 只共享 cooperation 参数和等级（0 仅视野共享、1 战术配合、2 强配合）。个人 Training 与兵种仍分别管理自身战术；动作库只继承团队协作权限，不改个人选择。未绑定时兼容原个人 `cooperate` 开关。配置、权限、第二档自主建议、第三档部署及行动支援已实现，当前竞技场绑定强配合。完整首轮、最终受影响回归、基线对照和性能限制分别见[测试记录](enemy-tests.md#当前回归)，不将专项通过等同于全部旧行为通过。
+2026-10-14 按[小队节点设计](superpowers/specs/2026-10-13-squad-node-coordinator-design.md)拆分区域与队级职责：`Arena/Squad`（`world/squad_controller.gd`）持有本队唯一的 `profile` 和 `services/squad_coordination.gd` 实例。节点的 `faction_id`、`communication_group` 决定区域关系与情报资格，小队自身运行身份决定任务归属；两个同阵营、同通信组、共用模板的节点仍是两个独立小队。区域 `enemy_cooperation.gd` 保留观察、关系、成员版本和公共预约，地图仍由 Arena 的唯一 `enemy_tactical_map` 提供。
 
-绑定小队在 board 中各有一份参数快照和配置版本；复用模板不合并小队，重复绑定仅停用对应队伍的战术安排并提供诊断。运行时修改绑定或共享资源后撤销旧岗位、offer 与预约。Training 检查器显示所属小队、当前等级和“编辑整队团队意识配置”入口，团队协作行由小队提供；其他个人战术仍按兵种能力编辑并保留撤销重做。独立查看 Training 资源时仍须选择预览兵种，不推测小队。
+三档 `profile.level` 为 0 仅情报共享、1 战术配合、2 强配合；新建 `scenes/world/squad.tscn` 使用独立的第 0 档资源，现有竞技场继续引用强配合模板。成员归最近的小队祖先，可跨普通整理容器，嵌套小队不重复登记。缺少 Profile 时给出诊断并停用队级战术，不借用旧区域绑定。编辑外部共享模板影响所有引用它的队伍；只调一队应先设为唯一。Training 面板显示所属队和等级，按钮跳到小队节点；个人训练、能力限制及撤销重做独立保留。
 
-第二档由纯 planner 在原组合预算内提议互补包抄位置，依据真实友军站位保留前线，并将实际占侧与已接受的移动计入半队名额。board 给建议分配独立身份、配置／证据版本、固定接受与完成期限；建议阶段不预约位置、不生成强配合岗位或共同阶段。Context 保留合法个人选项，实际选中后才沿原准备／提交事务预约位置。原协作动作执行导航和短段重评，第二档不等待友军掩护，射频暂停不构成等待条件，也不获得未来火力信用。
+区域以现有活跃时钟统一推进各小队，同一物理帧每个节点至多推进一次；小队不另建物理循环或地图缓存。配置／成员变更撤销旧岗位、建议与预约。同区域换队保留个人感知记忆、训练、生命、弹药和世界坐标下的原出生位置，成员版本更新使旧票据失效；跨区域移动重新绑定区域服务。区域复位仍由区域遍历成员，每个身体只复位一次。
+
+未放入 Squad 的旧成员继续使用 `Arena.team_cooperation_bindings` 或个人 `cooperate`，由区域持有的兼容协调器执行同一套实现；它们不会混入显式小队。旧区域战术方法仅转发，计划、建议、岗位、轮次与交接状态只保存在协调器中。公共物理预约和友军枪线独立于队内人数与通信资格：单人小队也参加区域排重，不同通信组仍保持友军枪线安全。实际行为和性能结果见[测试记录](enemy-tests.md#当前回归)。
+
+地图信息沿现有路径自动更新：标准掩体加入所属 `NavigationRegion3D` 后会被发现，移动、旋转、缩放及尺寸改变会使相关几何候选和共享静态地图失效并按原额度重建；小队消费经过成员本地验证的候选，不维护第二份掩体清单。导航资源仍须与实际几何一致，自动更新掩体信息不等于自动重新烘焙导航。
+
+第二档由纯 planner 在原组合预算内提议互补包抄位置，依据真实友军站位保留前线，并将实际占侧与已接受的移动计入半队名额。小队协调器给建议分配独立身份、配置／证据版本、固定接受与完成期限；建议阶段不预约位置、不生成强配合岗位或共同阶段。Context 保留合法个人选项，实际选中后才沿原准备／提交事务预约位置。原协作动作执行导航和短段重评，第二档不等待友军掩护，射频暂停不构成等待条件，也不获得未来火力信用。
 
 第三档部署由 Context 发布每人的最佳合法个人代价与原评估窗口，planner 将各人的单位时间代价投影到全队共同的最短窗口，并计入未分配成员的个人基准，比较保持、集中、分散及原岗位组合。缺少新鲜个人基准时暂不新建强制部署；不改变个人 Utility 公式。集中／分散位置由原协作动作在既有 Spatial 配额内生成，默认部署间隔2.5米，继续核对胶囊占位、实际导航和路线安全。前线可以先转移到合法射击位置，但预计到位后的射击时窗与当前 Fire 发布的实际就绪分开保存；共同起步仍消费实际到位和火力事实。执行中的合法岗位保留原期限和短段连续性，候选缓存暂缺不触发整队替换。
 
@@ -18,7 +24,7 @@
 
 小队协议按成员身份和关系工作。不同绑定队伍即使关系为友方、可以通信，也不共享岗位、行动支援请求或战术威胁收益；个人感知与命中阵营系统仍沿用当前适配层，不将此接口接入描述为完整友军 AI。
 
-2026-10-11 协调器整合：基础共享与站位预约始终启用；高级开关控制 `enemy_cooperation` 调用 `enemy_team_planner` 分配两端检查、侧翼／前线和地图搜索岗位。Action 提供经过本地验证的候选，个人 Utility 选择执行并保留自保与身体保护，Fire 仍独立检查实际开火条件。核心整合的最后10套专项／237项通过，当前本地工程启动通过；性能及部分旧行为验收仍未通过，具体结果见 [测试记录](enemy-tests.md)。
+2026-10-11 协调器整合：基础共享与站位预约始终启用；高级开关控制 `squad_coordination` 调用 `enemy_team_planner` 分配两端检查、侧翼／前线和地图搜索岗位。Action 提供经过本地验证的候选，个人 Utility 选择执行并保留自保与身体保护，Fire 仍独立检查实际开火条件。核心整合的最后10套专项／237项通过，当前本地工程启动通过；性能及部分旧行为验收仍未通过，具体结果见 [测试记录](enemy-tests.md)。
 
 真实目击可以留下最长20秒的冻结规划线索，原精确共享情报仍按原5秒期限失效；读取、改派和玩家在遮挡后的移动都不刷新线索。任务接受、就位和执行共用固定期限。前线短暂失视可保留原岗位最多2秒，但失视期间不获得射击或真实掩护资格；真实自保与断路会反馈失效，不能无限等待。
 
@@ -58,7 +64,7 @@
 
 远程接敌在原 `engage` 中提供 `shared_contact` 方案：本人尚未看见时，按新鲜报告移动到真实可达、具备预期视线与射界的位置，途中不给射击收益或开火意图；重新目击后回到原普通接敌，报告过期后回到失联搜索。搜索与该方案共同按实际到位时间和观察遮挡计算信息缺失，仍由原 Utility 比较。基础接敌不依赖高级协作训练。调试标签区分共享接敌、战斗调查、失联搜索与普通噪声调查；`is_alerted` 以及 `TRACK / SEARCH` 的既有接口保留，它们不是新增的全局战斗状态机。
 
-试玩时在原 Arena 中复制或拖入多个 `scenes/enemy/enemy.tscn`，把位置放在可通行导航区域；无需额外管理节点。Enemy 的“协作分组”提供 `faction_id` 和 `communication_group`，默认 `enemy` 与空组。绑定小队的“团队协作”权限统一来自上述 Profile；尚未绑定的旧场景继续由个人 Training 勾选“团队协作”控制原行为。远程仍需本人勾选“火力压制”才能使用专门压制方案；没有该训练也可使用合法普通射击支援。资源接入只增加小队绑定，保留个人训练、武器、出生位置及导航数据。
+试玩时将 `scenes/enemy/enemy.tscn` 放在对应 Squad 节点下面，并保持出生位置位于可通行导航区域。小队节点提供生效的 `faction_id`、`communication_group` 和团队意识 Profile；单位原有“协作分组”字段保留，离开显式小队后供兼容路径使用。未迁移旧场景仍按区域绑定或个人 Training 开关运行。远程仍需本人勾选“火力压制”才能使用专门压制方案；没有该训练也可使用合法普通射击支援。个人训练、武器、出生位置及导航数据继续独立。
 
 当前协作包括：有限侧向移动形成新增射界；保持火力帮助队友换弹、撤退与短程推进；搜索调查点互斥认领及有合法线索时分侧检查掩体；低余弹时主动比较提前补装。2026-10-09 用户进一步确认移除左右出口封锁及单人出口轮扫，压制改为有明确情境的有限波次。常规接敌也能提供掩护，不强制全队切换到压制动作。枪口未对准、真实射线被挡、正在稳枪、连射停顿、换弹或空匣都不算已就绪火力。近战的实际近距威胁单独发布短时窗口，不冒充枪械支持。
 
@@ -211,7 +217,9 @@ Cooperation 的默认值是实施初值：情报5秒、初始等待支援1.2秒�
 | 掩体动作内部的一轮低墙射击 | `scripts/enemy/actions/enemy_low_cover_cycle.gd`，不独立装配或评分 |
 | 通用协调、评分与切换 | `scripts/enemy/enemy_ai.gd`、`scripts/enemy/enemy_action_selector.gd`、`scripts/enemy/enemy_utility_score.gd` |
 | 公共记忆、证据和查询接口 | `scripts/enemy/services/enemy_memory.gd`、`scripts/enemy/services/enemy_context.gd` |
-| 区域协作情报、任务认领与支持窗口 | `scripts/enemy/services/enemy_cooperation.gd`，由竞技场持有 |
+| 区域观察、关系、成员版本与公共物理预约 | `scripts/enemy/services/enemy_cooperation.gd`，由竞技场持有 |
+| 小队配置与生命周期入口 | `scripts/world/squad_controller.gd`、`scenes/world/squad.tscn` |
+| 队级计划、建议、认领、包抄轮次与支援交接 | `scripts/enemy/services/squad_coordination.gd`，由各小队持有；旧成员由区域兼容实例持有 |
 | 感知和空间查询 | `scripts/enemy/services/enemy_perception.gd`、`scripts/enemy/services/enemy_cover_selection.gd`、`scripts/enemy/services/enemy_spatial_evaluator.gd` |
 | 射击节奏与稳枪/开火选择 | `scripts/enemy/services/enemy_fire_controller.gd`、`scripts/enemy/services/enemy_fire_decision.gd` |
 | 近战请求与动作阶段 | `scripts/enemy/services/enemy_melee_controller.gd`；身体负责实际命中与冷却 |
@@ -495,13 +503,13 @@ python movement_demo/tests/enemy/run_enemy_regressions.py --godot E:/Godot/Godot
 
 ### 直接拖入竞技场
 
-从 Godot 文件系统把 **`res://scenes/enemy/enemy.tscn` 拖到竞技场的 Arena 节点下**，摆到战斗区域内的可行走导航地面即可。也可以先建一个 `Enemies` 容器，再把敌人拖进去。无需复制已有敌人的节点分支、手建 AI 子节点或手动填写导航路径。当前 Arena 内的原有 Enemy 已替换成同一场景的实例，保留原位置、朝向和 AI 参数。
+先把 **`res://scenes/world/squad.tscn` 拖到 Arena 下**，再把 `res://scenes/enemy/enemy.tscn` 放入该 Squad，摆到战斗区域内的可行走导航地面。选择 Squad 编辑 Profile、阵营和通信组；需要另一支独立小队时再创建一个 Squad。队内可加普通整理容器，无需手建 AI 子节点或填写导航路径。原有成员迁入时保留世界变换、训练和武器；直接放在区域下的成员仍走旧兼容路径。
 
 ```text
 Arena                         shooting_range.gd 区域控制器
 ├── CombatZone                Area3D + BoxShape3D，能够检测玩家
 ├── NavigationRegion3D       启用且已烘焙的本区导航
-└── Enemies                   可选的 Node3D 整理容器
+└── Squad                     拖入 scenes/world/squad.tscn
     ├── Enemy                拖入 enemy.tscn
     └── Enemy2               再拖入另一个实例
 ```
@@ -524,9 +532,9 @@ training.profile.selected_tactics.assign([&"suppression"])
 enemy.get_node("AI").refresh_configuration(true)
 
 # 团队意识改所属小队；区域正常刷新时各成员统一生效。
-var binding = EnemyTeamCooperationBinding.find_for_member(enemy).get("binding")
-if binding != null:
-    binding.profile.level = 2  # 强配合
+var squad = EnemyTeamCooperationBinding.squad_for_member(enemy)
+if squad != null and squad.profile != null:
+    squad.profile.level = 2  # 强配合；编辑共享模板会影响所有引用队伍
 ```
 
 例子要求兵种目录提供火力压制及团队协作，且具有要求的能力。未绑定的旧场景仍可通过个人 `selected_tactics` 中的 `cooperate` 控制原协作；绑定存在时此个人值不覆盖整队等级。旧出口 ID 兼容解析为统一压制。运行时修改不会自动保存为编辑器里的训练或团队 `.tres`。撤销动作会统一取消导航／射击请求并释放任务；无关实例与基础武器进度按现有规则保留。

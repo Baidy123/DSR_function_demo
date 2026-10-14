@@ -157,7 +157,7 @@ func _physics_process(delta: float) -> void:
 		# A newly prepared squad option can disappear as this member walks before
 		# the ordinary timer elapses. Reconsider once through the normal selector;
 		# this does not scan extra points, force an action or release a body lock.
-		if context.team_cooperation_abilities().get("level", 0) == 2 and context.cooperation.registered_member_count() > 1: invalidate_utility()
+		if context.team_cooperation_abilities().get("level", 0) == 2 and context.cooperation_member_count() > 1: invalidate_utility()
 	var team_revision: int = context.coordination_decision_revision()
 	if _team_decision_revision != team_revision:
 		_team_decision_revision = team_revision
@@ -247,13 +247,13 @@ func _update_utility_decision(delta: float, visible: bool) -> void:
 func _publish_coordination_inputs(visible: bool) -> void:
 	var offers: Array[Dictionary] = []
 	var assignment: Dictionary = context.coordination_assignment()
-	if context.cooperation_enabled() and context.cooperation != null and context.cooperation.registered_member_count() > 1:
+	if context.cooperation_enabled() and context.cooperation != null and context.cooperation_member_count() > 1:
 		for action in actions.values():
 			if action.is_enabled(): offers.append_array(action.coordination_offers(visible))
 	# Preview only work that the current execution can actually accept. An
 	# already accepted, valid segment keeps its own continuation while protected.
 	var publishable: Array[Dictionary] = utility_options
-	if context.cooperation_enabled() and context.cooperation != null and context.cooperation.registered_member_count() > 1:
+	if context.cooperation_enabled() and context.cooperation != null and context.cooperation_member_count() > 1:
 		publishable = []
 		var contract: Dictionary = current_action.execution_contract(visible) if current_action != null else {}
 		var continuing: bool = current_action != null and context.coordination_continuation(contract, current_action.action_id)
@@ -303,7 +303,7 @@ func _start_utility_option(candidate: Dictionary, visible: bool) -> void:
 		return
 	# This same decision may have published previews before choosing a protected
 	# personal action. Withdraw those previews immediately; accepted work stays.
-	if context.cooperation_enabled() and context.cooperation != null and context.cooperation.registered_member_count() > 1 and context._coordination_execution.is_empty() and not current_action.can_interrupt({}, visible):
+	if context.cooperation_enabled() and context.cooperation != null and context.cooperation_member_count() > 1 and context._coordination_execution.is_empty() and not current_action.can_interrupt({}, visible):
 		_publish_coordination_inputs(visible)
 	if debug_utility and actor.debug_settings.enabled:
 		print("[AI][Utility] ", candidate.id, " cost=", candidate.get("cost", 0.0), " ", candidate.get("breakdown", {}))
@@ -419,7 +419,10 @@ func _resume_after_reparent() -> void:
 	context.spatial.context = context
 	context.routes.context = context
 	refresh_configuration(true)
-	_reset_decisions()
+	if context.area_changed_this_refresh: _reset_decisions()
+	else:
+		reset_actions()
+		_update_label()
 	_restoring_environment = false
 	set_physics_process(_physics_was_enabled)
 

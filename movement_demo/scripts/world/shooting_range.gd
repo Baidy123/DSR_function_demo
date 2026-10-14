@@ -14,6 +14,7 @@ var cooperation = preload("res://scripts/enemy/services/enemy_cooperation.gd").n
 
 func enemy_environment() -> Dictionary:
 	cooperation.configure_team_bindings(team_cooperation_bindings)
+	cooperation.refresh_squads()
 	var navigation := get_node_or_null("NavigationRegion3D") as NavigationRegion3D
 	tactical_map.bind_region(navigation)
 	return {"zone": get_node_or_null("CombatZone"), "navigation": navigation, "cooperation": cooperation, "tactical_map": tactical_map}

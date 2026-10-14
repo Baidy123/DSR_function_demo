@@ -107,6 +107,8 @@ var _shot_rng := RandomNumberGenerator.new()
 var health: float = 100.0
 var is_dead: bool = false
 var initial_transform: Transform3D
+var _spawn_world_before_reparent := Transform3D.IDENTITY
+var _spawn_area_before_reparent: WeakRef
 var initial_body_transform: Transform3D
 var death_tween: Tween
 var _hit_push_velocity: Vector3 = Vector3.ZERO
@@ -197,7 +199,21 @@ func configure_local_spacing(enabled: bool, margin: float = 0.45) -> void:
 	local_motion.configure_spacing(enabled, margin)
 
 func _exit_tree() -> void:
+	var area := _parent_combat_area()
+	if is_node_ready() and area != null:
+		_spawn_world_before_reparent = global_transform * transform.affine_inverse() * initial_transform
+		_spawn_area_before_reparent = weakref(area)
 	local_motion.configure(self, null, null)
+
+func _enter_tree() -> void:
+	if _spawn_area_before_reparent != null and _spawn_area_before_reparent.get_ref() == _parent_combat_area():
+		initial_transform = transform * global_transform.affine_inverse() * _spawn_world_before_reparent
+	_spawn_area_before_reparent = null
+
+func _parent_combat_area() -> Node:
+	var parent := get_parent()
+	while parent != null and not parent.has_method("enemy_environment"): parent = parent.get_parent()
+	return parent
 
 
 ## 条件查询与实际执行共用；不读取 AI、行为 ID 或控制器阶段。

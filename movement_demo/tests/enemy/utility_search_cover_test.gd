@@ -8,7 +8,8 @@ func _initialize() -> void:
 
 func _run() -> void:
 	seed(11)
-	var scene = preload("res://tests/enemy/enemy_fire_fixture.gd").legacy_scene()
+	# No other observer may keep refreshing the deliberately stale threat.
+	var scene = preload("res://tests/enemy/enemy_fire_fixture.gd").single_member_scene()
 	root.add_child(scene)
 	current_scene = scene
 	var enemy = preload("res://tests/enemy/enemy_fire_fixture.gd").primary_enemy(scene)

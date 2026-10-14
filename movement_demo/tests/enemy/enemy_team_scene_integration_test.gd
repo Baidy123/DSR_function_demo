@@ -25,28 +25,24 @@ func _run() -> void:
 	var legacy := Fixture.legacy_scene()
 	check(legacy.get_node("Arena").team_cooperation_bindings.is_empty(), "Legacy fixtures explicitly retain their own personal training controls")
 	legacy.free()
-	# Use the actual saved scene here, including its default binding and all members.
+	# Load the actual explicit squad and every saved member, without legacy unwrapping.
 	var scene = load("res://scenes/main.tscn").instantiate()
 	var arena = scene.get_node("Arena")
-	check(arena.team_cooperation_bindings.size() == 1 and arena.team_cooperation_bindings[0].profile.level == 2, "Saved arena starts with one coordinated squad binding")
-	var saved_binding = arena.team_cooperation_bindings[0]
-	var binding = saved_binding.duplicate(true)
-	arena.team_cooperation_bindings.assign([binding])
-	var saved_members: Array = []
-	for child in arena.get_children():
-		if child.has_node("AI") and child.has_node("Training"): saved_members.append(child)
+	var binding = arena.get_node("Squad")
+	check(arena.team_cooperation_bindings.is_empty() and binding.profile.level == 2, "Saved arena uses a coordinated squad node as its only team configuration entry")
+	var saved_profile = binding.profile
+	binding.profile = saved_profile.duplicate(true)
+	var saved_members: Array = Fixture.members(arena)
 	check(not saved_members.is_empty(), "The saved arena supplies a real member with personal Training")
 	# Older saved arenas have one member. Add only the second participant needed
 	# by the independence assertion; never replace or rename a saved actor.
 	if saved_members.size() == 1:
 		var companion = load("res://scenes/enemy/enemy.tscn").instantiate()
 		companion.position = saved_members[0].position + Vector3(0, 0, 2)
-		arena.add_child(companion)
+		binding.add_child(companion)
 	root.add_child(scene)
 	current_scene = scene
-	var members: Array = []
-	for child in arena.get_children():
-		if child.has_node("AI") and child.has_node("Training"): members.append(child)
+	var members: Array = Fixture.members(arena)
 	var player = scene.get_node("Player")
 	player.set_physics_process(false)
 	player.combat.set_physics_process(false)
@@ -73,11 +69,16 @@ func _run() -> void:
 			check(contexts.all(func(context): return context.coordination_recommendation().is_empty() and not context.can_use_action(&"cooperate")), "Intel-only removes tactical offers despite preserved personal legacy switches")
 	var unchanged := true
 	for index in contexts.size(): unchanged = unchanged and contexts[index].training.selected_tactics == selections[index]
-	check(unchanged and saved_binding.profile.level == 2, "Hot switching never rewrites personal selections or the saved template")
+	check(unchanged and saved_profile.level == 2, "Hot switching never rewrites personal selections or the saved template")
+	var resets: Dictionary = {}
+	for member in members:
+		resets[member.get_instance_id()] = 0
+		member.reset_completed.connect(func(): resets[member.get_instance_id()] += 1)
 	arena._reset_targets()
-	check(arena.cooperation._coordination_plans.is_empty() and arena.cooperation._recommendations.is_empty(), "Area reset clears plans and advice before a new combat cycle")
+	check(resets.values().all(func(count): return count == 1), "Area reset invokes each nested member exactly once")
+	check(arena.cooperation.coordination_debug_snapshot(&"_coordination_plans").is_empty() and arena.cooperation.coordination_debug_snapshot(&"_recommendations").is_empty(), "Area reset clears plans and advice before a new combat cycle")
 	for frame in 15: await physics_frame
-	check(contexts.all(func(context): return context.cooperation_level() == 2) and arena.team_cooperation_bindings[0] == binding, "Respawn retains the shared configuration and independent personal actors")
+	check(contexts.all(func(context): return context.cooperation_level() == 2 and context.squad_node == binding), "Respawn retains the shared configuration and independent personal actors")
 	check(members.all(func(member): return Binding.find_for_member(member).get("binding") == binding), "Editor membership lookup resolves the same runtime squad")
 	# A bound squad can shrink to one member. Team-only nonempty reload previews
 	# must not win personal Utility when there is nobody to provide an assignment.

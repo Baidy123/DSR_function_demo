@@ -280,10 +280,10 @@ func _reload_lifecycle() -> void:
 	var pending: Dictionary = board.prepare_reservation(b, _offer(b, _point(-2)))
 	board.clear_execution(actors[1].get_instance_id())
 	b.cooperation_publish_execution({})
-	check(not support.is_empty() and board._claims.has(support.id) and actors[1].ammo.is_reloading, "Ordinary action cleanup preserves a teammate's support lease and the real reload")
+	check(not support.is_empty() and board.coordination_debug_snapshot(&"_claims").has(support.id) and actors[1].ammo.is_reloading, "Ordinary action cleanup preserves a teammate's support lease and the real reload")
 	check(id > 0 and board._members[actors[1].get_instance_id()].status.get("reload_request_id", 0) == id and board.validate_reservation(b, pending), "Preparing a new position preserves both pending ownership and continuous reload request identity")
 	board.release_member(actors[1].get_instance_id())
-	check(not board._claims.has(support.id) and not board.validate_reservation(b, pending), "True member release clears pending positions and dependent support claims")
+	check(not board.coordination_debug_snapshot(&"_claims").has(support.id) and not board.validate_reservation(b, pending), "True member release clears pending positions and dependent support claims")
 	actors[1].cancel_reload()
 
 func _solo() -> void:

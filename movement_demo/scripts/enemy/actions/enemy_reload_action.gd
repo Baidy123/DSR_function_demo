@@ -6,7 +6,7 @@ var _reload_started := false
 var _rounds_at_start := 0
 
 func _team_reload_offer_available() -> bool:
-	return _team_orders_enabled() and context.cooperation.registered_member_count() > 1 and actor.can_use_firearms() and actor.ammo.can_reload() and not actor.ammo.is_reloading and actor.ammo.magazine_rounds > 0 and float(actor.ammo.magazine_rounds) / maxf(1.0, actor.weapon.magazine_capacity) <= float(context.setting(&"cooperation", &"reload_rounds_ratio", 0.35))
+	return _team_orders_enabled() and context.cooperation_member_count() > 1 and actor.can_use_firearms() and actor.ammo.can_reload() and not actor.ammo.is_reloading and actor.ammo.magazine_rounds > 0 and float(actor.ammo.magazine_rounds) / maxf(1.0, actor.weapon.magazine_capacity) <= float(context.setting(&"cooperation", &"reload_rounds_ratio", 0.35))
 
 func _team_reload_can_start() -> bool:
 	if actor.ammo.magazine_rounds == 0 or actor.ammo.is_reloading: return true

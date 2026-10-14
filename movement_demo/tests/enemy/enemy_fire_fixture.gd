@@ -8,6 +8,20 @@ static func legacy_scene() -> Node:
 	# Also usable with the pre-migration runtime in paired baseline comparisons.
 	if arena.get("team_cooperation_bindings") is Array:
 		arena.team_cooperation_bindings.clear()
+	# Legacy behavior tests explicitly use the old membership/configuration path.
+	# Unwrap only the test instance; saved scene integration loads Main directly.
+	for member in members(arena):
+		if member.get_parent() == arena: continue
+		var pose: Transform3D = member.transform
+		var parent: Node = member.get_parent()
+		while parent != arena:
+			if parent is Node3D: pose = parent.transform * pose
+			parent = parent.get_parent()
+		member.owner = null
+		member.reparent(arena, false)
+		member.transform = pose
+	for node in arena.find_children("*", "Node3D", true, false):
+		if node.has_method("squad_configuration"): node.set_script(null)
 	return scene
 
 ## Opt-in fixture for a solo benchmark, or a benchmark that spawns N-1 peers.
@@ -28,10 +42,25 @@ static func primary_enemy(scene: Node) -> Node:
 	if arena == null: arena = scene
 	var original := arena.get_node_or_null("Enemy")
 	if original != null: return original
-	for child in arena.get_children():
-		if child.has_node("AI") and child.has_node("UnitType") and child.has_node("Training"): return child
+	for child in members(arena): return child
 	push_error("The fixture requires an AI member in its arena.")
 	return null
+
+static func members(area: Node) -> Array[Node]:
+	var result: Array[Node] = []
+	for child in area.get_children():
+		if child.has_method("enemy_environment"): continue
+		if child.has_node("AI") and child.has_node("UnitType") and child.has_node("Training"):
+			result.append(child)
+		else: result.append_array(members(child))
+	return result
+
+static func attach_squad(area: Node, actors: Array, level: int) -> Node3D:
+	var squad = preload("res://scenes/world/squad.tscn").instantiate()
+	squad.profile.level = level
+	area.add_child(squad)
+	for actor in actors: actor.reparent(squad)
+	return squad
 
 static func advance_evaluation(ai, visible: bool) -> void:
 	ai.context.sees_player = visible

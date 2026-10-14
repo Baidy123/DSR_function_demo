@@ -96,7 +96,7 @@ func _sector_case(noise: bool, block: bool) -> void:
 		await physics_frame
 		for actor in f.actors: actor.get_node("AI")._physics_process(STEP)
 		var current_sectors: Array = []
-		for shared: Dictionary in f.actors[0].get_node("AI").context.cooperation._coordination_plans.values():
+		for shared: Dictionary in f.actors[0].get_node("AI").context.cooperation.coordination_debug_snapshot(&"_coordination_plans").values():
 			if not shared.assignments.all(func(entry): return entry.role == &"search_sector"): continue
 			var entries: Dictionary = {}
 			for entry: Dictionary in shared.assignments: entries[entry.actor_id] = entry.assignment_id
@@ -143,7 +143,7 @@ func _sector_case(noise: bool, block: bool) -> void:
 			var signature := str([task.get("assignment_id", 0), search._sector_index, search._sector_observing])
 			if frame % 90 == 0 or trace_state.get(index) != signature:
 				trace_state[index] = signature
-				trace.append({"frame": frame, "actor": index, "action": ai.utility_current.get("id", &""), "plan": ai.utility_current.get("plan", &""), "role": task.get("role", &""), "phase": task.get("phase", &""), "assignment": task.get("assignment_id", 0), "deadline": task.get("expires_at", 0), "now": context.coordination_now(), "goal": search._sector_destination(), "observe": search._sector_observe_remaining, "position": actor.global_position, "offers": search._sector_offers.size(), "map": context.coordination_search_revision(), "source": search._sector_source(), "templates": search.evaluation_points().size(), "coverage_pending": search.coverage.has_pending_preparation(), "failures": context.cooperation._coordination_failures.duplicate(true)})
+				trace.append({"frame": frame, "actor": index, "action": ai.utility_current.get("id", &""), "plan": ai.utility_current.get("plan", &""), "role": task.get("role", &""), "phase": task.get("phase", &""), "assignment": task.get("assignment_id", 0), "deadline": task.get("expires_at", 0), "now": context.coordination_now(), "goal": search._sector_destination(), "observe": search._sector_observe_remaining, "position": actor.global_position, "offers": search._sector_offers.size(), "map": context.coordination_search_revision(), "source": search._sector_source(), "templates": search.evaluation_points().size(), "coverage_pending": search.coverage.has_pending_preparation(), "failures": context.squad_coordinator._coordination_failures.duplicate(true)})
 		if current_sectors.size() == 2 and current_sectors[0] != current_sectors[1]: different = true
 		if block and blocked_id > 0 and recovered and frame >= blocked_at + 120: break
 		if not block and completed_actors.size() >= 2 and observations.size() >= 4: break

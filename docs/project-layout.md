@@ -41,7 +41,7 @@ movement_demo/
 │   ├── enemy/
 │   │   ├── actions/       可配置动作 .tres
 │   │   ├── units/         兵种模板 .tres
-│   │   ├── cooperation/   三档团队意识模板与区域小队绑定 .tres
+│   │   ├── cooperation/   三档团队意识模板与旧区域兼容绑定 .tres
 │   │   └── training/      训练配置 .tres
 │   ├── weapons/           玩家与敌人的武器 .tres
 │   ├── player/            玩家医疗包效果与时间等静态配置
@@ -61,21 +61,21 @@ movement_demo/
 
 新增运行脚本按职责放入对应目录；新增敌人动作实现放 `scripts/enemy/actions/`，其定义资源放 `resources/enemy/actions/`。新增交互效果放 `scripts/world/interactions/`，具体交互物场景放 `scenes/world/objects/`；交互物与效果只通过 `InteractionContext` 使用注入的状态，不直接查找全局节点。测试或临时诊断不要放回工程根目录，也不要混入运行脚本目录。
 
-三档团队意识沿用上述分层：`config/team_cooperation_binding.gd` 仅保存阵营、通信组与 cooperation 配置引用；现有 Arena 脚本的 `team_cooperation_bindings` 提供给区域 board。`resources/enemy/cooperation/` 提供三档模板和当前竞技场绑定；个人 Training 继续独立。纯 planner 决定建议、集中／分散部署和行动支援链接，原动作、身体及 Fire 执行实际移动、换弹和射击，不增加管理节点或独立团队执行循环。默认场景接入由 `enemy_team_scene_integration_test.gd` 验证；旧行为测试通过公共 `legacy_scene()` 明确保留原个人配置前提，不能用兼容夹具代替当前绑定的实景验收。明确人数的专项可选择 `single_member_scene()` 再添加所需队员，避免保存地图额外成员干扰单人合同和多人性能计数；此辅助只改变测试实例。
+三档团队意识由 `scenes/world/squad.tscn` 的 `world/squad_controller.gd` 提供节点入口；节点持有配置和独立的 `services/squad_coordination.gd`。区域按活跃时钟统一调度，个人仍沿原 Utility、动作、身体与 Fire 执行。未迁移成员沿用兼容入口：`config/team_cooperation_binding.gd` 仅保存阵营、通信组与 cooperation 配置引用；现有 Arena 脚本的 `team_cooperation_bindings` 提供给区域 board。`resources/enemy/cooperation/` 提供三档模板和旧区域兼容绑定；个人 Training 继续独立。纯 planner 决定建议、集中／分散部署和行动支援链接，原动作、身体及 Fire 执行实际移动、换弹和射击。小队节点没有独立物理循环。默认场景接入由 `enemy_team_scene_integration_test.gd` 验证；旧行为测试通过公共 `legacy_scene()` 明确保留原个人配置前提，不能用兼容夹具代替当前绑定的实景验收。明确人数的专项可选择 `single_member_scene()` 再添加所需队员，避免保存地图额外成员干扰单人合同和多人性能计数；此辅助只改变测试实例。
 
-敌人协作由 `world/shooting_range.gd` 持有每战斗区一份 `enemy/services/enemy_cooperation.gd`；Context 提供值快照与任务接口，服务不访问其他行为实例或执行身体命令。`actions/enemy_cooperation_action.gd` / `resources/enemy/actions/cooperate.tres` 提供有限侧移、另一侧包抄和射击支援候选；新绑定小队的权限统一来自团队意识，未绑定旧场景保留个人训练开关。分工搜索与主动补弹仍属于原搜索／换弹模块。统一压制保留旧出口脚本 UID 作为兼容入口，默认目录只装配一个压制实例。参数位于 `config/cooperation_settings.gd`，详见 [敌人协作](enemy-ai.md#敌人协作)。
+敌人协作由 `world/shooting_range.gd` 持有每战斗区一份 `enemy/services/enemy_cooperation.gd`；Context 提供值快照与任务接口，服务不访问其他行为实例或执行身体命令。`actions/enemy_cooperation_action.gd` / `resources/enemy/actions/cooperate.tres` 提供有限侧移、另一侧包抄和射击支援候选；显式小队的权限统一来自节点 Profile，未迁移旧场景保留区域绑定或个人训练开关。分工搜索与主动补弹仍属于原搜索／换弹模块。统一压制保留旧出口脚本 UID 作为兼容入口，默认目录只装配一个压制实例。参数位于 `config/cooperation_settings.gd`，详见 [敌人协作](enemy-ai.md#敌人协作)。
 
 [统一队伍规划器设计](superpowers/specs/2026-10-10-enemy-team-coordinator-design.md)已接入基础预约、高级岗位和共同阶段。个人 Utility、原动作、身体与 Fire 继续负责执行；功能接入不代表性能及所有旧行为验收已完成。阶段结果与未完成项统一见 [敌人测试](enemy-tests.md#当前回归)及 [实施记录](superpowers/plans/2026-10-10-enemy-team-coordinator.md#实施记录)。
 
-`enemy/services/enemy_team_planner.gd` 是纯值输入输出的有界组合 helper，负责排除冲突并提议互补岗位，不访问场景、找路、控制身体或制造任务期限。当前 board 调用它安排互补检查、侧翼／前线与地图搜索，动作仅执行被选择的合法岗位；纯协议由 `enemy_team_planner_test.gd` 验证。
+`enemy/services/enemy_team_planner.gd` 是纯值输入输出的有界组合 helper，负责排除冲突并提议互补岗位，不访问场景、找路、控制身体或制造任务期限。各小队的 `squad_coordination.gd` 调用它安排互补检查、侧翼／前线与地图搜索，动作仅执行被选择的合法岗位；纯协议由 `enemy_team_planner_test.gd` 验证。
 
-基础位置预约位于原 `enemy_cooperation.gd`，Context 负责候选值快照和身份版本，AI 使用通用资格集合及准备／提交／回滚接点。没有新增场景节点或身体控制器；`advanced_enabled` 不限制基础排重，关系接口同时区分物理空间与情报域。`enemy_team_board_test.gd` 检查身份、物理排重、期限与生命周期，`enemy_team_basic_runtime_test.gd` 检查高级OFF真实共享／移动／开火、单人和多转单，以及明确区分的事务与身体保护合同；高级岗位通过同一 board 与通用执行接口接入，基础预约不依赖高级开关。
+基础位置预约位于原 `enemy_cooperation.gd`，Context 负责候选值快照和身份版本，AI 使用通用资格集合及准备／提交／回滚接点。小队节点不控制身体；`advanced_enabled` 不限制基础排重，关系接口同时区分物理空间与情报域。`enemy_team_board_test.gd` 检查身份、物理排重、期限与生命周期，`enemy_team_basic_runtime_test.gd` 检查高级OFF真实共享／移动／开火、单人和多转单，以及明确区分的事务与身体保护合同；高级岗位由小队协调器通过区域公共预约与通用执行接口接入，基础预约不依赖高级开关。
 
 通用岗位和自保协议放在原 `enemy_action.gd`，具体合法自保由原换弹、接敌、近战、掩体和撤退动作实现。Context 只处理值接口，AI 沿原选择器处理资格、连续性和事务，不按战术ID分派执行。`enemy_assignment_execution_test.gd` 的受控合同与 `enemy_action_coordination_protocol_test.gd` 的真实身体／候选条件检查分别验证通用接点和自保；它们不替代生产战术的实景验收。
 
-`enemy/services/enemy_cover_inspection_geometry.gd` 只从冻结的合法线索和直立盒形掩体生成两个可步行检查端点，复用原导航、胶囊扫掠和完整路径校验；不读取隐藏目标身体、不认领、不发射。原 `actions/enemy_search.gd` 消费分侧认领，执行接近、有限等待、绕端检查和真实观察；`enemy_cooperation.gd` 管理线索、端点互斥与完成事实。Context 接收的调查线索默认保留20秒，与5秒精确共享目击分离，不延长射击权限。两端任务默认16秒且受线索原期限限制，等候2秒、观察0.5秒均不续期；单人或不足两个合法端点时沿用普通搜索，不恢复出口压制。几何和路径候选有限缓存，提交及执行继续复核真实可行性。
+`enemy/services/enemy_cover_inspection_geometry.gd` 只从冻结的合法线索和直立盒形掩体生成两个可步行检查端点，复用原导航、胶囊扫掠和完整路径校验；不读取隐藏目标身体、不认领、不发射。原 `actions/enemy_search.gd` 消费分侧认领，执行接近、有限等待、绕端检查和真实观察；`enemy_cooperation.gd` 管理线索与真实完成事实，`squad_coordination.gd` 管理本队端点分工与认领。Context 接收的调查线索默认保留20秒，与5秒精确共享目击分离，不延长射击权限。两端任务默认16秒且受线索原期限限制，等候2秒、观察0.5秒均不续期；单人或不足两个合法端点时沿用普通搜索，不恢复出口压制。几何和路径候选有限缓存，提交及执行继续复核真实可行性。
 
-`enemy/services/enemy_flank_route.gd` 是协作动作使用的只读几何辅助：由合法已知锚点生成有限带转向弧线、逐段检查点与严格步行路径，拒绝直穿目标附近；不认领岗位、不执行身体、不决定最终 Utility 分数。`enemy_cooperation.gd` 继续统一持有冻结的包抄轮次、人数名额及不可变最终目的地，使用真实友军身体位置计算占侧；动作自己保留短段进度、前线保持和有限支援恢复等待。Context 与 Fire 发布即时火力及正常连射暂停的恢复事实，位置预约与实际火力射界分开，不新增控制整个小队的执行框架。
+`enemy/services/enemy_flank_route.gd` 是协作动作使用的只读几何辅助：由合法已知锚点生成有限带转向弧线、逐段检查点与严格步行路径，拒绝直穿目标附近；不认领岗位、不执行身体、不决定最终 Utility 分数。`squad_coordination.gd` 持有本队冻结的包抄轮次、人数名额及不可变最终目的地，使用真实友军身体位置计算占侧；动作自己保留短段进度、前线保持和有限支援恢复等待。Context 与 Fire 发布即时火力及正常连射暂停的恢复事实，位置预约与实际火力射界分开，不新增控制整个小队的执行框架。
 
 远处的内收后绕行也属于 `enemy_flank_route.gd`：候选保存少量严格几何转折点，辅助查询实际导航折线，再产出不超过约2米的执行检查点和完整路线时长。近距原四种方向／半径组合保留；不会将场外点吸到导航边缘、改变冻结终点或扩大整轮期限。`tests/enemy/enemy_flank_route_test.gd` 检查纯候选边界、保存地图上的真实通路、有限时间及共享盲态的下一段观察预测；正常 Utility 实际绕行继续由 `enemy_cooperation_flank_runtime_test.gd` 的多人开关对照验证，运行器统一调度。身体减速和支援等候仍由原执行层与固定期限处理。
 
@@ -125,4 +125,4 @@ Spatial 的路线样本层仅在同步候选比较中复用同路径已实际观
 
 2026-10-07 近战兵接敌扩展继续使用原三层装配：`actions/enemy_melee_cover_action.gd` 和 `enemy_melee_rush_action.gd` 是独立可选战术，定义在 `resources/enemy/actions/`，由近战兵目录提供、Training 解锁。共用只读路径与结果估计放在 `services/enemy_melee_approach.gd`；换弹观察属于原感知／记忆服务。`config/melee_tactics_settings.gd` 经训练的 `action_overrides` 配置，示例为 `resources/enemy/training/melee_assault.tres`。原协调器、选择器、评分公式、场景节点及基础挥击执行职责保持不变；完整规则见 [近战说明](gameplay/MELEE.md)。
 
-`enemy/services/enemy_tactical_map.gd` 由 `shooting_range.gd` 持有并通过环境接口提供给 Context。同区域共用一份静态模板；Spatial 在原预算内推进地图与增量搜索准备，coverage 保存个人覆盖数据。地图模板不替代身体与路线验证；玩家线索、岗位、期限和实际观察账本归 board 管理。
+`enemy/services/enemy_tactical_map.gd` 由 `shooting_range.gd` 持有并通过环境接口提供给 Context。同区域共用一份静态模板；Spatial 在原预算内推进地图与增量搜索准备，coverage 保存个人覆盖数据。地图模板不替代身体与路线验证；玩家线索与实际观察账本归区域管理，岗位、建议和计划期限归小队协调器管理。

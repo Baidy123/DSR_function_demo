@@ -15,11 +15,13 @@ func _run() -> void:
 	mesh.add_polygon(PackedInt32Array([0, 1, 2, 3]))
 	navigation.navigation_mesh = mesh
 	await _reset(Vector3(-1.2, 0, 0), Vector3.ZERO)
-	# The inherited scene spawned before this narrower test region existed.
-	# Re-enter through the real lifecycle so spawn validation uses these bodies.
+	# This fixture replaces the inherited navigation and declares new spawn points.
+	# Same-area reconnection intentionally preserves a real unit's original spawn,
+	# so set the fixture's spawn explicitly before revalidating the narrow region.
 	for actor in actors:
 		actor.get_node("AI").context.detach_environment()
 		actor.get_node("AI").context.refresh_environment()
+		actor.get_node("AI").context._spawn_position = actor.global_position
 	var mover = actors[0]
 	var blocker = actors[1]
 	var ai = mover.get_node("AI")

@@ -28,6 +28,11 @@ func fingerprint() -> int:
 ## Editor lookup does not instantiate a runtime board or borrow another member.
 static func find_for_member(member: Node) -> Dictionary:
 	if member == null or member.get("faction_id") == null or member.get("communication_group") == null: return {}
+	var squad := squad_for_member(member)
+	if squad != null:
+		var settings: Dictionary = squad.squad_configuration()
+		return {"binding": squad, "squad": squad, "squad_key": String(squad.name),
+			"level": settings.level, "diagnostic": settings.diagnostic}
 	var area := member.get_parent()
 	while area != null:
 		var bindings = area.get("team_cooperation_bindings")
@@ -43,3 +48,21 @@ static func find_for_member(member: Node) -> Dictionary:
 				"level": int(binding.profile.level) if diagnostic.is_empty() else Settings.Level.INTEL_ONLY}
 		area = area.get_parent()
 	return {}
+
+## Scene identity is the nearest explicit squad inside this area, independent
+## of faction, radio group, node name and shared configuration resource.
+static func squad_for_member(member: Node) -> Node:
+	var current := member.get_parent() if member != null else null
+	while current != null:
+		if current.has_method("enemy_environment"): return null
+		if current.has_method("squad_configuration"): return current
+		current = current.get_parent()
+	return null
+
+static func effective_faction(member: Node) -> StringName:
+	var squad := squad_for_member(member)
+	return squad.faction_id if squad != null else member.faction_id
+
+static func effective_communication_group(member: Node) -> StringName:
+	var squad := squad_for_member(member)
+	return squad.communication_group if squad != null else member.communication_group

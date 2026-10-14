@@ -21,9 +21,8 @@ func _run() -> void:
 
 func _awareness_run(count: int, level: int) -> Dictionary:
 	var fixture: Dictionary = await _fixture(count, false)
-	var binding = preload("res://scripts/enemy/config/team_cooperation_binding.gd").new()
-	binding.profile.level = level
-	fixture.arena.team_cooperation_bindings.assign([binding])
+	preload("res://tests/enemy/enemy_fire_fixture.gd").attach_squad(fixture.arena, fixture.actors, level)
+	await physics_frame
 	fixture.arena.enemy_environment()
 	for actor in fixture.actors: actor.get_node("AI").refresh_configuration()
 	var result := {"count": count, "level": level, "advice": 0, "assigned": 0, "waiting": 0,

@@ -55,8 +55,8 @@ func _run() -> void:
 	var board = preload("res://scripts/enemy/services/enemy_cooperation.gd").new()
 	var source := {"position": Vector3.ZERO, "front_axis": Vector3.RIGHT}
 	var summary := {"tactical_key": "frame", "tactical_anchor": Vector3.ZERO, "tactical_axis": Vector3.RIGHT, "side": -1}
-	check(board._coordination_frame_valid(summary, source, &"front_support", Vector3(-3, 0, 0), true), "Strong ordinary covering fire is legal on either actual side of the target")
-	check(not board._coordination_frame_valid(summary, source, &"front_support", Vector3(-3, 0, 0)) and not board._coordination_frame_valid(summary, source, &"flank", Vector3(3, 0, 0), true), "General support preserves the legacy front and real opposite-flank constraints")
+	check(board._legacy_coordinator._coordination_frame_valid(summary, source, &"front_support", Vector3(-3, 0, 0), true), "Strong ordinary covering fire is legal on either actual side of the target")
+	check(not board._legacy_coordinator._coordination_frame_valid(summary, source, &"front_support", Vector3(-3, 0, 0)) and not board._legacy_coordinator._coordination_frame_valid(summary, source, &"flank", Vector3(3, 0, 0), true), "General support preserves the legacy front and real opposite-flank constraints")
 	print("TEAM SUPPORT PLANNER: %d/%d passed" % [checks - failures, checks])
 	quit(1 if failures else 0)
 

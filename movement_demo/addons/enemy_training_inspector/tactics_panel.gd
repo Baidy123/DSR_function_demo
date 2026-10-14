@@ -69,8 +69,10 @@ func refresh(force: bool = false) -> void:
 		if not String(team.diagnostic).is_empty(): _note(team.diagnostic)
 		var button := Button.new()
 		button.text = "编辑整队团队意识配置"
-		button.disabled = team.binding.profile == null
-		button.pressed.connect(func(): EditorInterface.edit_resource(team.binding.profile))
+		button.disabled = team.binding.profile == null and not team.has("squad")
+		button.pressed.connect(func():
+			if team.has("squad"): EditorInterface.edit_node(team.squad)
+			else: EditorInterface.edit_resource(team.binding.profile))
 		rows.add_child(button)
 	var resolved := Library.resolve(source, training, team)
 	var seen: Array[StringName] = []
@@ -90,7 +92,7 @@ func refresh(force: bool = false) -> void:
 		checkbox.disabled = inherited or invalid or not included.is_empty()
 		if inherited:
 			checkbox.text += "（由小队提供）"
-			checkbox.tooltip_text = "在小队绑定中修改团队意识等级；此处保留原个人选择以兼容未绑定配置。"
+			checkbox.tooltip_text = "通过上方按钮编辑所属小队的团队意识；个人训练选择独立保留。"
 		elif invalid:
 			checkbox.tooltip_text = "无法启用：" + "; ".join(eligibility.errors)
 		elif not included.is_empty():

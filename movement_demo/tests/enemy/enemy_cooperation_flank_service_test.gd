@@ -114,7 +114,7 @@ func _run() -> void:
 		var serial: int = board._serial
 		var opportunity: Dictionary = board.flank_opportunity(members[0])
 		for repeat in 20: board.flank_opportunity(members[0])
-		_check(board.revision == before and board._serial == serial and board._flank_rounds.is_empty(), "%d members: repeated previews never create or renew a round" % count)
+		_check(board.revision == before and board._serial == serial and board.coordination_debug_snapshot(&"_flank_rounds").is_empty(), "%d members: repeated previews never create or renew a round" % count)
 		var expected := floori(count / 2.0)
 		_check(opportunity.capacity == expected and opportunity.remaining_slots == expected, "%d members: capacity is floor(N/2)" % count)
 		var proposals: Array[Dictionary] = []
@@ -134,7 +134,7 @@ func _run() -> void:
 	var before_phase: int = board.revision
 	board.update_claim(members[0], first, {"phase": &"WAIT", "position": Vector3(5, 0, 0), "flank_anchor": Vector3.ONE,
 		"flank_axis": Vector3.RIGHT, "flank_round_id": -1, "flank_destination": Vector3.ONE, "expires_at": 9999.0, "ready": true})
-	var copy: Dictionary = board._claims[first.id]
+	var copy: Dictionary = board.coordination_debug_snapshot(&"_claims")[first.id]
 	_check(copy.flank_anchor == anchor and copy.flank_axis == axis and copy.flank_round_id == first.flank_round_id and copy.flank_destination == first.flank_destination and copy.expires_at == deadline, "updates cannot replace immutable side, destination, identity or deadline")
 	_check(copy.position == Vector3(5, 0, 0) and board.revision > before_phase and board.snapshot(members[2], 101).supports.is_empty(), "phase changes invalidate role previews while progress cannot fabricate support")
 	board.update_claim(members[1], second, {"phase": &"MOVE"})
@@ -157,7 +157,7 @@ func _run() -> void:
 	var task: Dictionary = _task(members[0], Vector3(6, 0, -3))
 	var wrong := task.duplicate(true)
 	wrong.flank_axis = -wrong.flank_axis
-	_check(board.claim(members[0], wrong).is_empty() and board._flank_rounds.is_empty(), "a forged axis cannot create a round")
+	_check(board.claim(members[0], wrong).is_empty() and board.coordination_debug_snapshot(&"_flank_rounds").is_empty(), "a forged axis cannot create a round")
 	wrong = task.duplicate(true)
 	wrong.flank_destination = Vector3(-2, 0, 0)
 	_check(board.claim(members[0], wrong).is_empty(), "a same-side destination is not an opposite flank")
@@ -193,7 +193,7 @@ func _run() -> void:
 	members[0].actor.is_dead = true
 	members[3].actor.is_dead = true
 	board.advance(0.0)
-	_check(not board.update_claim(members[1], second, {}) and board._flank_rounds.is_empty(), "a sole survivor cannot retain a cooperation round")
+	_check(not board.update_claim(members[1], second, {}) and board.coordination_debug_snapshot(&"_flank_rounds").is_empty(), "a sole survivor cannot retain a cooperation round")
 
 	for change in [&"training", &"group", &"target", &"unregister", &"relation", &"reset", &"evidence", &"expiry"]:
 		_team(4)
@@ -215,7 +215,7 @@ func _run() -> void:
 		board.advance(0.0)
 		_check(not board.update_claim(members[0], first, {}), "%s invalidates old ownership without extending its deadline" % change)
 		if change == &"evidence":
-			_check(board._flank_rounds.is_empty() and board.flank_opportunity(members[1]).anchor == Vector3(0, 0, 3), "material target displacement allows a new proposal instead of drifting the old axis")
+			_check(board.coordination_debug_snapshot(&"_flank_rounds").is_empty() and board.flank_opportunity(members[1]).anchor == Vector3(0, 0, 3), "material target displacement allows a new proposal instead of drifting the old axis")
 
 	_team(2)
 	board.release_member(members[0].actor.get_instance_id())
@@ -275,13 +275,13 @@ func _test_completed_formation() -> void:
 	board.release(members[0], first)
 	board.advance(1.1)
 	for member in members: _publish(member)
-	_check(board._flank_rounds.is_empty() and board._claims.is_empty(), "completed formation protection never renews an expired round or claim")
+	_check(board.coordination_debug_snapshot(&"_flank_rounds").is_empty() and board.coordination_debug_snapshot(&"_claims").is_empty(), "completed formation protection never renews an expired round or claim")
 	var revision: int = board.revision
 	var serial: int = board._serial
 	var after: Dictionary = board.flank_opportunity(members[1])
 	_check(after.capacity == 0 and after.remaining_slots == 0, "a completed 140-degree flank cannot rotate the front axis into a second dispatch after expiry")
 	_check(board.claim(members[1], _task(members[1], Vector3(-6, 0, 0))).is_empty(), "the remaining front member cannot claim a follow-up behind the completed flanker")
-	_check(board.revision == revision and board._serial == serial and board._flank_rounds.is_empty(), "rejecting an already separated formation remains a read-only geometry decision")
+	_check(board.revision == revision and board._serial == serial and board.coordination_debug_snapshot(&"_flank_rounds").is_empty(), "rejecting an already separated formation remains a read-only geometry decision")
 	for member in members:
 		member.known = Vector3(0, 0, 10)
 		_publish(member)
@@ -310,7 +310,7 @@ func _test_geometry_revision() -> void:
 	var serial: int = board._serial
 	var revision: int = board.revision
 	for repeat in 8: board.flank_geometry_revision(members[0])
-	_check(board._serial == serial and board.revision == revision and board._flank_rounds.is_empty(), "geometry revision queries never register, claim or refresh a report")
+	_check(board._serial == serial and board.revision == revision and board.coordination_debug_snapshot(&"_flank_rounds").is_empty(), "geometry revision queries never register, claim or refresh a report")
 	for repeat in 9: board.publish_visual(members[repeat % members.size()])
 	_check(board.revision > revision and board.flank_geometry_revision(members[0]) == fingerprint, "alternating observers can update reports without clearing unchanged spatial geometry")
 	_publish(members[1], {"ready": true, "support_seconds": 2.0})
@@ -351,7 +351,7 @@ func _test_geometry_revision() -> void:
 	fingerprint = board.flank_geometry_revision(members[0])
 	board.advance(12.1)
 	for member in members: _publish(member)
-	_check(board._flank_rounds.is_empty() and board.flank_geometry_revision(members[0]) != fingerprint, "expired finite rounds are not retained by the geometric fingerprint")
+	_check(board.coordination_debug_snapshot(&"_flank_rounds").is_empty() and board.flank_geometry_revision(members[0]) != fingerprint, "expired finite rounds are not retained by the geometric fingerprint")
 	for invalidation in [&"dead", &"group", &"target", &"stale", &"evidence"]:
 		_team(2)
 		match invalidation:
