@@ -71,6 +71,8 @@ movement_demo/
 
 基础位置预约位于原 `enemy_cooperation.gd`，Context 负责候选值快照和身份版本，AI 使用通用资格集合及准备／提交／回滚接点。小队节点不控制身体；`advanced_enabled` 不限制基础排重，关系接口同时区分物理空间与情报域。`enemy_team_board_test.gd` 检查身份、物理排重、期限与生命周期，`enemy_team_basic_runtime_test.gd` 检查高级OFF真实共享／移动／开火、单人和多转单，以及明确区分的事务与身体保护合同；高级岗位由小队协调器通过区域公共预约与通用执行接口接入，基础预约不依赖高级开关。
 
+公共目的地预约的批量只读筛选仍在 `enemy_cooperation.gd`，由 Context 在原资格过滤阶段调用，不转移到 planner 或小队节点。多候选共享的障碍投影仅存于一次同步调用的局部变量；单候选与准备／提交沿原实时查询。`enemy_reservation_batch_test.gd` 验证新旧查询等价、候选顺序与同帧状态变化，执行和性能结果仍以[敌人测试](enemy-tests.md)为准。
+
 通用岗位和自保协议放在原 `enemy_action.gd`，具体合法自保由原换弹、接敌、近战、掩体和撤退动作实现。Context 只处理值接口，AI 沿原选择器处理资格、连续性和事务，不按战术ID分派执行。`enemy_assignment_execution_test.gd` 的受控合同与 `enemy_action_coordination_protocol_test.gd` 的真实身体／候选条件检查分别验证通用接点和自保；它们不替代生产战术的实景验收。
 
 `enemy/services/enemy_cover_inspection_geometry.gd` 只从冻结的合法线索和直立盒形掩体生成两个可步行检查端点，复用原导航、胶囊扫掠和完整路径校验；不读取隐藏目标身体、不认领、不发射。原 `actions/enemy_search.gd` 消费分侧认领，执行接近、有限等待、绕端检查和真实观察；`enemy_cooperation.gd` 管理线索与真实完成事实，`squad_coordination.gd` 管理本队端点分工与认领。Context 接收的调查线索默认保留20秒，与5秒精确共享目击分离，不延长射击权限。两端任务默认16秒且受线索原期限限制，等候2秒、观察0.5秒均不续期；单人或不足两个合法端点时沿用普通搜索，不恢复出口压制。几何和路径候选有限缓存，提交及执行继续复核真实可行性。

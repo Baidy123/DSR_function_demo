@@ -49,6 +49,7 @@ TESTS = [
     "enemy_cooperation_flank_runtime_test",
     "enemy_cooperation_line_safety_test",
     "enemy_cooperation_query_test",
+    "enemy_reservation_batch_test",
     "enemy_cooperation_search_test",
     "enemy_cooperation_reload_test",
     "enemy_cooperation_solo_test",

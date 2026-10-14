@@ -77,6 +77,10 @@ class BoardProbe extends RefCounted:
 		submitted = offers.duplicate(true)
 		return true
 	func reservation_offer_available(_context, _offer: Dictionary) -> bool: return available
+	func reservation_offers_available(context, offers: Array[Dictionary]) -> Array[bool]:
+		var result: Array[bool] = []
+		for offer in offers: result.append(reservation_offer_available(context, offer))
+		return result
 	func clear_execution(_owner: int) -> void:
 		events.append("clear")
 		accepted_lease = false

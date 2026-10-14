@@ -1023,16 +1023,25 @@ func _basic_coordination_choices(options: Array[Dictionary]) -> Array[Dictionary
 			independent_choices.append(independent)
 		return independent_choices
 	var result: Array[Dictionary] = []
-	var available: Dictionary = {}
+	var candidate_offers: Array[Dictionary] = []
+	var distinct_offers: Array[Dictionary] = []
+	var position_indices: Dictionary = {}
 	for candidate in options:
 		var offer := _basic_coordination_offer(candidate)
+		candidate_offers.append(offer)
+		if not offer.is_empty() and not position_indices.has(offer.position):
+			position_indices[offer.position] = distinct_offers.size()
+			distinct_offers.append(offer)
+	var available: Array[bool] = cooperation.reservation_offers_available(self, distinct_offers)
+	for index in options.size():
+		var candidate: Dictionary = options[index]
+		var offer: Dictionary = candidate_offers[index]
 		if offer.is_empty():
 			var independent := candidate.duplicate() if candidate.has("coordination_offer") else candidate
 			independent.erase("coordination_offer")
 			result.append(independent)
 			continue
-		if not available.has(offer.position): available[offer.position] = cooperation.reservation_offer_available(self, offer)
-		if not available[offer.position]: continue
+		if not available[position_indices[offer.position]]: continue
 		var choice := candidate.duplicate()
 		choice.coordination_offer = offer
 		result.append(choice)

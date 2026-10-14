@@ -411,6 +411,30 @@ func _reservation_position_available(context, entry: Dictionary, except_id: int 
 			if endpoint.is_finite() and _reservation_lane_crosses(current, {"origin": other.actor.get_shot_origin(), "endpoint": endpoint}): return false
 	return true
 
+## Local to one synchronous read-only query. Never retained across publication,
+## reservation transactions, body execution, or another query in the same frame.
+func _reservation_obstacles(context, except_id: int = 0) -> Array[Dictionary]:
+	var owner: int = context.actor.get_instance_id()
+	var obstacles: Array[Dictionary] = []
+	for other: Dictionary in _reservations.values():
+		if other.reservation_id == except_id or other.owner_id == owner or not _reservation_valid(other) or not can_share_space(owner, other.owner_id): continue
+		for projection: Dictionary in _reservation_projections(other):
+			var actual := projection.duplicate()
+			actual.merge(_reservation_footprint(_context(other.owner_id), projection.position), true)
+			if other.get("scope") == &"tactical": actual.path_summary = _coordination_physical_summary(_context(other.owner_id), projection.get("path_summary", {}), other.target_id)
+			obstacles.append(actual)
+	for id: int in _members:
+		if id == owner or not can_share_space(owner, id): continue
+		var other = _context(id)
+		if not _reservation_member_valid(other): continue
+		var body := _reservation_footprint(other, other.actor.global_position)
+		var status: Dictionary = _members[id].status
+		if _coordination_actual(other, int(status.get("target_id", 0))).fire_ready:
+			var endpoint: Vector3 = status.get("aim_position", Vector3.INF)
+			if endpoint.is_finite(): body.path_summary = {"firing_lane": {"origin": other.actor.get_shot_origin(), "endpoint": endpoint}}
+		obstacles.append(body)
+	return obstacles
+
 ## Candidate filtering is read-only. Callers keep no-destination personal
 ## firing/self-preservation options outside this destination-reservation gate.
 
@@ -420,6 +444,36 @@ func reservation_offer_available(context, offer: Dictionary) -> bool:
 	entry.position_set_key = offer.position_set_key
 	entry.path_summary = _reservation_summary(offer.get("path_summary", {}))
 	return _reservation_position_available(context, entry)
+
+## Each offer keeps its full identity, permission and expiry validation. Only
+## the common physical facts are prepared once; no caller receives the snapshot.
+func reservation_offers_available(context, offers: Array[Dictionary]) -> Array[bool]:
+	var result: Array[bool] = []
+	# A single offer needs no shared obstacle array; transactions also retain
+	# their live early-out query above.
+	if offers.size() <= 1:
+		for offer in offers: result.append(reservation_offer_available(context, offer))
+		return result
+	var obstacles: Array[Dictionary] = []
+	var footprint: Dictionary = {}
+	for offer: Dictionary in offers:
+		if not _reservation_offer_valid(context, offer):
+			result.append(false)
+			continue
+		if footprint.is_empty():
+			footprint = _reservation_footprint(context, Vector3.ZERO)
+			obstacles = _reservation_obstacles(context)
+		var entry := footprint.duplicate()
+		entry.position = offer.position
+		entry.position_set_key = offer.position_set_key
+		entry.path_summary = _reservation_summary(offer.get("path_summary", {}))
+		var available := true
+		for obstacle: Dictionary in obstacles:
+			if _reservation_geometry_conflict(entry, obstacle):
+				available = false
+				break
+		result.append(available)
+	return result
 
 ## Offer times use the caller's evidence clock; token times use the board clock.
 ## Prepare never releases the old accepted position or starts an action.
