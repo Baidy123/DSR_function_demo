@@ -100,10 +100,7 @@ func _coordinated_inspection(count: int) -> void:
 	var initial: Array[Vector3] = []
 	for actor in actors: initial.append(actor.global_position)
 	var assigned: Dictionary = {}
-	var started: Dictionary = {}
-	var arrived: Dictionary = {}
-	var checked: Dictionary = {}
-	var completed: Dictionary = {}
+	var observations: Dictionary = {}
 	var executed_roles: Dictionary = {}
 	var simultaneous_roles_valid := true
 	var third_motion := 0.0
@@ -115,7 +112,10 @@ func _coordinated_inspection(count: int) -> void:
 	var deadlines_fixed := true
 	var min_separation := INF
 	for frame in 960:
-		await _tick()
+		await physics_frame
+		for index in count:
+			actors[index].get_node("AI")._physics_process(STEP)
+			_record_inspection(observations, actors[index], frame, known)
 		var current_roles: Array = []
 		for index in count:
 			var actor = actors[index]
@@ -129,12 +129,8 @@ func _coordinated_inspection(count: int) -> void:
 				if not accepted_deadlines.has(task.assignment_id): accepted_deadlines[task.assignment_id] = task.expires_at
 				deadlines_fixed = deadlines_fixed and accepted_deadlines[task.assignment_id] == task.expires_at
 				if task.get("accepted", false) and not search._inspection_route.is_empty():
-					if actor.global_position.distance_to(search._inspection_route.entry) <= 0.3: arrived[index] = true
-					if search._inspection_phase == search.InspectionPhase.CHECK and not started.has(index):
-						started[index] = frame
+					if search._inspection_phase == search.InspectionPhase.CHECK:
 						executed_roles[index] = task.role
-					if actor.global_position.distance_to(search._inspection_route.peek) <= 0.3 and context.perception.can_observe_position(known): checked[index] = true
-					if task.get("complete", false) and context._coordination_execution_completed: completed[index] = true
 			elif count == 3 and actors.filter(func(other): return other.get_node("AI").context.coordination_assignment().get("role", &"") in [&"inspect_left", &"inspect_right"]).size() == 2:
 				third_motion = maxf(third_motion, actor.global_position.distance_to(initial[index]))
 				unassigned_active = unassigned_active or (not ai.utility_current.is_empty() and search._inspection_phase == search.InspectionPhase.NONE)
@@ -147,16 +143,42 @@ func _coordinated_inspection(count: int) -> void:
 		for left in count:
 			for right in range(left + 1, count): min_separation = minf(min_separation, actors[left].global_position.distance_to(actors[right].global_position))
 		simultaneous_roles_valid = simultaneous_roles_valid and current_roles.size() <= 2 and (current_roles.size() != 2 or current_roles[0] != current_roles[1])
-		if completed.size() >= 2 and current_roles.is_empty() and (count == 2 or third_motion > 0.5): break
+		if observations.values().any(func(record): return record.completed.size() == 2) and current_roles.is_empty() and (count == 2 or third_motion > 0.5): break
 	var roles: Array = executed_roles.values()
 	check(simultaneous_roles_valid and roles.has(&"inspect_left") and roles.has(&"inspect_right"), "%d actors autonomously execute complementary roles with at most one current owner per end, including legal reassignment" % count)
-	check(checked.size() == 2 and checked.keys().all(func(index): return arrived.has(index)), "%d-actor inspectors actually reach separate entries and observe the frozen ground from both ends" % count)
-	check(completed.size() == 2 and actors.all(func(actor): return actor.get_node("AI").context.coordination_assignment().is_empty()), "%d-actor real observation completes both reports and releases the shared task" % count)
-	var synchronized: bool = started.size() == 2 and abs(int(started.values()[0]) - int(started.values()[1])) <= 1
+	var complete_runs: Array = observations.values().filter(func(record): return record.completed.size() == 2)
+	check(not observations.is_empty() and observations.values()[0].completed.size() == 2, "%d-actor original inspection plan completes both real reports despite a passing member, without canceling and retrying" % count)
+	check(complete_runs.any(func(record): return record.checked.size() == 2 and record.completed.keys().all(func(role): return record.checked.has(role))), "%d-actor inspectors actually reach separate entries and observe the frozen ground from both ends" % count)
+	check(not complete_runs.is_empty() and actors.all(func(actor): return actor.get_node("AI").context.coordination_assignment().is_empty()), "%d-actor real observation completes both reports and releases the shared task" % count)
+	var synchronized := false
+	var every_released_pair := true
+	for record in observations.values():
+		for starts: Dictionary in record.starts.values():
+			if starts.size() != 2: continue
+			var together: bool = abs(int(starts.values()[0]) - int(starts.values()[1])) <= 1
+			every_released_pair = every_released_pair and together
+			synchronized = synchronized or (record.completed.size() == 2 and together)
+	synchronized = synchronized and every_released_pair
 	check(synchronized, "%d-actor inspectors physically start the released check segment within one update" % count)
 	check(deadlines_fixed and hidden_unchanged and no_inspection_fire and min_separation >= 0.69, "%d-actor execution preserves fixed deadlines, hidden evidence, nonfiring inspection and real body separation" % count)
 	if count == 3:
 		check(unassigned_active and third_motion > 0.5, "The third blind member remains active and actually investigates without entering an unassigned inspection wait")
-	print("TEAM INSPECTION TRACE count=", count, " assigned=", assigned, " started=", started, " checked=", checked, " completed=", completed, " third_motion=", third_motion, " ", JSON.stringify(trace))
+	print("TEAM INSPECTION TRACE count=", count, " assigned=", assigned, " observations=", observations, " third_motion=", third_motion, " ", JSON.stringify(trace))
 	scene.queue_free()
 	await physics_frame
+
+func _record_inspection(observations: Dictionary, actor, frame: int, known: Vector3) -> void:
+	# Observe each real execution before another member can finish and retire
+	# the shared plan. Reassignment and a later plan have distinct identities.
+	var context = actor.get_node("AI").context
+	var search = actor.get_node("AI").actions[&"search"]
+	var task: Dictionary = context.coordination_assignment()
+	if task.get("role", &"") not in [&"inspect_left", &"inspect_right"] or not task.get("accepted", false) or search._inspection_route.is_empty(): return
+	if not observations.has(task.plan_id): observations[task.plan_id] = {"arrived": {}, "checked": {}, "completed": {}, "starts": {}}
+	var record: Dictionary = observations[task.plan_id]
+	if actor.global_position.distance_to(search._inspection_route.entry) <= 0.3: record.arrived[task.assignment_id] = true
+	if search._inspection_phase == search.InspectionPhase.CHECK:
+		if not record.starts.has(task.phase_id): record.starts[task.phase_id] = {}
+		if not record.starts[task.phase_id].has(task.role): record.starts[task.phase_id][task.role] = frame
+	if record.arrived.has(task.assignment_id) and actor.global_position.distance_to(search._inspection_route.peek) <= 0.3 and context.perception.can_observe_position(known): record.checked[task.role] = true
+	if task.get("complete", false) and context._coordination_execution_completed and record.checked.has(task.role): record.completed[task.role] = true

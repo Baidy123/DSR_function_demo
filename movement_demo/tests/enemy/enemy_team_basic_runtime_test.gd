@@ -68,6 +68,9 @@ func _fixture(count: int, advanced: bool) -> Dictionary:
 	var actors: Array = []
 	for index in count:
 		var actor = load("res://scenes/enemy/enemy.tscn").instantiate()
+		# This fixture exercises firearm cooperation. The user's saved weapon may
+		# legitimately be a dedicated melee weapon, which ranged units reject.
+		actor.weapon = WeaponData.new()
 		actor.get_node("UnitType").profile = preload("res://resources/enemy/units/ranged.tres").duplicate(true)
 		actor.get_node("Training").profile = actor.get_node("Training").profile.duplicate(true)
 		actor.position = Vector3(4, 0, (index - (count - 1) * 0.5) * 1.5)
@@ -95,6 +98,7 @@ func _fixture(count: int, advanced: bool) -> Dictionary:
 		actor.look_at(player.global_position)
 	for frame in 8: await physics_frame
 	check(actors.all(func(actor): return actor.get_node("AI").context.is_arena_active() and not actor.get_node("AI").is_physics_processing()), "Fixture uses active real actors with only explicit normal AI ticks")
+	check(actors.all(func(actor): return actor.can_use_firearms()), "The firearm cooperation fixture equips every declared shooter with a legal firearm")
 	return {"scene": scene, "arena": arena, "player": player, "actors": actors, "board": arena.cooperation}
 
 func _dispose(fixture: Dictionary) -> void:

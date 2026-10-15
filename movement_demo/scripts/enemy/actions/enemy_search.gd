@@ -1512,6 +1512,11 @@ func _tick_inspection(delta: float) -> Dictionary:
 			if context.perception.can_observe_position(known):
 				_inspection_complete = true
 				_inspection_checked = PackedVector3Array([known])
+			elif _inspection_observe >= -1.5 and _inspection_observation_blocked_by_ally(known):
+				# A passing friendly body is not negative evidence about the clue.
+				# Keep observing within the original assignment deadline and the
+				# same bounded ally-block allowance used by the approach below.
+				pass
 			else:
 				_end_inspection(true)
 				_running = false
@@ -1556,6 +1561,12 @@ func _tick_inspection(delta: float) -> Dictionary:
 	if not direction.is_zero_approx() and actor.can_move():
 		plan.support_request = {"kind": &"advance", "duration": minf(context.utility_horizon_seconds, _inspection_remaining), "lane_id": &"target"}
 	return motion(direction.normalized() * minf(1.0, distance / maxf(0.001, actor.move_speed * delta)), 1.0, known - actor.global_position)
+
+func _inspection_observation_blocked_by_ally(known: Vector3) -> bool:
+	if context.cooperation == null or not context.perception._position_in_sight(known): return false
+	var hit: Dictionary = selection.environment_ray(actor.get_eye_position(), actor.get_posture_eye_position(true, known))
+	var other = hit.get("collider")
+	return is_instance_valid(other) and other is CharacterBody3D and context.cooperation.can_share_space(actor.get_instance_id(), other.get_instance_id())
 
 ## An accepted route may wait for a passing ally, but never for missing navigation
 ## or a static obstruction. This does not authorize motion through occupied space.

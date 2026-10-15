@@ -58,6 +58,11 @@ var _spacing_retry_at := 0.0
 var _spacing_blocked_until := 0.0
 var _spacing_blocked_partner: WeakRef
 
+## A side-step, finite yield or return is intentional body motion, not a failed
+## tactical route. Callers may suspend their progress timer, never the task lease.
+func has_temporary_correction() -> bool:
+	return _friend(_body(_partner)) and ((_point.is_finite() and _point_remaining > 0.0) or _hold_remaining > 0.0)
+
 ## The context supplies the basic spacing policy; physical collision recovery remains
 ## available independently. Distances are extra clearance between actual bodies.
 func configure_spacing(enabled: bool, margin: float = 0.45) -> void:

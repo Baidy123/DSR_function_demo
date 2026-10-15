@@ -407,6 +407,12 @@ func collect_candidates(_visible: bool) -> Array[Dictionary]:
 			return result
 	if _running:
 		if valid(context.sees_player):
+			if phase == Phase.HOLD and _unified_coordinator():
+				# A personal hold is already a usable firing position. Keep offering
+				# that future role so teammates do not wait for this hold to expire.
+				# Only a later accepted assignment can replace the current contract.
+				var source: Dictionary = context.coordination_source(context.cooperation_target_id())
+				if not source.is_empty(): _front_candidate(source)
 			if not _checkpoints.is_empty() and phase != Phase.HOLD:
 				var current_destination: Dictionary = plan.destination.duplicate(true)
 				current_destination.path = selection._path_to(actor.global_position, _move_target())
@@ -658,7 +664,10 @@ func tick(delta: float, visible: bool) -> Dictionary:
 	if not _waypoint.is_finite() or _waypoint.distance_to(next) > 0.25:
 		_waypoint = next
 		_best_distance = INF
-	if waypoint_distance < _best_distance - 0.04:
+	if actor.local_motion.has_temporary_correction():
+		_best_distance = waypoint_distance
+		_stuck = 0.0
+	elif waypoint_distance < _best_distance - 0.04:
 		_best_distance = waypoint_distance
 		_stuck = 0.0
 	else: _stuck += delta
@@ -927,7 +936,7 @@ func execution_contract(visible: bool) -> Dictionary:
 			"remaining_seconds": maxf(0.0, _remaining), "progress": 0.0, "ready_for_phase": false}
 	var assignment: Dictionary = context.coordination_assignment()
 	var executable := _coordinated_valid(visible)
-	var staged: bool = executable and not actor.is_vaulting() and not actor.melee_active and actor.global_position.distance_to(plan.get("coordination_staging_position", Vector3.INF)) <= 0.35
+	var staged: bool = executable and not actor.is_vaulting() and not actor.melee_active and actor.global_position.distance_to(assignment.get("staging_position", Vector3.INF)) <= 0.35
 	if assignment.get("role") == &"front_support": staged = staged and _own_actual_support().ready
 	elif assignment.get("role") == &"flank": staged = staged and actor.can_move() and phase == Phase.WAIT_SUPPORT and _coordination_route_valid
 	else: staged = staged and _coordination_route_valid and phase == Phase.HOLD
@@ -960,8 +969,19 @@ func _tick_coordinated(delta: float, visible: bool) -> Dictionary:
 			_front_contact_until = context.coordination_now() + maxf(0.0, float(_setting(&"support_recovery_seconds", 2.0)))
 		context.state = context.State.HOLD_POSITION
 		return motion(Vector3.ZERO, 1.0, _known - actor.global_position, _fire(visible))
+	var waiting_release: bool = phase == Phase.WAIT_SUPPORT and (assignment.phase != &"executing" or float(assignment.release_at) < 0.0 or context.coordination_now() < float(assignment.release_at))
+	var staging: Vector3 = assignment.get("staging_position", Vector3.INF)
+	# The actor may have continued a personal movement between publishing an
+	# offer and accepting it. Physically reach the reserved entry before waiting;
+	# standing at the later acceptance position cannot satisfy that promise.
+	var preparing: bool = waiting_release and assignment.role == &"flank" and staging.is_finite() and context._horizontal_distance(staging) > 0.15
+	if waiting_release and not preparing:
+		_recheck = 0.0
+		_waypoint = Vector3.INF
+		_stuck = 0.0
+		return motion(Vector3.ZERO, 1.0, _known - actor.global_position, _fire(visible))
 	_support_grace = float(_setting(&"support_recovery_seconds", 2.0)) if _support_ready() else maxf(0.0, _support_grace - delta)
-	var target := _move_target()
+	var target := staging if preparing else _move_target()
 	_recheck -= maxf(0.0, delta)
 	if _recheck <= 0.0:
 		_recheck = 0.25
@@ -972,7 +992,7 @@ func _tick_coordinated(delta: float, visible: bool) -> Dictionary:
 			return motion(Vector3.ZERO)
 		_route_distance = selection._path_length_from_path(path)
 		_direct_final = _route_distance <= actor.global_position.distance_to(target) + 0.08
-	if phase == Phase.WAIT_SUPPORT:
+	if phase == Phase.WAIT_SUPPORT and not preparing:
 		if assignment.phase != &"executing" or float(assignment.release_at) < 0.0 or context.coordination_now() < float(assignment.release_at):
 			return motion(Vector3.ZERO, 1.0, _known - actor.global_position, _fire(visible))
 		if not _support_ready():
@@ -982,7 +1002,7 @@ func _tick_coordinated(delta: float, visible: bool) -> Dictionary:
 		phase = Phase.MOVE
 		_segment_committed = true
 		_had_support = true
-	if not _segment_committed:
+	if not _segment_committed and not preparing:
 		_checkpoint_wait = maxf(0.0, _checkpoint_wait - delta)
 		if assignment.role in [&"flank", &"team_position"] and not _support_continues():
 			if _checkpoint_wait <= 0.0: _finish(false)
@@ -994,6 +1014,7 @@ func _tick_coordinated(delta: float, visible: bool) -> Dictionary:
 		return motion(Vector3.ZERO)
 	var arrival_distance := 0.01 if assignment.role == &"front_support" and _segment + 1 >= _checkpoints.size() else 0.15
 	if distance <= arrival_distance:
+		if preparing: return motion(Vector3.ZERO, 1.0, _known - actor.global_position, _fire(visible))
 		if _segment + 1 < _checkpoints.size():
 			_segment += 1
 			_segment_committed = false
@@ -1018,7 +1039,10 @@ func _tick_coordinated(delta: float, visible: bool) -> Dictionary:
 	if not _waypoint.is_finite() or _waypoint.distance_to(next) > 0.25:
 		_waypoint = next
 		_best_distance = INF
-	if waypoint_distance < _best_distance - 0.04:
+	if actor.local_motion.has_temporary_correction():
+		_best_distance = waypoint_distance
+		_stuck = 0.0
+	elif waypoint_distance < _best_distance - 0.04:
 		_best_distance = waypoint_distance
 		_stuck = 0.0
 	else: _stuck += maxf(0.0, delta)
@@ -1028,5 +1052,5 @@ func _tick_coordinated(delta: float, visible: bool) -> Dictionary:
 	var direction: Vector3 = next - actor.global_position
 	direction.y = 0.0
 	context.state = context.State.REPOSITION
-	if assignment.role != &"front_support" and not direction.is_zero_approx() and actor.can_move(): plan.support_request = {"kind": &"advance", "duration": minf(context.utility_horizon_seconds, _remaining), "lane_id": &"target"}
+	if not preparing and assignment.role != &"front_support" and not direction.is_zero_approx() and actor.can_move(): plan.support_request = {"kind": &"advance", "duration": minf(context.utility_horizon_seconds, _remaining), "lane_id": &"target"}
 	return motion(direction.normalized() * minf(1.0, distance / maxf(0.001, actor.move_speed * delta)), 1.0, _known - actor.global_position, _fire(visible))

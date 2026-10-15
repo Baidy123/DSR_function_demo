@@ -269,6 +269,14 @@ func _hold_predictions() -> void:
 	var candidates: Array[Dictionary] = action.collect_candidates(true)
 	check(candidates.size() == 1 and candidates[0].cooperation.support_seconds > 0.0 and candidates[0].cooperation.support_seconds <= action._hold_remaining and context.cooperation_candidate_seconds(candidates[0]) > 0.0, "Restoring a legal gun restores credit bounded by the actual remaining hold")
 	check(before == [action._hold_remaining, action._remaining, action.plan, fire.fire_pause_remaining, fire.fire_reaction_elapsed, fire.fire_burst_shots, fire.fire_interval_remaining, fire.fire_decision.wait_seconds, shooter.shot_count], "HOLD prediction leaves claims, timers, aim pressure and actual shots unchanged")
+	check(_publish().get("ready", false), "The continuing hold publishes actual current support before offering its position")
+	before = [action._hold_remaining, action._remaining, action.plan.duplicate(true), fire.fire_pause_remaining, fire.fire_reaction_elapsed, fire.fire_burst_shots, fire.fire_interval_remaining, fire.fire_decision.wait_seconds, shooter.shot_count]
+	context.prepare_coordination_evaluation()
+	partner_context.prepare_coordination_evaluation()
+	check(not context.coordination_source(context.cooperation_target_id()).is_empty(), "The held shooter has a real shared source for a future complementary assignment")
+	candidates = action.collect_candidates(true)
+	check(action._coordination_offers.any(func(offer): return offer.role == &"front_support" and offer.position == shooter.global_position), "An unassigned held shooter continues offering its actual front position to a complementary team plan")
+	check(candidates.size() == 1 and before == [action._hold_remaining, action._remaining, action.plan, fire.fire_pause_remaining, fire.fire_reaction_elapsed, fire.fire_burst_shots, fire.fire_interval_remaining, fire.fire_decision.wait_seconds, shooter.shot_count], "Advertising a future role neither replaces nor renews the current hold or credits its future fire as current support")
 	action.cancel(&"test_complete")
 	context.utility_current = {}
 	partner.cancel_reload()
