@@ -162,7 +162,12 @@ func evaluation_points() -> Array:
 			if actor.global_position.distance_to(cell.position) <= step * 1.5: points.append(cell)
 	if opportunity.get("capacity", 0) > 0:
 		points = points.filter(func(point): return (point.position - opportunity.anchor).dot(opportunity.front_axis) >= -0.5)
-	points = points.filter(func(point): return _personal_advance_allowed(point.position))
+	# Enumeration is synchronous and read-only. Resolve the same planning source
+	# once for the whole list, rather than rebuilding it for every cover cell.
+	if _unified_coordinator() and actor.can_use_firearms():
+		var source: Dictionary = context.coordination_source(context.cooperation_target_id())
+		if not source.is_empty():
+			points = points.filter(func(point): return (point.position - source.position).dot(source.front_axis) >= 0.5)
 	var deployment := _deployment_points(known)
 	return arcs.slice(0, 2) + deployment.slice(0, 2) + arcs.slice(2) + deployment.slice(2) + points
 
@@ -800,8 +805,8 @@ func _validate_coordinated(candidate: Dictionary, visible: bool) -> bool:
 	if assignment.is_empty() or assignment.get("owner_action") != action_id or assignment.get("role") != candidate.get("coordination_role") or not assignment.get("allowed_offer_keys", []).has(candidate.get("coordination_offer_key", "")): return false
 	if assignment.get("role") == &"front_support":
 		if not actor.can_use_firearms() or actor.ammo.magazine_rounds <= 0 or actor.ammo.is_reloading: return false
-		if actor.global_position.distance_to(candidate.destination.position) <= 0.35:
-			return visible and _hold_support_prediction(minf(context.utility_horizon_seconds, float(assignment.expires_at) - context.coordination_now())).support_seconds > 0.0
+		if actor.global_position.distance_to(candidate.destination.position) <= 0.35 and visible:
+			if _hold_support_prediction(minf(context.utility_horizon_seconds, float(assignment.expires_at) - context.coordination_now())).support_seconds > 0.0: return true
 		return _position_route_valid(candidate)
 	if assignment.get("role") == &"team_position": return _position_route_valid(candidate)
 	if not actor.can_move(): return false
@@ -888,7 +893,7 @@ func _coordinated_valid(visible: bool) -> bool:
 		# A passing ally may briefly occlude the held firing position. Preserve its
 		# bounded commitment, while Fire and published support remain unavailable.
 		if not actor.can_use_firearms() or actor.ammo.magazine_rounds <= 0 or actor.ammo.is_reloading: return false
-		if not _checkpoints.is_empty() and actor.global_position.distance_to(destination) > 0.35:
+		if phase == Phase.MOVE and not _checkpoints.is_empty():
 			return actor.can_move() and _coordination_route_valid
 		return visible or context.coordination_now() < _front_contact_until
 	return _coordination_route_valid and not _checkpoints.is_empty()
@@ -931,6 +936,17 @@ func execution_contract(visible: bool) -> Dictionary:
 		"progress": 1.0 if _coordination_complete else float(_segment) / maxf(1.0, float(_checkpoints.size())),
 		"ready_for_phase": staged, "complete": executable and _coordination_complete}
 
+func _front_position_reached(visible: bool) -> bool:
+	if actor.global_position.distance_to(destination) > 0.35: return false
+	# The arrival tolerance is a reservation radius, not evidence of a firing
+	# lane. Finish the approach when its edge is still behind a wall. An already
+	# established post retains the existing bounded recovery through occlusion.
+	if phase == Phase.HOLD or context._horizontal_distance(destination) <= 0.01: return true
+	if not visible: return false
+	var origin: Vector3 = actor.get_muzzle_position()
+	var target: Vector3 = context.known_target_point(_known)
+	return target.is_finite() and origin.distance_to(target) <= actor.weapon.fire_range and context.fire.has_clear_firing_lane(origin, target - origin, origin.distance_to(target))
+
 func _tick_coordinated(delta: float, visible: bool) -> Dictionary:
 	plan.erase("support_request")
 	var assignment: Dictionary = context.coordination_assignment()
@@ -938,7 +954,7 @@ func _tick_coordinated(delta: float, visible: bool) -> Dictionary:
 	if not _coordinated_valid(visible):
 		_finish(false)
 		return motion(Vector3.ZERO)
-	if (assignment.role == &"front_support" and actor.global_position.distance_to(destination) <= 0.35) or _coordination_complete:
+	if (assignment.role == &"front_support" and _front_position_reached(visible)) or _coordination_complete:
 		phase = Phase.HOLD
 		if assignment.role == &"front_support" and visible:
 			_front_contact_until = context.coordination_now() + maxf(0.0, float(_setting(&"support_recovery_seconds", 2.0)))
@@ -976,7 +992,8 @@ func _tick_coordinated(delta: float, visible: bool) -> Dictionary:
 	if assignment.role in [&"flank", &"team_position"] and _had_support and not _support_continues() and distance > 1.5:
 		_finish(false)
 		return motion(Vector3.ZERO)
-	if distance <= 0.15:
+	var arrival_distance := 0.01 if assignment.role == &"front_support" and _segment + 1 >= _checkpoints.size() else 0.15
+	if distance <= arrival_distance:
 		if _segment + 1 < _checkpoints.size():
 			_segment += 1
 			_segment_committed = false

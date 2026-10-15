@@ -15,6 +15,7 @@ func _run() -> void:
 	check(retreat.roles.has(&"assisted_retreat") and retreat.retreat_movement > 0.5 and retreat.retreat_shots > 0 and retreat.retreat_arrived, "A planned retreat reaches real cover under assigned allied fire")
 	var transfer: Dictionary = await _support_case(&"transfer")
 	check(transfer.front_transfer_movement > 0.5 and transfer.waited_for_transfer and transfer.proactive and transfer.filled and not transfer.unsafe_start, "A hidden provider physically reaches its firing position before the dependent reload starts")
+	check(transfer.transfer_plan_filled and transfer.transfer_plan_shots > 0 and not transfer.transfer_plan_aborted, "The same hidden-provider plan reaches real fire and completes its dependent reload without restarting")
 	var unavailable: Dictionary = await _support_case(&"handoff_unavailable")
 	check(unavailable.failed_handoff_seconds >= 0.0 and unavailable.failed_handoff_seconds <= 2.35, "Without a spare, an actual low-ammo provider releases the dependency within the fixed recovery window")
 	check(reload_case.fixed and advance.fixed and empty.fixed and handoff.fixed and retreat.fixed and transfer.fixed and unavailable.fixed, "Support preparation, execution and handoff preserve fixed plan deadlines")
@@ -51,19 +52,36 @@ func _support_case(kind: StringName) -> Dictionary:
 			actor.global_position = Vector3(27, f.ground_y, (index - 1) * 4)
 			actor.look_at(f.player.global_position)
 		if kind == &"transfer" and index == 1:
-			# Start inside the occluded sector; the wider wall below requires a
-			# real transfer even after normal search has begun during preparation.
+			# Start inside the real occluded sector.
 			actor.global_position = Vector3(27.4, f.ground_y, 3.5)
 			actor.look_at(f.player.global_position)
+	if kind in [&"retreat", &"transfer"]:
+		# Install the fixture's changed mesh before any plan captures its version.
+		# A pending navigation sync correctly invalidates an accepted plan; it is
+		# not part of this static-wall transfer scenario.
+		var navigation_map: RID = f.actors[0].agent.get_navigation_map()
+		NavigationServer3D.map_force_update(navigation_map)
+		var iteration := -1
+		var stable_frames := 0
+		for preparation_frame in 30:
+			await physics_frame
+			await process_frame
+			var current_iteration := NavigationServer3D.map_get_iteration_id(navigation_map)
+			stable_frames = stable_frames + 1 if current_iteration == iteration and iteration > 0 else 0
+			iteration = current_iteration
+			if stable_frames >= 3: break
+		check(stable_frames >= 3, "The support fixture starts after its real navigation mesh is synchronized")
 	f.arena.cooperation.reset()
 	var result := {"kind": kind, "roles": [], "proactive": false, "filled": false, "reload_shots": 0,
 		"unsafe_start": false, "double_proactive": false, "linked_movement": 0.0, "advance_shots": 0,
 		"all_empty_started": false, "fixed": true, "handoffs": 0, "completed_handoffs": 0, "premature_handoff": false, "suppression_shots": 0, "retreat_candidates": 0,
-		"retreat_movement": 0.0, "retreat_shots": 0, "retreat_arrived": false, "front_transfer_movement": 0.0, "waited_for_transfer": false, "failed_handoff_seconds": -1.0, "trace": []}
+		"retreat_movement": 0.0, "retreat_shots": 0, "retreat_arrived": false, "front_transfer_movement": 0.0, "waited_for_transfer": false, "failed_handoff_seconds": -1.0,
+		"transfer_plan_id": 0, "transfer_plan_filled": false, "transfer_plan_shots": 0, "transfer_plan_aborted": false, "trace": []}
 	var rounds: Dictionary = {}
 	var positions: Dictionary = {}
 	var shots: Dictionary = {}
 	var reloading: Dictionary = {}
+	var reload_plans: Dictionary = {}
 	var empty_started: Dictionary = {}
 	var deadlines: Dictionary = {}
 	var providers: Dictionary = {}
@@ -90,19 +108,27 @@ func _support_case(kind: StringName) -> Dictionary:
 			var id: int = actor.get_instance_id()
 			var ai = actor.get_node("AI")
 			var assignment: Dictionary = ai.context.coordination_assignment()
+			if kind == &"transfer" and result.transfer_plan_id == 0 and assignment.get("role") == &"front_support" and not ai.context.sees_player:
+				result.transfer_plan_id = assignment.plan_id
 			if not assignment.is_empty() and not result.roles.has(assignment.role): result.roles.append(assignment.role)
 			if assignment.get("owner_action") == &"suppression" and assignment.get("accepted", false): result.suppression_shots += maxi(0, actor.shot_count - int(shots[id]))
 			if ai.utility_options.any(func(choice): return choice.get("coordination_role") == &"assisted_retreat"): result.retreat_candidates += 1
 			if actor.ammo.is_reloading:
 				if actor.ammo.magazine_rounds > 0: active_proactive += 1
 				if not reloading[id]:
+					reload_plans[id] = assignment.get("plan_id", 0)
 					if rounds[id] == 0: empty_started[id] = true
 					elif assignment.get("role") == &"assisted_reload":
 						result.proactive = true
 						result.unsafe_start = result.unsafe_start or not before[id].get("ready", false)
 				for other in f.actors:
-					if other != actor: result.reload_shots += maxi(0, other.shot_count - int(shots[other.get_instance_id()]))
+					if other != actor:
+						var fired: int = maxi(0, other.shot_count - int(shots[other.get_instance_id()]))
+						result.reload_shots += fired
+						if result.transfer_plan_id != 0 and reload_plans.get(id, 0) == result.transfer_plan_id: result.transfer_plan_shots += fired
 			if reloading[id] and not actor.ammo.is_reloading and actor.ammo.magazine_rounds > rounds[id]: result.filled = true
+			if reloading[id] and not actor.ammo.is_reloading and actor.ammo.magazine_rounds > rounds[id] and result.transfer_plan_id != 0 and reload_plans.get(id, 0) == result.transfer_plan_id:
+				result.transfer_plan_filled = true
 			var moved: float = actor.global_position.distance_to(positions[id])
 			var support: Dictionary = ai.context.coordination_support_state()
 			if assignment.get("role") == &"front_support" and actor.global_position.distance_to(assignment.get("staging_position", actor.global_position)) > 0.35:
@@ -128,6 +154,8 @@ func _support_case(kind: StringName) -> Dictionary:
 		result.double_proactive = result.double_proactive or active_proactive > 1
 		for actor in f.actors: shots[actor.get_instance_id()] = actor.shot_count
 		result.all_empty_started = empty_started.size() == f.actors.size()
+		if result.transfer_plan_id != 0 and not result.transfer_plan_filled:
+			result.transfer_plan_aborted = result.transfer_plan_aborted or not f.actors.any(func(actor): return actor.get_node("AI").context.coordination_assignment().get("plan_id", 0) == result.transfer_plan_id)
 		for shared: Dictionary in f.arena.cooperation.coordination_debug_snapshot(&"_coordination_plans").values():
 			if deadlines.has(shared.plan_id): result.fixed = result.fixed and deadlines[shared.plan_id] == shared.expires_at
 			else: deadlines[shared.plan_id] = shared.expires_at
