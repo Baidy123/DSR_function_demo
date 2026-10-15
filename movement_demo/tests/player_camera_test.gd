@@ -84,6 +84,7 @@ func _run() -> void:
 	actor.global_position += Vector3(2, 0, 1)
 	await _frames(3)
 	_check("the original anchor follows player ground position", scene.get_node("CameraGroundAnchor").global_position.is_equal_approx(Vector3(actor.global_position.x, actor.get_camera_ground_height(), actor.global_position.z)))
+	await _check_movement_interpolation(actor, camera)
 	actor.get_node("Health").debug_mode = false
 	actor.receive_hit(10000.0)
 	_check("existing death still pauses the world", paused)
@@ -96,6 +97,37 @@ func _run() -> void:
 	await process_frame
 	print("Player camera: %d/%d passed" % [checks - failed, checks])
 	quit(0 if failed == 0 else 1)
+
+
+func _check_movement_interpolation(actor: Node3D, camera: Camera3D) -> void:
+	# Exercise real input and the existing anchor/Phantom Camera chain between 60 Hz ticks.
+	var previous_limit := Engine.max_fps
+	Engine.max_fps = 240
+	actor.reset_physics_interpolation()
+	actor.set_physics_process(true)
+	Input.action_press("move_right")
+	await _frames(30)
+	var previous_tick := Engine.get_physics_frames()
+	var previous_actor := actor.get_global_transform_interpolated().origin
+	var previous_camera := camera.get_global_transform_interpolated().origin
+	var body_between_ticks := false
+	var camera_between_ticks := false
+	for frame in 120:
+		await process_frame
+		var tick := Engine.get_physics_frames()
+		var body_position := actor.get_global_transform_interpolated().origin
+		var camera_position := camera.get_global_transform_interpolated().origin
+		if tick == previous_tick:
+			body_between_ticks = body_between_ticks or body_position.distance_squared_to(previous_actor) > 0.00000001
+			camera_between_ticks = camera_between_ticks or camera_position.distance_squared_to(previous_camera) > 0.00000001
+		previous_tick = tick
+		previous_actor = body_position
+		previous_camera = camera_position
+	Input.action_release("move_right")
+	actor.set_physics_process(false)
+	Engine.max_fps = previous_limit
+	_check("moving player renders intermediate positions between physics ticks", body_between_ticks)
+	_check("ground-following camera renders intermediate positions between physics ticks", camera_between_ticks)
 
 
 func _key(code: Key) -> void:

@@ -351,6 +351,7 @@ func reset_target() -> void:
 		death_tween.kill()
 	transform = initial_transform
 	$Body.transform = initial_body_transform
+	reset_physics_interpolation()
 	$FrontMarker.show()
 	$CollisionShape3D.set_deferred("disabled", false)
 	add_to_group("combat_target")
