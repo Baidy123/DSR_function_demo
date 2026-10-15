@@ -62,11 +62,67 @@ func _run() -> void:
 	_planning_source_scopes()
 	_claim_pressure()
 	_plan_pressure()
+	await _single_role_equivalence()
 	print("COOPERATION QUERY: %d/%d passed" % [checks - failures, checks])
 	scene.queue_free()
 	await scene.tree_exited
 	await process_frame
 	quit(1 if failures else 0)
+
+func _single_role_equivalence() -> void:
+	_reset_tactical()
+	var caller = contexts[0]
+	var actor = actors[0]
+	var ai = actor.get_node("AI")
+	var squad
+	var roles: Array[StringName] = [&"search_sector", &"inspect_left", &"inspect_right", &"assisted_reload", &"assisted_retreat", &"front_support", &"flank", &"team_position", &"unknown"]
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 15102026
+	for level in [-1, 0, 1, 2]:
+		if level == 0:
+			squad = Fixture.attach_squad(arena, actors, 0)
+			await physics_frame
+			arena.enemy_environment()
+		if level >= 0: squad.profile.level = level
+		for member in actors: member.get_node("AI").refresh_configuration(true)
+		_reset_tactical()
+		var coordinator = caller._coordinator()
+		_source(caller)
+		var permitted: Dictionary = caller.permitted.duplicate()
+		var target: int = caller.cooperation_target_id()
+		var frame := Engine.get_physics_frames()
+		var exact := true
+		var compared := 0
+		var allowed := 0
+		for sample in 256:
+			caller.permitted = permitted.duplicate()
+			for action in [&"cooperate", &"search", &"reload", &"covering_retreat"]:
+				if sample > 0 and rng.randi_range(0, 3) == 0: caller.permitted.erase(action)
+			caller.sees_player = (sample & 1) != 0
+			caller.is_alerted = (sample & 2) == 0
+			caller.noise_search_origin = _point(1, 1) if (sample & 4) != 0 else Vector3.INF
+			actor.shooting_enabled = (sample & 8) == 0
+			actor.melee_active = (sample & 16) != 0
+			actor.is_dead = (sample & 32) != 0
+			actor.communication_group = &"other_radio" if (sample & 64) != 0 else &"tactical_test"
+			paused = (sample & 128) != 0
+			for query_target in [0, target, target + 1]:
+				var expected: Array = coordinator._coordination_roles(caller, query_target)
+				for role in roles:
+					var actual: bool = coordinator._coordination_role_allowed(caller, query_target, role)
+					exact = exact and actual == expected.has(role)
+					compared += 1
+					if actual: allowed += 1
+		paused = false
+		actor.is_dead = false
+		actor.melee_active = false
+		actor.shooting_enabled = true
+		actor.communication_group = &"tactical_test"
+		caller.permitted = permitted
+		caller.noise_search_origin = Vector3.INF
+		check(exact and compared == 6912 and Engine.get_physics_frames() == frame, "Level %d: one-role checks match all 6912 full-enumeration results across same-frame permissions, target, vision, noise, body, death, radio and pause changes" % level)
+		check(allowed > 0 if level != 0 else allowed == 0, "Level %d: equivalence covers legal posts as well as denials" % level)
+	_reset_tactical()
 
 func _publish_need(seconds: float, kind: StringName = &"reload") -> void:
 	var status := {"position": actors[1].global_position, "target_id": contexts[0].cooperation_target_id()}

@@ -809,6 +809,31 @@ func _coordination_roles(context, target_id: int) -> Array:
 			result.append(&"front_support")
 	return result
 
+## Execution validates one existing role. Enumerating unrelated roles repeatedly
+## rechecks team configuration and even queries flank evidence for a fire post.
+## Keep these predicates equivalent to the public complete role enumeration;
+## nothing is retained across calls, reports, configuration changes or physics.
+func _coordination_role_allowed(context, target_id: int, role: StringName) -> bool:
+	if not _reservation_member_valid(context) or not context.cooperation_enabled(): return false
+	if not context.is_alerted and not context.noise_search_origin.is_finite(): return false
+	if target_id != 0 and context.cooperation_target_id() != target_id: return false
+	if role in [&"search_sector", &"inspect_left", &"inspect_right"]:
+		if role != &"search_sector" and target_id == 0: return false
+		return context.coordinated_cooperation_enabled() and context.actor.can_move() and not context.actor.is_vaulting() and not context.actor.melee_active and not context.sees_player and context.can_use_action(&"search")
+	if target_id == 0: return false
+	if role == &"assisted_reload":
+		return context.coordinated_cooperation_enabled() and has_team_binding(context) and context.actor.can_use_firearms() and context.can_use_action(&"reload")
+	if role == &"assisted_retreat":
+		return context.coordinated_cooperation_enabled() and has_team_binding(context) and context.actor.can_move() and not context.actor.is_vaulting() and not context.actor.melee_active and context.can_use_action(&"covering_retreat")
+	if not context.can_use_action(&"cooperate"): return false
+	if role == &"front_support":
+		return context.actor.can_use_firearms() and context.actor.shooting_enabled and not context.actor.is_vaulting() and not context.actor.melee_active
+	if role == &"flank":
+		return context.actor.can_move() and not context.actor.is_vaulting() and not context.actor.melee_active and coordination_source(context, target_id).get("flank_clustered", false)
+	if role == &"team_position":
+		return context.actor.can_move() and not context.actor.is_vaulting() and not context.actor.melee_active and context.coordinated_cooperation_enabled() and has_team_binding(context)
+	return false
+
 func _coordination_offer_valid(context, offer: Dictionary, board_time: bool = false) -> bool:
 	if not _reservation_member_valid(context) or not _members[context.actor.get_instance_id()].versions_published: return false
 	if int(offer.get("team_config_revision", 0)) != team_configuration_revision(context): return false
@@ -826,7 +851,7 @@ func _coordination_offer_valid(context, offer: Dictionary, board_time: bool = fa
 	for key in [&"actor_id", &"generation", &"member_generation", &"config_revision", &"environment_revision", &"navigation_revision", &"relation_revision"]:
 		if typeof(offer.get(key)) != TYPE_INT or offer[key] != identity[key]: return false
 	if typeof(offer.get("target_id")) != TYPE_INT or typeof(offer.get("evidence_id")) != TYPE_INT: return false
-	if not _coordination_roles(context, offer.target_id).has(offer.role): return false
+	if not _coordination_role_allowed(context, offer.target_id, StringName(offer.role)): return false
 	var source := coordination_source(context, offer.target_id)
 	if source.is_empty() or offer.evidence_id != source.evidence_id: return false
 	if not offer.get("position") is Vector3 or not offer.position.is_finite(): return false
@@ -903,7 +928,7 @@ func _coordination_assignment_valid(plan: Dictionary, entry: Dictionary) -> bool
 	if _coordination_plan_source(plan).is_empty() or plan.expires_at <= elapsed or entry.expires_at <= elapsed: return false
 	if not _reservation_member_valid(context) or _coordination_team(context) != plan.team_id: return false
 	if int(entry.get("team_config_revision", 0)) != team_configuration_revision(context): return false
-	if not _coordination_roles(context, plan.target_id).has(entry.role) or not context.can_use_action(entry.owner_action): return false
+	if not _coordination_role_allowed(context, plan.target_id, StringName(entry.role)) or not context.can_use_action(entry.owner_action): return false
 	var identity := coordination_identity(context)
 	for key in [&"member_generation", &"config_revision", &"environment_revision", &"navigation_revision", &"relation_revision"]:
 		if entry[key] != identity[key]: return false
