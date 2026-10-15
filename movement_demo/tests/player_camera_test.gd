@@ -3,6 +3,13 @@ extends SceneTree
 var checks := 0
 var failed := 0
 
+class ReticleTarget extends Node3D:
+	var elapsed := 0.0
+	var origin := Vector3.ZERO
+	func _physics_process(delta: float) -> void:
+		elapsed += delta
+		global_position = origin + Vector3(2.0 * sin(elapsed * 3.0), 0.0, 0.0)
+		rotation.y = elapsed
 
 func _initialize() -> void:
 	_run.call_deferred()
@@ -85,6 +92,7 @@ func _run() -> void:
 	await _frames(3)
 	_check("the original anchor follows player ground position", scene.get_node("CameraGroundAnchor").global_position.is_equal_approx(Vector3(actor.global_position.x, actor.get_camera_ground_height(), actor.global_position.z)))
 	await _check_movement_interpolation(actor, camera)
+	await _check_reticle_interpolation(actor, camera)
 	actor.get_node("Health").debug_mode = false
 	actor.receive_hit(10000.0)
 	_check("existing death still pauses the world", paused)
@@ -137,6 +145,43 @@ func _key(code: Key) -> void:
 		event.pressed = pressed
 		Input.parse_input_event(event)
 	Input.flush_buffered_events()
+
+
+func _check_reticle_interpolation(actor: Node3D, camera: Camera3D) -> void:
+	var combat = actor.get_node("Combat")
+	var reticle = combat.get_node("HUD/Reticle")
+	combat.set_physics_process(false)
+	var target := ReticleTarget.new()
+	actor.get_parent().add_child(target)
+	target.origin = actor.global_position
+	target.global_position = actor.global_position
+	target.reset_physics_interpolation()
+	var aim_offset := Vector3(0.2, 1.2, 0.1)
+	var previous_limit := Engine.max_fps
+	Engine.max_fps = 240
+	combat.is_aiming = true
+	combat.locked_target = target
+	var maximum_error := 0.0
+	var physical_separation := 0.0
+	var aim_unchanged := true
+	for frame in 120:
+		await process_frame
+		combat._locked_aim_point = target.global_transform * aim_offset
+		var physical_aim: Vector3 = combat.get_locked_aim_point()
+		reticle._process(0.0)
+		var displayed: Vector2 = camera.unproject_position(target.get_global_transform_interpolated() * aim_offset)
+		maximum_error = maxf(maximum_error, reticle.position.distance_to(displayed))
+		physical_separation = maxf(physical_separation, displayed.distance_to(camera.unproject_position(physical_aim)))
+		aim_unchanged = aim_unchanged and combat.get_locked_aim_point() == physical_aim
+	_check("moving and rotating lock target has distinct rendered and physical positions", physical_separation > 0.1)
+	_check("lock reticle stays on the displayed target between physics ticks", maximum_error < 0.01)
+	_check("rendering the reticle preserves the actual ballistic aim point", aim_unchanged)
+	combat.clear_target_lock()
+	reticle._process(0.0)
+	_check("clearing the lock still hides its reticle", not reticle.visible)
+	combat.is_aiming = false
+	target.queue_free()
+	Engine.max_fps = previous_limit
 
 
 func _frames(count: int) -> void:

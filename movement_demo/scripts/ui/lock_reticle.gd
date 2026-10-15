@@ -17,6 +17,9 @@ func _process(_delta: float) -> void:
 	if not visible:
 		return
 	var point: Vector3 = combat.get_locked_aim_point()
+	# UI follows the same interpolated body that is drawn between physics ticks.
+	# Combat retains the physical point for visibility and actual ballistics.
+	point = target.get_global_transform_interpolated() * target.to_local(point)
 	if camera.is_position_behind(point):
 		hide()
 		return
