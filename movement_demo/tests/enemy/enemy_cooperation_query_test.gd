@@ -59,6 +59,7 @@ func _run() -> void:
 		actor.ammo.magazine_rounds = 5
 	_reset_tactical()
 	_snapshot_scopes()
+	_planning_source_scopes()
 	_claim_pressure()
 	_plan_pressure()
 	print("COOPERATION QUERY: %d/%d passed" % [checks - failures, checks])
@@ -94,6 +95,28 @@ func _snapshot_scopes() -> void:
 	caller.begin_geometry_evaluation()
 	check(not caller.cooperation_snapshot().requests.is_empty(), "A new same-frame batch sees restored live membership")
 	caller.end_geometry_evaluation()
+	_reset_tactical()
+
+func _planning_source_scopes() -> void:
+	var caller = contexts[0]
+	var initial := _source(caller)
+	var frame := Engine.get_physics_frames()
+	caller.begin_cooperation_preview()
+	var observed: Dictionary = caller.coordination_source(caller.cooperation_target_id())
+	check(observed.evidence_id == initial.evidence_id and observed.position == initial.position, "Candidate preparation reads the real planning source")
+	observed.position = Vector3.INF
+	observed.evidence_id = -1
+	caller.begin_cooperation_preview()
+	var nested: Dictionary = caller.coordination_source(caller.cooperation_target_id())
+	check(nested.evidence_id == initial.evidence_id and nested.position == initial.position, "Mutating a returned source cannot corrupt a nested candidate preparation")
+	caller.end_cooperation_preview()
+	check(caller.coordination_source(caller.cooperation_target_id() + 1).is_empty(), "Nested planning-source reuse remains isolated by target")
+	caller.end_cooperation_preview()
+	var replacement := _source(caller, initial.position + Vector3(2, 0, 0))
+	check(caller.coordination_source(caller.cooperation_target_id()).evidence_id == replacement.evidence_id and replacement.evidence_id != initial.evidence_id, "Execution immediately sees replacement evidence after candidate preparation")
+	caller.begin_cooperation_preview()
+	check(caller.coordination_source(caller.cooperation_target_id()).evidence_id == replacement.evidence_id and Engine.get_physics_frames() == frame, "The next same-frame preparation reads the new source with its original identity")
+	caller.end_cooperation_preview()
 	_reset_tactical()
 
 func _claim_pressure() -> void:

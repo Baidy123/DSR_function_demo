@@ -271,12 +271,26 @@ func _hold_predictions() -> void:
 	check(before == [action._hold_remaining, action._remaining, action.plan, fire.fire_pause_remaining, fire.fire_reaction_elapsed, fire.fire_burst_shots, fire.fire_interval_remaining, fire.fire_decision.wait_seconds, shooter.shot_count], "HOLD prediction leaves claims, timers, aim pressure and actual shots unchanged")
 	check(_publish().get("ready", false), "The continuing hold publishes actual current support before offering its position")
 	before = [action._hold_remaining, action._remaining, action.plan.duplicate(true), fire.fire_pause_remaining, fire.fire_reaction_elapsed, fire.fire_burst_shots, fire.fire_interval_remaining, fire.fire_decision.wait_seconds, shooter.shot_count]
+	# Match the normal AI order: establish the spatial/navigation revision before
+	# publishing member versions and scoring offers bound to those versions.
+	context.spatial.advance_evaluation()
+	partner_context.spatial.advance_evaluation()
 	context.prepare_coordination_evaluation()
 	partner_context.prepare_coordination_evaluation()
 	check(not context.coordination_source(context.cooperation_target_id()).is_empty(), "The held shooter has a real shared source for a future complementary assignment")
 	candidates = action.collect_candidates(true)
 	check(action._coordination_offers.any(func(offer): return offer.role == &"front_support" and offer.position == shooter.global_position), "An unassigned held shooter continues offering its actual front position to a complementary team plan")
-	check(candidates.size() == 1 and before == [action._hold_remaining, action._remaining, action.plan, fire.fire_pause_remaining, fire.fire_reaction_elapsed, fire.fire_burst_shots, fire.fire_interval_remaining, fire.fire_decision.wait_seconds, shooter.shot_count], "Advertising a future role neither replaces nor renews the current hold or credits its future fire as current support")
+	check(candidates.filter(func(candidate): return not candidate.has("coordination_role")).size() == 1 and before == [action._hold_remaining, action._remaining, action.plan, fire.fire_pause_remaining, fire.fire_reaction_elapsed, fire.fire_burst_shots, fire.fire_interval_remaining, fire.fire_decision.wait_seconds, shooter.shot_count], "Advertising a future role neither replaces nor renews the current hold or credits its future fire as current support")
+	var ai = shooter.get_node("AI")
+	var scored: Array[Dictionary] = ai.action_selector.assess_options(ai, true)
+	context.publish_coordination_offers(scored, action.coordination_offers(true))
+	var published: Array = context.cooperation.coordination_debug_snapshot(&"_coordination_offers").get(shooter.get_instance_id(), [])
+	check(published.any(func(offer): return offer.role == &"front_support" and offer.position == shooter.global_position), "The held front reaches the real coordinator through normal scoring and publication")
+	var front: Dictionary = scored.filter(func(candidate): return candidate.get("coordination_role") == &"front_support")[0]
+	var held_position: Vector3 = shooter.global_position
+	shooter.global_position += Vector3(0, 0, 0.5)
+	check(action._position_route_valid(front), "A published held front remains reachable after a body displacement before acceptance")
+	shooter.global_position = held_position
 	action.cancel(&"test_complete")
 	context.utility_current = {}
 	partner.cancel_reload()

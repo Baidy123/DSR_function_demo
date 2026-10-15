@@ -465,6 +465,34 @@ func end_geometry_evaluation() -> void:
 		_exposure_geometry_cache.clear()
 		_risk_evaluation_cached = false
 
+## Classify an actual occupied capsule after a failed clearance check. A bounded
+## result containing only friendly bodies permits waiting, never walking through.
+func is_position_blocked_by_allies(point: Vector3) -> bool:
+	return not position_blocking_allies(point).is_empty()
+
+func position_blocking_allies(point: Vector3) -> Array:
+	if cooperation == null: return []
+	var collision: CollisionShape3D = actor.get_node("CollisionShape3D")
+	var capsule := CapsuleShape3D.new()
+	capsule.radius = collision.shape.radius
+	capsule.height = actor.get_posture_body_height(false)
+	var query := PhysicsShapeQueryParameters3D.new()
+	query.shape = capsule
+	query.transform = Transform3D(Basis.IDENTITY, point + Vector3.UP * (capsule.height * 0.5 + 0.05))
+	query.collision_mask = actor.collision_mask
+	query.exclude = [actor.get_rid()]
+	if is_instance_valid(player) and player is CollisionObject3D:
+		query.exclude = [actor.get_rid(), player.get_rid()]
+	position_free_queries += 1
+	var hits: Array[Dictionary] = actor.get_world_3d().direct_space_state.intersect_shape(query, 8)
+	if hits.is_empty() or hits.size() == 8: return []
+	var allies: Array = []
+	for hit: Dictionary in hits:
+		var other = hit.get("collider")
+		if not is_instance_valid(other) or not other is CharacterBody3D or not cooperation.can_share_space(actor.get_instance_id(), other.get_instance_id()): return []
+		allies.append(other)
+	return allies
+
 func is_position_free(point: Vector3, include_player: bool = false, crouched: bool = false) -> bool:
 	var collision: CollisionShape3D = actor.get_node("CollisionShape3D")
 	var height: float = actor.get_posture_body_height(crouched)
@@ -744,14 +772,23 @@ func _update_cooperation_evidence() -> void:
 		invalidate_utility()
 
 var _cooperation_preview_snapshot: Dictionary = {}
+var _cooperation_preview_depth := 0
+var _cooperation_preview_sources: Dictionary = {}
 
 ## Candidate collection is read-only: share one observation across this batch,
 ## then discard it before action validation, claims or physical execution.
 func begin_cooperation_preview() -> void:
-	_cooperation_preview_snapshot = cooperation.snapshot(self, cooperation_target_id()) if cooperation_enabled() else {}
+	if _cooperation_preview_depth == 0:
+		_cooperation_preview_sources.clear()
+		_cooperation_preview_snapshot = cooperation.snapshot(self, cooperation_target_id()) if cooperation_enabled() else {}
+	_cooperation_preview_depth += 1
 
 func end_cooperation_preview() -> void:
-	_cooperation_preview_snapshot = {}
+	assert(_cooperation_preview_depth > 0)
+	_cooperation_preview_depth -= 1
+	if _cooperation_preview_depth == 0:
+		_cooperation_preview_snapshot = {}
+		_cooperation_preview_sources.clear()
 
 func cooperation_snapshot(target_id: int = 0) -> Dictionary:
 	if cooperation == null: return {"members": [], "requests": [], "claims": [], "supports": [], "threats": [], "revision": 0}
@@ -848,7 +885,13 @@ func coordination_offer_identity() -> Dictionary:
 	return cooperation.coordination_identity(self) if cooperation != null and cooperation_enabled() else {}
 
 func coordination_source(target_id: int = 0) -> Dictionary:
-	return _coordinator().coordination_source(self, target_id) if cooperation != null and cooperation_enabled() and cooperation.has_method("coordination_source") else {}
+	if cooperation == null or not cooperation_enabled() or not cooperation.has_method("coordination_source"): return {}
+	if _cooperation_preview_depth == 0: return _coordinator().coordination_source(self, target_id)
+	# Only candidate collection shares this immutable observation. Execution,
+	# submission and the next batch still query the live coordinator.
+	if not _cooperation_preview_sources.has(target_id):
+		_cooperation_preview_sources[target_id] = _coordinator().coordination_source(self, target_id)
+	return _cooperation_preview_sources[target_id].duplicate(true)
 
 ## Static templates remain hints; Actions validate them through Spatial.
 func coordination_search_templates(origin: Vector3, radius: float, layers: int, limit: int = 6) -> Array[Dictionary]:
@@ -1026,8 +1069,11 @@ func _basic_coordination_choices(options: Array[Dictionary]) -> Array[Dictionary
 	var candidate_offers: Array[Dictionary] = []
 	var distinct_offers: Array[Dictionary] = []
 	var position_indices: Dictionary = {}
+	# This loop only projects candidates. The member identity cannot change
+	# until it returns; reservation filtering and transactions still read live.
+	var identity: Dictionary = cooperation.coordination_identity(self)
 	for candidate in options:
-		var offer := _basic_coordination_offer(candidate)
+		var offer := _basic_coordination_offer(candidate, identity)
 		candidate_offers.append(offer)
 		if not offer.is_empty() and not position_indices.has(offer.position):
 			position_indices[offer.position] = distinct_offers.size()
@@ -1061,12 +1107,12 @@ func _publish_coordination_versions() -> bool:
 func coordination_configuration_changed() -> void:
 	_coordination_configuration_revision += 1
 
-func _basic_coordination_offer(candidate: Dictionary) -> Dictionary:
+func _basic_coordination_offer(candidate: Dictionary, prepared_identity: Variant = null) -> Dictionary:
 	var destination: Dictionary = candidate.get("destination", {})
 	var point: Vector3 = candidate.get("route_target", destination.get("position", destination.get("hide", Vector3.INF)))
 	if not point.is_finite(): return {}
 	if _horizontal_distance(point) <= 0.12 and absf(actor.global_position.y - point.y) <= 0.5: return {}
-	var identity: Dictionary = cooperation.coordination_identity(self)
+	var identity: Dictionary = cooperation.coordination_identity(self) if prepared_identity == null else prepared_identity
 	if identity.is_empty(): return {}
 	var owner: StringName = candidate.get("id", &"")
 	var offer: Dictionary = identity.duplicate()

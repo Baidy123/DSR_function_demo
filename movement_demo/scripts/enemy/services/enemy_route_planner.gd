@@ -12,6 +12,7 @@ var _origin := Vector3.INF
 var _iteration := -1
 var _cached_at := 0
 var _vault_only: Dictionary = {}
+var _ready_position := Vector3.INF
 
 func alternatives(destination: Vector3) -> Array[Dictionary]:
 	var iteration := NavigationServer3D.map_get_iteration_id(context.agent.get_navigation_map())
@@ -22,6 +23,7 @@ func alternatives(destination: Vector3) -> Array[Dictionary]:
 		_cache.clear()
 		_pending.clear()
 		_vault_only.clear()
+		_ready_position = Vector3.INF
 	if _cache.has(destination): return _cache[destination]
 	if not _pending.has(destination) and _pending.size() < 32: _pending.append(destination)
 	return []
@@ -33,10 +35,14 @@ func advance_one() -> void:
 	if _pending.is_empty(): return
 	var destination: Vector3 = _pending.pop_front()
 	_cache[destination] = _evaluate(destination)
-	# A moving actor can leave the cache's origin tolerance before the next
-	# periodic decision. Announce newly ready alternatives while they are valid;
-	# the selector still owns its normal hold time and switching advantage.
-	if not _cache[destination].is_empty(): context.invalidate_utility()
+	# At rest, announce the first usable route and let the ordinary timer consume
+	# the rest of this batch. A moving actor still needs each newly ready route
+	# before leaving its origin tolerance (including a late, shorter vault).
+	var point: Vector3 = context.actor.global_position
+	var moved: bool = not _ready_position.is_finite() or Vector2(point.x - _ready_position.x, point.z - _ready_position.z).length_squared() > 0.000001
+	if moved and not _cache[destination].is_empty():
+		_ready_position = point
+		context.invalidate_utility()
 
 func _evaluate(destination: Vector3) -> Array[Dictionary]:
 	var result: Array[Dictionary] = []
@@ -96,6 +102,7 @@ func assessment(route: Dictionary, multiplier: float, threat: Vector3, reload_se
 	return {"seconds": after.seconds, "exposure": before.exposure + exposed + after.exposure, "fire_seconds": 0.0, "vault_seconds": duration}
 
 func reset() -> void:
+	_ready_position = Vector3.INF
 	_cache.clear()
 	_pending.clear()
 	_vault_only.clear()

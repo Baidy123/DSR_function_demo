@@ -221,6 +221,9 @@ var _sector_best := INF
 var _sector_waypoint := Vector3.INF
 var _sector_recheck := 0.0
 var _sector_route_valid := false
+var _sector_ally_blocked := false
+var _sector_ally_wait := 0.0
+var _sector_blocker_positions: Dictionary = {}
 var _sector_failed_until := 0.0
 
 const Actor = preload("res://scripts/enemy/enemy_actor.gd")
@@ -1574,26 +1577,7 @@ func _inspection_route_status(goal: Vector3) -> int:
 	var ally_path_blocked: bool = selection._path_to(actor.global_position, goal).is_empty()
 	if ally_path_blocked and selection._query_path_to(actor.global_position, goal).is_empty(): return -1
 	if context.is_position_free(goal): return 0 if ally_path_blocked else 1
-	if context.cooperation == null: return -1
-	var collision: CollisionShape3D = actor.get_node("CollisionShape3D")
-	var capsule := CapsuleShape3D.new()
-	capsule.radius = collision.shape.radius
-	capsule.height = actor.get_posture_body_height(false)
-	var query := PhysicsShapeQueryParameters3D.new()
-	query.shape = capsule
-	query.transform = Transform3D(Basis.IDENTITY, goal + Vector3.UP * (capsule.height * 0.5 + 0.05))
-	query.collision_mask = actor.collision_mask
-	query.exclude = [actor.get_rid()]
-	if is_instance_valid(context.player) and context.player is CollisionObject3D:
-		query.exclude = [actor.get_rid(), context.player.get_rid()]
-	context.position_free_queries += 1
-	var hits: Array[Dictionary] = actor.get_world_3d().direct_space_state.intersect_shape(query, 8)
-	# A full result cannot prove that every obstruction is a friendly body.
-	if hits.is_empty() or hits.size() == 8: return -1
-	for hit: Dictionary in hits:
-		var other = hit.get("collider")
-		if not is_instance_valid(other) or not other is CharacterBody3D or not context.cooperation.can_share_space(actor.get_instance_id(), other.get_instance_id()): return -1
-	return 0
+	return 0 if context.is_position_blocked_by_allies(goal) else -1
 
 func _set_inspection_ally_blocked(blocked: bool) -> void:
 	if _inspection_ally_blocked and not blocked:
@@ -1873,7 +1857,36 @@ func _tick_sector(delta: float, visible: bool) -> Dictionary:
 	var goal := _sector_destination()
 	var sample: Vector3 = _sector_plan.samples[_sector_index]
 	var distance: float = context._horizontal_distance(goal)
-	if distance <= minf(0.25, search_arrival_distance):
+	_sector_recheck -= maxf(0.0, delta)
+	if _sector_recheck <= 0.0 and (not _sector_observing or distance > minf(0.25, search_arrival_distance)):
+		_sector_recheck = 0.25
+		var path: PackedVector3Array = selection._path_to(actor.global_position, goal)
+		if path.is_empty(): path = selection._query_path_to(actor.global_position, goal)
+		var free: bool = context.is_position_free(goal)
+		var blockers: Array = context.position_blocking_allies(goal) if not free else []
+		_sector_ally_blocked = not blockers.is_empty()
+		_sector_route_valid = (free or _sector_ally_blocked) and _sector_walkable(path)
+		if not _sector_route_valid:
+			_end_sector(true)
+			_running = false
+			return motion(Vector3.ZERO)
+		var progressed := not blockers.is_empty()
+		var positions: Dictionary = {}
+		for blocker in blockers:
+			var id: int = blocker.get_instance_id()
+			var previous: Vector3 = _sector_blocker_positions.get(id, blocker.global_position)
+			var moved: bool = previous.distance_to(blocker.global_position) >= 0.1
+			progressed = progressed and moved
+			positions[id] = blocker.global_position if moved else previous
+		_sector_blocker_positions = positions
+		if progressed or not _sector_ally_blocked: _sector_ally_wait = 0.0
+	if _sector_ally_blocked:
+		_sector_ally_wait += maxf(0.0, delta)
+		if _sector_ally_wait >= search_stuck_repath_seconds:
+			_end_sector(true)
+			_running = false
+			return motion(Vector3.ZERO)
+	if distance <= minf(0.25, search_arrival_distance) and not _sector_ally_blocked:
 		_sector_observing = true
 		agent.target_position = actor.global_position
 		_sector_observe_remaining -= maxf(0.0, delta)
@@ -1897,15 +1910,6 @@ func _tick_sector(delta: float, visible: bool) -> Dictionary:
 				_sector_stuck = 0.0
 				context.invalidate_utility()
 		return motion(Vector3.ZERO, float(_sector_plan.speed), sample - actor.global_position)
-	_sector_recheck -= maxf(0.0, delta)
-	if _sector_recheck <= 0.0:
-		_sector_recheck = 0.25
-		var path: PackedVector3Array = selection._path_to(actor.global_position, goal)
-		_sector_route_valid = context.is_position_free(goal) and _sector_walkable(path)
-		if not _sector_route_valid:
-			_end_sector(true)
-			_running = false
-			return motion(Vector3.ZERO)
 	agent.target_position = goal
 	var next: Vector3 = agent.get_next_path_position()
 	if distance <= 0.65 and not actor.test_move(actor.global_transform, Vector3(goal.x - actor.global_position.x, 0.0, goal.z - actor.global_position.z)): next = goal
@@ -1914,7 +1918,13 @@ func _tick_sector(delta: float, visible: bool) -> Dictionary:
 		_running = false
 		return motion(Vector3.ZERO)
 	var waypoint_distance: float = context._horizontal_distance(next)
-	if not _sector_waypoint.is_finite() or _sector_waypoint.distance_to(next) > 0.25:
+	if actor.local_motion.has_temporary_correction() or _sector_ally_blocked:
+		# The body owns a finite side-step/hold/return. Its detour is not progress
+		# along this search route; the assignment's original deadline still runs.
+		_sector_waypoint = next
+		_sector_best = waypoint_distance
+		_sector_stuck = 0.0
+	elif not _sector_waypoint.is_finite() or _sector_waypoint.distance_to(next) > 0.25:
 		_sector_waypoint = next
 		_sector_best = waypoint_distance
 		_sector_stuck = 0.0
@@ -1951,3 +1961,6 @@ func _end_sector(failed: bool) -> void:
 	_sector_waypoint = Vector3.INF
 	_sector_recheck = 0.0
 	_sector_route_valid = false
+	_sector_ally_blocked = false
+	_sector_ally_wait = 0.0
+	_sector_blocker_positions.clear()

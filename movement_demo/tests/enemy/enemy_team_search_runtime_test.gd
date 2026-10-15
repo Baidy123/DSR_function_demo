@@ -3,6 +3,17 @@ extends "res://tests/enemy/enemy_team_basic_runtime_test.gd"
 ## Real perception/noise, normal Utility and actor physics select and execute all
 ## assignments. The fixture changes geometry/evidence, never action selection.
 func _run() -> void:
+	if OS.get_cmdline_user_args().has("--checkpoint-only"):
+		await _passing_checkpoint_case()
+		await _passing_checkpoint_case(true)
+		print("TEAM SEARCH RUNTIME: %d/%d passed" % [checks - failures, checks])
+		quit(1 if failures else 0)
+		return
+	if OS.get_cmdline_user_args().has("--yield-only"):
+		await _yield_case()
+		print("TEAM SEARCH RUNTIME: %d/%d passed" % [checks - failures, checks])
+		quit(1 if failures else 0)
+		return
 	if OS.get_cmdline_user_args().has("--noise-only"):
 		await _sector_case(true, false)
 		print("TEAM SEARCH RUNTIME: %d/%d passed" % [checks - failures, checks])
@@ -12,8 +23,111 @@ func _run() -> void:
 	if not OS.get_cmdline_user_args().has("--first-only"):
 		await _sector_case(true, false)
 		await _sector_case(false, true)
+	await _yield_case()
+	await _passing_checkpoint_case()
+	await _passing_checkpoint_case(true)
 	print("TEAM SEARCH RUNTIME: %d/%d passed" % [checks - failures, checks])
 	quit(1 if failures else 0)
+
+func _passing_checkpoint_case(permanent: bool = false) -> void:
+	var f: Dictionary = await _search_fixture(true)
+	var blocker = load("res://scenes/enemy/enemy.tscn").instantiate()
+	blocker.communication_group = &"sector_checkpoint_fixture"
+	blocker.weapon = WeaponData.new()
+	blocker.position = Vector3(7, 0, 7)
+	f.arena.add_child(blocker)
+	blocker.get_node("AI").set_physics_process(false)
+	blocker.set_physics_process(false)
+	var original: Dictionary = {}
+	var mover
+	var goal := Vector3.INF
+	var elapsed := 0.0
+	var cleared := false
+	var occupied := false
+	var completed := false
+	var canceled := false
+	var fixed := true
+	var observed := false
+	var stuck_window := 0.0
+	for frame in 1500:
+		await physics_frame
+		if not original.is_empty() and not cleared:
+			elapsed += STEP
+			blocker.global_position = goal if permanent else goal + Vector3(0, 0, minf(0.5, elapsed * 0.24))
+			occupied = occupied or not mover.get_node("AI").context.is_position_free(goal)
+			if not permanent and elapsed >= 2.1:
+				blocker.global_position = f.arena.to_global(Vector3(7, 0, 7))
+				cleared = true
+		for actor in f.actors:
+			var ai = actor.get_node("AI")
+			ai._physics_process(STEP)
+			var task: Dictionary = ai.context.coordination_assignment()
+			var search = ai.actions[&"search"]
+			if original.is_empty() and task.get("accepted", false) and task.get("role") == &"search_sector" and task.phase == &"executing" and not search._sector_observing:
+				original = task.duplicate(true)
+				mover = actor
+				goal = search._sector_destination()
+				stuck_window = search.search_stuck_repath_seconds
+				blocker.global_position = goal
+			elif actor == mover:
+				if task.get("assignment_id", 0) != original.assignment_id and not completed: canceled = true
+				if task.get("assignment_id", 0) == original.assignment_id:
+					fixed = fixed and task.expires_at == original.expires_at
+					observed = observed or not search._sector_checked_tick.is_empty()
+					completed = completed or (task.get("complete", false) and ai.context._coordination_execution_completed)
+		if completed or canceled: break
+	if permanent:
+		check(occupied and canceled and not cleared and not completed and not observed, "A permanently occupied search checkpoint exits without reporting an observation or completion")
+		check(fixed and elapsed >= stuck_window and elapsed <= stuck_window + 0.4, "A stationary ally retains the original search no-progress limit and fixed assignment deadline")
+	else:
+		check(occupied and cleared and elapsed >= 2.1, "A real slowly passing friendly capsule occupies an accepted search checkpoint beyond the ordinary stuck window")
+		check(not canceled and fixed and completed and observed, "The same search assignment makes actual observations after the ally clears without replacing its identity or deadline")
+	print("SECTOR_CHECKPOINT_SAMPLE ", JSON.stringify({"permanent": permanent, "occupied": occupied, "cleared": cleared, "completed": completed, "canceled": canceled, "seconds": elapsed}))
+	await _dispose(f)
+
+func _yield_case() -> void:
+	var fixture: Dictionary = await _search_fixture(true)
+	var original: Dictionary = {}
+	var mover
+	var origin := Vector3.INF
+	var correction_seconds := 0.0
+	var displaced := 0.0
+	var canceled := false
+	var fixed_deadline := true
+	var completed := false
+	var observations: Dictionary = {}
+	var no_fire := true
+	for frame in 1080:
+		await physics_frame
+		for actor in fixture.actors:
+			var ai = actor.get_node("AI")
+			ai._physics_process(STEP)
+			var task: Dictionary = ai.context.coordination_assignment()
+			var search = ai.actions[&"search"]
+			if original.is_empty() and task.get("accepted", false) and task.get("role") == &"search_sector" and task.phase == &"executing" and not search._sector_observing:
+				var partner = fixture.actors[1] if actor == fixture.actors[0] else fixture.actors[0]
+				# Use the real finite capsule/path-validated body correction after
+				# ordinary AI accepts a sector; never inject a plan or checked point.
+				if actor.local_motion._start_side(partner, actor.global_position - partner.global_position, &"yield"):
+					original = task.duplicate(true)
+					mover = actor
+					origin = actor.global_position
+			elif actor == mover:
+				if actor.local_motion.has_temporary_correction(): correction_seconds += STEP
+				displaced = maxf(displaced, actor.global_position.distance_to(origin))
+				if task.get("assignment_id", 0) != original.assignment_id and not completed: canceled = true
+				if task.get("assignment_id", 0) == original.assignment_id:
+					fixed_deadline = fixed_deadline and task.expires_at == original.expires_at
+					no_fire = no_fire and ai.context.fire.request.is_empty()
+					for point: Vector3 in search._sector_checked_tick:
+						observations[point] = ai.context.perception.can_observe_position(point)
+					completed = completed or (task.get("complete", false) and ai.context._coordination_execution_completed)
+		if completed or canceled: break
+	check(not original.is_empty() and correction_seconds > 0.9 and displaced > 0.5, "An assigned search performs real physical yielding beyond its ordinary stuck window")
+	check(not canceled and fixed_deadline and completed, "The same search assignment completes after yielding within its original deadline")
+	check(no_fire and not observations.is_empty() and observations.values().all(func(value): return value), "Yield recovery retains actual observed points and the nonfiring search contract")
+	print("SECTOR_YIELD_SAMPLE ", JSON.stringify({"seconds": correction_seconds, "displaced": displaced, "canceled": canceled, "completed": completed, "observations": observations.size()}))
+	await _dispose(fixture)
 
 func _wall(parent: Node3D, at: Vector3, size: Vector3) -> StaticBody3D:
 	var body := StaticBody3D.new()
@@ -92,9 +206,31 @@ func _sector_case(noise: bool, block: bool) -> void:
 	var extensions := 0
 	var trace_state: Dictionary = {}
 	var trace: Array = []
-	for frame in 840:
+	var first_assignments: Dictionary = {}
+	var first_assignment_aborted := false
+	# Discover work within the original 14 seconds, then observe each accepted
+	# assignment until its original deadline. A valid 20-second search may still
+	# be observing its second point when an unconditional 14-second loop ends.
+	for frame in 2041:
 		await physics_frame
-		for actor in f.actors: actor.get_node("AI")._physics_process(STEP)
+		for index in f.actors.size():
+			var ai = f.actors[index].get_node("AI")
+			ai._physics_process(STEP)
+			if block: continue
+			var task: Dictionary = ai.context.coordination_assignment()
+			var search = ai.actions[&"search"]
+			if task.get("role") == &"search_sector" and task.get("accepted", false) and not first_assignments.has(index):
+				first_assignments[index] = task.duplicate(true)
+			if not first_assignments.has(index): continue
+			if task.get("assignment_id", 0) != first_assignments[index].assignment_id:
+				first_assignment_aborted = first_assignment_aborted or not completed_actors.has(index)
+				continue
+			for point: Vector3 in search._sector_checked_tick:
+				observations[[task.assignment_id, point]] = {"actor": index, "visible": ai.context.perception.can_observe_position(point), "sector": search._sector_plan.template.sector_key}
+				observed_boundaries = observed_boundaries and bool(search.execution_contract(false).segment_boundary)
+			if ai.context._coordination_execution_completed:
+				completed[task.assignment_id] = index
+				completed_actors[index] = true
 		var current_sectors: Array = []
 		for shared: Dictionary in f.actors[0].get_node("AI").context.cooperation.coordination_debug_snapshot(&"_coordination_plans").values():
 			if not shared.assignments.all(func(entry): return entry.role == &"search_sector"): continue
@@ -122,10 +258,7 @@ func _sector_case(noise: bool, block: bool) -> void:
 					var sector: String = search._sector_plan.template.sector_key
 					assigned[index] = sector
 					current_sectors.append(sector)
-					for point: Vector3 in search._sector_checked_tick:
-						observations[[task.assignment_id, point]] = {"actor": index, "visible": context.perception.can_observe_position(point), "sector": sector}
-						observed_boundaries = observed_boundaries and bool(search.execution_contract(false).segment_boundary)
-					if context._coordination_execution_completed:
+					if block and context._coordination_execution_completed:
 						completed[task.assignment_id] = index
 						completed_actors[index] = true
 						if task.assignment_id == blocked_id: blocked_complete = true
@@ -146,6 +279,13 @@ func _sector_case(noise: bool, block: bool) -> void:
 				trace.append({"frame": frame, "actor": index, "action": ai.utility_current.get("id", &""), "plan": ai.utility_current.get("plan", &""), "role": task.get("role", &""), "phase": task.get("phase", &""), "assignment": task.get("assignment_id", 0), "deadline": task.get("expires_at", 0), "now": context.coordination_now(), "goal": search._sector_destination(), "observe": search._sector_observe_remaining, "position": actor.global_position, "offers": search._sector_offers.size(), "map": context.coordination_search_revision(), "source": search._sector_source(), "templates": search.evaluation_points().size(), "coverage_pending": search.coverage.has_pending_preparation(), "failures": context.squad_coordinator._coordination_failures.duplicate(true)})
 		if current_sectors.size() == 2 and current_sectors[0] != current_sectors[1]: different = true
 		if block and blocked_id > 0 and recovered and frame >= blocked_at + 120: break
+		if block and frame >= 839: break
+		if not block:
+			if first_assignment_aborted: break
+			if first_assignments.size() < 2 and frame >= 839: break
+			if first_assignments.size() == 2:
+				var deadline := maxf(first_assignments[0].expires_at, first_assignments[1].expires_at)
+				if f.actors[0].get_node("AI").context.coordination_now() >= deadline: break
 		if not block and completed_actors.size() >= 2 and observations.size() >= 4: break
 	check(not assigned.is_empty() and different, "noise=%s block=%s: ordinary AI accepts distinct prepared sectors" % [noise, block])
 	check(moved[0] > 0.5 and moved[1] > 0.5, "noise=%s block=%s: both actors really walk their legal investigation routes" % [noise, block])
@@ -154,6 +294,7 @@ func _sector_case(noise: bool, block: bool) -> void:
 		check(blocked_id > 0 and recovered and not blocked_complete, "An actual obstacle invalidates the accepted destination without false completion and the owner resumes a legal action")
 	else:
 		check(completed_actors.size() == 2 and observations.size() >= 4 and observations.values().all(func(value): return value.visible) and observed_boundaries, "noise=%s: both actors complete actual per-point observations with legal segment boundaries" % noise)
+		check(first_assignments.size() == 2 and not first_assignment_aborted and completed_actors.size() == 2, "noise=%s: each first accepted assignment completes within its original lease without replacement" % noise)
 		check(personal_progress, "noise=%s: personal investigation continues while shared templates and offers are preparing" % noise)
 	print("TEAM SEARCH TRACE noise=", noise, " block=", block, " assigned=", assigned, " observations=", observations.size(), " completed=", completed, " moved=", moved, " blocked=", blocked_id, " recovered=", recovered, " extensions=", extensions, " ", JSON.stringify(trace))
 	await _dispose(f)

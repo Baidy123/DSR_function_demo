@@ -10,6 +10,7 @@ var actions: Dictionary = {}
 var current_action
 var utility_options: Array[Dictionary] = []
 var _utility_timer := 0.0
+var _utility_boundary_recheck := false
 var _utility_elapsed := 0.0
 var _initial_geometry_revision := 0
 var _team_decision_revision := 0
@@ -192,10 +193,14 @@ func _physics_process(delta: float) -> void:
 func _update_utility_decision(delta: float, visible: bool) -> void:
 	_utility_elapsed += delta
 	_utility_timer -= delta
+	# A specifically scheduled hold-boundary check must not slip one physics
+	# step because subtraction leaves a positive floating-point tail.
+	if _utility_boundary_recheck and is_zero_approx(_utility_timer): _utility_timer = 0.0
 	if actor.is_vaulting(): return
 	var valid: bool = current_action != null and current_action.valid(visible)
 	if _utility_timer > 0.0 and (valid or current_action == null): return
 	_utility_timer = utility_recheck_seconds
+	_utility_boundary_recheck = false
 	context.prepare_coordination_evaluation()
 	utility_options = action_selector.assess_options(self, visible)
 	_publish_coordination_inputs(visible)
@@ -236,10 +241,13 @@ func _update_utility_decision(delta: float, visible: bool) -> void:
 	if bound and not transition and action_selector.same_option(best, utility_current): return
 	if valid and not transition and action_selector.same_option(best, utility_current): return
 	if valid and not transition and not current_action.hold_released():
-		if _utility_elapsed < utility_hold_seconds:
+		if _utility_elapsed < utility_hold_seconds and not is_equal_approx(_utility_elapsed, utility_hold_seconds):
 			# Preserve the original bounded reconsideration at the hold boundary.
 			if not best.get("route", {}).is_empty() and best.cost + utility_switch_advantage < cost:
-				_utility_timer = minf(_utility_timer, utility_hold_seconds - _utility_elapsed)
+				var remaining := utility_hold_seconds - _utility_elapsed
+				if remaining < _utility_timer:
+					_utility_timer = remaining
+					_utility_boundary_recheck = true
 			return
 		if best.cost + utility_switch_advantage >= cost: return
 	_start_utility_option(best, visible)

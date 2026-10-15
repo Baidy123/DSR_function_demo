@@ -29,6 +29,8 @@ class TestContext extends Node:
 	func _known_reload_threat() -> Vector3: return Vector3(5, 0, 0)
 	func advance_coordination_map(_max_points: int, _deadline_usec: int, _frame: int) -> int: return 0
 	func begin_geometry_evaluation() -> void: begins += 1
+	func begin_cooperation_preview() -> void: pass
+	func end_cooperation_preview() -> void: pass
 	func end_geometry_evaluation() -> void: ends += 1
 
 class TestAction extends "res://scripts/enemy/actions/enemy_action.gd":
@@ -54,6 +56,12 @@ func _check(ok: bool, label: String) -> void:
 	checks += 1
 	if not ok: failures += 1
 	print("PASS " if ok else "FAIL ", label)
+
+func _next_preparation_frame() -> void:
+	# Optional geometry advances once per displayed frame, including physics
+	# catch-up. A local revision must be sampled at its next admitted opportunity.
+	await process_frame
+	await physics_frame
 
 func _run() -> void:
 	var actor := TestActor.new()
@@ -88,14 +96,18 @@ func _run() -> void:
 	# A newly attached NavigationAgent changes the map iteration after the first
 	# physics signal. Let that genuine global invalidation settle before testing
 	# a purely local revision; otherwise rebuilding both queues is correct.
+	NavigationServer3D.map_force_update(navigation_map)
 	var iteration := -1
-	for warmup in 6:
+	var stable := 0
+	for warmup in 30:
 		await physics_frame
 		var current_iteration: int = NavigationServer3D.map_get_iteration_id(agent.get_navigation_map())
-		if warmup >= 2 and current_iteration == iteration: break
+		stable = stable + 1 if current_iteration > 0 and current_iteration == iteration else 0
 		iteration = current_iteration
-	# Equal consecutive frame samples can precede an asynchronous first sync.
-	NavigationServer3D.map_force_update(navigation_map)
+		if stable >= 3: break
+	# Equal zero samples and even force_update can precede the asynchronous first
+	# sync. A 0 -> 1 transition correctly rebuilds every queue; it is not local.
+	_check(iteration > 0 and stable >= 3, "the isolated navigation map is genuinely synchronized before local-revision assertions")
 	spatial.advance_evaluation()
 	_check(Action.new().evaluation_revision() == 0, "existing actions have a stable default revision")
 	_check(dormant.builds == 1 and unchanged.builds == 1 and spatial.assessments(dormant).is_empty(), "the initial empty action queue is recorded without inventing candidates")
@@ -105,24 +117,24 @@ func _run() -> void:
 	var old_passes: int = old_job.completed_passes
 	dormant.points = [Vector3(1, 0, 0)]
 	dormant.revision += 1
-	await physics_frame
+	await _next_preparation_frame()
 	spatial.advance_evaluation()
 	_check(dormant.builds == 2 and not spatial.assessments(dormant).is_empty(), "new non-geometric information wakes an empty stationary queue")
 	_check(unchanged.builds == 1 and old_job.completed_passes >= old_passes and old_job.cache.any(func(entry): return entry.assessment.get("marker", false)), "local revision preserves unrelated queues, progress and cache")
 	var before: int = spatial.total_evaluated_count
 	spatial.advance_evaluation()
 	_check(spatial.total_evaluated_count == before and dormant.builds == 2, "same-frame reads still cannot repeat scanning or rebuilding")
-	await physics_frame
+	await _next_preparation_frame()
 	spatial.advance_evaluation()
 	_check(dormant.builds == 2 and unchanged.builds == 1, "stable revisions continue the old rotating scan without rebuilding")
 	dormant.points.clear()
 	dormant.revision += 1
-	await physics_frame
+	await _next_preparation_frame()
 	spatial.advance_evaluation()
 	_check(spatial.assessments(dormant).is_empty() and unchanged.builds == 1, "local withdrawal clears only that action's stale candidates")
 	dormant.points = [Vector3(1, 0, 0), Vector3(2, 0, 0), Vector3(3, 0, 0)]
 	dormant.revision += 1
-	await physics_frame
+	await _next_preparation_frame()
 	spatial.advance_evaluation()
 	var local_job: Dictionary = spatial.jobs.filter(func(job): return job.channel == &"dormant")[0]
 	# Simulate a revision while an initial priority slice is partially consumed.
@@ -130,13 +142,13 @@ func _run() -> void:
 	local_job.priority_cursor = 2
 	dormant.points = [Vector3(4, 0, 0)]
 	dormant.revision += 1
-	await physics_frame
+	await _next_preparation_frame()
 	spatial.advance_evaluation()
 	_check(local_job.priority == 0 and local_job.points.size() == 1 and not spatial.assessments(dormant).is_empty(), "a shrinking queue cannot retain an out-of-range priority index")
 	_check(spatial.last_evaluated_count <= 24 and spatial.EVALUATION_POINTS_PER_FRAME == 24 and spatial.EVALUATION_BUDGET_USEC == 2000 and spatial.CACHED_DESTINATIONS == 6, "local invalidation retains the original point, time and cache budgets")
 	var builds_before: int = unchanged.builds
 	actor.position.x += 0.6
-	await physics_frame
+	await _next_preparation_frame()
 	spatial.advance_evaluation()
 	_check(unchanged.builds == builds_before + 1, "the original actor-movement invalidation still rebuilds every affected queue")
 	_check(context.begins == context.ends, "every scan keeps its geometry evaluation batch balanced")

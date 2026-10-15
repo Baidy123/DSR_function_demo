@@ -39,9 +39,25 @@ func _team_maneuver(count: int) -> void:
 	var released_movement := false
 	var trace: Array = []
 	var previous_assignments: Dictionary = {}
-	for frame in 1080:
+	var first_plan_id := 0
+	var first_plan_deadline := 0.0
+	var first_plan_aborted := false
+	# Keep the original 18-second opportunity to start a maneuver. Once accepted,
+	# observe that same plan through its existing lease (at most 14 seconds).
+	# Ending at 18 seconds could mislabel an 8s-start / 22s-expiry plan as failed.
+	for frame in 1921:
 		await physics_frame
-		for actor in actors: actor.get_node("AI")._physics_process(STEP)
+		for index in count:
+			var ai = actors[index].get_node("AI")
+			ai._physics_process(STEP)
+			var task: Dictionary = ai.context.coordination_assignment()
+			if task.get("role") == &"flank" and task.get("accepted", false):
+				if first_plan_id == 0:
+					first_plan_id = task.plan_id
+					first_plan_deadline = task.expires_at
+				# Sample immediately: a later member can retire the finished plan.
+				if task.plan_id == first_plan_id and task.get("complete", false) and ai.context._coordination_execution_completed and ai.context._horizontal_distance(task.selected_position) <= 0.35:
+					completed[index] = true
 		var active_flanks := 0
 		var physical_fronts := 0
 		var flank_moving := false
@@ -69,7 +85,6 @@ func _team_maneuver(count: int) -> void:
 						released_movement = released_movement or (task.phase == &"executing" and task.release_at >= 0.0)
 						minimum_radius = minf(minimum_radius, Vector2(actor.global_position.x - anchor.x, actor.global_position.z - anchor.z).length())
 					if actor.global_position.x < anchor.x - OPPOSITE_MARGIN: crossed[index] = true
-					if task.get("complete", false) and ai.context._coordination_execution_completed: completed[index] = true
 			elif role == &"front_support" and task.accepted:
 				accepted_fronts[index] = true
 				var actual: Dictionary = ai.actions[&"cooperate"]._own_actual_support()
@@ -85,12 +100,21 @@ func _team_maneuver(count: int) -> void:
 			if flank_moving and task.get("role", &"") == &"front_support": front_overlap_shots += maxi(0, actor.shot_count - last_shots[index])
 			last_positions[index] = actor.global_position
 			last_shots[index] = actor.shot_count
+		if first_plan_id == 0:
+			if frame >= 1079: break
+		else:
+			var active := actors.any(func(actor): return actor.get_node("AI").context.coordination_assignment().get("plan_id", 0) == first_plan_id)
+			if not active and completed.is_empty():
+				first_plan_aborted = true
+				break
+			if actors[0].get_node("AI").context.coordination_now() >= first_plan_deadline: break
 		if not completed.is_empty() and actors.all(func(actor): return actor.get_node("AI").context.coordination_assignment().is_empty()): break
 	check(not accepted_flanks.is_empty() and not accepted_fronts.is_empty(), "%d actors autonomously accept complementary flank and front-support assignments" % count)
 	check(not crossed.is_empty() and released_movement and minimum_radius >= TARGET_CLEARANCE - 0.1, "%d actors physically follow the released route to the opposite side without crossing the target" % count)
 	check(protected_motion > 0.1 and front_overlap_shots > 0 and minimum_front > 0, "%d-actor maneuver overlaps real front support and actual shots while preserving a physical front" % count)
 	check(quota_valid and fixed_deadlines, "%d-actor assignments retain the half-team quota and original fixed deadlines" % count)
 	check(not completed.is_empty(), "%d-actor real flank execution reports completion at its destination" % count)
+	check(first_plan_id != 0 and not first_plan_aborted and not completed.is_empty(), "%d-actor first accepted plan completes within its original lease without cancellation or replacement" % count)
 	print("TEAM FLANK TRACE count=", count, " flanks=", accepted_flanks, " fronts=", accepted_fronts, " crossed=", crossed, " completed=", completed, " overlap_seconds=", protected_motion, " overlap_shots=", front_overlap_shots, " radius=", minimum_radius, " ", JSON.stringify(trace))
 	f.scene.queue_free()
 	await physics_frame

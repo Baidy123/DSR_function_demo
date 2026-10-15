@@ -326,7 +326,10 @@ func finish(visible: bool) -> void:
 	context.resume_after_action(visible, context.last_known_position)
 
 func on_event(event: StringName, _data: Dictionary) -> void:
-	if event == &"damage" and _running: finish(context.sees_player)
+	# An assigned provider keeps its legal firing window until the normal
+	# decision compares verified self-preservation. Personal suppression retains
+	# its original damage interruption; neither path extends the shot window.
+	if event == &"damage" and _running and plan.get("coordination_assignment", {}).is_empty(): finish(context.sees_player)
 
 func _point_preference(basis: Dictionary) -> float:
 	return maxf(0.0, float(context.setting(&"suppression", &"low_cover_point_preference", 1.0))) if basis.get("low_cover_context", false) else 0.0

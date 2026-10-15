@@ -1,10 +1,43 @@
 extends "res://tests/enemy/enemy_geometry_batch_test.gd"
 
+class ReadyContext extends RefCounted:
+	var actor
+	var agent
+	var notifications := 0
+	func invalidate_utility() -> void: notifications += 1
+
+class ReadyRoutes extends "res://scripts/enemy/services/enemy_route_planner.gd":
+	var prepared_frames: Array[int] = []
+	# Isolate the preparation notification from geometry, which the real route
+	# and vault integration tests exercise through normal AI/body execution.
+	func _evaluate(destination: Vector3) -> Array[Dictionary]:
+		prepared_frames.append(Engine.get_physics_frames())
+		var result: Array[Dictionary] = []
+		if destination != Vector3.ZERO: result.append({"destination": destination})
+		return result
+
 class CountedCover extends "res://scripts/world/cover_region.gd":
 	var enumerations := 0
 	func get_candidates(threat: Vector3, from: Vector3) -> Array[Dictionary]:
 		enumerations += 1
 		return super.get_candidates(threat, from)
+
+class CatchupProbe extends Node:
+	signal finished
+	var context
+	var rows: Array[Dictionary] = []
+	var odd_steps_only := false
+	func _physics_process(_delta: float) -> void:
+		var before: int = context.spatial.total_evaluated_count
+		if not odd_steps_only or Engine.get_physics_frames() % 2 != 0: context.spatial.advance_evaluation()
+		rows.append({"physics": Engine.get_physics_frames(), "process": Engine.get_process_frames(),
+			"points": context.spatial.total_evaluated_count - before, "reported": context.spatial.last_evaluated_count})
+		# Reproduce an actual missed presentation, rather than editing engine
+		# frame counters or manually pretending that several ticks were caught up.
+		if rows.size() == 1: OS.delay_msec(60)
+		if rows.size() >= 10:
+			set_physics_process(false)
+			finished.emit()
 
 class CoverQueue extends RefCounted:
 	var spatial
@@ -158,12 +191,107 @@ func _run() -> void:
 	_route_sample_contract(context)
 	_route_scope_contract(context)
 	_risk_contract(context)
+	_route_ready_contract(context)
 	_cover_generation_contract(scene)
 	await _cover_preparation_contract(context, scene)
+	await _catchup_preparation_contract(context)
+	await _route_catchup_progress(context)
 	print("ROUTE EVALUATION BATCH: %d/%d passed" % [checks - failures, checks])
 	scene.queue_free()
 	await scene.tree_exited
 	quit(1 if failures else 0)
+
+func _catchup_preparation_contract(context) -> void:
+	context.spatial.reset_evaluation()
+	var probe := CatchupProbe.new()
+	probe.context = context
+	root.add_child(probe)
+	await probe.finished
+	var seen: Dictionary = {}
+	var repeated := 0
+	var bounded := true
+	var resumed := false
+	var first_process: int = probe.rows[0].process
+	for row: Dictionary in probe.rows:
+		if seen.has(row.process):
+			repeated += 1
+			bounded = bounded and row.points == 0 and row.reported == 0
+		elif row.process > first_process and row.points > 0:
+			resumed = true
+		seen[row.process] = true
+	check(repeated > 0, "An actual delayed frame produces multiple distinct physics steps before the next presentation")
+	check(bounded, "Physics catch-up does not multiply the optional spatial preparation budget inside one displayed frame")
+	check(resumed and probe.rows.size() == 10, "Spatial preparation resumes on subsequent frames while every physics step continues")
+	probe.queue_free()
+
+func _route_catchup_progress(context) -> void:
+	var original_routes = context.routes
+	var source := ReadyContext.new()
+	source.actor = context.actor
+	source.agent = context.agent
+	var routes := ReadyRoutes.new()
+	routes.context = source
+	context.routes = routes
+	context.spatial.reset_evaluation()
+	context.spatial.advance_evaluation()
+	for index in 3: routes.alternatives(context.actor.global_position + Vector3(0, 0, index + 1))
+	var probe := CatchupProbe.new()
+	probe.context = context
+	# Actual physics callbacks model the available preparation opportunities in
+	# two-step frames. No available step here has a frame number divisible by 4.
+	probe.odd_steps_only = true
+	root.add_child(probe)
+	await probe.finished
+	check(not routes.prepared_frames.is_empty(), "Pending routes still progress when catch-up leaves only odd physics steps available for preparation")
+	var bounded := true
+	for index in range(1, routes.prepared_frames.size()): bounded = bounded and routes.prepared_frames[index] - routes.prepared_frames[index - 1] >= 4
+	check(bounded, "Rescheduled route work retains at least four physical steps between preparation calls")
+	context.routes = original_routes
+	context.spatial.reset_evaluation()
+	probe.queue_free()
+
+func _route_ready_contract(context) -> void:
+	var source := ReadyContext.new()
+	source.actor = context.actor
+	source.agent = context.agent
+	var routes := ReadyRoutes.new()
+	routes.context = source
+	routes.alternatives(Vector3.ZERO)
+	routes.advance_one()
+	check(source.notifications == 0, "Unusable route preparation does not wake the full Utility selector")
+	var destinations: Array[Vector3] = []
+	for index in 8:
+		var point := Vector3(30, 0, index + 1)
+		destinations.append(point)
+		routes.alternatives(point)
+	routes.advance_one()
+	check(source.notifications == 1, "The first usable route wakes Utility immediately")
+	while routes.has_pending(): routes.advance_one()
+	check(source.notifications == 1, "Later routes in the same batch preserve the ordinary reconsideration timer")
+	check(destinations.all(func(point): return routes.alternatives(point) == [{"destination": point}]), "Coalescing notifications retains every prepared alternative and its original destination")
+	var position: Vector3 = source.actor.global_position
+	source.actor.global_position += Vector3.RIGHT * 0.1
+	routes.alternatives(Vector3(30, 0, 9))
+	routes.advance_one()
+	check(source.notifications == 2, "A later route still wakes a moving actor before it leaves the original cache tolerance")
+	source.actor.global_position = position
+	routes.reset()
+	routes.alternatives(destinations[0])
+	routes.advance_one()
+	check(source.notifications == 3, "Explicit reset permits an immediate first-route notification again")
+	source.actor.global_position += Vector3.RIGHT * 0.6
+	routes.alternatives(destinations[0])
+	routes.advance_one()
+	check(source.notifications == 4, "A moving actor receives the first route at its new origin without waiting for the normal timer")
+	source.actor.global_position = position
+	routes.alternatives(destinations[0])
+	routes.advance_one()
+	var before: int = source.notifications
+	# Exercise the existing age boundary without delaying unrelated scene AI.
+	routes._cached_at = Time.get_ticks_msec() - 1001
+	routes.alternatives(destinations[0])
+	routes.advance_one()
+	check(source.notifications == before + 1, "An expired route batch can announce its first fresh usable result")
 
 func _route_sample_contract(context) -> void:
 	var probe := preload("res://scripts/enemy/services/enemy_spatial_evaluator.gd").new()

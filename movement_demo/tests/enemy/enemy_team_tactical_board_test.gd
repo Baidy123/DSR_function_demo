@@ -22,14 +22,104 @@ func _run() -> void:
 	_visibility_and_permissions()
 	_flank_facts()
 	_lifecycle_and_repair()
+	_reset_tactical()
+	_flank_repair_entry()
 	_geometry_contract()
 	_segment_transaction()
 	_stage_timeout_backoff()
+	await _flank_remove_failed_extra()
+	await _flank_remove_failed_extra(true)
+	await _recommendation_commit_quota()
 	print("TEAM TACTICAL BOARD: %d/%d passed" % [checks - failures, checks])
 	scene.queue_free()
 	await scene.tree_exited
 	await process_frame
 	quit(1 if failures else 0)
+
+func _flank_remove_failed_extra(stage_timeout: bool = false) -> void:
+	_reset_tactical()
+	var extra = load("res://scenes/enemy/enemy.tscn").instantiate()
+	extra.communication_group = &"tactical_test"
+	extra.weapon = WeaponData.new()
+	arena.add_child(extra)
+	Fixture.configure_timing(extra)
+	Fixture.set_training_action(extra.get_node("AI"), &"cooperate", true)
+	extra.get_node("AI").set_physics_process(false)
+	extra.set_physics_process(false)
+	extra.global_position = _point(7, -6)
+	var extra_context = extra.get_node("AI").context
+	extra_context.is_alerted = true
+	extra_context.last_seen_position = _point(0, 0)
+	board.register(extra_context)
+	_versions(extra_context)
+	var source := _source(contexts[0])
+	var front := _tactical_offer(contexts[0], &"front_support", actors[0].global_position, "prune-front", source)
+	front.path_summary.staging_position = actors[0].global_position
+	board.submit_offers(contexts[0], [front])
+	for index in [1, 2]:
+		var offer := _tactical_offer(contexts[index], &"flank", _point(3 if index == 1 else -3, 4), "prune-flank-%d" % index, source)
+		offer.path_summary.staging_position = actors[index].global_position
+		board.submit_offers(contexts[index], [offer])
+	_ready(0, true)
+	_advance(0.01)
+	var front_task := _accept(0)
+	var flank := _accept(1)
+	var rejected: Dictionary = _accept(2) if stage_timeout else board.assignment(contexts[2])
+	if stage_timeout: _advance(0.01)
+	check(not front_task.is_empty() and not flank.is_empty() and not rejected.is_empty(), "Four real eligible members obtain a front and two flank reservations")
+	if not front_task.is_empty() and not flank.is_empty() and not rejected.is_empty():
+		# Keep the pair's actual reports fresh. The extra member either misses
+		# acceptance or accepts but never reports arrival before its stage limit.
+		for index in (20 if stage_timeout else 6):
+			_ready(0, true)
+			_report(0, &"arrived")
+			_report(1, &"arrived")
+			if stage_timeout: _report(2, &"moving", {"ready_for_phase": false})
+			_advance(0.2)
+		var retained: Dictionary = board.assignment(contexts[1])
+		var retained_front: Dictionary = board.assignment(contexts[0])
+		check(not retained.is_empty() and retained.plan_id == flank.plan_id and retained.assignment_id == flank.assignment_id and retained.expires_at == flank.expires_at and retained_front.get("assignment_id") == front_task.assignment_id, "A %s extra slot cannot discard or renew the accepted front and flank" % ("late staged" if stage_timeout else "unaccepted"))
+		check(board.assignment(contexts[2]).is_empty() and not board.reservation_values().any(func(entry): return entry.reservation_id == rejected.reservation_id), "Removing the failed slot releases its real reservation")
+		if not retained.is_empty():
+			check(not retained.partner_ids.has(actors[2].get_instance_id()) and retained.support_links.all(func(link): return link.beneficiary_id != actors[2].get_instance_id() and link.provider_id != actors[2].get_instance_id()), "Surviving partners and support links do not reference the removed member")
+			_ready(0, true)
+			_report(0, &"arrived")
+			_report(1, &"arrived")
+			_advance(0.01)
+			check(board.assignment(contexts[1]).phase == &"executing", "The retained pair releases only after fresh physical arrival and fire reports")
+	extra.queue_free()
+	await extra.tree_exited
+	_reset_tactical()
+
+func _recommendation_commit_quota() -> void:
+	_reset_tactical()
+	Fixture.attach_squad(arena, actors, 1)
+	await physics_frame
+	arena.enemy_environment()
+	for actor in actors: actor.get_node("AI").refresh_configuration()
+	for context in contexts:
+		board.register(context)
+		_versions(context)
+	var source := _source(contexts[0])
+	var coordinator = contexts[0]._coordinator()
+	for index in [1, 2]:
+		var key := "quota-%d" % index
+		var offer := _tactical_offer(contexts[index], &"flank", _point(index * 3, 4), key, source)
+		# Two successive suggestion batches may coexist before either receiver
+		# selects one. Suggestions themselves intentionally own no reservation.
+		coordinator._install_recommendations(source.team_id, source, {"recommendations": [{"actor_id": actors[index].get_instance_id(), "owner_action": &"cooperate", "role": &"flank", "allowed_offer_keys": [key], "reserved_offers": [offer]}]})
+	var first: Dictionary = board.recommendation(contexts[1])
+	var second: Dictionary = board.recommendation(contexts[2])
+	check(not first.is_empty() and not second.is_empty() and board.reservation_snapshot(contexts[0]).is_empty(), "Successive unselected recommendations create no executable flank reservation")
+	if first.is_empty() or second.is_empty(): return
+	var first_token: Dictionary = board.prepare_recommendation(contexts[1], first, first.allowed_offer_keys[0], _offer(contexts[1], _point(3, 4), "quota-a"), 4.0)
+	var second_token: Dictionary = board.prepare_recommendation(contexts[2], second, second.allowed_offer_keys[0], _offer(contexts[2], _point(6, 4), "quota-b"), 4.0)
+	check(not first_token.is_empty() and not second_token.is_empty(), "Both nonconflicting transactions can prepare before either owns the one available flank slot")
+	if first_token.is_empty() or second_token.is_empty(): return
+	check(board.accept_recommendation(contexts[1], first, first_token), "The first actual recommendation commit acquires the available flank slot")
+	check(not board.accept_recommendation(contexts[2], second, second_token), "Commit rechecks the current physical and accepted quota after another transaction wins the last slot")
+	board.rollback_reservation(contexts[2], second_token)
+	check(board.recommendation(contexts[1]).expires_at == first.expires_at and not board.recommendation(contexts[2]).accepted, "Quota rejection neither accepts the losing suggestion nor renews the winner's deadline")
 
 func _tactical_setup() -> void:
 	for index in actors.size():
@@ -296,6 +386,50 @@ func _flank_facts() -> void:
 			check(not front_execution.is_empty() and not front_execution.complete and board.elapsed < executing.expires_at, "Front support remains real and unfinished before the mover's completion is processed")
 			_advance(0.01)
 			check(board.assignment(contexts[0]).is_empty() and board.assignment(contexts[1]).is_empty() and board.reservation_snapshot(contexts[0]).is_empty(), "Completing the real maneuver releases front and flank leases without waiting for a fake front completion or expiry")
+	_reset_tactical()
+
+func _flank_repair_entry() -> void:
+	var source := _source(contexts[0])
+	var front := _tactical_offer(contexts[0], &"front_support", actors[0].global_position, "repair-front", source)
+	front.path_summary.staging_position = actors[0].global_position
+	var far := _tactical_offer(contexts[1], &"flank", _point(3, 4), "repair-far", source)
+	far.path_summary.staging_position = actors[1].global_position
+	_ready(0, true)
+	board.submit_offers(contexts[0], [front])
+	board.submit_offers(contexts[1], [far])
+	_advance(0.01)
+	var accepted_front := _accept(0)
+	var original := _accept(1)
+	check(not accepted_front.is_empty() and not original.is_empty(), "Repair entry fixture accepts actual front and flank transactions")
+	if accepted_front.is_empty() or original.is_empty(): return
+	_advance(0.01)
+	_ready(0, true)
+	_report(0, &"arrived")
+	_report(1, &"arrived")
+	_advance(0.01)
+	actors[1].global_position = original.staging_position + Vector3(0, 0, 1.0)
+	_report(1, &"moving", {"ready_for_phase": false, "segment_boundary": false})
+	var replacement := _tactical_offer(contexts[2], &"front_support", actors[2].global_position, "repair-new-front", source)
+	replacement.path_summary.staging_position = actors[2].global_position
+	_ready(2, true)
+	board.submit_offers(contexts[2], [replacement])
+	_report(0, &"unavailable")
+	_advance(0.01)
+	var retained: Dictionary = board.assignment(contexts[1])
+	check(not retained.is_empty() and retained.plan_id == original.plan_id and retained.assignment_id == original.assignment_id and retained.expires_at == original.expires_at, "Replacing a failed front retains the moving flank's identity and original deadline")
+	if retained.is_empty(): return
+	check(retained.staging_position == actors[1].global_position and retained.staging_position != original.staging_position and not retained.ready_for_phase, "The repaired phase freezes the retained flank's actual entry without using old readiness or undoing travel")
+	var accepted_replacement := _accept(2)
+	check(not accepted_replacement.is_empty(), "The replacement front accepts its own real reservation")
+	if accepted_replacement.is_empty(): return
+	_advance(0.01)
+	_ready(2, true)
+	_report(2, &"arrived")
+	_advance(0.01)
+	check(board.assignment(contexts[1]).release_at < 0.0, "A replacement cannot release the phase without the retained member's fresh feedback")
+	check(_report(1, &"arrived"), "The retained member reports actual arrival at this repair's entry")
+	_advance(0.01)
+	check(board.assignment(contexts[1]).phase == &"executing" and board.assignment(contexts[1]).expires_at == original.expires_at, "Fresh arrivals release the repaired phase without renewing its lease")
 	_reset_tactical()
 
 func _lifecycle_and_repair() -> void:

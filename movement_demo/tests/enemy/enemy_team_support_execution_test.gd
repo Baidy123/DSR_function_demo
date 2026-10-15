@@ -10,7 +10,10 @@ func _run() -> void:
 	check(empty.all_empty_started and empty.filled, "Every empty member can actually reload without a fictitious provider")
 	var handoff: Dictionary = await _support_case(&"handoff")
 	check(handoff.handoffs > 0 and handoff.completed_handoffs > 0 and not handoff.premature_handoff, "A low-ammo change causes normal AI to establish real replacement fire before handing over")
-	check(handoff.suppression_shots + reload_case.suppression_shots > 0, "An individually trained suppression action can execute assigned support with real shots")
+	var trained: Dictionary = await _support_case(&"trained_support")
+	check(trained.suppression_shots > 0, "An individually trained suppression action can execute assigned support with real shots")
+	check(trained.proactive and trained.transfer_plan_filled and trained.transfer_plan_shots > 0 and not trained.transfer_plan_aborted and not trained.unsafe_start, "The same suppression plan establishes actual fire before and during its partner's completed reload")
+	check(trained.get("damage_received", false) and trained.get("damage_preserved", false), "An actual hit cannot discard accepted suppression support before comparing executable self-preservation")
 	var retreat: Dictionary = await _support_case(&"retreat")
 	check(retreat.roles.has(&"assisted_retreat") and retreat.retreat_movement > 0.5 and retreat.retreat_shots > 0 and retreat.retreat_arrived, "A planned retreat reaches real cover under assigned allied fire")
 	var transfer: Dictionary = await _support_case(&"transfer")
@@ -18,13 +21,13 @@ func _run() -> void:
 	check(transfer.transfer_plan_filled and transfer.transfer_plan_shots > 0 and not transfer.transfer_plan_aborted, "The same hidden-provider plan reaches real fire and completes its dependent reload without restarting")
 	var unavailable: Dictionary = await _support_case(&"handoff_unavailable")
 	check(unavailable.failed_handoff_seconds >= 0.0 and unavailable.failed_handoff_seconds <= 2.35, "Without a spare, an actual low-ammo provider releases the dependency within the fixed recovery window")
-	check(reload_case.fixed and advance.fixed and empty.fixed and handoff.fixed and retreat.fixed and transfer.fixed and unavailable.fixed, "Support preparation, execution and handoff preserve fixed plan deadlines")
+	check(reload_case.fixed and advance.fixed and empty.fixed and handoff.fixed and trained.fixed and retreat.fixed and transfer.fixed and unavailable.fixed, "Support preparation, execution and handoff preserve fixed plan deadlines")
 	print("TEAM SUPPORT EXECUTION: %d/%d passed" % [checks - failures, checks])
 	quit(1 if failures else 0)
 
 func _support_case(kind: StringName) -> Dictionary:
-	var f: Dictionary = await _fixture(2 if kind in [&"transfer", &"retreat", &"handoff_unavailable"] else 3, false)
-	preload("res://tests/enemy/enemy_fire_fixture.gd").attach_squad(f.arena, f.actors, 2)
+	var f: Dictionary = await _fixture(2 if kind in [&"transfer", &"retreat", &"handoff_unavailable", &"trained_support"] else 3, false)
+	var squad = preload("res://tests/enemy/enemy_fire_fixture.gd").attach_squad(f.arena, f.actors, 0 if kind == &"trained_support" else 2)
 	await physics_frame
 	f.arena.enemy_environment()
 	if kind in [&"retreat", &"transfer"]: _retreat_cover(f, kind)
@@ -36,10 +39,13 @@ func _support_case(kind: StringName) -> Dictionary:
 		actor.weapon.magazine_capacity = 40
 		actor.weapon.reload_seconds = 1.2
 		actor.weapon.shot_interval = 0.35
-		actor.ammo.magazine_rounds = 0 if kind == &"empty" else (6 if kind in [&"reload", &"transfer"] and index == 0 else 40)
+		actor.ammo.magazine_rounds = 0 if kind == &"empty" else (6 if kind in [&"reload", &"transfer", &"trained_support"] and index == 0 else 40)
 		ai.training.profile.set_setting(&"tactics", &"burst_shot_count", 12)
 		ai.training.profile.set_setting(&"tactics", &"support_burst_shot_count", 12)
 		ai.training.profile.set_setting(&"tactics", &"burst_pause_seconds", 0.4)
+		if kind == &"trained_support" and index == 1:
+			ai.training.profile.set_setting(&"suppression", &"duration_min", 4.0)
+			ai.training.profile.set_setting(&"suppression", &"duration_max", 4.0)
 		ai.refresh_configuration(true)
 		if kind == &"retreat" and index == 0:
 			actor.health = actor.max_health * 0.15
@@ -71,12 +77,38 @@ func _support_case(kind: StringName) -> Dictionary:
 			iteration = current_iteration
 			if stable_frames >= 3: break
 		check(stable_frames >= 3, "The support fixture starts after its real navigation mesh is synchronized")
+	if kind == &"trained_support":
+		# Warm real perception, aim and fire timing before isolating the bridge.
+		for frame in 45:
+			await physics_frame
+			for actor in f.actors: actor.get_node("AI")._physics_process(STEP)
+		for actor in f.actors: actor.get_node("AI")._cancel_utility_execution(&"test_setup")
+		f.actors[0].ammo.magazine_rounds = 6
+		f.actors[1].ammo.magazine_rounds = 40
+		squad.profile.level = 2
+		for actor in f.actors: actor.get_node("AI").refresh_configuration(true)
 	f.arena.cooperation.reset()
+	if kind == &"trained_support":
+		for actor in f.actors:
+			var ai = actor.get_node("AI")
+			ai.context.update_evidence(0.0, ai.context.perception.can_see_player())
+			ai.context.spatial.advance_evaluation()
+			ai.context.prepare_coordination_evaluation()
+			ai.context.cooperation_publish_execution({})
+		for index in f.actors.size():
+			var ai = f.actors[index].get_node("AI")
+			var scored: Array[Dictionary] = ai.action_selector.assess_options(ai, ai.context.sees_player)
+			ai.context.coordination_choices(scored)
+			var action = ai.actions[&"reload" if index == 0 else &"suppression"]
+			ai.context.publish_coordination_offers(scored, action.coordination_offers(ai.context.sees_player))
+		f.actors[0].get_node("AI").context._coordinator()._advance_coordination()
+		check(f.actors[1].get_node("AI").context.coordination_assignment().get("owner_action") == &"suppression", "The real planner creates a suppression assignment from the isolated, normally scored action offers")
 	var result := {"kind": kind, "roles": [], "proactive": false, "filled": false, "reload_shots": 0,
 		"unsafe_start": false, "double_proactive": false, "linked_movement": 0.0, "advance_shots": 0,
 		"all_empty_started": false, "fixed": true, "handoffs": 0, "completed_handoffs": 0, "premature_handoff": false, "suppression_shots": 0, "retreat_candidates": 0,
 		"retreat_movement": 0.0, "retreat_shots": 0, "retreat_arrived": false, "front_transfer_movement": 0.0, "waited_for_transfer": false, "failed_handoff_seconds": -1.0,
 		"transfer_plan_id": 0, "transfer_plan_filled": false, "transfer_plan_shots": 0, "transfer_plan_aborted": false, "trace": []}
+	if kind == &"trained_support": result.transfer_plan_id = f.actors[1].get_node("AI").context.coordination_assignment().get("plan_id", 0)
 	var rounds: Dictionary = {}
 	var positions: Dictionary = {}
 	var shots: Dictionary = {}
@@ -90,6 +122,7 @@ func _support_case(kind: StringName) -> Dictionary:
 	var lowered_at := 0.0
 	for actor in f.actors:
 		var id: int = actor.get_instance_id()
+		actor.shot_fired.connect(_record_suppression_shot.bind(actor, result))
 		rounds[id] = actor.ammo.magazine_rounds
 		positions[id] = actor.global_position
 		shots[id] = actor.shot_count
@@ -100,6 +133,13 @@ func _support_case(kind: StringName) -> Dictionary:
 		await physics_frame
 		var before: Dictionary = {}
 		for actor in f.actors: before[actor.get_instance_id()] = actor.get_node("AI").context.coordination_support_state()
+		if kind == &"trained_support" and not result.get("damage_received", false) and f.actors[0].ammo.is_reloading:
+			var provider = f.actors[1]
+			var ai = provider.get_node("AI")
+			if ai.context.coordination_assignment().get("accepted", false) and ai.current_action == ai.actions[&"suppression"]:
+				provider.receive_hit(1.0, f.player.global_position)
+				result.damage_received = true
+				result.damage_preserved = ai.current_action._running
 		for actor in f.actors: actor.get_node("AI")._physics_process(STEP)
 		if kind == &"transfer" and frame == 0:
 			check(not f.actors[1].get_node("AI").context.sees_player, "The transferring provider begins with real target occlusion")
@@ -111,7 +151,6 @@ func _support_case(kind: StringName) -> Dictionary:
 			if kind == &"transfer" and result.transfer_plan_id == 0 and assignment.get("role") == &"front_support" and not ai.context.sees_player:
 				result.transfer_plan_id = assignment.plan_id
 			if not assignment.is_empty() and not result.roles.has(assignment.role): result.roles.append(assignment.role)
-			if assignment.get("owner_action") == &"suppression" and assignment.get("accepted", false): result.suppression_shots += maxi(0, actor.shot_count - int(shots[id]))
 			if ai.utility_options.any(func(choice): return choice.get("coordination_role") == &"assisted_retreat"): result.retreat_candidates += 1
 			if actor.ammo.is_reloading:
 				if actor.ammo.magazine_rounds > 0: active_proactive += 1
@@ -189,6 +228,15 @@ func _support_case(kind: StringName) -> Dictionary:
 	print("SUPPORT_SAMPLE ", JSON.stringify(result))
 	await _dispose(f)
 	return result
+
+func _record_suppression_shot(actor, result: Dictionary) -> void:
+	# Sample at the actual shot, before on_shot_fired can retire the final wave
+	# or another member can retire the plan in the same physics step.
+	var ai = actor.get_node("AI")
+	var assignment: Dictionary = ai.context.coordination_assignment()
+	if result.kind == &"trained_support" and assignment.get("plan_id", 0) != result.transfer_plan_id: return
+	if ai.utility_current.get("id") == &"suppression" and assignment.get("owner_action") == &"suppression" and assignment.get("accepted", false):
+		result.suppression_shots += 1
 
 func _retreat_cover(f: Dictionary, kind: StringName) -> void:
 	var region: NavigationRegion3D = f.arena.get_node("NavigationRegion3D")

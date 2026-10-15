@@ -125,6 +125,14 @@ func _choice_contract() -> void:
 	var choices: Array[Dictionary] = context._basic_coordination_choices(options)
 	check(choices.size() == 3 and choices[0].plan == &"first" and choices[1].plan == &"second" and choices[2].destination.is_empty(), "Filtering preserves candidate order, repeated positions and stationary defense")
 	check(choices.size() == 3 and choices[0].cost == 3.0 and choices[1].cost == 2.0 and not clear.has("coordination_offer") and not choices[2].has("coordination_offer"), "Batching changes neither Utility scores nor input ownership")
+	var original: Dictionary = choices[0].coordination_offer.duplicate(true)
+	check(original == context._basic_coordination_offer(clear) and choices[1].coordination_offer == context._basic_coordination_offer(repeated), "Batched identities produce the same complete offers as individual live projection")
+	choices[0].coordination_offer.config_revision = -1
+	check(choices[1].coordination_offer.config_revision == original.config_revision, "An offer does not share mutable identity fields with another candidate")
+	var frame := Engine.get_physics_frames()
+	context.coordination_configuration_changed()
+	var refreshed: Array[Dictionary] = context._basic_coordination_choices(options)
+	check(Engine.get_physics_frames() == frame and refreshed.size() == 3 and refreshed[0].coordination_offer.config_revision != original.config_revision and board.prepare_reservation(context, original).is_empty(), "A new batch in the same frame refreshes identity and rejects the previous configuration at preparation")
 
 func _live_footprints_and_fire() -> void:
 	var frame := Engine.get_physics_frames()

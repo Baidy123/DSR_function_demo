@@ -690,6 +690,7 @@ func _repair(work: Dictionary, current: Dictionary, continuity: Dictionary) -> D
 	var patch: Array = []
 	var chosen: Array = []
 	var changed: Array = []
+	var removed: Array = []
 	var reserved: Array = continuity.protected.map(func(assignment): return assignment.actor_id)
 	var released: Array = continuity.invalid.map(func(assignment): return assignment.get("actor_id", 0))
 	var request := _active_request(work, current.get("request_id")) if current.get("tactic") == &"support" else {}
@@ -697,7 +698,9 @@ func _repair(work: Dictionary, current: Dictionary, continuity: Dictionary) -> D
 	for assignment in continuity.protected:
 		var locked := _protected_bundle(assignment)
 		if locked.is_empty(): return _result(work, &"none", &"repair_snapshot_incomplete", current.get("tactic", &""))
-		if current.tactic == &"flank" and locked.role == &"front_support" and not _front_can_establish(work, locked): return _result(work, &"none", &"front_support_unavailable", &"flank")
+		# Protected execution already owns its finite recovery contract. A burst
+		# pause must not erase that valid post while another slot is repaired;
+		# phase release still requires fresh, actual fire from the coordinator.
 		chosen.append(locked)
 	for old in continuity.invalid:
 		# Reload and retreat describe this member's physical need, not a vacant
@@ -728,7 +731,15 @@ func _repair(work: Dictionary, current: Dictionary, continuity: Dictionary) -> D
 				if not _flank_allowed(work, flank_roles): continue
 			replacement = bundle
 			break
-		if replacement.is_empty(): return _result(work, &"none", &"repair_unavailable", current.get("tactic", &""))
+		if replacement.is_empty():
+			# A failed additional flanker must not cancel a still executable front
+			# and flank pair. Required support and the last maneuvering member may
+			# never be removed this way; other joint tactics keep their own roles.
+			if current.get("tactic") == &"flank" and old.role == &"flank" and chosen.any(func(bundle): return bundle.role == &"front_support") and chosen.any(func(bundle): return bundle.role == &"flank"):
+				removed.append(old.actor_id)
+				changed.append(old.actor_id)
+				continue
+			return _result(work, &"none", &"repair_unavailable", current.get("tactic", &""))
 		chosen.append(replacement)
 		reserved.append(replacement.actor_id)
 		for actor_id in [old.actor_id, replacement.actor_id]:
@@ -739,7 +750,8 @@ func _repair(work: Dictionary, current: Dictionary, continuity: Dictionary) -> D
 	var result := _result(work, &"repair", &"replace_failed_slots", current.get("tactic", &""))
 	result.assignments = patch
 	result.changed_actor_ids = changed
-	result.required_participants = current.get("required_participants", []).duplicate()
+	result.removed_actor_ids = removed
+	result.required_participants = current.get("required_participants", []).filter(func(actor_id): return not removed.has(actor_id))
 	if current.get("tactic") == &"support": result.request_id = request.request_id
 	for assignment in patch:
 		var old_index: int = result.required_participants.find(assignment.previous_actor_id)

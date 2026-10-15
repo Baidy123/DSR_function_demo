@@ -196,6 +196,34 @@ func _flank_contract() -> void:
 	snapshot.members.pop_back()
 	snapshot.members[0].actual_support.measured_support_seconds = 0.0
 	check(planner.propose(snapshot).assignments.is_empty(), "A front label and fire_ready flag without actual support time cannot promise a flank release")
+	snapshot.members[0].actual_support.measured_support_seconds = 1.0
+	snapshot.current_plan = _plan(snapshot, planner.propose(snapshot))
+	snapshot.current_plan.execution_valid = false
+	snapshot.current_plan.assignments[1].execution_valid = false
+	snapshot.members[0].actual_support.fire_ready = false
+	snapshot.members[0].actual_support.measured_support_seconds = 0.0
+	var saved: Dictionary = snapshot.current_plan.assignments[0].duplicate(true)
+	var repaired: Dictionary = planner.propose(snapshot)
+	check(repaired.operation == &"repair" and repaired.assignments.size() == 1 and repaired.assignments[0].actor_id == 2, "A valid front's ordinary firing pause does not cancel another member's local repair")
+	check(snapshot.current_plan.assignments[0] == saved and not snapshot.members[0].actual_support.fire_ready, "Retaining the accepted front neither changes its lease nor invents current firing readiness")
+	var members := [_member(1, [_offer(1, &"front_support", Vector3(4, 0, 0), "front")]),
+		_member(2, [_offer(2, &"flank", Vector3(-4, 0, 0), "flank-a")]),
+		_member(3, [_offer(3, &"flank", Vector3(-4, 0, 3), "flank-b")]),
+		_member(4, [_offer(4, &"front_support", Vector3(5, 0, 6), "spare-front", 5.0)])]
+	snapshot = _snapshot(members)
+	snapshot.current_plan = _plan(snapshot, planner.propose(snapshot))
+	check(snapshot.current_plan.assignments.size() == 3, "Four eligible members establish a front and two distinct flank slots")
+	for assignment: Dictionary in snapshot.current_plan.assignments:
+		if assignment.actor_id == 3: assignment.execution_valid = false
+	snapshot.members[2].offers = []
+	var frozen := snapshot.duplicate(true)
+	repaired = planner.propose(snapshot)
+	check(repaired.operation == &"repair" and repaired.assignments.is_empty() and repaired.get("removed_actor_ids") == [3] and repaired.required_participants == [1, 2], "An unavailable extra flanker releases only its slot while the surviving front and flank retain the same plan")
+	check(snapshot == frozen, "Removing an unavailable extra slot cannot alter surviving execution identities or deadlines")
+	for assignment: Dictionary in snapshot.current_plan.assignments:
+		if assignment.actor_id == 2: assignment.execution_valid = false
+	snapshot.members[1].offers = []
+	check(planner.propose(snapshot).operation == &"none", "Repair cannot discard the final flanker and leave a fictitious maneuver")
 
 func _support_contract() -> void:
 	var snapshot := _snapshot([_member(1, [_offer(1, &"front_support", Vector3(4, 0, 0), "front")]), _member(2, [], false)])

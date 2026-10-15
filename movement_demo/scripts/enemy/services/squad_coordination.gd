@@ -1394,7 +1394,7 @@ func _install_coordination_proposal(team_id: int, source: Dictionary, proposal: 
 	plan.required_participants = proposal.required_participants.duplicate()
 	if proposal.has("request_id"): plan.request_id = proposal.request_id
 	var replaced: Dictionary = {}
-	if extending:
+	if repairing:
 		for id: int in proposal.get("removed_actor_ids", []): replaced[id] = 0
 	var new_entries: Array = []
 	for item: Dictionary in proposal.assignments:
@@ -1415,7 +1415,14 @@ func _install_coordination_proposal(team_id: int, source: Dictionary, proposal: 
 			else:
 				for index in entry.partner_ids.size():
 					entry.partner_ids[index] = replaced.get(entry.partner_ids[index], entry.partner_ids[index])
-			if not extending: entry.ready_for_phase = false
+				entry.partner_ids = entry.partner_ids.filter(func(id): return id != 0)
+			if not extending:
+				entry.ready_for_phase = false
+				# A retained flank has already paid for its completed route segments.
+				# Freeze this repair phase's entry at its actual current body instead
+				# of asking it to return to the original pre-maneuver starting point.
+				if entry.role == &"flank" and entry.accepted and not entry.complete:
+					entry.staging_position = _context(entry.actor_id).actor.global_position
 			retained.append(entry)
 	plan.assignments = retained + new_entries
 	if not repairing:
@@ -1426,6 +1433,7 @@ func _install_coordination_proposal(team_id: int, source: Dictionary, proposal: 
 			for entry: Dictionary in plan.assignments:
 				if entry.actor_id == link.beneficiary_id and link.request_id == 0: link.request_id = entry.assignment_id
 	elif not extending:
+		plan.support_links = plan.get("support_links", []).filter(func(link): return replaced.get(link.get("pending_provider_id", link.provider_id), -1) != 0 and replaced.get(link.beneficiary_id, -1) != 0)
 		for link: Dictionary in plan.get("support_links", []):
 			var previous_provider: int = link.get("pending_provider_id", link.provider_id)
 			if replaced.has(previous_provider): link.pending_provider_id = replaced[previous_provider]
@@ -1567,7 +1575,7 @@ func _advance_coordination_phase(plan: Dictionary) -> void:
 		if entry.role != &"front_support":
 			mover_count += 1
 			movers_complete = movers_complete and entry.complete
-		if plan.required_participants.has(entry.actor_id):
+		if plan.required_participants.has(entry.actor_id) and not entry.complete:
 			var context = _context(entry.actor_id)
 			var ready: bool = entry.accepted and entry.get("ready_for_phase", false) and entry.get("report_phase_id", -1) == plan.phase_id and elapsed - float(entry.last_report_at) <= COORDINATION_REPORT_SECONDS and context.actor.global_position.distance_to(entry.get("staging_position", Vector3.INF)) <= 0.35
 			if entry.role == &"front_support": ready = ready and _coordination_actual(context, plan.target_id).fire_ready
@@ -1600,6 +1608,16 @@ func _advance_coordination_phase(plan: Dictionary) -> void:
 		revision += 1
 	elif plan.phase != &"executing" and elapsed >= plan.stage_until:
 		for entry: Dictionary in unready: _record_coordination_failure(entry, plan)
+		# A late additional flank has exhausted its own preparation window. Keep
+		# the already-ready front/flank pair and feed the failed slot to ordinary
+		# bounded repair; never renew this slot or the whole plan's fixed lease.
+		var repairable: bool = plan.phase == &"staging" and plan.tactic == &"flank" and not unready.is_empty() and unready.all(func(entry): return entry.role == &"flank")
+		repairable = repairable and plan.assignments.any(func(entry): return entry.role == &"front_support" and not unready.has(entry))
+		repairable = repairable and plan.assignments.any(func(entry): return entry.role == &"flank" and not unready.has(entry) and not entry.complete)
+		if repairable:
+			for entry: Dictionary in unready: entry.failed = true
+			_coordination_due[plan.team_id] = elapsed
+			return
 		_drop_coordination_plan(plan.team_id, &"stage_timeout")
 
 func _advance_coordination() -> void:
@@ -1680,6 +1698,9 @@ func prepare_recommendation(context, advice: Dictionary, key: String, offer: Dic
 func accept_recommendation(context, advice: Dictionary, token: Dictionary) -> bool:
 	var entry: Dictionary = _recommendations.get(context.actor.get_instance_id(), {})
 	if not _recommendation_valid(context, entry) or entry.recommendation_id != advice.get("recommendation_id") or token.get("recommendation_id") != entry.recommendation_id: return false
+	# Preparing only reserves space. Another recommendation may acquire the
+	# last flank slot before this transaction commits its selected action.
+	if not recommendation_available(context, advice, entry.allowed_offer_keys[0]): return false
 	if not commit_reservation(context, token): return false
 	entry.accepted = true
 	return true

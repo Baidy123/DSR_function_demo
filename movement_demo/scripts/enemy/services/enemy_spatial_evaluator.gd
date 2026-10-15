@@ -13,6 +13,8 @@ var completed_passes := 0
 var initial_ready_revision := 0
 var _visible := false
 var _frame := -1
+var _preparation_frame := -1
+var _route_preparation_frame := -1
 var _cursor := 0
 var _position := Vector3.INF
 var _threat := Vector3.INF
@@ -63,6 +65,8 @@ func reset_evaluation() -> void:
 		job.priority = 0
 	_position = Vector3.INF
 	_frame = -1
+	_preparation_frame = -1
+	_route_preparation_frame = -1
 	last_evaluation_usec = 0
 	last_evaluated_count = 0
 	total_evaluated_count = 0
@@ -101,17 +105,30 @@ func advance_evaluation() -> void:
 	var frame := Engine.get_physics_frames()
 	if frame == _frame:
 		return
+	var continuing := _frame >= 0
 	_frame = frame
+	last_evaluated_count = 0
+	last_evaluation_usec = 0
+	# A long frame may execute several physics steps before the next process
+	# frame. Repeating optional preparation in every catch-up step amplifies the
+	# stall. Movement, perception, fire and live validation still run every step;
+	# only this incremental queue advances once before each displayed frame.
+	var preparation_frame := Engine.get_process_frames()
+	if continuing and preparation_frame == _preparation_frame: return
+	_preparation_frame = preparation_frame
 	_budget_evaluation_depth += 1
 	context.begin_geometry_evaluation()
 	var started := Time.get_ticks_usec()
-	last_evaluated_count = 0
+	context.begin_cooperation_preview()
 	var prepared: int = context.advance_coordination_map(mini(4, EVALUATION_POINTS_PER_FRAME), started + EVALUATION_BUDGET_USEC, frame)
 	last_evaluated_count += prepared
 	total_evaluated_count += prepared
 	# Route geometry shares the same frame budget, rather than running inside candidate collection.
-	if context.routes.has_pending() and frame % 4 == 0 and Time.get_ticks_usec() - started < EVALUATION_BUDGET_USEC:
+	# Catch-up can leave only odd physics frames available for preparation.
+	# Preserve the four-step interval without depending on one modulo phase.
+	if context.routes.has_pending() and (_route_preparation_frame < 0 or frame - _route_preparation_frame >= 4) and Time.get_ticks_usec() - started < EVALUATION_BUDGET_USEC:
 		context.routes.advance_one()
+		_route_preparation_frame = frame
 		last_evaluated_count += 1
 		total_evaluated_count += 1
 	for job in jobs:
@@ -192,6 +209,7 @@ func advance_evaluation() -> void:
 		last_evaluated_count += 1
 		total_evaluated_count += 1
 	last_evaluation_usec = Time.get_ticks_usec() - started
+	context.end_cooperation_preview()
 	context.end_geometry_evaluation()
 	_budget_evaluation_depth -= 1
 
