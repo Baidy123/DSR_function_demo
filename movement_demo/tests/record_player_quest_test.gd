@@ -1,12 +1,13 @@
 extends SceneTree
 
-## 唱片机支线闭环检查：接取前不可交互、拒绝不改状态且可重新接取、关闭状态交差失败。
+## 唱片机支线闭环检查：接取前后都能操作唱片机、接取前操作不推进任务、关闭状态交差失败、
+## 拒绝只影响对话且可重新接取。
 ## 运行：godot --headless --path movement_demo --script res://tests/record_player_quest_test.gd
 
 const QuestControllerScript := preload("res://scripts/systems/stage/quest_controller.gd")
 
 ## 断言总数；脚本报错会中断检查函数，最后用它兜住「报错却显示全绿」的假通过。
-const EXPECTED_CHECKS := 23
+const EXPECTED_CHECKS := 25
 
 var failures: int = 0
 var checks_run: int = 0
@@ -37,7 +38,7 @@ func run_checks() -> void:
 	var ui = scene.get_node("DialogueUI")
 
 	_reset(state, quests)
-	_check_locked_before_accept(record, player, state, quests)
+	_check_usable_before_accept(record, player, state, quests, scene)
 	await _check_accept_close_and_turnin(ui, player, record, state, quests, scene)
 	await _check_refusal(ui, player, state, quests, scene)
 	scene.queue_free()
@@ -58,22 +59,23 @@ func _reset(state, quests) -> void:
 	state.music_quest_choice = ""
 	state.music_quest_turnin = ""
 	state.set_flag(&"music_playing", false)
-	state.set_flag(&"music_quest_open", false)
 
 
-func _check_locked_before_accept(record, player, state, quests) -> void:
-	check(not record.conditions_met(), "接取前唱片机条件不满足")
-	check(not record.interact(player), "接取前与唱片机交互被阻断")
-	check(not state.is_flag_set(&"music_playing"), "接取前交互不改变音乐状态")
-	check(quests.status_of(&"task_music") == QuestControllerScript.Status.NOT_STARTED, "接取前任务仍未接")
+func _check_usable_before_accept(record, player, state, quests, scene) -> void:
+	check(record.interact(player), "接取前也能操作唱片机")
+	check(state.is_flag_set(&"music_playing"), "接取前操作照常打开音乐")
+	check(record.interact(player), "接取前唱片机可以再次操作")
+	check(not state.is_flag_set(&"music_playing"), "接取前第二次操作回到关闭")
+	check(quests.status_of(&"task_music") == QuestControllerScript.Status.NOT_STARTED, "接取前操作不推进任务状态")
+	check(_panel_text(scene).contains("打开唱片机：未接"), "接取前任务面板显示未接")
 
 
 func _check_accept_close_and_turnin(ui, player, record, state, quests, scene) -> void:
 	state.music_quest_choice = "accepted"
-	state.music_quest_open = true
 	check(quests.status_of(&"task_music") == QuestControllerScript.Status.IN_PROGRESS, "接取后任务进入进行中")
-	check(record.conditions_met(), "接取后唱片机可交互")
+	check(_panel_text(scene).contains("打开唱片机：进行中"), "接取后任务面板显示进行中")
 
+	# 此刻唱片机是关着的：交差不该成功。
 	await _open_b(player, ui)
 	check(ui.dialogue_text.text.contains("没响"), "关闭状态下交差对话提示没响")
 	check(_choice_index(ui, "交差") < 0, "关闭状态下没有交差选项")
@@ -102,18 +104,18 @@ func _check_refusal(ui, player, state, quests, scene) -> void:
 	await _open_b(player, ui)
 	check(ui.choices.get_child_count() > 0, "复位后 B 重新提供任务")
 	await _pick(ui, "现在不行")
-	check(quests.status_of(&"task_music") == QuestControllerScript.Status.NOT_STARTED, "拒绝后任务状态仍为未接")
-	check(state.music_quest_choice == "", "拒绝不写任务判定字段")
+	check(state.music_quest_choice == "refused", "拒绝写下 refusal 供对话分支使用")
+	check(quests.status_of(&"task_music") == QuestControllerScript.Status.NOT_STARTED, "拒绝不改变任务状态")
 	ui._close_dialogue()
 	await process_frame
-	check(_panel_text(scene).contains("打开唱片机：未接"), "任务面板仍显示未接")
+	check(_panel_text(scene).contains("打开唱片机：未接"), "拒绝后任务面板仍显示未接")
 
 	await _open_b(player, ui)
-	check(ui.choices.get_child_count() > 0, "拒绝后仍可再次接取")
-	await _pick(ui, "我去打开")
-	check(quests.status_of(&"task_music") == QuestControllerScript.Status.IN_PROGRESS, "重新接取成功")
-	check(state.is_flag_set(&"music_quest_open"), "接取时置位唱片机门禁旗标")
-	check(_panel_text(scene).contains("打开唱片机：进行中"), "任务面板显示进行中")
+	check(ui.dialogue_text.text.contains("想通了再找我"), "拒绝后再对话仍保持拒绝对话")
+	check(ui.choices.get_child_count() > 0, "拒绝对话里给出重新接取的入口")
+	await _pick(ui, "我改主意了")
+	check(quests.status_of(&"task_music") == QuestControllerScript.Status.IN_PROGRESS, "可以重新接取任务")
+	check(_panel_text(scene).contains("打开唱片机：进行中"), "重新接取后面板显示进行中")
 	ui._close_dialogue()
 	await process_frame
 

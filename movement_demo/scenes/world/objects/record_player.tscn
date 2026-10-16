@@ -35,8 +35,6 @@ height = 0.04
 interact_id = &"record_player"
 display_name = "唱片机"
 verb = "使用"
-required_flags = Array[StringName]([&"music_quest_open"])
-blocked_hint = "唱片机没有反应"
 used_hint = "音乐正在播放"
 effects = Array[ExtResource("4_effect")]([SubResource("Effect_music_noise"), SubResource("Effect_music_toggle")])
 
