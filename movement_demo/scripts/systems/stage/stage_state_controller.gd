@@ -47,7 +47,7 @@ func reload_table() -> void:
 		_quests.set_table(stage_table)
 		if not _quests.quest_changed.is_connected(_on_quest_changed):
 			_quests.quest_changed.connect(_on_quest_changed)
-		_quests.bind_stage(_stage)
+	# 任务控制器自己按 group 找阶段控制器，这里只分发配置表与阶段侧的任务读取。
 	if _stage != null:
 		_stage.bind_quests(_quests)
 	_on_changed("初始化")

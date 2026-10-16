@@ -12,7 +12,7 @@ const GameStateScript := preload("res://scripts/systems/game_state.gd")
 const ZoneVolumeScript := preload("res://scripts/world/zone_volume.gd")
 
 ## 断言总数；脚本报错会中断检查函数，最后用它兜住「报错却显示全绿」的假通过。
-const EXPECTED_CHECKS := 27
+const EXPECTED_CHECKS := 28
 
 var failures: int = 0
 var checks_run: int = 0
@@ -62,6 +62,7 @@ func run_checks() -> void:
 	_check_lock_window()
 	_check_entries()
 	_check_stage_readonly()
+	_check_stage_independent()
 	if checks_run != EXPECTED_CHECKS:
 		failures += 1
 		push_error("检查数量不符：期望 %d，实际 %d（脚本报错会中断后续检查）" % [EXPECTED_CHECKS, checks_run])
@@ -217,3 +218,9 @@ func _check_stage_readonly() -> void:
 	for entry in stage.get_method_list():
 		methods.append(entry.get("name", ""))
 	check(methods.has("get_stage_index") and not methods.has("set_player_in_zone"), "阶段替身只暴露只读序号接口")
+
+
+func _check_stage_independent() -> void:
+	var before: int = stage.get_stage_index()
+	state.add_item(&"keycard", "门禁卡", 1)
+	check(stage.get_stage_index() == before, "任务状态变化不会推进任务侧持有的阶段序号")

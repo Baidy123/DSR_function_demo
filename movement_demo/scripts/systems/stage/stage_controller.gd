@@ -129,7 +129,9 @@ func _resolve_index() -> int:
 	for stage in ordered:
 		if stage.quest_id == &"":
 			return stage.index
-		if _quest_status(stage.quest_id) != QuestController.Status.COMPLETED:
+		var status := _quest_status(stage.quest_id)
+		# 已完成与已失效都表示本阶段已经结束，阶段不会因为失效卡在原处。
+		if status != QuestController.Status.COMPLETED and status != QuestController.Status.MISSED:
 			return stage.index
 	return ordered[ordered.size() - 1].index
 
@@ -151,6 +153,8 @@ func _resolve_phase(index: int) -> int:
 				return StagePhase.Id.TRAVELING
 			return StagePhase.Id.QUEST_TAKEN
 		QuestController.Status.COMPLETED:
+			return StagePhase.Id.RETURNED
+		QuestController.Status.MISSED:
 			return StagePhase.Id.RETURNED
 	return StagePhase.Id.TAVERN_IDLE
 

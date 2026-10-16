@@ -87,6 +87,14 @@ func run_checks() -> void:
 	_check_logging()
 	_check_dialogue_snapshot()
 	_check_state_signal()
+	quest_controller.reset_progress()
+	state_controller.stage_table.quests[0].expire_stage = 1
+	state_controller.reload_table()
+	check(
+		quest_controller.status_of(&"task_a") == QuestControllerScript.Status.MISSED,
+		"未接的任务到达失效阶段后转为已失效"
+	)
+	check(stage_controller.get_phase() == StagePhases.Id.RETURNED, "已失效的阶段任务按返回结算处理")
 	await _check_scene_wiring()
 
 	if failures == 0:
