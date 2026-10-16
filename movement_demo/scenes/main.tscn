@@ -29,6 +29,7 @@
 [ext_resource type="Script" uid="uid://mghdwtfibo1" path="res://scripts/systems/stage/stage_state_controller.gd" id="24_stage_state_controller"]
 [ext_resource type="Resource" path="res://resources/stages/stage_table_template.tres" id="25_stage_table"]
 [ext_resource type="Script" uid="uid://by7iy6ibrwkth" path="res://scripts/world/zone_volume.gd" id="26_zone_volume"]
+[ext_resource type="PackedScene" path="res://scenes/ui/quest_panel.tscn" id="27_quest_panel"]
 
 [sub_resource type="Environment" id="Environment"]
 background_mode = 1
@@ -116,6 +117,8 @@ height = 1.6
 [node name="Main" type="Node3D" unique_id=1975287300]
 
 [node name="DialogueUI" parent="." unique_id=36702053 instance=ExtResource("1_7mycd")]
+
+[node name="QuestPanel" parent="." instance=ExtResource("27_quest_panel")]
 
 [node name="WorldEnvironment" type="WorldEnvironment" parent="." unique_id=1879990490]
 environment = SubResource("Environment")
