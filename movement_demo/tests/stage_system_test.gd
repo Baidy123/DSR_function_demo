@@ -7,6 +7,7 @@ const StagePhases := preload("res://scripts/systems/stage/stage_phase.gd")
 const StageTableScript := preload("res://scripts/systems/stage/stage_table.gd")
 const StageDefinitionScript := preload("res://scripts/systems/stage/stage_definition.gd")
 const QuestDefinitionScript := preload("res://scripts/systems/stage/quest_definition.gd")
+const QuestConditionScript := preload("res://scripts/systems/stage/quest_condition.gd")
 const StateRuleScript := preload("res://scripts/systems/stage/state_rule.gd")
 const StageControllerScript := preload("res://scripts/systems/stage/stage_controller.gd")
 const QuestControllerScript := preload("res://scripts/systems/stage/quest_controller.gd")
@@ -33,6 +34,14 @@ var site_zone: Area3D
 var dialogue_a: Resource
 var dialogue_b: Resource
 var dialogue_done: Resource
+
+
+## 任务条件需要的区域替身：只提供 zone_id 并加入 zone_volume 组，独立于正式场景脚本。
+class FakeZone extends Area3D:
+	@export var zone_id: StringName = &""
+
+	func _ready() -> void:
+		add_to_group(&"zone_volume")
 
 
 func _initialize() -> void:
@@ -132,7 +141,7 @@ func _check_return_completes_quest() -> void:
 	check(stage_controller.get_phase() == StagePhases.Id.RETURNED, "离开场地后阶段为返回结算")
 	check(
 		quest_controller.status_of(&"task_a") == QuestControllerScript.Status.COMPLETED,
-		"返回后任务按表自动完成"
+		"进入并离开场地后按区域条件完成"
 	)
 
 
@@ -223,8 +232,8 @@ func _check_state_signal() -> void:
 	state.help_choice = "refused"
 	check(seen.size() == 1 and seen[0][0] == &"help_choice", "对话写入会通知监听者")
 	check(
-		quest_controller.status_of(&"task_a") == QuestControllerScript.Status.REFUSED,
-		"改投拒绝后任务状态跟随变化"
+		quest_controller.status_of(&"task_a") == QuestControllerScript.Status.COMPLETED,
+		"已完成是终态：对话字段改投拒绝也不回退"
 	)
 
 
@@ -281,11 +290,13 @@ func _build_world() -> void:
 	player.position = Vector3(0.0, 0.0, 3.423183)
 	root.add_child(player)
 
-	tavern_zone = Area3D.new()
+	tavern_zone = FakeZone.new()
 	tavern_zone.name = "StageTestTavernZone"
+	(tavern_zone as FakeZone).zone_id = &"tavern"
 	root.add_child(tavern_zone)
-	site_zone = Area3D.new()
+	site_zone = FakeZone.new()
 	site_zone.name = "StageTestSiteZone"
+	(site_zone as FakeZone).zone_id = &"site"
 	root.add_child(site_zone)
 
 	npc_a = _make_npc(&"npc_a", TAVERN_SPOT, dialogue_a)
@@ -354,10 +365,12 @@ func _build_table() -> Resource:
 	quest.id = &"task_a"
 	quest.display_name = "帮 A 的忙"
 	quest.stage_index = 1
-	quest.accept_source = &"help_choice"
-	quest.accept_value = "accepted"
-	quest.refuse_values.assign(["refused"])
-	quest.complete_on_return = true
+	quest.accept_conditions.assign([QuestConditionScript.field(&"help_choice", "accepted")])
+	quest.refuse_conditions.assign([QuestConditionScript.field(&"help_choice", "refused")])
+	quest.complete_conditions.assign([
+		QuestConditionScript.zone_entered(&"site"),
+		QuestConditionScript.zone_left(&"site"),
+	])
 	table.quests.append(quest)
 
 	var back := StateRuleScript.new()

@@ -1,11 +1,12 @@
-[gd_resource type="Resource" script_class="StageTable" load_steps=13 format=3]
+[gd_resource type="Resource" script_class="StageTable" load_steps=18 format=3]
 
 [ext_resource type="Script" uid="uid://bfmp8qi3o3mtp" path="res://scripts/systems/stage/stage_table.gd" id="1_table"]
 [ext_resource type="Script" uid="uid://c8dqqe2ui2p2m" path="res://scripts/systems/stage/stage_definition.gd" id="2_stage"]
 [ext_resource type="Script" uid="uid://c5rdcyaeoqls4" path="res://scripts/systems/stage/quest_definition.gd" id="3_quest"]
 [ext_resource type="Script" uid="uid://c0t5063knggb5" path="res://scripts/systems/stage/state_rule.gd" id="4_rule"]
-[ext_resource type="Resource" uid="uid://c8tcxmn5hjx5n" path="res://resources/dialogue/npc_a.dialogue" id="5_dialogue_a"]
-[ext_resource type="Resource" uid="uid://dus6w3fiuvkyn" path="res://resources/dialogue/npc_b.dialogue" id="6_dialogue_b"]
+[ext_resource type="Script" uid="uid://dkufwgnkaac6p" path="res://scripts/systems/stage/quest_condition.gd" id="5_condition"]
+[ext_resource type="Resource" uid="uid://c8tcxmn5hjx5n" path="res://resources/dialogue/npc_a.dialogue" id="6_dialogue_a"]
+[ext_resource type="Resource" uid="uid://dus6w3fiuvkyn" path="res://resources/dialogue/npc_b.dialogue" id="7_dialogue_b"]
 
 [sub_resource type="Resource" id="Stage_1"]
 script = ExtResource("2_stage")
@@ -15,16 +16,37 @@ quest_id = &"task_a"
 target_area = &"arena"
 note = "示例行：任务一使用竞技场。任务二接入时另建一份 2 号阶段定义并填新的目标场地。"
 
+[sub_resource type="Resource" id="Condition_task_a_accept"]
+script = ExtResource("5_condition")
+source = 0
+key = &"help_choice"
+state_value = "accepted"
+
+[sub_resource type="Resource" id="Condition_task_a_refuse"]
+script = ExtResource("5_condition")
+source = 0
+key = &"help_choice"
+state_value = "refused"
+
+[sub_resource type="Resource" id="Condition_task_a_enter"]
+script = ExtResource("5_condition")
+source = 4
+key = &"arena"
+
+[sub_resource type="Resource" id="Condition_task_a_leave"]
+script = ExtResource("5_condition")
+source = 5
+key = &"arena"
+
 [sub_resource type="Resource" id="Quest_task_a"]
 script = ExtResource("3_quest")
 id = &"task_a"
 display_name = "帮 A 的忙"
 stage_index = 1
 target_area = &"arena"
-accept_source = &"help_choice"
-accept_value = "accepted"
-refuse_values = Array[String](["refused"])
-complete_on_return = true
+accept_conditions = Array[ExtResource("5_condition")]([SubResource("Condition_task_a_accept")])
+refuse_conditions = Array[ExtResource("5_condition")]([SubResource("Condition_task_a_refuse")])
+complete_conditions = Array[ExtResource("5_condition")]([SubResource("Condition_task_a_enter"), SubResource("Condition_task_a_leave")])
 
 [sub_resource type="Resource" id="Rule_default_a"]
 script = ExtResource("4_rule")
@@ -33,7 +55,7 @@ target_npc = &"npc_a"
 present = true
 position_set = true
 position = Vector3(-7.883234, 0, 3.7864947)
-dialogue = ExtResource("5_dialogue_a")
+dialogue = ExtResource("6_dialogue_a")
 
 [sub_resource type="Resource" id="Rule_default_b"]
 script = ExtResource("4_rule")
@@ -42,7 +64,7 @@ target_npc = &"npc_b"
 present = true
 position_set = true
 position = Vector3(-8.0039215, 0, 1.8173995)
-dialogue = ExtResource("6_dialogue_b")
+dialogue = ExtResource("7_dialogue_b")
 
 [sub_resource type="Resource" id="Rule_done_a"]
 script = ExtResource("4_rule")
