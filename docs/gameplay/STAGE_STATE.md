@@ -101,8 +101,9 @@
 ## 中立事件来源
 
 - `GameState`：对话字段与物品、旗标信号（`value_changed`、`item_gained`、`flag_changed`）。
-  唱片机支线另有 `music_quest_choice`、`music_quest_turnin` 两个对话字段，以及只读镜像
-  `music_playing`（读 `music_playing` 旗标，供对话剧本按属性名判断）。
+  唱片机支线另有 `music_quest_choice`、`music_quest_turnin` 两个对话字段，以及两个镜像属性：
+  只读的 `music_playing`（读同名旗标，供对话剧本按属性名判断）与可读写的 `music_quest_open`
+  （读写同名旗标，供对话置位、交互物用 `required_flags` 做门禁）。
 - `Interactable`：`interact_id`（留空回退节点名，见 [场景交互物](INTERACTION.md)）与 `interacted` 信号。
 - `ZoneVolume`（`scripts/world/zone_volume.gd`）：`zone_id` + `zone_volume` 组，提供区域进出；
   阶段控制器按自己的 `node_paths` 绑定同一批区域，两者互不认识。
@@ -162,8 +163,10 @@
 - `task_a`（帮 A 的忙）：接取 `help_choice == accepted`，拒绝 `help_choice == refused`，
   完成＝曾进入 `arena` 且曾离开 `arena`（等价于原来的“离开场地返回结算”）。
 - `task_music`（打开唱片机，阶段一内的支线，不占阶段序号）：接取 `music_quest_choice == accepted`，
-  拒绝 `music_quest_choice == refused`，完成＝`music_quest_turnin == done` **且** `music_playing` 为真。
-  所以交差时唱片机被关掉就不会完成，重新打开再交差才会完成；没接取时完成条件根本不参与评估。
+  完成＝`music_quest_turnin == done` **且** `music_playing` 为真。所以交差时唱片机被关掉就不会完成，
+  重新打开再交差才会完成；没接取时完成条件根本不参与评估。
+  这个任务**没有拒绝条件**：B 对话里的“现在不行”不写任何字段，任务保持未接，可以再找 B 重新接取。
+  接取时对话顺带置位 `music_quest_open` 旗标，唱片机用 `required_flags` 读它，未接取时不可交互。
 
 ### 开关：先检测，再决定是否落地
 
@@ -190,8 +193,9 @@ macOS 上用 `Godot.app/Contents/MacOS/Godot` 替换可执行文件路径。
   区域绑定、`npc_id` 对应与“默认不落表现”。
 - `quest_panel_test.gd`：面板列出全部任务与状态、随 `quest_changed` 刷新、空表占位、不接收鼠标、
   真实 `main.tscn` 里能找到面板与控制器。
-- `record_player_quest_test.gd`：接取前交互不完成任务、唱片机两次使用回到关闭、关闭状态下交差失败、
-  重新打开后点“交差”完成任务，以及任务面板显示“已完成”。
+- `record_player_quest_test.gd`：接取前与唱片机交互被阻断且音乐状态不变、接取后才能开关、
+  关闭状态下交差失败、重新打开后点“交差”完成任务、拒绝后任务仍是未接并可重新接取，
+  以及任务面板显示对应状态。
 
 ## 后续
 

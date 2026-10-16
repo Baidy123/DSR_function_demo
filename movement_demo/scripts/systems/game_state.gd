@@ -36,6 +36,12 @@ var music_quest_turnin: String = "":
 var music_playing: bool:
 	get:
 		return get_flag(&"music_playing")
+## 唱片机门禁：接取任务时由对话置位，交互物用 required_flags 读同一个旗标。
+var music_quest_open: bool:
+	get:
+		return get_flag(&"music_quest_open")
+	set(value):
+		set_flag(&"music_quest_open", value)
 
 ## 交互产生的物品与旗标；与对话状态一样，重新运行游戏才重置，死亡重开场景保留。
 signal item_gained(item_id: StringName, display_name: String, total: int)

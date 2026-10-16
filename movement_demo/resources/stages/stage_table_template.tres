@@ -1,4 +1,4 @@
-[gd_resource type="Resource" script_class="StageTable" load_steps=23 format=3]
+[gd_resource type="Resource" script_class="StageTable" load_steps=22 format=3]
 
 [ext_resource type="Script" uid="uid://bfmp8qi3o3mtp" path="res://scripts/systems/stage/stage_table.gd" id="1_table"]
 [ext_resource type="Script" uid="uid://c8dqqe2ui2p2m" path="res://scripts/systems/stage/stage_definition.gd" id="2_stage"]
@@ -54,12 +54,6 @@ source = 0
 key = &"music_quest_choice"
 state_value = "accepted"
 
-[sub_resource type="Resource" id="Condition_music_refuse"]
-script = ExtResource("5_condition")
-source = 0
-key = &"music_quest_choice"
-state_value = "refused"
-
 [sub_resource type="Resource" id="Condition_music_turnin"]
 script = ExtResource("5_condition")
 source = 0
@@ -77,7 +71,6 @@ id = &"task_music"
 display_name = "打开唱片机"
 stage_index = 1
 accept_conditions = Array[ExtResource("5_condition")]([SubResource("Condition_music_accept")])
-refuse_conditions = Array[ExtResource("5_condition")]([SubResource("Condition_music_refuse")])
 complete_conditions = Array[ExtResource("5_condition")]([SubResource("Condition_music_turnin"), SubResource("Condition_music_playing")])
 
 [sub_resource type="Resource" id="Rule_default_a"]

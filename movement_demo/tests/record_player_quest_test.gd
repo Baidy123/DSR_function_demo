@@ -1,12 +1,12 @@
 extends SceneTree
 
-## 唱片机支线闭环检查：接取前交互不完成任务、点两次关闭、关闭状态下交差失败、重开后完成。
+## 唱片机支线闭环检查：接取前不可交互、拒绝不改状态且可重新接取、关闭状态交差失败。
 ## 运行：godot --headless --path movement_demo --script res://tests/record_player_quest_test.gd
 
 const QuestControllerScript := preload("res://scripts/systems/stage/quest_controller.gd")
 
 ## 断言总数；脚本报错会中断检查函数，最后用它兜住「报错却显示全绿」的假通过。
-const EXPECTED_CHECKS := 15
+const EXPECTED_CHECKS := 23
 
 var failures: int = 0
 var checks_run: int = 0
@@ -36,55 +36,10 @@ func run_checks() -> void:
 	var state = root.get_node("GameState")
 	var ui = scene.get_node("DialogueUI")
 
-	# 场景重跑时上一次的对话状态可能残留，这里显式归零。
-	state.music_quest_choice = ""
-	state.music_quest_turnin = ""
-	state.set_flag(&"music_playing", false)
-	quests.reset_progress()
-
-	check(record.interact(player), "接取前可以点击唱片机")
-	check(state.is_flag_set(&"music_playing"), "第一次交互打开唱片机")
-	check(quests.status_of(&"task_music") == QuestControllerScript.Status.NOT_STARTED, "接取前交互不完成任务")
-	check(record.interact(player), "唱片机可以再次交互")
-	check(not state.is_flag_set(&"music_playing"), "第二次交互回到关闭状态")
-	check(quests.status_of(&"task_music") == QuestControllerScript.Status.NOT_STARTED, "关闭后任务仍未接取")
-
-	state.music_quest_choice = "accepted"
-	check(quests.status_of(&"task_music") == QuestControllerScript.Status.IN_PROGRESS, "对话选择接取后进入进行中")
-
-	await _open_b(player, ui)
-	check(ui.dialogue_text.text.contains("没响"), "关闭状态下交差对话提示没响")
-	check(_choice_index(ui, "交差") < 0, "关闭状态下没有交差选项")
-	ui._close_dialogue()
-	await process_frame
-	check(quests.status_of(&"task_music") == QuestControllerScript.Status.IN_PROGRESS, "关闭状态下任务保持进行中")
-
-	record.interact(player)
-	check(state.is_flag_set(&"music_playing"), "重新打开唱片机")
-
-	await _open_b(player, ui)
-	var turn_in := _choice_index(ui, "交差")
-	check(turn_in >= 0, "播放状态下出现交差选项")
-	if turn_in >= 0:
-		ui.choices.get_child(turn_in).pressed.emit()
-		await process_frame
-		await process_frame
-	check(quests.status_of(&"task_music") == QuestControllerScript.Status.COMPLETED, "交差后任务完成")
-	ui._close_dialogue()
-	await process_frame
-
-	# 拒绝状态下 B 只给一句无选项台词；player_health_ui_test 用这个状态当「普通对话」夹具。
-	state.music_quest_turnin = ""
-	state.music_quest_choice = "refused"
-	await _open_b(player, ui)
-	check(
-		ui.choices.get_child_count() == 0 and ui.dialogue_text.text.contains("想通了再找我"),
-		"拒绝状态下 B 只有一句无选项台词"
-	)
-	ui._close_dialogue()
-	await process_frame
-
-	check(_panel_text(scene).contains("打开唱片机：已完成"), "任务面板显示已完成")
+	_reset(state, quests)
+	_check_locked_before_accept(record, player, state, quests)
+	await _check_accept_close_and_turnin(ui, player, record, state, quests, scene)
+	await _check_refusal(ui, player, state, quests, scene)
 	scene.queue_free()
 	await process_frame
 	if checks_run != EXPECTED_CHECKS:
@@ -97,8 +52,93 @@ func run_checks() -> void:
 	quit(1 if failures > 0 else 0)
 
 
+## 回到「没接过唱片机任务」的初始状态；场景重跑时上一轮数据可能残留。
+func _reset(state, quests) -> void:
+	quests.reset_progress()
+	state.music_quest_choice = ""
+	state.music_quest_turnin = ""
+	state.set_flag(&"music_playing", false)
+	state.set_flag(&"music_quest_open", false)
+
+
+func _check_locked_before_accept(record, player, state, quests) -> void:
+	check(not record.conditions_met(), "接取前唱片机条件不满足")
+	check(not record.interact(player), "接取前与唱片机交互被阻断")
+	check(not state.is_flag_set(&"music_playing"), "接取前交互不改变音乐状态")
+	check(quests.status_of(&"task_music") == QuestControllerScript.Status.NOT_STARTED, "接取前任务仍未接")
+
+
+func _check_accept_close_and_turnin(ui, player, record, state, quests, scene) -> void:
+	state.music_quest_choice = "accepted"
+	state.music_quest_open = true
+	check(quests.status_of(&"task_music") == QuestControllerScript.Status.IN_PROGRESS, "接取后任务进入进行中")
+	check(record.conditions_met(), "接取后唱片机可交互")
+
+	await _open_b(player, ui)
+	check(ui.dialogue_text.text.contains("没响"), "关闭状态下交差对话提示没响")
+	check(_choice_index(ui, "交差") < 0, "关闭状态下没有交差选项")
+	ui._close_dialogue()
+	await process_frame
+	check(quests.status_of(&"task_music") == QuestControllerScript.Status.IN_PROGRESS, "关闭状态下任务保持进行中")
+
+	check(record.interact(player), "接取后可以打开唱片机")
+	check(state.is_flag_set(&"music_playing"), "打开后音乐旗标为真")
+
+	await _open_b(player, ui)
+	var turn_in := _choice_index(ui, "交差")
+	check(turn_in >= 0, "播放状态下出现交差选项")
+	if turn_in >= 0:
+		ui.choices.get_child(turn_in).pressed.emit()
+		await process_frame
+		await process_frame
+	check(quests.status_of(&"task_music") == QuestControllerScript.Status.COMPLETED, "交差后任务完成")
+	ui._close_dialogue()
+	await process_frame
+	check(_panel_text(scene).contains("打开唱片机：已完成"), "任务面板显示已完成")
+
+
+func _check_refusal(ui, player, state, quests, scene) -> void:
+	_reset(state, quests)
+	await _open_b(player, ui)
+	check(ui.choices.get_child_count() > 0, "复位后 B 重新提供任务")
+	await _pick(ui, "现在不行")
+	check(quests.status_of(&"task_music") == QuestControllerScript.Status.NOT_STARTED, "拒绝后任务状态仍为未接")
+	check(state.music_quest_choice == "", "拒绝不写任务判定字段")
+	ui._close_dialogue()
+	await process_frame
+	check(_panel_text(scene).contains("打开唱片机：未接"), "任务面板仍显示未接")
+
+	await _open_b(player, ui)
+	check(ui.choices.get_child_count() > 0, "拒绝后仍可再次接取")
+	await _pick(ui, "我去打开")
+	check(quests.status_of(&"task_music") == QuestControllerScript.Status.IN_PROGRESS, "重新接取成功")
+	check(state.is_flag_set(&"music_quest_open"), "接取时置位唱片机门禁旗标")
+	check(_panel_text(scene).contains("打开唱片机：进行中"), "任务面板显示进行中")
+	ui._close_dialogue()
+	await process_frame
+
+	# 已交差状态下 B 只有一句台词；player_health_ui_test 用这个状态当「普通对话」夹具。
+	state.music_quest_turnin = "done"
+	await _open_b(player, ui)
+	check(
+		ui.choices.get_child_count() == 0 and not ui.dialogue_text.text.is_empty(),
+		"已交差状态下 B 只有一句无选项台词"
+	)
+	ui._close_dialogue()
+	await process_frame
+
+
 func _open_b(player, ui) -> void:
 	await ui.open_dialogue(player, load("res://resources/dialogue/npc_b.dialogue"), "start")
+	await process_frame
+
+
+## 点选包含关键字的选项，等 ink 的 mutation 与下一句都跑完。
+func _pick(ui, keyword: String) -> void:
+	var index := _choice_index(ui, keyword)
+	if index >= 0:
+		ui.choices.get_child(index).pressed.emit()
+	await process_frame
 	await process_frame
 
 

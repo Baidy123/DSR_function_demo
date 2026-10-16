@@ -160,10 +160,16 @@ func run_checks() -> void:
 	check(barrier.is_open, "持卡后屏障打开")
 	check(state.is_flag_set(&"arena_access"), "持卡后置位通行旗标")
 
-	# 唱片机：可重复使用并发出声音事件。
+	# 唱片机：接取任务前置位门禁旗标前不可用，接取后变成开／关。
 	stand_at(player, record)
 	await settle()
-	check(press_key(KEY_E), "使用唱片机")
+	check(record.prompt.text == "唱片机没有反应", "未接取时唱片机显示阻断提示")
+	check(press_key(KEY_E), "未接取时唱片机仍消费按键")
+	await settle()
+	check(probe.events.size() == 0, "未接取时唱片机不发声音事件")
+	check(not state.is_flag_set(&"music_playing"), "未接取时唱片机不改变音乐状态")
+	state.set_flag(&"music_quest_open", true)
+	check(press_key(KEY_E), "接取后使用唱片机")
 	await settle()
 	check(probe.events.size() == 1 and probe.events[0].source == record, "唱片机发出声音事件")
 	check(state.is_flag_set(&"music_playing"), "唱片机第一次使用打开音乐")

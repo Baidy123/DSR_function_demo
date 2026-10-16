@@ -13,14 +13,11 @@ if GameState.music_quest_choice == "accepted"
 	else
 		B: 唱片机还是没响呢。
 	=> END
-if GameState.music_quest_choice == "refused"
-	B: 想通了再找我。
-	=> END
 B: 房间东南角那台唱片机很久没响了，能帮我打开它吗？
 - 我去打开
 	$> GameState.music_quest_choice = "accepted"
+	$> GameState.music_quest_open = true
 	B: 太好了，它就在房间东南角。
 - 现在不行
-	$> GameState.music_quest_choice = "refused"
 	B: 好吧。
 => END
