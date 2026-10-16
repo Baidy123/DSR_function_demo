@@ -28,6 +28,7 @@
 [ext_resource type="Script" uid="uid://bhipevsgkk0mr" path="res://scripts/systems/stage/quest_controller.gd" id="23_quest_controller"]
 [ext_resource type="Script" uid="uid://mghdwtfibo1" path="res://scripts/systems/stage/stage_state_controller.gd" id="24_stage_state_controller"]
 [ext_resource type="Resource" path="res://resources/stages/stage_table_template.tres" id="25_stage_table"]
+[ext_resource type="Script" uid="uid://by7iy6ibrwkth" path="res://scripts/world/zone_volume.gd" id="26_zone_volume"]
 
 [sub_resource type="Environment" id="Environment"]
 background_mode = 1
@@ -337,6 +338,8 @@ transform = Transform3D(0, 0, -1, 0, 1, 0, 1, 0, 0, 9.125, 0, 0)
 [node name="TavernZone" type="Area3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1, 0)
 collision_layer = 0
+script = ExtResource("26_zone_volume")
+zone_id = &"tavern"
 
 [node name="CollisionShape3D" type="CollisionShape3D" parent="TavernZone"]
 shape = SubResource("TavernZoneShape")

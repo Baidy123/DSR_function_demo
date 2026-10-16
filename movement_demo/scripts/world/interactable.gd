@@ -8,6 +8,8 @@ class_name Interactable
 signal interacted(interactable: Interactable, player: Node3D)
 signal blocked(interactable: Interactable, player: Node3D)
 
+## 任务条件等系统使用的稳定 id；留空时回退到节点名，场景里换名字不会打断配置表。
+@export var interact_id: StringName = &""
 ## 提示文本与调试日志使用的名字；留空时回退到节点名。
 @export var display_name: String = ""
 ## 提示动词，例如 查看 / 拾取 / 使用。
@@ -49,6 +51,8 @@ var _player_inside: Node3D = null
 
 func _ready() -> void:
 	add_to_group(&"interactable")
+	if interact_id == &"":
+		interact_id = StringName(name)
 	_refresh_prompt()
 
 

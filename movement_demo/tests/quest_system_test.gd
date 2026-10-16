@@ -9,9 +9,10 @@ const StageDefinitionScript := preload("res://scripts/systems/stage/stage_defini
 const QuestDefinitionScript := preload("res://scripts/systems/stage/quest_definition.gd")
 const QuestControllerScript := preload("res://scripts/systems/stage/quest_controller.gd")
 const GameStateScript := preload("res://scripts/systems/game_state.gd")
+const ZoneVolumeScript := preload("res://scripts/world/zone_volume.gd")
 
 ## 断言总数；脚本报错会中断检查函数，最后用它兜住「报错却显示全绿」的假通过。
-const EXPECTED_CHECKS := 25
+const EXPECTED_CHECKS := 27
 
 var failures: int = 0
 var checks_run: int = 0
@@ -36,23 +37,6 @@ class FakeStage extends Node:
 			return
 		index = value
 		stage_changed.emit(index, 0)
-
-
-## 只为区域条件提供 zone_id 的替身，与正式 ZoneVolume 接口一致。
-class FakeZone extends Area3D:
-	@export var zone_id: StringName = &"arena"
-
-	func _ready() -> void:
-		add_to_group(&"zone_volume")
-
-
-## 只为交互条件提供 interact_id 与信号的替身。
-class FakeInteractable extends Node3D:
-	signal interacted(interactable, player)
-	@export var interact_id: StringName = &"console"
-
-	func _ready() -> void:
-		add_to_group(&"interactable")
 
 
 func _initialize() -> void:
@@ -98,15 +82,18 @@ func _build_world() -> void:
 	player.add_to_group(&"player")
 	root.add_child(player)
 
-	arena = FakeZone.new()
+	arena = ZoneVolumeScript.new()
 	arena.name = "QuestSystemArena"
 	arena.zone_id = &"arena"
 	root.add_child(arena)
+	check(arena.is_in_group(&"zone_volume"), "区域节点加入 zone_volume 组")
 
-	console = FakeInteractable.new()
-	console.name = "QuestSystemConsole"
-	console.interact_id = &"console"
-	root.add_child(console)
+	var probe: Node3D = load("res://scenes/world/interactable.tscn").instantiate()
+	probe.name = "QuestSystemConsole"
+	probe.set("interact_id", &"console")
+	root.add_child(probe)
+	console = probe
+	check(probe.get(&"interact_id") == &"console", "交互物使用配置的 interact_id")
 
 	stage = FakeStage.new()
 	stage.name = "QuestSystemStage"
