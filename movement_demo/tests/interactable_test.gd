@@ -166,10 +166,11 @@ func run_checks() -> void:
 	check(press_key(KEY_E), "使用唱片机")
 	await settle()
 	check(probe.events.size() == 1 and probe.events[0].source == record, "唱片机发出声音事件")
-	check(state.is_flag_set(&"music_playing"), "唱片机置位旗标")
+	check(state.is_flag_set(&"music_playing"), "唱片机第一次使用打开音乐")
 	check(press_key(KEY_E), "唱片机可以重复使用")
 	await settle()
 	check(probe.events.size() == 2, "重复使用再次发出声音事件")
+	check(not state.is_flag_set(&"music_playing"), "第二次使用回到关闭状态")
 
 	# 终端：一次性交互。
 	stand_at(player, terminal)
