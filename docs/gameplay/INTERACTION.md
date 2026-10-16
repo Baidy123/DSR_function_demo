@@ -29,7 +29,7 @@ scenes/ui/game_state_debug.tscn               调试面板
 | 门禁卡 | NPC 附近 | 拾取 | 写入 `keycard` 与 `has_keycard`，物体消失 |
 | 酒杯 | 主房间南侧 | 查看 | 打开线索对话，置 `saw_wine_clue` |
 | 终端 | 主房间东侧 | 使用一次 | 打开通道信息对话，置 `terminal_read` |
-| 唱片机 | 主房间东南 | 使用，可重复 | 发出唱片音乐声音事件，置 `music_playing` |
+| 唱片机 | 主房间东南 | 使用，可重复 | 开／关音乐，写入 `music_playing`；任务条件按该旗标判定是否完成 |
 | 门禁读卡器 | 通往竞技场的通道口 | 刷卡 | 缺门禁卡时提示并拒绝；持有后打开屏障并置 `arena_access` |
 
 对话影响是打开交互物自己的对话资源，不动 NPC 对话；战斗影响是通道屏障决定能否进入竞技场，以及音乐声音事件进入既有听觉系统。
@@ -38,7 +38,8 @@ scenes/ui/game_state_debug.tscn               调试面板
 
 1. 实例化 `scenes/world/interactable.tscn`，或复制 `scenes/world/objects/` 下的一个物体场景。
 2. 设置 `display_name`、`verb` 与外观网格；需要条件时填 `required_items`、`required_flags` 和 `blocked_hint`。
-3. 在 `effects` 里加效果资源。常用组合：拾取用 `GiveItemEffect`，信息用 `ShowDialogueEffect`，状态用 `SetFlagEffect`，声音用 `EmitNoiseEffect`。
+3. 在 `effects` 里加效果资源。常用组合：拾取用 `GiveItemEffect`，信息用 `ShowDialogueEffect`，
+   单次写入用 `SetFlagEffect`，开／关切换用 `ToggleFlagEffect`，声音用 `EmitNoiseEffect`。
 4. 需要驱动门、机关或生成器时用 `CallMethodEffect` 指向目标节点与方法，交互物本身不需要认识目标类型。
 5. 把物体场景放进关卡场景，例如 `main.tscn` 的 `Interactables` 下。
 
@@ -47,6 +48,10 @@ scenes/ui/game_state_debug.tscn               调试面板
 ## 状态与调试
 
 `GameState` 保存 `items` 与 `flags`，提供 `add_item`、`has_item`、`get_item_count`、`item_display_name`、`set_flag`、`get_flag`、`is_flag_set`，并在变化时发出 `item_gained`、`flag_changed`。与对话选择一样，死亡重开场景不清空，重新运行游戏才重置。
+
+交互物还有稳定标识 `interact_id`（留空回退节点名），与 NPC 的 `npc_id` 同一套思路：任务条件用
+`INTERACTED` 来源按它记录“曾经交互过”，所以场景里换节点名不会打断配置表。见
+[阶段、任务与 NPC 状态](STAGE_STATE.md)。
 
 游戏内 Debug 总开关打开时，左上角面板列出当前物品与旗标。状态节点可以替换：把交互物的 `state_path` 指向任意实现同样方法的节点即可，测试就用这种方式验证效果不依赖 `GameState`。
 
