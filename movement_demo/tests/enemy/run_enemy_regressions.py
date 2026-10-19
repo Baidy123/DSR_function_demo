@@ -1,15 +1,76 @@
 """Run the modular enemy regression suite; script errors fail even if Godot exits 0."""
-import argparse
-import json
 from pathlib import Path
-import subprocess
+import sys
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from regression_runner import suite_main
 
 TESTS = [
+    "enemy_squad_runtime_test",
+    "enemy_squad_node_test",
+    "enemy_team_scene_integration_test",
+    "enemy_team_support_execution_test",
+    "enemy_team_support_planner_test",
+    "enemy_team_posture_runtime_test",
+    "enemy_team_posture_planner_test",
+    "enemy_team_awareness_levels_runtime_test",
+    "enemy_team_training_binding_test",
+    "enemy_route_evaluation_batch_test",
+    "enemy_ally_spacing_test",
+    "enemy_ally_spacing_runtime_test",
+    "enemy_firing_cadence_test",
+    "enemy_cover_inspection_test",
+    "enemy_ally_navigation_test",
+    "enemy_ally_navigation_integration_test",
+    "enemy_ally_route_recovery_test",
+    "enemy_ally_route_autonomous_test",
+    "enemy_navigation_corner_recovery_test",
+    "enemy_geometry_batch_test",
+    "enemy_candidate_reuse_test",
+    "suppression_purpose_test",
+    "enemy_cooperation_service_test",
+    "enemy_team_planner_test",
+    "enemy_team_board_test",
+    "enemy_team_basic_runtime_test",
+    "enemy_assignment_execution_test",
+    "enemy_action_coordination_protocol_test",
+    "enemy_team_tactical_board_test",
+    "enemy_team_inspection_runtime_test",
+    "enemy_inspection_observation_test",
+    "enemy_team_flank_runtime_test",
+    "enemy_cooperation_yield_runtime_test",
+    "enemy_team_sync_runtime_test",
+    "enemy_tactical_map_test",
+    "enemy_search_preparation_test",
+    "enemy_team_search_runtime_test",
+    "enemy_cooperation_flank_service_test",
+    "enemy_flank_route_test",
+    "enemy_cooperation_support_test",
+    "enemy_shared_contact_test",
+    "enemy_spatial_revision_test",
+    "enemy_cooperation_flank_runtime_test",
+    "enemy_cooperation_line_safety_test",
+    "enemy_cooperation_query_test",
+    "enemy_reservation_batch_test",
+    "enemy_cooperation_search_test",
+    "enemy_cooperation_reload_test",
+    "enemy_cooperation_solo_test",
+    "cooperation_tactics_test",
+    "enemy_half_cover_test",
+    "low_cover_band_test",
+    "enemy_low_cover_loss_test",
+    "enemy_low_cover_behavior_test",
+    "enemy_vault_utility_test",
+    "enemy_vault_navigation_test",
+    "enemy_posture_lifecycle_test",
     "enemy_modular_contract_test",
     "enemy_configuration_cleanup_test",
     "enemy_scene_test",
     "search_components_test",
     "search_area_coverage_test",
+    "search_reacquisition_test",
+    "search_pursuit_test",
+    "search_persistence_test",
     "enemy_firing_lane_test",
     "enemy_basic_capabilities_test",
     "enemy_execution_contract_test",
@@ -17,11 +78,24 @@ TESTS = [
     "enemy_melee_execution_test",
     "enemy_melee_utility_test",
     "enemy_melee_approach_test",
+    "enemy_melee_timing_test",
     "enemy_melee_weapon_test",
+    "enemy_reload_observation_test",
+    "enemy_melee_tactics_test",
+    "enemy_melee_cover_test",
+    "enemy_melee_low_cover_test",
+    "enemy_melee_cover_vault_path_test",
+    "enemy_melee_shelter_test",
+    "enemy_melee_cover_exit_test",
+    "enemy_melee_cover_continuity_test",
+    "enemy_melee_navigation_test",
+    "enemy_melee_tactics_lifecycle_test",
     "enemy_reload_test",
+    "enemy_reload_cover_test",
     "attack_hold_regression_test",
     "attack_points_test",
     "enemy_weapon_test",
+    "enemy_ranged_equipment_test",
     "enemy_probability_test",
     "enemy_optional_removal_test",
     "enemy_configuration_lifecycle_test",
@@ -42,50 +116,22 @@ TESTS = [
     "suppression_lane_test",
     "utility_suppression_blocked_test",
     "exit_suppression_geometry_test",
+    "exit_suppression_ownership_test",
     "utility_suppression_trigger_test",
     "enemy_fire_timing_test",
     "enemy_fire_decision_test",
     "utility_runtime_test",
+    "cooperation_runtime_test",
 ]
 
 
 def main():
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--godot", required=True, help="Godot console executable")
-    parser.add_argument("tests", nargs="*", help="Optional test names, without .gd")
-    args = parser.parse_args()
-    test_directory = Path(__file__).resolve().parent
-    project = test_directory.parents[1]
-    logs = project / "logs" / "enemy_regressions"
-    logs.mkdir(parents=True, exist_ok=True)
-    results = []
-    for name in args.tests or TESTS:
-        if not (test_directory / (name + ".gd")).is_file():
-            parser.error("Unknown test: " + name)
-        command = [args.godot, "--headless", "--path", str(project),
-                   "--log-file", str(logs / (name + ".log")),
-                   "--script", "res://tests/enemy/" + name + ".gd"]
-        try:
-            run = subprocess.run(command, capture_output=True, timeout=75)
-            output = (run.stdout + run.stderr).decode("utf-8", errors="replace")
-            code = run.returncode
-        except subprocess.TimeoutExpired as error:
-            output = ((error.stdout or b"") + (error.stderr or b"")).decode("utf-8", errors="replace")
-            code = "timeout"
-        (logs / (name + "_stdout.log")).write_text(output, encoding="utf-8")
-        errors = [line for line in output.splitlines()
-                  if "SCRIPT ERROR:" in line or line.startswith("FAIL ")
-                  or (line.startswith("ERROR:") and "root certificate store" not in line)]
-        result = {"test": name, "passed": code == 0 and not errors,
-                  "exit": code, "errors": errors[:20]}
-        results.append(result)
-        print(("PASS " if result["passed"] else "FAIL ") + name, flush=True)
-        for line in errors[:3]:
-            print("  " + line, flush=True)
-        (logs / "results.json").write_text(json.dumps(results, ensure_ascii=False, indent=2), encoding="utf-8")
-    print(f"Enemy regressions: {sum(r['passed'] for r in results)}/{len(results)} suites passed")
-    return 0 if all(r["passed"] for r in results) else 1
-
+    directory = Path(__file__).resolve().parent
+    return suite_main(directory, directory.parents[1], TESTS, "enemy_regressions",
+                      "Enemy regressions",
+                      {"enemy_squad_runtime_test": 180, "enemy_cooperation_flank_runtime_test": 300, "enemy_team_flank_runtime_test": 120, "cooperation_runtime_test": 180,
+                       "enemy_team_awareness_levels_runtime_test": 240,
+                       "enemy_team_support_execution_test": 240, "enemy_team_search_runtime_test": 180})
 
 if __name__ == "__main__":
     raise SystemExit(main())

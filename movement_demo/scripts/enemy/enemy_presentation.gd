@@ -18,6 +18,7 @@ func _ready() -> void:
 	actor.shot_fired.connect(_on_shot)
 	actor.hit_received.connect(_on_hit)
 	actor.died.connect(_sync)
+	actor.vault_landed.connect(_on_vault_landed)
 	actor.reset_completed.connect(_on_reset)
 	actor.melee_started.connect(_sync)
 	actor.melee_struck.connect(_on_melee_struck)
@@ -34,7 +35,15 @@ func _physics_process(delta: float) -> void:
 
 
 func _sync() -> void:
-	if presentation == null: return
+	# 场景卸载仍可能发出近战结束通知；离树后不再查询挂点的世界变换。
+	if not is_instance_valid(presentation) or not presentation.is_inside_tree() or not is_instance_valid(actor) or not actor.is_inside_tree(): return
+	var posture: Dictionary = actor.get_posture_presentation_state()
+	state.crouch_amount = posture.amount
+	state.posture_transition = posture.transition
+	state.vaulting = posture.vaulting
+	state.vault_progress = posture.vault_progress
+	state.vault_falling = posture.vault_falling
+	state.weapon_mount_position = presentation.to_local(actor.get_muzzle_position())
 	state.dead = actor.is_dead
 	state.aiming = actor.has_aim
 	state.weapon = actor.weapon
@@ -82,6 +91,11 @@ func _on_shot() -> void:
 func _on_hit(damage: float, _attacker: Vector3) -> void:
 	_sync()
 	if damage > 0.0 and presentation != null: presentation.play_event(&"hit")
+
+
+func _on_vault_landed() -> void:
+	_sync()
+	if presentation != null: presentation.play_event(&"land")
 
 
 func _on_reset() -> void:

@@ -22,6 +22,10 @@ var _move_best_distance := INF
 var _move_stuck_seconds := 0.0
 var _melee_requested := false
 
+func assignment_escape(candidate: Dictionary, visible: bool) -> bool:
+	# This variant validates actual body cooldown, weapon reach and target access.
+	return candidate.get("id") == action_id and candidate.get("plan") == &"melee" and validate(candidate, visible)
+
 
 
 
@@ -70,7 +74,7 @@ func assess_engagement_point(point: Vector3, threat: Vector3) -> Dictionary:
 	var band: Vector2 = _ranged_distance_band()
 	if not _engagement_point_valid(point, band, threat):
 		return {}
-	var path: PackedVector3Array = context.cover_selection._path_to(actor.global_position, point)
+	var path: PackedVector3Array = context.routes.planning_path(actor.global_position, point)
 	if path.is_empty():
 		return {}
 	var current_distance: float = context._horizontal_distance(threat)
@@ -91,8 +95,12 @@ func _engagement_point_valid(point: Vector3, band: Vector2, threat: Vector3 = Ve
 		return false
 	if point.distance_to(threat) > maxf(context.perception.sight_distance, context.perception.close_awareness_radius):
 		return false
-	var shot_origin: Vector3 = point + actor.get_shot_origin() - actor.global_position
-	var target: Vector3 = threat + Vector3.UP * 0.8
+	var shot_origin: Vector3 = actor.get_posture_muzzle_position(false, point)
+	var target: Vector3 = context.known_target_point(threat)
+	var shared: Dictionary = context.fresh_shared_contact()
+	if not shared.is_empty():
+		if context.shared_contact_information(point, 0.0, shared) >= context.utility_horizon_seconds: return false
+		if shared.get("aim_position", Vector3.INF).is_finite(): target = shared.aim_position
 	return (shot_origin.distance_to(target) <= actor.weapon.fire_range
 		and context.is_position_free(point)
 		and context.fire.has_clear_firing_lane(shot_origin, target - shot_origin, shot_origin.distance_to(target)))
@@ -106,7 +114,7 @@ func is_engagement_destination_valid(destination: Dictionary, check_path: bool =
 		return false
 	if not check_path:
 		return true
-	var path: PackedVector3Array = context.cover_selection._path_to(actor.global_position, destination.position)
+	var path: PackedVector3Array = context.routes.planning_path(actor.global_position, destination.position)
 	if path.is_empty():
 		return false
 	var distance: float = context._horizontal_distance(context.last_known_position)
@@ -118,7 +126,8 @@ func is_engagement_destination_valid(destination: Dictionary, check_path: bool =
 func step_evaluated_engagement(destination: Dictionary, delta: float, sees_player: bool) -> Vector3:
 	ranged_repath_timer = maxf(0.0, ranged_repath_timer - delta)
 	var recheck_path: bool = not ranged_has_destination or ranged_repath_timer <= 0.0
-	if not sees_player or not is_engagement_destination_valid(destination, recheck_path):
+	var shared_approach: bool = plan.get("plan", &"") == &"shared_contact" and not context.fresh_shared_contact().is_empty()
+	if (not sees_player and not shared_approach) or not is_engagement_destination_valid(destination, recheck_path):
 		ranged_has_destination = false
 		context.invalidate_utility()
 		return Vector3.ZERO
@@ -203,7 +212,7 @@ func reset() -> void:
 	reset_movement_progress()
 
 func evaluation_points() -> Array:
-	return get_engagement_candidate_points() if context.sees_player else []
+	return get_engagement_candidate_points() if context.sees_player or not context.fresh_shared_contact().is_empty() else []
 
 func evaluation_weight() -> int:
 	return 1
@@ -215,44 +224,87 @@ func evaluate_point(point: Variant) -> Dictionary:
 	var candidate := assess_engagement_point(point, context.last_known_position)
 	if candidate.is_empty():
 		return {}
-	var route: Dictionary = context.spatial.assess_route(context, candidate.path, context.last_known_position, 1.0, context.spatial._reload_seconds(context), true)
+	var visible: bool = context.sees_player
+	var route: Dictionary = context.spatial.assess_route(context, candidate.path, context.last_known_position, 1.0, context.spatial._reload_seconds(context), visible)
 	var exposed: float = route.exposure + context._reload_exposure(candidate.position, context.last_known_position) * maxf(0.0, context.utility_horizon_seconds - route.seconds)
+	if not visible:
+		var information: float = context.shared_contact_information(candidate.position, route.seconds)
+		return {"destination": candidate, "cost": context.spatial.score(context.utility_horizon_seconds, exposed, information)}
 	return {"destination": candidate, "cost": context.spatial.score(maxf(route.seconds - route.fire_seconds, context.spatial._ammo_wait(context)), exposed)}
 
 func collect_candidates(visible: bool) -> Array[Dictionary]:
 	var result: Array[Dictionary] = []
-	if not is_enabled() or not visible:
+	if not is_enabled():
 		return result
+	if not visible: return _shared_contact_candidates()
 	if _running and plan.get("plan") == &"melee" and _melee_requested and context.melee.is_active_for(action_id):
 		return [plan]
 	var can_melee: bool = context.melee.can_request(visible)
+	var melee_facts := _melee_facts() if can_melee else {}
 	if can_melee:
-		result.append(_melee_option())
+		result.append(_melee_option({}, melee_facts))
+	# 空装备、兵种切换卸装或关闭射击时不评估枪械方案；有效近战方案仍保留。
+	if not actor.can_use_firearms():
+		return result
 	var threat: Vector3 = context.last_known_position
 	var horizon: float = context.utility_horizon_seconds
-	var target := threat + Vector3.UP * 0.8
+	var target: Vector3 = context.known_target_point(threat)
 	var origin: Vector3 = actor.get_shot_origin()
 	var wait: float = context.spatial._ammo_wait(context)
+	var ammo_wait := wait
+	var reload_seconds: float = context.spatial._reload_seconds(context)
 	if origin.distance_to(target) > actor.weapon.fire_range or not context.fire.has_clear_firing_lane(origin, target - origin, origin.distance_to(target)):
 		wait = horizon
 	result.append(option({}, wait, context._reload_exposure(actor.global_position, threat) * horizon))
 	var destinations: Array = context.spatial.destinations(self)
 	if _running and not plan.get("destination", {}).is_empty():
 		destinations.append(plan.destination)
+	var checked_points: Dictionary = {}
 	for destination in destinations:
-		var checked := assess_engagement_point(destination.position, threat)
+		# Preserve all candidates, including the running plan, while validating an
+		# exactly repeated position only once in this synchronous collection.
+		if not checked_points.has(destination.position):
+			checked_points[destination.position] = assess_engagement_point(destination.position, threat)
+		var checked: Dictionary = checked_points[destination.position].duplicate()
 		if checked.is_empty():
 			continue
-		var route: Dictionary = context.spatial.assess_route(context, checked.path, threat, 1.0, context.spatial._reload_seconds(context), true)
-		result.append(option(checked, maxf(route.seconds - route.fire_seconds, context.spatial._ammo_wait(context)), route.exposure + context._reload_exposure(checked.position, threat) * maxf(0.0, horizon - route.seconds)))
+		var route: Dictionary = context.spatial.assess_route(context, checked.path, threat, 1.0, reload_seconds, true)
+		result.append(option(checked, maxf(route.seconds - route.fire_seconds, ammo_wait), route.exposure + context._reload_exposure(checked.position, threat) * maxf(0.0, horizon - route.seconds)))
 		if can_melee:
-			result.append(_melee_option(checked))
+			result.append(_melee_option(checked, melee_facts))
+	return result
+
+func _shared_contact_candidates() -> Array[Dictionary]:
+	var result: Array[Dictionary] = []
+	var report: Dictionary = context.fresh_shared_contact()
+	if report.is_empty() or not actor.can_use_firearms(): return result
+	var threat: Vector3 = report.position
+	var horizon: float = context.utility_horizon_seconds
+	var destinations: Array = context.spatial.destinations(self)
+	if _running and plan.get("plan", &"") == &"shared_contact" and not plan.get("destination", {}).is_empty(): destinations.append(plan.destination)
+	var checked_points := {}
+	for destination: Dictionary in destinations:
+		if checked_points.has(destination.position): continue
+		checked_points[destination.position] = true
+		var checked := assess_engagement_point(destination.position, threat)
+		if checked.is_empty(): continue
+		var route: Dictionary = context.spatial.assess_route(context, checked.path, threat, 1.0, 0.0, false)
+		var information: float = context.shared_contact_information(checked.position, route.seconds, report)
+		if information >= horizon: continue
+		var exposure: float = route.exposure + context._reload_exposure(checked.position, threat) * maxf(0.0, horizon - route.seconds)
+		var candidate := option(checked, horizon, exposure, information, &"shared_contact")
+		candidate.target_id = report.target_id
+		candidate.known_position = threat
+		candidate.combat_contact = true
+		result.append(candidate)
 	return result
 
 func validate(candidate: Dictionary, visible: bool) -> bool:
+	if candidate.get("plan", &"") == &"shared_contact":
+		return _shared_plan_authorized(candidate, visible) and is_engagement_destination_valid(candidate.destination)
 	if candidate.get("plan") == &"melee":
 		return is_enabled() and context.melee.can_request(visible)
-	return is_enabled() and visible and (candidate.destination.is_empty() or is_engagement_destination_valid(candidate.destination))
+	return is_enabled() and visible and actor.can_use_firearms() and (candidate.destination.is_empty() or is_engagement_destination_valid(candidate.destination))
 
 func begin(candidate: Dictionary, visible: bool) -> bool:
 	super.begin(candidate, visible)
@@ -262,11 +314,25 @@ func begin(candidate: Dictionary, visible: bool) -> bool:
 	return true
 
 func valid(visible: bool) -> bool:
+	if plan.get("plan", &"") == &"shared_contact": return _running and _shared_plan_authorized(plan, visible)
 	if _running and is_enabled() and visible and plan.get("plan") == &"melee":
 		return context.melee.is_active_for(action_id) if _melee_requested else context.melee.can_request(visible)
-	return _running and is_enabled() and visible
+	return _running and is_enabled() and visible and actor.can_use_firearms()
+
+func _shared_plan_authorized(candidate: Dictionary, visible: bool) -> bool:
+	if not is_enabled() or visible or not actor.can_use_firearms(): return false
+	var report: Dictionary = context.fresh_shared_contact()
+	return not report.is_empty() and candidate.get("target_id", 0) == report.target_id and candidate.get("known_position", Vector3.INF).distance_to(report.position) <= 0.5 and not candidate.get("destination", {}).is_empty()
 
 func tick(delta: float, visible: bool) -> Dictionary:
+	if plan.get("plan", &"") == &"shared_contact":
+		if not valid(visible):
+			_running = false
+			return motion(Vector3.ZERO)
+		var direction := step_evaluated_engagement(plan.destination, delta, false)
+		# Even an unobstructed expected firing position is only an approach until
+		# this observer personally reacquires the target through normal perception.
+		return motion(direction, 1.0, plan.known_position - actor.global_position)
 	if plan.get("plan") == &"melee":
 		context.state = context.State.HOLD_POSITION
 		if _melee_requested and not context.melee.is_active_for(action_id):
@@ -286,13 +352,17 @@ func tick(delta: float, visible: bool) -> Dictionary:
 		direction = step_evaluated_engagement(plan.destination, delta, visible)
 	return motion(direction, 1.0, Vector3.INF, {"owner": action_id, "mode": &"visible"})
 
+func state_label() -> String:
+	if plan.get("plan", &"") == &"shared_contact": return "共享接敌"
+	return super.state_label()
+
 
 func can_interrupt(_next: Dictionary, _visible: bool) -> bool:
 	return not context.melee.is_active_for(action_id)
 
 
 ## 这是接敌行为的一个方案，不是新的默认／战术行为；收集只估计结果，不发起攻击。
-func _melee_option(destination: Dictionary = {}) -> Dictionary:
+func _melee_facts() -> Dictionary:
 	var settings: Dictionary = context.melee.weapon_settings()
 	var horizon: float = context.utility_horizon_seconds
 	var occupied: float = minf(horizon, settings.windup + settings.recovery)
@@ -306,11 +376,24 @@ func _melee_option(destination: Dictionary = {}) -> Dictionary:
 	var retained_distance := maxf(0.0, push_distance - closing_speed * settings.windup)
 	var pushed_threat: Vector3 = threat + away * retained_distance
 	var before: float = context._reload_exposure(actor.global_position, threat)
-	var reload_wait: float = context.spatial._ammo_wait(context)
+	# Melee consumes existing burst/shot waits, but clears reaction and aim.
+	# It cancels reload progress: only an empty magazine needs a new full reload.
+	var resume: float = occupied
 	if actor.ammo.magazine_rounds == 0 and actor.weapon != null:
-		reload_wait = maxf(reload_wait, actor.weapon.reload_seconds)
-	var ready: float = occupied + reload_wait
+		resume += maxf(0.1, actor.weapon.reload_seconds)
+	var ready: float = maxf(resume + maxf(0.0, context.fire.fire_reaction_seconds),
+		maxf(context.fire.pause_after_no_fire_seconds(), context.fire.shot_wait_seconds())) + context.fire.estimated_reset_steady_wait()
+	if not actor.can_use_firearms(): ready = horizon
 	var windup: float = minf(horizon, settings.windup)
+	return {"horizon": horizon, "before": before, "pushed_threat": pushed_threat, "ready": ready, "windup": windup}
+
+func _melee_option(destination: Dictionary = {}, facts: Dictionary = {}) -> Dictionary:
+	if facts.is_empty(): facts = _melee_facts()
+	var horizon: float = facts.horizon
+	var before: float = facts.before
+	var pushed_threat: Vector3 = facts.pushed_threat
+	var ready: float = facts.ready
+	var windup: float = facts.windup
 	if destination.is_empty():
 		var exposure: float = before * windup + context._reload_exposure(actor.global_position, pushed_threat) * maxf(0.0, horizon - windup)
 		return option({}, ready, exposure, 0.0, &"melee")

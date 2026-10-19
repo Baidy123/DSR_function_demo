@@ -30,6 +30,7 @@ const SPREAD_FIELDS := {
 	"spread_target_move_fast_speed": "高速目标速度",
 }
 const COMMON_FIELDS := {
+	"camera_view_size": "视野大小（0沿用场景）", "camera_transition_seconds": "视野过渡时间",
 	"damage": "单发伤害", "aim_range": "锁定距离", "fire_range": "弹道射程",
 	"cone_angle_degrees": "索敌总角度", "locked_move_multiplier": "锁定移动倍率",
 	"shot_interval": "射击间隔",
@@ -40,11 +41,13 @@ const COMMON_FIELDS := {
 	"melee_windup_seconds": "近战前摇（秒）", "melee_recovery_seconds": "近战收招（秒）",
 	"melee_interval": "近战间隔（秒）", "melee_knockback_distance": "击退距离（米）",
 	"melee_knockback_seconds": "击退时长（秒）",
+	"melee_slow_multiplier": "命中后移动速度", "melee_slow_seconds": "命中减速时长（秒）",
 }
 const PERCENT_FIELDS := [
 	"initial_accuracy", "moving_accuracy_cap", "shot_accuracy_penalty", "minimum_accuracy",
 	"target_move_accuracy_loss_per_meter_slow", "target_move_accuracy_loss_per_meter_fast",
 	"target_move_minimum_accuracy", "player_move_accuracy_loss_per_meter",
+	"melee_slow_multiplier",
 ]
 const FIREARM_FIELDS := [
 	"ammo_type", "magazine_capacity", "reload_seconds", "shot_noise", "shot_noise_radius",

@@ -7,13 +7,13 @@ func _initialize() -> void:
 	_run.call_deferred()
 
 func _run() -> void:
-	var scene = load("res://scenes/main.tscn").instantiate()
+	var scene = preload("res://tests/enemy/enemy_fire_fixture.gd").legacy_scene()
 	root.add_child(scene)
 	current_scene = scene
 	var player = scene.get_node("Player")
 	var combat = player.get_node("Combat")
 	var health = player.get_node("Health")
-	var actor = scene.get_node("Arena/Enemy")
+	var actor = preload("res://tests/enemy/enemy_fire_fixture.gd").primary_enemy(scene)
 	var ai = actor.get_node("AI")
 	player.set_physics_process(false)
 	ai.set_physics_process(false)

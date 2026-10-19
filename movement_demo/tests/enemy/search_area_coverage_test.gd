@@ -4,10 +4,10 @@ func _initialize() -> void:
 	_run.call_deferred()
 
 func _run() -> void:
-	var scene = load("res://scenes/main.tscn").instantiate()
+	var scene = preload("res://tests/enemy/enemy_fire_fixture.gd").legacy_scene()
 	root.add_child(scene)
 	current_scene = scene
-	var enemy = scene.get_node("Arena/Enemy")
+	var enemy = preload("res://tests/enemy/enemy_fire_fixture.gd").primary_enemy(scene)
 	enemy.get_node("AI").set_physics_process(false)
 	enemy.get_node("AI").cover_selection.debug_attack_points = false
 	enemy.get_node("AI").actions[&"search"].debug_tracking_cheat = false

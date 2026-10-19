@@ -16,14 +16,18 @@ func _process(_delta: float) -> void:
 	visible = combat.is_aiming and is_instance_valid(target) and camera != null and not combat.player.is_in_dialogue
 	if not visible:
 		return
-	var point: Vector3 = target.global_position + Vector3.UP * 0.8
+	var point: Vector3 = combat.get_locked_aim_point()
+	# UI follows the same interpolated body that is drawn between physics ticks.
+	# Combat retains the physical point for visibility and actual ballistics.
+	point = target.get_global_transform_interpolated() * target.to_local(point)
 	if camera.is_position_behind(point):
 		hide()
 		return
 	# 两种模式共用原圆形准星，大小提示稳定度，不代表实际弹道范围。
 	position = camera.unproject_position(point)
-	radius = lerpf(maximum_radius, minimum_radius, clampf(combat.accuracy, 0.0, 1.0))
-	tint = Color(1.0, 0.55, 0.2).lerp(Color(0.35, 1.0, 0.55), combat.accuracy)
+	var stability: float = combat.get_effective_accuracy()
+	radius = lerpf(maximum_radius, minimum_radius, stability)
+	tint = Color(1.0, 0.55, 0.2).lerp(Color(0.35, 1.0, 0.55), stability)
 	queue_redraw()
 
 

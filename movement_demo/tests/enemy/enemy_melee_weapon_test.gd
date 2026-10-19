@@ -33,10 +33,10 @@ func _run() -> void:
 	var restored: WeaponData = load("res://logs/melee_weapon_work/roundtrip.tres")
 	check(saved == OK and restored.fire_mode == WeaponData.FireMode.MELEE and restored.melee_damage == weapon.melee_damage, "Fire Mode及近战数值保存重载正确")
 
-	var scene = load("res://scenes/main.tscn").instantiate()
+	var scene = preload("res://tests/enemy/enemy_fire_fixture.gd").legacy_scene()
 	root.add_child(scene)
 	current_scene = scene
-	var actor = scene.get_node("Arena/Enemy")
+	var actor = preload("res://tests/enemy/enemy_fire_fixture.gd").primary_enemy(scene)
 	var ai = actor.get_node("AI")
 	var player = scene.get_node("Player")
 	ai.set_physics_process(false)
@@ -59,7 +59,8 @@ func _run() -> void:
 			saw_disruption = saw_disruption or is_zero_approx(player.combat.accuracy)
 			saw_push = saw_push or player._melee_push_remaining > 0.0)
 	for frame in 4: await physics_frame
-	check(ai.actions.size() == 3 and ai.actions.has(&"melee_engage") and not ai.actions.has(&"melee_strike"), "沿用近战兵原三个默认行为")
+	var defaults: Array = ai.actions.values().filter(func(action): return action.definition.category == EnemyActionDefinition.Category.DEFAULT).map(func(action): return action.action_id)
+	check(defaults.size() == 3 and defaults.has(&"melee_engage") and defaults.has(&"patrol") and defaults.has(&"search") and not ai.actions.has(&"melee_strike"), "沿用近战兵原三个默认行为，另行解锁的共享掩体不算默认行为")
 	# 保留实际地图、训练和评分；只配置既有兵种与武器，不调用挥击或强选动作。
 	for frame in 360:
 		await physics_frame
@@ -128,16 +129,16 @@ func _run() -> void:
 	await process_frame
 	await process_frame
 	for has_fallback in [true, false]:
-		var configured = load("res://scenes/main.tscn").instantiate()
+		var configured = preload("res://tests/enemy/enemy_fire_fixture.gd").legacy_scene()
 		var configured_slots = configured.get_node("Player/WeaponSlots")
 		configured_slots.primary_weapon = MeleeWeapon
 		configured_slots.secondary_weapon = gun if has_fallback else MeleeWeapon
 		configured_slots.starting_slot = 0
-		configured.get_node("Arena/Enemy").weapon = MeleeWeapon
+		preload("res://tests/enemy/enemy_fire_fixture.gd").primary_enemy(configured).weapon = MeleeWeapon
 		root.add_child(configured)
 		current_scene = configured
 		check(configured.get_node("Player/Combat").weapon == (gun if has_fallback else null), "玩家出生误配时选择有效备用槽或保持无武器")
-		check(configured.get_node("Arena/Enemy").weapon == null, "远程兵出生误配纯近战时按未装备处理")
+		check(preload("res://tests/enemy/enemy_fire_fixture.gd").primary_enemy(configured).weapon == null, "远程兵出生误配纯近战时按未装备处理")
 		configured.queue_free()
 		await process_frame
 		await process_frame

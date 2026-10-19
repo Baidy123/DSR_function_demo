@@ -24,3 +24,28 @@ func _init() -> void:
 	set(value):
 		close_awareness_radius = value
 		mark_override(&"close_awareness_radius")
+
+## 连续看见玩家换弹多久后形成机会判断；失视打断尚未完成的观察。
+@export_range(0.0, 2.0, 0.05) var reload_observation_seconds: float = 0.15:
+	set(value):
+		reload_observation_seconds = value
+		mark_override(&"reload_observation_seconds")
+## 最后一次观察到换弹后保留多久的机会证据；不读取墙后的换弹进度。
+@export_range(0.0, 3.0, 0.05) var reload_memory_seconds: float = 0.8:
+	set(value):
+		reload_memory_seconds = value
+		mark_override(&"reload_memory_seconds")
+
+## Optional non-visual exact clue, separately authorized for finite suppression.
+@export var close_cover_intelligence_enabled := true:
+	set(value):
+		close_cover_intelligence_enabled = value
+		mark_override(&"close_cover_intelligence_enabled")
+@export_range(0.5, 5.0, 0.1) var close_cover_intelligence_distance := 2.0:
+	set(value):
+		close_cover_intelligence_distance = value
+		mark_override(&"close_cover_intelligence_distance")
+@export_range(0.5, 20.0, 0.5) var close_cover_intelligence_cooldown := 4.0:
+	set(value):
+		close_cover_intelligence_cooldown = value
+		mark_override(&"close_cover_intelligence_cooldown")

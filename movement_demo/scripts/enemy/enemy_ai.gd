@@ -10,7 +10,10 @@ var actions: Dictionary = {}
 var current_action
 var utility_options: Array[Dictionary] = []
 var _utility_timer := 0.0
+var _utility_boundary_recheck := false
 var _utility_elapsed := 0.0
+var _initial_geometry_revision := 0
+var _team_decision_revision := 0
 var _configuration := 0
 var _implementations: Dictionary = {}
 var _enabled_last_frame := false
@@ -47,6 +50,8 @@ var utility_current: Dictionary:
 ## 每秒信息损失的代价权重，例如躲进掩体后无法持续观察目标。
 ## 调大更重视保持/重新获得目标信息，调小更能接受失视躲藏；0表示不计此项代价。
 @export_range(0.0, 10.0, 0.1) var utility_information_weight: float = 1.0
+## 每秒有效协作收益的信用；0保留协作候选但关闭团队收益偏好。
+@export_range(0.0, 10.0, 0.1) var utility_cooperation_weight: float = 4.0
 ## 正常情况下重新收集并比较动作候选的间隔，单位为秒；受击、配置变化等可请求提前重评。
 ## 调小反应更及时但评估更频繁，调大更省计算但可能反应较慢；重评后仍需满足切换条件。
 @export_range(0.1, 2.0, 0.1) var utility_recheck_seconds: float = 0.4
@@ -87,12 +92,13 @@ func _ready() -> void:
 func refresh_configuration(force: bool = false) -> void:
 	var unit: EnemyUnitProfile = unit_type.profile
 	var profile: EnemyTrainingProfile = training.profile
-	var fingerprint := hash([unit.fingerprint() if unit != null else 0, profile.fingerprint() if profile != null else 0])
+	var team_abilities: Dictionary = context.team_cooperation_abilities()
+	var fingerprint := hash([unit.fingerprint() if unit != null else 0, profile.fingerprint() if profile != null else 0, team_abilities])
 	if not force and fingerprint == _configuration: return
 	_configuration = fingerprint
 	context.unit = unit
 	context.training = profile
-	var resolved := Library.resolve(unit, profile)
+	var resolved := Library.resolve(unit, profile, team_abilities)
 	context.permitted = resolved.definitions
 	for error in resolved.errors: push_warning(error)
 	for id in actions.keys():
@@ -116,6 +122,7 @@ func refresh_configuration(force: bool = false) -> void:
 		_implementations[id] = action.get_script()
 		context.spatial.register(action)
 	context.spatial.reset_evaluation()
+	context.coordination_configuration_changed()
 	invalidate_utility()
 
 func _physics_process(delta: float) -> void:
@@ -126,15 +133,17 @@ func _physics_process(delta: float) -> void:
 	refresh_configuration()
 	frame_costs.configuration = Time.get_ticks_usec() - stamp
 	stamp = Time.get_ticks_usec()
-	for key in [&"utility_horizon_seconds", &"utility_fire_weight", &"utility_risk_weight", &"utility_information_weight", &"utility_threat_half_life_seconds"]:
+	for key in [&"utility_horizon_seconds", &"utility_fire_weight", &"utility_risk_weight", &"utility_information_weight", &"utility_cooperation_weight", &"utility_threat_half_life_seconds"]:
 		context.set(key, get(key))
 	var enabled: bool = not actor.is_dead and is_arena_active() and not player.is_dead() and not player.is_in_dialogue
 	if not enabled:
+		if is_instance_valid(player) and player.is_in_dialogue: actor.clear_melee_hit_effects()
 		if _enabled_last_frame: reset_actions()
 		_enabled_last_frame = false
 		actor.cancel_reload()
 		context.melee.cancel()
-		actor.velocity = Vector3.ZERO
+		if not actor.is_vaulting(): actor.velocity = Vector3.ZERO
+		else: actor.body_motion.interrupt()
 		context.fire.update(delta, false, false, {})
 		return
 	_enabled_last_frame = true
@@ -144,6 +153,16 @@ func _physics_process(delta: float) -> void:
 	frame_costs.perception = Time.get_ticks_usec() - stamp
 	stamp = Time.get_ticks_usec()
 	context.spatial.advance_evaluation()
+	if _initial_geometry_revision != context.spatial.initial_ready_revision:
+		_initial_geometry_revision = context.spatial.initial_ready_revision
+		# A newly prepared squad option can disappear as this member walks before
+		# the ordinary timer elapses. Reconsider once through the normal selector;
+		# this does not scan extra points, force an action or release a body lock.
+		if context.team_cooperation_abilities().get("level", 0) == 2 and context.cooperation_member_count() > 1: invalidate_utility()
+	var team_revision: int = context.coordination_decision_revision()
+	if _team_decision_revision != team_revision:
+		_team_decision_revision = team_revision
+		invalidate_utility()
 	frame_costs.spatial = Time.get_ticks_usec() - stamp
 	stamp = Time.get_ticks_usec()
 	_update_utility_decision(delta, visible)
@@ -151,13 +170,19 @@ func _physics_process(delta: float) -> void:
 	stamp = Time.get_ticks_usec()
 	var output: Dictionary = {}
 	if current_action != null:
-		output = current_action.tick(delta, visible)
+		output = current_action.execute_tick(delta, visible)
 	var direction: Vector3 = output.get("direction", Vector3.ZERO)
+	actor.request_crouch(output.get("crouch", false))
+	if not output.get("vault", {}).is_empty(): actor.begin_vault(output.vault)
 	actor.face_direction(output.get("facing", Vector3.ZERO), delta)
 	# 先登记近战执行占用，再消费移动／射击意图；新行为同帧提交冲突请求也受身体约束。
 	context.melee.update(delta, visible, output.get("melee", {}))
 	actor.move_character(direction, delta, output.get("multiplier", 1.0))
-	context.fire.update(delta, visible, not direction.is_zero_approx(), output.get("fire", {}))
+	var moving: bool = not actor.get_local_movement_velocity().is_zero_approx() or Vector2(actor.velocity.x, actor.velocity.z).length_squared() > 0.0025
+	context.fire.update(delta, visible, moving, output.get("fire", {}))
+	context.cooperation_publish_execution(output)
+	if current_action != null and not context._coordination_execution.is_empty():
+		context.report_coordination_execution(current_action.execution_contract(visible))
 	frame_costs.execution = Time.get_ticks_usec() - stamp
 	if current_action != null and not output.get("running", true):
 		context.investigation_hint_allowed = true
@@ -168,46 +193,132 @@ func _physics_process(delta: float) -> void:
 func _update_utility_decision(delta: float, visible: bool) -> void:
 	_utility_elapsed += delta
 	_utility_timer -= delta
+	# A specifically scheduled hold-boundary check must not slip one physics
+	# step because subtraction leaves a positive floating-point tail.
+	if _utility_boundary_recheck and is_zero_approx(_utility_timer): _utility_timer = 0.0
+	if actor.is_vaulting(): return
 	var valid: bool = current_action != null and current_action.valid(visible)
 	if _utility_timer > 0.0 and (valid or current_action == null): return
 	_utility_timer = utility_recheck_seconds
+	_utility_boundary_recheck = false
+	context.prepare_coordination_evaluation()
 	utility_options = action_selector.assess_options(self, visible)
-	var best: Dictionary = action_selector.choose_option(utility_options, utility_current)
+	_publish_coordination_inputs(visible)
+	var contract: Dictionary = current_action.execution_contract(visible) if current_action != null and not context._coordination_execution.is_empty() else {}
+	context.report_coordination_execution(contract)
+	var bound: bool = current_action != null and context.coordination_continuation(contract, current_action.action_id)
+	var choices: Array[Dictionary] = context.coordination_choices(utility_options)
+	if bound and not contract.get("segment_boundary", true):
+		choices = choices.filter(func(candidate): return candidate.get("assignment_escape_verified", false) or candidate.get("coordination_offer_key", "") == context._coordination_execution.get("selected_offer_key", ""))
+	var best: Dictionary = action_selector.choose_option(choices, utility_current)
 	var cost := INF
 	for candidate in utility_options:
-		if action_selector.same_option(candidate, utility_current):
-			cost = candidate.cost
+		if not action_selector.same_option(candidate, utility_current): continue
+		cost = candidate.cost
+		if bound:
+			# A refreshed score does not replace the accepted short segment.
+			utility_current = utility_current.duplicate()
+			utility_current.cost = candidate.cost
+			utility_current.breakdown = candidate.get("breakdown", {})
+		else:
 			utility_current = candidate
-			if current_action != null: current_action.plan = candidate
-	valid = valid and is_finite(cost)
+		if current_action != null: current_action.plan = utility_current
+	var current_choice: Dictionary = {}
+	for candidate in choices:
+		if action_selector.same_option(candidate, utility_current):
+			current_choice = candidate
+			break
+	valid = valid and is_finite(cost) and not current_choice.is_empty()
+	if valid: valid = context.maintain_coordination_choice(current_choice)
+	# Body/action protection is independent of candidate availability or orders.
+	if current_action != null and not current_action.can_interrupt(best, visible): return
+	if bound and best.is_empty(): return
 	if best.is_empty():
 		_cancel_utility_execution()
 		context.state = State.IDLE
 		return
-	if valid and action_selector.same_option(best, utility_current): return
-	if valid and not current_action.can_interrupt(best, visible): return
-	if valid and not current_action.hold_released() and (_utility_elapsed < utility_hold_seconds or best.cost + utility_switch_advantage >= cost): return
+	var transition: bool = context.assignment_requires_transition(best, utility_current)
+	if bound and not transition and action_selector.same_option(best, utility_current): return
+	if valid and not transition and action_selector.same_option(best, utility_current): return
+	if valid and not transition and not current_action.hold_released():
+		if _utility_elapsed < utility_hold_seconds and not is_equal_approx(_utility_elapsed, utility_hold_seconds):
+			# Preserve the original bounded reconsideration at the hold boundary.
+			if not best.get("route", {}).is_empty() and best.cost + utility_switch_advantage < cost:
+				var remaining := utility_hold_seconds - _utility_elapsed
+				if remaining < _utility_timer:
+					_utility_timer = remaining
+					_utility_boundary_recheck = true
+			return
+		if best.cost + utility_switch_advantage >= cost: return
 	_start_utility_option(best, visible)
+
+func _publish_coordination_inputs(visible: bool) -> void:
+	var offers: Array[Dictionary] = []
+	var assignment: Dictionary = context.coordination_assignment()
+	if context.cooperation_enabled() and context.cooperation != null and context.cooperation_member_count() > 1:
+		for action in actions.values():
+			if action.is_enabled(): offers.append_array(action.coordination_offers(visible))
+	# Preview only work that the current execution can actually accept. An
+	# already accepted, valid segment keeps its own continuation while protected.
+	var publishable: Array[Dictionary] = utility_options
+	if context.cooperation_enabled() and context.cooperation != null and context.cooperation_member_count() > 1:
+		publishable = []
+		var contract: Dictionary = current_action.execution_contract(visible) if current_action != null else {}
+		var continuing: bool = current_action != null and context.coordination_continuation(contract, current_action.action_id)
+		var acceptance_times: Dictionary = {}
+		for candidate in utility_options:
+			var same_execution: bool = continuing and candidate.get("id") == current_action.action_id and candidate.get("coordination_offer_key", "") == context._coordination_execution.get("selected_offer_key", "")
+			if same_execution or current_action == null or current_action.can_interrupt(candidate, visible):
+				publishable.append(candidate)
+			elif candidate.get("id") == current_action.action_id and contract.get("valid", false):
+				var remaining: float = float(contract.get("remaining_seconds", 0.0))
+				if is_finite(remaining) and remaining > 0.0:
+					publishable.append(candidate)
+					acceptance_times[candidate.get("coordination_offer_key", "")] = context.evidence_elapsed_seconds + remaining + utility_recheck_seconds
+		for offer in offers:
+			if acceptance_times.has(offer.get("offer_key", "")): offer.accept_after = acceptance_times[offer.offer_key]
+	context.publish_coordination_offers(publishable, offers)
+	for candidate in utility_options:
+		# Always overwrite caller metadata; an urgent label grants no permission.
+		candidate.assignment_escape_verified = false
+		if assignment.is_empty(): continue
+		var owner = actions.get(candidate.get("id"))
+		if owner != null: candidate.assignment_escape_verified = owner.assignment_escape(candidate, visible)
 
 func _start_utility_option(candidate: Dictionary, visible: bool) -> void:
 	var next = actions.get(candidate.get("id"))
 	if next == null or not next.validate(candidate, visible):
 		invalidate_utility()
 		return
-	_cancel_utility_execution()
+	var transaction: Dictionary = context.prepare_coordination_choice(candidate)
+	if transaction.required and transaction.token.is_empty():
+		invalidate_utility()
+		return
+	_cancel_utility_execution(&"self_preservation" if candidate.get("assignment_escape_verified", false) and not context.coordination_assignment().is_empty() else &"switch")
 	current_action = next
 	utility_current = candidate
 	_utility_elapsed = 0.0
 	if not next.begin(candidate, visible):
+		context.rollback_coordination_choice(transaction)
 		_cancel_utility_execution(&"failed")
 		context.state = State.IDLE
 		invalidate_utility()
 		return
+	if not context.commit_coordination_choice(transaction):
+		context.rollback_coordination_choice(transaction)
+		_cancel_utility_execution(&"reservation_failed")
+		invalidate_utility()
+		return
+	# This same decision may have published previews before choosing a protected
+	# personal action. Withdraw those previews immediately; accepted work stays.
+	if context.cooperation_enabled() and context.cooperation != null and context.cooperation_member_count() > 1 and context._coordination_execution.is_empty() and not current_action.can_interrupt({}, visible):
+		_publish_coordination_inputs(visible)
 	if debug_utility and actor.debug_settings.enabled:
 		print("[AI][Utility] ", candidate.id, " cost=", candidate.get("cost", 0.0), " ", candidate.get("breakdown", {}))
 
 func _cancel_utility_execution(reason: StringName = &"switch") -> void:
 	if current_action != null: current_action.cancel(reason)
+	context.cooperation_clear_execution(reason)
 	current_action = null
 	utility_current = {}
 	context.fire.request = {}
@@ -227,11 +338,13 @@ func can_use_action(id: StringName) -> bool:
 	return context.can_use_action(id)
 
 func reset_actions() -> void:
+	actor.clear_local_movement()
 	_cancel_utility_execution(&"reset")
 	utility_options.clear()
 	for action in actions.values():
 		action._running = false
 		action.plan = {}
+		action.route_motion.reset()
 		action.reset()
 	context.fire.request = {}
 	context.fire.reset_fire_timing()
@@ -269,6 +382,7 @@ func _on_noise_heard(position: Vector3) -> void:
 	if NavigationServer3D.map_get_iteration_id(agent.get_navigation_map()) == 0: return
 	if context.noise_search_origin.is_finite() and context.noise_search_origin.distance_to(position) < 0.35: return
 	context.noise_search_origin = position
+	context.publish_coordination_noise(position)
 	context.last_known_position = position
 	context.is_alerted = true
 	_dispatch_event(&"noise", {"position": position})
@@ -294,6 +408,7 @@ func _exit_tree() -> void:
 		action.cancel(&"exit_tree")
 		context.spatial.unregister(action)
 	if context.spatial != null: context.spatial.context = null
+	context.routes.context = null
 	current_action = null
 	actions.clear()
 
@@ -310,8 +425,12 @@ func _resume_after_reparent() -> void:
 	context.fire.setup(context)
 	context.melee.setup(context)
 	context.spatial.context = context
+	context.routes.context = context
 	refresh_configuration(true)
-	_reset_decisions()
+	if context.area_changed_this_refresh: _reset_decisions()
+	else:
+		reset_actions()
+		_update_label()
 	_restoring_environment = false
 	set_physics_process(_physics_was_enabled)
 

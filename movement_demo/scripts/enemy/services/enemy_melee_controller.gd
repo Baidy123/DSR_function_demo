@@ -28,7 +28,8 @@ func weapon_settings() -> Dictionary:
 		"angle": clampf(weapon.melee_angle_degrees, 1.0, 180.0), "height": maxf(0.0, weapon.melee_height_tolerance),
 		"windup": maxf(0.0, weapon.melee_windup_seconds), "recovery": maxf(0.0, weapon.melee_recovery_seconds),
 		"interval": maxf(0.0, weapon.melee_interval), "distance": maxf(0.0, weapon.melee_knockback_distance),
-		"duration": maxf(0.05, weapon.melee_knockback_seconds)}
+		"duration": maxf(0.05, weapon.melee_knockback_seconds),
+		"slow_multiplier": weapon.melee_slow_multiplier, "slow_seconds": weapon.melee_slow_seconds}
 
 
 func can_request(visible: bool) -> bool:
@@ -43,6 +44,17 @@ func is_active_for(action_id: StringName) -> bool:
 ## 行为只查询执行许可；阶段如何划分由控制器和身体内部维护。
 func allows_movement(action_id: StringName) -> bool:
 	return is_active_for(action_id) and context.actor.can_move()
+
+## Actual nearby pressure is separate from ranged fire readiness.
+func support_window(visible: bool) -> float:
+	if not visible or not _environment_valid(): return 0.0
+	if phase == Phase.WINDUP and context.actor.melee_active:
+		if context.actor.melee_target_reachable(context.player, settings, direction):
+			return maxf(0.0, float(settings.windup) - elapsed)
+	if can_request(visible):
+		var values := weapon_settings()
+		return maxf(0.0, float(values.windup))
+	return 0.0
 
 
 ## 表现读取独立快照，不参与执行许可判断，也不能修改控制器进度。

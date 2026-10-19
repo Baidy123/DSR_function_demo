@@ -5,6 +5,8 @@ enum CombatType { MELEE, RANGED }
 var state: State = State.IDLE
 var last_known_position: Vector3 = Vector3.INF
 var last_seen_position: Vector3 = Vector3.INF
+## Actual observed body sample with a clear muzzle lane; never inferred from hidden pose.
+var last_seen_aim_position: Vector3 = Vector3.INF
 var last_seen_direction := Vector3.ZERO
 var observed_velocity := Vector3.ZERO
 var has_visual_memory := false
@@ -21,3 +23,14 @@ var utility_rejected_attack_points: Array[Vector3] = []
 var blocked_destinations: Array[Dictionary] = []
 var patrol_pause_timer := 0.0
 var investigation_hint_allowed := false
+## 活跃决策时间只在证据更新中推进；供动作保存自己的截止时间，暂停不推进。
+var evidence_elapsed_seconds := 0.0
+var memory_generation := 0
+var reload_observation_elapsed := 0.0
+var observed_reload_remaining := 0.0
+
+## Evidence only: action timers and execution remain in action instances.
+var suppression_evidence: Dictionary = {}
+var exact_cover_clue: Dictionary = {}
+var _evidence_serial := 0
+var suppression_consumed_id := -1

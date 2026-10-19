@@ -2,6 +2,12 @@ extends SceneTree
 
 class Body extends Node3D:
 	var move_speed: float = 1.0
+	func get_posture_eye_position(crouched: bool, feet: Vector3 = Vector3.INF) -> Vector3:
+		return (global_position if not feet.is_finite() else feet) + Vector3.UP * (0.88 if crouched else 1.55)
+	func get_posture_muzzle_position(crouched: bool, feet: Vector3 = Vector3.INF) -> Vector3:
+		return (global_position if not feet.is_finite() else feet) + Vector3.UP * (0.72 if crouched else 1.30)
+	func get_posture_body_height(crouched: bool) -> float:
+		return 1.0 if crouched else 1.75
 
 class Context extends Node:
 	var utility_horizon_seconds: float = 4.0
@@ -72,10 +78,10 @@ func _run() -> void:
 	quit(1 if failures else 0)
 
 func check_scene(selector: RefCounted) -> void:
-	var scene = load("res://scenes/main.tscn").instantiate()
+	var scene = preload("res://tests/enemy/enemy_fire_fixture.gd").legacy_scene()
 	root.add_child(scene)
 	current_scene = scene
-	var enemy = scene.get_node("Arena/Enemy")
+	var enemy = preload("res://tests/enemy/enemy_fire_fixture.gd").primary_enemy(scene)
 	var ai = enemy.get_node("AI")
 	var player = scene.get_node("Player")
 	var arena = scene.get_node("Arena")

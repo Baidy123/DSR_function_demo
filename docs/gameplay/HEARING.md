@@ -6,8 +6,8 @@
 
 | 位置 | 参数 | 当前试玩默认值 |
 | --- | --- | --- |
-| Main/Player → 移动声音 | Movement Noise Radius / Sprint Noise Radius | 普通 3 米／奔跑 6 米 |
-| Main/Arena/Enemy → 移动声音 | Movement Noise Radius / Fast Movement Noise Radius | 普通 3 米／快速 6 米 |
+| Main/Player → 移动声音 | Movement Noise Radius / Crouch Noise Multiplier / Sprint Noise Multiplier | 基础 3 米／蹲行 ×0.5／奔跑 ×2 |
+| Main/Arena/Enemy → 移动声音 | Movement Noise Radius / Crouching Noise Multiplier / Fast Noise Multiplier | 基础 3 米／蹲行 ×0.5／快速 ×2，各自独立配置 |
 | 上述两个角色节点 | Movement Noise Interval | 持续移动每 0.4 秒发声 |
 | 武器 `.tres`（例如 test_pistol、test_sidearm、enemy_test_pistol） | Shot Noise Radius／枪声半径（米） | 14 米 |
 | Movement Noise 或 Shot Noise 展开的声音资源 | Occluded Range Multiplier | 隔墙半径倍率 0.4 |
@@ -15,9 +15,11 @@
 
 半径为直接 `@export` 参数：移动范围归角色脚本，枪声范围归 WeaponData，声音资源不再重复保存半径。玩家主／副武器也可从 Player/WeaponSlots 展开；敌人从 Enemy/Weapon 展开。
 
-半径设为 0，或对应声音资源留空，就不产生该类声音事件。角色之间的移动半径独立；武器半径属于该武器资源，共用同一把武器资源的角色会使用同一半径。默认声音资源也是共享的，若要独立修改隔墙倍率或预留音频，请先将声音资源设为唯一或另存一份。
+对应姿态的有效半径为 0，或对应声音资源留空，就不产生该类声音事件。角色之间的移动半径独立；武器半径属于该武器资源，共用同一把武器资源的角色会使用同一半径。默认声音资源也是共享的，若要独立修改隔墙倍率或预留音频，请先将声音资源设为唯一或另存一份。
 
-玩家按当帧奔跑状态选半径；敌人执行移动的速度倍率大于 1 时用快速半径，普通移动和慢走用普通半径。两者都必须发生真实水平位移才发声，站立、原地转身、完全顶住墙不发出脚步声。仍共用原隔墙衰减资源与 0.4 秒发声间隔。被冷却拒绝的射击不发声。
+玩家按当帧姿态／奔跑状态计算半径；敌人执行移动的速度倍率大于 1 时用快速倍率，普通移动和慢走用基础半径。蹲行默认半径 1.5 米，奔跑默认 6 米，蹲行不叠加奔跑倍率。翻越不发普通脚步声。两者都必须发生真实水平位移才发声，站立、原地转身、完全顶住墙不发出脚步声。仍共用原隔墙衰减资源与 0.4 秒发声间隔。被冷却拒绝的射击不发声；枪声不乘蹲行或奔跑倍率。
+
+旧场景保存的 `sprint_noise_radius`（玩家）／`fast_movement_noise_radius`（敌人）通过兼容入口保留原有效范围，在可换算时归一到基础半径和倍率。新调参使用倍率；基础半径为零而旧快速半径非零的特殊配置仍保留旧快速声音，不用默认值悄悄覆盖。该兼容只负责旧数据，不新增另一套运行时调参来源。
 
 ## 怎样看声音范围
 

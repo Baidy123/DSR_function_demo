@@ -1,7 +1,19 @@
 extends "res://scripts/enemy/actions/enemy_action.gd"
 
+const Approach = preload("res://scripts/enemy/services/enemy_melee_approach.gd")
+
+func assignment_escape(candidate: Dictionary, visible: bool) -> bool:
+	# Approach becomes immediate defense only when its next tick can truly strike.
+	return candidate.get("id") == action_id and is_enabled() and context.melee.can_request(visible) and validate(candidate, visible)
+
 func collect_candidates(visible: bool) -> Array[Dictionary]:
-	return [option({}, context.utility_horizon_seconds, 0.0)] if visible else []
+	if not visible: return []
+	var path: PackedVector3Array = Approach.contact_path(context)
+	if path.is_empty(): return []
+	var candidate := option({}, 0.0, 0.0)
+	candidate.outcome = Approach.contact_outcome(context, path)
+	candidate.route_target = path[path.size() - 1]
+	return [candidate]
 
 func validate(_candidate: Dictionary, visible: bool) -> bool:
 	return is_enabled() and visible

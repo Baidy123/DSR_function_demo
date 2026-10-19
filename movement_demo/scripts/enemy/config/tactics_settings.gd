@@ -31,16 +31,26 @@ func _init() -> void:
 	set(value):
 		fire_stability_target = value
 		mark_override(&"fire_stability_target")
-## 每轮实际打出几枪后暂停；只统计执行成功的射击，不按命中次数计数。
+## 普通交战每轮实际打出几枪后观察；只统计成功发射，不按命中次数计数。
 @export_range(1, 20, 1) var burst_shot_count: int = 3:
 	set(value):
 		burst_shot_count = value
 		mark_override(&"burst_shot_count")
 ## 每轮最后一枪后的停火时间（秒）；与枪械冷却并行，必须都结束才能再开火。
-@export_range(0.0, 10.0, 0.05) var burst_pause_seconds: float = 1.0:
+@export_range(0.0, 10.0, 0.05) var burst_pause_seconds: float = 1.8:
 	set(value):
 		burst_pause_seconds = value
 		mark_override(&"burst_pause_seconds")
+## AI 扣扳机的最短间隔倍率；不改变 WeaponData 或玩家机械射速，1恢复原间隔。
+@export_range(1.0, 5.0, 0.05) var shot_interval_multiplier: float = 1.5:
+	set(value):
+		shot_interval_multiplier = value
+		mark_override(&"shot_interval_multiplier")
+## 仅在响应真实队友推进／换弹／撤退请求时延长一轮；请求消失即恢复普通短点射。
+@export_range(1, 20, 1) var support_burst_shot_count: int = 6:
+	set(value):
+		support_burst_shot_count = value
+		mark_override(&"support_burst_shot_count")
 ## 远程敌人希望保持的距离区间，单位为米。
 @export_range(1.0, 20.0, 0.5) var ranged_min_distance: float = 4.0:
 	set(value):

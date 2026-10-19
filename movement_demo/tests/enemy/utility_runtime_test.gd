@@ -7,11 +7,12 @@ func _initialize() -> void:
 	_run.call_deferred()
 
 func _run() -> void:
-	var scene = load("res://scenes/main.tscn").instantiate()
+	var scene = preload("res://tests/enemy/enemy_fire_fixture.gd").single_member_scene()
 	root.add_child(scene)
 	current_scene = scene
 	var arena = scene.get_node("Arena")
-	var enemy = arena.get_node("Enemy")
+	check(arena.get_children().filter(func(child): return child.has_node("AI")).size() == 1, "Single-member benchmark has exactly one active AI participant")
+	var enemy = preload("res://tests/enemy/enemy_fire_fixture.gd").primary_enemy(arena)
 	var ai = enemy.get_node("AI")
 	var player = scene.get_node("Player")
 	ai.set_physics_process(false)

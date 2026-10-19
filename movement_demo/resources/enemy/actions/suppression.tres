@@ -6,7 +6,7 @@
 [resource]
 script = ExtResource("1")
 action_id = &"suppression"
-display_name = "普通压制"
+display_name = "火力压制"
 category = 1
 implementation = ExtResource("2")
 config_section = &"suppression"

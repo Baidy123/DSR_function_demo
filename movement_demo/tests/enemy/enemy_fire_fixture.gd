@@ -1,5 +1,67 @@
 extends RefCounted
 
+## Old action fixtures explicitly exercise the personal Training compatibility path.
+## The saved arena's shared default is covered by the team scene integration test.
+static func legacy_scene() -> Node:
+	var scene = load("res://scenes/main.tscn").instantiate()
+	var arena: Node = scene.get_node("Arena")
+	# Also usable with the pre-migration runtime in paired baseline comparisons.
+	if arena.get("team_cooperation_bindings") is Array:
+		arena.team_cooperation_bindings.clear()
+	# Legacy behavior tests explicitly use the old membership/configuration path.
+	# Unwrap only the test instance; saved scene integration loads Main directly.
+	for member in members(arena):
+		if member.get_parent() == arena: continue
+		var pose: Transform3D = member.transform
+		var parent: Node = member.get_parent()
+		while parent != arena:
+			if parent is Node3D: pose = parent.transform * pose
+			parent = parent.get_parent()
+		member.owner = null
+		member.reparent(arena, false)
+		member.transform = pose
+	for node in arena.find_children("*", "Node3D", true, false):
+		if node.has_method("squad_configuration"): node.set_script(null)
+	return scene
+
+## Opt-in fixture for a solo benchmark, or a benchmark that spawns N-1 peers.
+## Preserve the primary actor's complete behavior; remove unmeasured saved peers
+## before they enter the tree so the declared population is the real population.
+static func single_member_scene() -> Node:
+	var scene := legacy_scene()
+	var arena := scene.get_node("Arena")
+	var primary := primary_enemy(scene)
+	for child in arena.get_children():
+		if child != primary and child.has_node("AI"): child.free()
+	return scene
+
+## Locate the saved test member without assuming the user's instance name.
+## Do not rename, spawn, remove, or reconfigure any scene node here.
+static func primary_enemy(scene: Node) -> Node:
+	var arena := scene.get_node_or_null("Arena")
+	if arena == null: arena = scene
+	var original := arena.get_node_or_null("Enemy")
+	if original != null: return original
+	for child in members(arena): return child
+	push_error("The fixture requires an AI member in its arena.")
+	return null
+
+static func members(area: Node) -> Array[Node]:
+	var result: Array[Node] = []
+	for child in area.get_children():
+		if child.has_method("enemy_environment"): continue
+		if child.has_node("AI") and child.has_node("UnitType") and child.has_node("Training"):
+			result.append(child)
+		else: result.append_array(members(child))
+	return result
+
+static func attach_squad(area: Node, actors: Array, level: int) -> Node3D:
+	var squad = preload("res://scenes/world/squad.tscn").instantiate()
+	squad.profile.level = level
+	area.add_child(squad)
+	for actor in actors: actor.reparent(squad)
+	return squad
+
 static func advance_evaluation(ai, visible: bool) -> void:
 	ai.context.sees_player = visible
 	ai.context.spatial.advance_evaluation()
@@ -67,6 +129,9 @@ static func _configure_common(enemy: Node) -> void:
 	training.profile.set_setting(&"tactics", &"fire_reaction_seconds", 0.5)
 	training.profile.set_setting(&"tactics", &"burst_shot_count", 3)
 	training.profile.set_setting(&"tactics", &"burst_pause_seconds", 1.0)
+	# These legacy timing fixtures describe the mechanical cadence explicitly.
+	# The slower production default and covering bursts have a separate runtime test.
+	training.profile.set_setting(&"tactics", &"shot_interval_multiplier", 1.0)
 	training.profile.set_setting(&"tactics", &"fire_stability_target", 0.7)
 	training.profile.set_setting(&"tactics", &"ranged_min_distance", 4.0)
 	training.profile.set_setting(&"tactics", &"ranged_max_distance", 6.0)

@@ -16,10 +16,10 @@ func _initialize() -> void:
 	_run.call_deferred()
 
 func _run() -> void:
-	var scene = load("res://scenes/main.tscn").instantiate()
+	var scene = preload("res://tests/enemy/enemy_fire_fixture.gd").legacy_scene()
 	root.add_child(scene)
 	current_scene = scene
-	var enemy = scene.get_node("Arena/Enemy")
+	var enemy = preload("res://tests/enemy/enemy_fire_fixture.gd").primary_enemy(scene)
 	var ai = enemy.get_node("AI")
 	var player = scene.get_node("Player")
 	ai.set_physics_process(false)
@@ -35,6 +35,7 @@ func _run() -> void:
 	enemy.look_at(player.global_position)
 	for f in range(5): await physics_frame
 	check(ai.perception.can_see_player(), "测试起点真实目击玩家")
+	ai.context.update_evidence(0.01, true)
 	ai.is_alerted = true
 	ai.has_visual_memory = true
 	ai.last_known_position = player.global_position
@@ -49,7 +50,7 @@ func _run() -> void:
 		quit(1)
 		return
 	var cover_choice: Dictionary = covers[0]
-	var suppressed := [&"suppression", &"exit_suppression"]
+	var suppressed := [&"suppression"]
 	ai.utility_suppression_pending = true
 	ai._start_utility_option(cover_choice, true)
 	check(not ai.utility_suppression_pending, "选择主动躲藏清除旧压制机会")
@@ -59,7 +60,8 @@ func _run() -> void:
 	ai.was_seeing_player = true
 	ai.utility_suppression_pending = false
 	ai.action_selector = KeepOption.new()
-	for f in range(3): await physics_frame
+	await _apply_cover_posture(enemy, cover_choice.destination)
+	check(enemy.is_crouching() == bool(cover_choice.destination.get("crouch", false)), "测试落点按真实掩体元数据完成身体姿态")
 	check(not ai.perception.can_see_player(), "敌人退到掩体后确实丢失视野")
 	ai._physics_process(1.0 / 60.0)
 	check(not ai.utility_suppression_pending, "主动躲藏失视不生成压制机会")
@@ -73,12 +75,13 @@ func _run() -> void:
 	# 即使有旧标记，掩体执行期间也不能把压制送入候选池抢占。
 	ai.utility_suppression_pending = true
 	enemy.global_position = Vector3(24.327566, 0.001, 7.430623)
+	await _apply_cover_posture(enemy, {"crouch": false})
 	for f in range(3): await physics_frame
 	check(ai.actions[&"suppression"].utility_available(), "仍有可射区域时单独验证主动躲藏的资格门槛")
 	var options: Array = evaluator.assess_options(ai, false)
-	check(not options.any(func(o): return o.id in suppressed), "掩体动作不被普通或出口压制抢占")
+	check(not options.any(func(o): return o.id in suppressed), "掩体动作不被失视压制抢占")
 	enemy.global_position = cover_choice.destination.hide
-	for f in range(3): await physics_frame
+	await _apply_cover_posture(enemy, cover_choice.destination)
 	ai.utility_suppression_pending = false
 	ai.actions[&"cover"].transfer.reset()
 	ai.utility_current = {"id": &"search", "destination": {}, "cost": 0.0}
@@ -102,11 +105,19 @@ func _run() -> void:
 	enemy.ammo.magazine_rounds = 12
 	ai.action_selector = KeepOption.new()
 	ai.utility_current = {"id": &"engage", "destination": {}, "cost": 0.0}
+	enemy.global_position = cover_choice.destination.hide
+	await _apply_cover_posture(enemy, cover_choice.destination)
 	ai.was_seeing_player = true
 	ai._physics_process(1.0 / 60.0)
 	check(ai.utility_suppression_pending, "正常交战失视仍可考虑压制")
 	print("UTILITY SUPPRESSION TRIGGER: %d/%d passed" % [checks - failures, checks])
 	quit(1 if failures else 0)
+
+func _apply_cover_posture(enemy, destination: Dictionary) -> void:
+	# 本用例冻结了AI选案；传送到落点后仍需消费动作原本会提交的姿态意图。
+	# 保留身体的真实物理过渡，不直接改胶囊或伪造失视结果。
+	enemy.request_crouch(destination.get("crouch", false))
+	for frame in maxi(3, ceili(enemy.posture_seconds * 60.0) + 2): await physics_frame
 
 func check(ok: bool, label: String) -> void:
 	checks += 1

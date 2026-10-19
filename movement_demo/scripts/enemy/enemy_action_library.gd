@@ -1,7 +1,7 @@
 extends RefCounted
 
 ## 纯配置解析；既不创建运行对象，也不访问场景。检查器与游戏使用同一结果。
-static func resolve(unit: EnemyUnitProfile, training: EnemyTrainingProfile) -> Dictionary:
+static func resolve(unit: EnemyUnitProfile, training: EnemyTrainingProfile, team_abilities: Dictionary = {}) -> Dictionary:
 	var result := {"definitions": {}, "included_by": {}, "errors": []}
 	if unit == null:
 		return result
@@ -25,7 +25,11 @@ static func resolve(unit: EnemyUnitProfile, training: EnemyTrainingProfile) -> D
 	for definition in unit.default_behaviors:
 		if definition != null and catalog.has(definition.action_id) and unit.supports(definition.required_capabilities):
 			result.definitions[definition.action_id] = definition
-	for id in training.selected_tactics if training != null else []:
+	var selected := selected_tactics(training, unit)
+	if team_abilities.has("level"):
+		selected.erase(&"cooperate")
+		if int(team_abilities.level) > 0: selected.append(&"cooperate")
+	for id in selected:
 		if not catalog.has(id) or catalog[id].category != EnemyActionDefinition.Category.TACTICAL:
 			continue # 保留旧兵种选择，但不参与当前装配。
 		var closure: Dictionary = {}
@@ -33,12 +37,24 @@ static func resolve(unit: EnemyUnitProfile, training: EnemyTrainingProfile) -> D
 		if not error.is_empty():
 			result.errors.append(error)
 			continue
+		if closure.has(&"cooperate") and team_abilities.has("level") and int(team_abilities.level) == 0:
+			result.errors.append("小队未授权动作依赖的团队协作：" + String(id))
+			continue
 		for included in closure:
 			result.definitions[included] = closure[included]
 			if included != id:
 				if not result.included_by.has(included):
 					result.included_by[included] = []
 				result.included_by[included].append(id)
+	return result
+
+## 旧训练解锁出口压制时升级到统一压制；解析与检查器预览不修改资源。
+static func selected_tactics(training: EnemyTrainingProfile, unit: EnemyUnitProfile = null) -> Array[StringName]:
+	var result: Array[StringName] = []
+	if training == null: return result
+	for id in training.selected_tactics:
+		var migrated: StringName = &"suppression" if id == &"exit_suppression" and (unit == null or unit.definition(&"suppression") != null) else id
+		if not result.has(migrated): result.append(migrated)
 	return result
 
 static func _expand(id: StringName, catalog: Dictionary, unit: EnemyUnitProfile, visiting: Array, closure: Dictionary) -> String:

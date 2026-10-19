@@ -9,14 +9,14 @@ func _initialize() -> void:
 
 
 func _run() -> void:
-	var scene = load("res://scenes/main.tscn").instantiate()
+	var scene = preload("res://tests/enemy/enemy_fire_fixture.gd").legacy_scene()
 	root.add_child(scene)
 	current_scene = scene
 	# 固定射击节奏测试使用无遮挡环境；地图射界另有专项回归。
 	for region in get_nodes_in_group("cover_region"):
 		region.collision_layer = 0
 		region.remove_from_group("cover_region")
-	var e = scene.get_node("Arena/Enemy")
+	var e = preload("res://tests/enemy/enemy_fire_fixture.gd").primary_enemy(scene)
 	var ai = e.get_node("AI")
 	Fixture.configure_timing(e)
 	# 本测试验证固定交战位置的射击节奏；主动占位的移动与开火由独立行为测试覆盖。
@@ -93,6 +93,9 @@ func _run() -> void:
 	ai.training.profile.set_setting(&"tactics", &"burst_shot_count", 1)
 	ai.training.profile.set_setting(&"tactics", &"burst_pause_seconds", 0.2)
 	e.weapon.shot_interval = 2.0
+	# Reset clears the weapon pose. Acquire the actual torso before testing
+	# zero-reaction fire; aim motion does not advance the fire-controller clock.
+	e.update_weapon(0.1, p.get_torso_position())
 	ai.context.fire.update(0.0, true, false, {"owner": &"engage", "mode": &"visible"})
 	ai.context.fire.update(0.3, true, false, {"owner": &"engage", "mode": &"visible"})
 	_check("停顿结束不会缩短慢枪冷却", e.shot_count == 1)
@@ -104,6 +107,7 @@ func _run() -> void:
 	ai.state = ai.State.HOLD_POSITION
 	ai.training.profile.set_setting(&"tactics", &"burst_pause_seconds", 0.0)
 	e.weapon.shot_interval = 0.8
+	e.update_weapon(0.1, p.get_torso_position())
 	ai.context.fire.update(0.0, true, false, {"owner": &"engage", "mode": &"visible"})
 	_check("零反应可恢复立即开枪", e.shot_count == 1)
 	ai.context.fire.update(0.81, true, false, {"owner": &"engage", "mode": &"visible"})
@@ -120,10 +124,10 @@ func _run() -> void:
 
 func _check_real_frames() -> void:
 	current_scene.free()
-	var scene = load("res://scenes/main.tscn").instantiate()
+	var scene = preload("res://tests/enemy/enemy_fire_fixture.gd").legacy_scene()
 	root.add_child(scene)
 	current_scene = scene
-	var e = scene.get_node("Arena/Enemy")
+	var e = preload("res://tests/enemy/enemy_fire_fixture.gd").primary_enemy(scene)
 	var ai = e.get_node("AI")
 	Fixture.configure_timing(e)
 	# 本组固定射击位验证节奏；专项选位与失视压制由各自的实走／射击测试覆盖。

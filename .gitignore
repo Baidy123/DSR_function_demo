@@ -19,3 +19,7 @@ export_credentials.cfg
 
 # agent 工作流的计划与设计文档（仅本地参考，不进仓库）
 docs/superpowers/
+
+# Python 回归运行器缓存
+__pycache__/
+*.py[cod]

@@ -8,14 +8,14 @@ func _initialize() -> void:
 
 func _run() -> void:
 	seed(82)
-	var scene = load("res://scenes/main.tscn").instantiate()
+	var scene = preload("res://tests/enemy/enemy_fire_fixture.gd").legacy_scene()
 	root.add_child(scene)
 	current_scene = scene
 	# 这部分独立验证稳枪评分，避免地图改动使固定射击位失效。
 	for region in get_nodes_in_group("cover_region"):
 		region.collision_layer = 0
 		region.remove_from_group("cover_region")
-	var e = scene.get_node("Arena/Enemy")
+	var e = preload("res://tests/enemy/enemy_fire_fixture.gd").primary_enemy(scene)
 	Fixture.configure_decision(e)
 	var ai = e.get_node("AI")
 	var t = ai.context.fire
@@ -114,10 +114,10 @@ func _run() -> void:
 
 func _check_live_moving_target() -> void:
 	current_scene.free()
-	var scene = load("res://scenes/main.tscn").instantiate()
+	var scene = preload("res://tests/enemy/enemy_fire_fixture.gd").legacy_scene()
 	root.add_child(scene)
 	current_scene = scene
-	var e = scene.get_node("Arena/Enemy")
+	var e = preload("res://tests/enemy/enemy_fire_fixture.gd").primary_enemy(scene)
 	var ai = e.get_node("AI")
 	ai.set_physics_process(false)
 	Fixture.configure_decision(e)

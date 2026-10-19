@@ -12,11 +12,11 @@ func _initialize() -> void:
 	_run.call_deferred()
 
 func _run() -> void:
-	var scene = load("res://scenes/main.tscn").instantiate()
+	var scene = preload("res://tests/enemy/enemy_fire_fixture.gd").legacy_scene()
 	root.add_child(scene)
 	current_scene = scene
 	var player = scene.get_node("Player")
-	var enemy = scene.get_node("Arena/Enemy")
+	var enemy = preload("res://tests/enemy/enemy_fire_fixture.gd").primary_enemy(scene)
 	player.set_physics_process(false)
 	enemy.get_node("AI").set_physics_process(false)
 	check(player.get("sprint_noise_radius") != null and enemy.get("fast_movement_noise_radius") != null, "玩家敌人分别导出快速移动声音半径")

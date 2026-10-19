@@ -12,10 +12,11 @@ func _run() -> void:
 	if failures:
 		quit(1)
 		return
-	var scene = load("res://scenes/main.tscn").instantiate()
+	var scene = preload("res://tests/enemy/enemy_fire_fixture.gd").single_member_scene()
 	root.add_child(scene)
 	current_scene = scene
-	var ai = scene.get_node("Arena/Enemy/AI")
+	check(scene.get_node("Arena").get_children().filter(func(child): return child.has_node("AI")).size() == 1, "Spatial benchmark has exactly one active AI participant")
+	var ai = preload("res://tests/enemy/enemy_fire_fixture.gd").primary_enemy(scene).get_node("AI")
 	# 明确本测试所需动作；用户可在保存的训练中关闭攻击占位。
 	preload("res://tests/enemy/enemy_fire_fixture.gd").set_training_action(ai, &"attack_position", true)
 	selector = ai.context.spatial

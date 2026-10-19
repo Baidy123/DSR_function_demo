@@ -9,14 +9,14 @@ func _initialize() -> void:
 
 
 func _run() -> void:
-	var scene = load("res://scenes/main.tscn").instantiate()
+	var scene = preload("res://tests/enemy/enemy_fire_fixture.gd").legacy_scene()
 	root.add_child(scene)
 	current_scene = scene
 	var actor = scene.get_node("Player")
 	var combat = actor.get_node("Combat")
 	var adapter = actor.get_node("PlayerPresentation")
 	var presentation = actor.get_node("Visual/Presentation")
-	var enemy = scene.get_node("Arena/Enemy")
+	var enemy = preload("res://tests/enemy/enemy_fire_fixture.gd").primary_enemy(scene)
 	enemy.get_node("AI").set_physics_process(false)
 	enemy.set_physics_process(false)
 	actor.set_physics_process(false)

@@ -2,13 +2,22 @@ extends Node3D
 
 signal presentation_reset(region: Node)
 
+## Match members by faction and communication group; only team awareness is shared.
+@export var team_cooperation_bindings: Array[EnemyTeamCooperationBinding] = []
+
 var players_inside: Array[Node3D] = []
 var enemies: Array[CharacterBody3D] = []
 var _combat_zone: Area3D
+var tactical_map = preload("res://scripts/enemy/services/enemy_tactical_map.gd").new()
+var cooperation = preload("res://scripts/enemy/services/enemy_cooperation.gd").new()
 
 
 func enemy_environment() -> Dictionary:
-	return {"zone": get_node_or_null("CombatZone"), "navigation": get_node_or_null("NavigationRegion3D")}
+	cooperation.configure_team_bindings(team_cooperation_bindings)
+	cooperation.refresh_squads()
+	var navigation := get_node_or_null("NavigationRegion3D") as NavigationRegion3D
+	tactical_map.bind_region(navigation)
+	return {"zone": get_node_or_null("CombatZone"), "navigation": navigation, "cooperation": cooperation, "tactical_map": tactical_map}
 
 
 func register_enemy(enemy: CharacterBody3D) -> void:
@@ -18,14 +27,20 @@ func register_enemy(enemy: CharacterBody3D) -> void:
 
 func unregister_enemy(enemy: CharacterBody3D) -> void:
 	enemies.erase(enemy)
+	cooperation.unregister(enemy.get_instance_id())
 
 
 func _ready() -> void:
 	_bind_combat_zone()
 
 
-func _physics_process(_delta: float) -> void:
+func _physics_process(delta: float) -> void:
+	cooperation.configure_team_bindings(team_cooperation_bindings)
 	_bind_combat_zone()
+	for player in players_inside:
+		if is_instance_valid(player) and not player.is_dead() and not player.is_in_dialogue:
+			cooperation.advance(delta)
+			break
 
 
 func _bind_combat_zone() -> void:
@@ -58,6 +73,8 @@ func _on_player_exited(body: Node3D) -> void:
 
 
 func _reset_targets() -> void:
+	cooperation.reset()
+	tactical_map.reset()
 	presentation_reset.emit(self)
 	# 直接子靶与注册的嵌套敌人去重，只刷新本区域。
 	var targets: Array[Node] = []
@@ -69,3 +86,7 @@ func _reset_targets() -> void:
 		# 重开卸载场景也会发出离场信号；已出树的目标无需刷新。
 		if target.is_inside_tree() and target.has_method("reset_target"):
 			target.reset_target()
+
+
+func _exit_tree() -> void:
+	tactical_map.release()

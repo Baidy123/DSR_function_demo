@@ -6,6 +6,7 @@ var request: Dictionary = {}
 var fire_reaction_elapsed := 0.0
 var fire_burst_shots := 0
 var fire_pause_remaining := 0.0
+var fire_interval_remaining := 0.0
 var fire_decision = preload("res://scripts/enemy/services/enemy_fire_decision.gd").new()
 var actor:
 	get: return context.actor
@@ -18,7 +19,9 @@ var fire_stability_target: float:
 var burst_shot_count: int:
 	get: return context.setting(&"tactics", &"burst_shot_count", 3)
 var burst_pause_seconds: float:
-	get: return context.setting(&"tactics", &"burst_pause_seconds", 1.0)
+	get: return context.setting(&"tactics", &"burst_pause_seconds", 1.8)
+var support_burst_shot_count: int:
+	get: return context.setting(&"tactics", &"support_burst_shot_count", 6)
 var ranged_min_distance: float:
 	get: return context.setting(&"tactics", &"ranged_min_distance", 4.0)
 
@@ -57,6 +60,11 @@ func update_shooting(delta: float, sees_player: bool, movement_requested: bool) 
 	# 自然计时独立于动作授权；搜索、躲藏期间也会消耗已有连射停顿。
 	var elapsed: float = maxf(0.0, delta)
 	fire_pause_remaining = maxf(0.0, fire_pause_remaining - elapsed)
+	fire_interval_remaining = maxf(0.0, fire_interval_remaining - elapsed)
+	# Finishing/cancelling a covering request cannot grant a fresh short burst.
+	# Count carries across action/intent changes; a completed ordinary quota rests.
+	if fire_burst_shots >= burst_limit(request.get("support_intent", false)):
+		_finish_burst()
 	if not _has_authorized_fire_action():
 		fire_reaction_elapsed = 0.0
 		fire_decision.reset()
@@ -76,8 +84,8 @@ func update_shooting(delta: float, sees_player: bool, movement_requested: bool) 
 		fire_decision.reset()
 		actor.update_weapon(delta)
 		return
-	var point: Vector3 = context.player.global_position + Vector3.UP * 0.8
-	if actor.get_shot_origin().distance_to(point) > actor.weapon.fire_range:
+	var point: Vector3 = context.perception.visible_aim_position(visible_target)
+	if not point.is_finite() or actor.get_shot_origin().distance_to(point) > actor.weapon.fire_range:
 		fire_reaction_elapsed = 0.0
 		fire_decision.reset()
 		actor.update_weapon(delta)
@@ -87,7 +95,7 @@ func update_shooting(delta: float, sees_player: bool, movement_requested: bool) 
 	actor.update_weapon(delta, point)
 	var reaction_seconds: float = maxf(0.0, fire_reaction_seconds)
 	fire_reaction_elapsed = minf(reaction_seconds, fire_reaction_elapsed + elapsed)
-	if fire_reaction_elapsed < reaction_seconds or fire_pause_remaining > 0.0:
+	if fire_reaction_elapsed < reaction_seconds or fire_pause_remaining > 0.0 or fire_interval_remaining > 0.0:
 		fire_decision.reset()
 		return
 	var moving: bool = movement_requested or Vector2(actor.velocity.x, actor.velocity.z).length() > 0.05
@@ -102,6 +110,7 @@ func update_shooting(delta: float, sees_player: bool, movement_requested: bool) 
 		fire_decision.reset()
 		context.invalidate_utility()
 		return
+	if not context.cooperation_line_safe(actor.get_shot_origin(), point): return
 	if request.get("bypass_steady", false):
 		fire_decision.reset()
 	else:
@@ -109,7 +118,8 @@ func update_shooting(delta: float, sees_player: bool, movement_requested: bool) 
 		var recovery_rate: float = maxf(0.0, stability - previous_stability) / maxf(elapsed, 0.0001)
 		var distance: float = actor.get_shot_origin().distance_to(point)
 		var close_pressure: float = clampf(1.0 - distance / maxf(ranged_min_distance, 0.01), 0.0, 1.0)
-		if fire_decision.choose_action(elapsed, stability, fire_stability_target, recovery_rate, close_pressure) != fire_decision.Action.FIRE:
+		var support_pressure: float = suppression_pressure(request, moving) if request.get("support_intent", false) else 0.0
+		if fire_decision.choose_action(elapsed, stability, fire_stability_target, recovery_rate, close_pressure, support_pressure) != fire_decision.Action.FIRE:
 			return
 	if actor.try_fire():
 		fire_decision.on_shot_fired()
@@ -125,59 +135,173 @@ func _update_suppression_shooting(delta: float, movement_requested: bool) -> voi
 		actor.update_weapon(delta)
 		return
 	var point: Vector3 = request.get("point", Vector3.INF)
+	if not point.is_finite():
+		actor.update_weapon(delta)
+		return
 	actor.update_weapon(delta, point)
 	var moving: bool = movement_requested or Vector2(actor.velocity.x, actor.velocity.z).length() > 0.05
-	if actor.get_shot_origin().distance_to(point) > actor.weapon.fire_range or fire_pause_remaining > 0.0 or (moving and not fire_while_moving):
+	if actor.get_shot_origin().distance_to(point) > actor.weapon.fire_range or fire_pause_remaining > 0.0 or fire_interval_remaining > 0.0 or (moving and not fire_while_moving):
 		return
 	# aim_acquired 记录曾经跟上过目标，换点后仍可能为true；必须核实当前方向。
 	var desired: Vector3 = point - actor.get_shot_origin()
 	if desired.is_zero_approx() or actor.aim_direction.angle_to(desired) > actor.AIM_ACQUIRE_ANGLE:
 		return
-	if not has_clear_suppression_lane(actor.get_shot_origin(), actor.aim_direction, actor.get_shot_origin().distance_to(point)):
+	if not has_clear_suppression_lane(actor.get_shot_origin(), desired, desired.length()) or not has_clear_suppression_lane(actor.get_shot_origin(), actor.aim_direction, desired.length()):
 		context.invalidate_utility()
 		return
+	if not context.cooperation_line_safe(actor.get_shot_origin(), point): return
 	if actor.try_fire():
 		_record_burst_shot()
 		shot_fired.emit()
 
 func _record_burst_shot() -> void:
+	fire_interval_remaining = shot_interval_seconds()
 	fire_burst_shots += 1
-	if fire_burst_shots >= maxi(1, burst_shot_count):
-		fire_burst_shots = 0
-		fire_pause_remaining = maxf(0.0, burst_pause_seconds)
+	if fire_burst_shots >= burst_limit(request.get("support_intent", false)):
+		_finish_burst()
+
+func _finish_burst() -> void:
+	fire_burst_shots = 0
+	fire_pause_remaining = maxf(fire_pause_remaining, maxf(0.0, burst_pause_seconds))
+
+## All candidate and execution timing reads share the AI cadence. The body still
+## owns the weapon's mechanical cooldown and never fires faster than that limit.
+func shot_interval_seconds() -> float:
+	if actor.weapon == null: return 0.0
+	return maxf(0.05, actor.weapon.shot_interval) * maxf(1.0, float(context.setting(&"tactics", &"shot_interval_multiplier", 1.5)))
+
+func shot_wait_seconds() -> float:
+	return maxf(actor.shot_cooldown, fire_interval_remaining)
+
+func burst_limit(support_intent: bool = false) -> int:
+	var normal := maxi(1, burst_shot_count)
+	# A label alone grants nothing: group/target/freshness and real unmet demand
+	# are checked by the existing cooperation board, including actual reloads.
+	if support_intent and context.cooperation_support_pressure() > 0.0:
+		return maxi(normal, support_burst_shot_count)
+	return normal
+
+func burst_shots_remaining(support_intent: bool = false) -> int:
+	return maxi(0, burst_limit(support_intent) - fire_burst_shots)
+
+func burst_window_seconds(support_intent: bool = false) -> float:
+	if not actor.can_use_firearms() or actor.ammo.is_reloading: return 0.0
+	return mini(actor.ammo.magazine_rounds, burst_shots_remaining(support_intent)) * shot_interval_seconds()
+
+func support_burst_duration() -> float:
+	var delay := maxf(fire_pause_remaining, maxf(shot_wait_seconds(), maxf(0.0, fire_reaction_seconds - fire_reaction_elapsed)))
+	return delay + estimated_steady_wait(true) + burst_window_seconds(true)
 
 func _current_firing_stability() -> float:
 	return actor.get_center_probability()
+
+func close_suppression_pressure() -> float:
+	if not context.sees_player or not context.last_seen_position.is_finite(): return 0.0
+	return clampf(1.0 - context._horizontal_distance(context.last_seen_position) / maxf(0.01, ranged_min_distance), 0.0, 1.0)
+
+## Intent can express urgency, but only current observations/authorized retreat
+## or real unmet team demand supply pressure. It never bypasses firing gates.
+func suppression_pressure(intent: Dictionary = {}, moving: bool = false) -> float:
+	var pressure: float = maxf(context.cooperation_support_pressure(), close_suppression_pressure())
+	if intent.get("pressure_reason", &"") == &"retreat" and context.sees_player and moving:
+		var current: Dictionary = context.utility_current
+		if intent.get("owner", &"") == current.get("id", &"") and current.get("mode", &"") == &"covering_retreat" and current.get("support_request", {}).get("kind", &"") == &"retreat":
+			pressure = maxf(pressure, 1.0)
+	return clampf(pressure, 0.0, 1.0)
+
+## Read-only estimate using the same steady/fire comparison; no aim or timer changes.
+func estimated_steady_wait(support_intent: bool = false) -> float:
+	# Candidate estimates cannot inherit the previous action's retreat intent.
+	var demand: float = suppression_pressure()
+	if demand <= 0.0: return 0.0
+	return _steady_wait_seconds(demand if support_intent else 0.0)
+
+## A cycle is an ordinary burst pause, not present fire or a promise to recover
+## from another failure. Context separately checks ammunition and both gun lanes.
+func support_cycle_resume_seconds(intent: Dictionary, moving: bool) -> float:
+	if moving or fire_pause_remaining <= 0.0 or intent.get("mode", &"") != &"visible": return -1.0
+	if not context.can_use_action(intent.get("owner", &"")) or not context.sees_player or not context.is_arena_active(): return -1.0
+	if context.player.is_dead() or context.player.is_in_dialogue or not context.perception.can_see_player(): return -1.0
+	if actor.get_tree().paused or not actor.has_aim or fire_reaction_elapsed < fire_reaction_seconds: return -1.0
+	if shot_wait_seconds() > fire_pause_remaining or fire_decision.selected_action == fire_decision.Action.STEADY: return -1.0
+	var horizontal_aim := Vector3(actor.aim_direction.x, 0.0, actor.aim_direction.z)
+	var forward := Vector3(-actor.global_basis.z.x, 0.0, -actor.global_basis.z.z)
+	if not horizontal_aim.is_zero_approx() and forward.angle_to(horizontal_aim) > actor.MAX_GUN_BODY_ANGLE: return -1.0
+	var demand: float = suppression_pressure(intent, false) if intent.get("support_intent", false) else 0.0
+	# update_shooting resets the steady decision during a burst pause. Re-evaluate
+	# its comparison without changing wait pressure or granting future recovery.
+	if _steady_wait_seconds(demand) > 0.0001: return -1.0
+	return fire_pause_remaining
+
+## Dropping a long covering burst to no intent applies the normal burst quota.
+## Mirror update_shooting's transition without consuming rounds or starting a timer.
+func pause_after_no_fire_seconds() -> float:
+	return maxf(fire_pause_remaining, maxf(0.0, burst_pause_seconds)) if fire_burst_shots >= burst_limit(false) else fire_pause_remaining
+
+## A no-fire stage clears aim and steady progress every tick. Forecast its
+## following steady wait without retaining old accuracy or accumulated pressure.
+func estimated_reset_steady_wait() -> float:
+	if actor.weapon == null: return context.utility_horizon_seconds
+	var stability: float = minf(_current_firing_stability(), actor.weapon.get_aim_settings(false).initial)
+	return _steady_wait_for(stability, 0.0, 0.0, 0.0)
+
+func _steady_wait_seconds(demand: float) -> float:
+	return _steady_wait_for(_current_firing_stability(), fire_decision.last_recovery_rate, fire_decision.wait_seconds, demand)
+
+func _steady_wait_for(stability: float, recovery_rate: float, waited: float, demand: float) -> float:
+	var target: float = maxf(0.0001, fire_stability_target)
+	var quality: float = clampf(stability / target, 0.0, 1.0)
+	var recovery: float = clampf(recovery_rate / target, 0.0, 1.0)
+	var steady: float = 1.0 + recovery * (1.0 - quality) * maxf(0.0, fire_decision.recovery_gain_weight)
+	var close: float = clampf(1.0 - context._horizontal_distance(context.last_known_position) / maxf(0.01, ranged_min_distance), 0.0, 1.0)
+	var fire_score: float = quality + close * maxf(0.0, fire_decision.close_range_weight) + demand
+	return clampf((steady - fire_score) / maxf(0.05, fire_decision.wait_pressure_per_second) - waited, 0.0, context.utility_horizon_seconds)
 
 func reset_fire_timing() -> void:
 	fire_decision.reset()
 	fire_reaction_elapsed = 0.0
 	fire_burst_shots = 0
 	fire_pause_remaining = 0.0
+	fire_interval_remaining = 0.0
 
 
 ## 只给统一评分器提供合法落脚点；不打分、不抽随机数、不修改导航或状态。
 ## 普通接敌和墙角攻击占位一样，先比较完整路线，再执行选中的准确位置。
 
 func has_clear_suppression_lane(origin: Vector3, direction: Vector3, distance: float) -> bool:
-	if direction.is_zero_approx() or distance <= 0.0:
-		return false
-	return context.cover_selection.has_clear_line(origin, origin + direction.normalized() * minf(0.5, distance))
+	# A clear muzzle alone never makes a frozen region behind a hard wall useful.
+	return has_clear_firing_lane(origin, direction, distance)
 
 
 ## 中心弹道与近枪口空间是硬条件；远处外围散布擦墙只降低质量。
 
-var _lane_frame := -1
+var _geometry_evaluation_depth := 0
 var _lane_cache: Dictionary = {}
 var _muzzle_shape := ConvexPolygonShape3D.new()
 var _muzzle_query := PhysicsShapeQueryParameters3D.new()
 var _muzzle_dimensions := Vector2.INF
+var _muzzle_space: PhysicsDirectSpaceState3D
+
+func begin_geometry_evaluation() -> void:
+	if _geometry_evaluation_depth == 0:
+		_lane_cache.clear()
+		_muzzle_space = null
+		_muzzle_query.exclude = []
+	_geometry_evaluation_depth += 1
+
+func end_geometry_evaluation() -> void:
+	assert(_geometry_evaluation_depth > 0)
+	_geometry_evaluation_depth -= 1
+	if _geometry_evaluation_depth == 0:
+		_lane_cache.clear()
+		_muzzle_space = null
+		_muzzle_query.exclude = []
 
 func has_clear_firing_lane(origin: Vector3, direction: Vector3, distance: float) -> bool:
-	if _lane_frame != Engine.get_physics_frames():
-		_lane_frame = Engine.get_physics_frames()
-		_lane_cache.clear()
-	var key := [origin, direction, distance, actor.get_max_shot_deviation_degrees()]
+	if direction.is_zero_approx() or distance <= 0.0: return false
+	if _geometry_evaluation_depth <= 0: return _query_clear_firing_lane(origin, direction, distance)
+	var endpoint: Vector3 = origin + direction.normalized() * distance
+	var key := [origin, endpoint, actor.get_max_shot_deviation_degrees()]
 	if not _lane_cache.has(key):
 		_lane_cache[key] = _query_clear_firing_lane(origin, direction, distance)
 	return _lane_cache[key]
@@ -207,8 +331,17 @@ func _query_clear_firing_lane(origin: Vector3, direction: Vector3, distance: flo
 	query.shape = _muzzle_shape
 	query.transform = Transform3D(Basis.looking_at(axis, Vector3.UP if absf(axis.y) < 0.999 else Vector3.RIGHT), origin)
 	query.collision_mask = 1
-	query.exclude = context.cover_selection._ray_query(origin, endpoint).exclude
-	var space: PhysicsDirectSpaceState3D = actor.get_world_3d().direct_space_state
+	var space: PhysicsDirectSpaceState3D
+	if _geometry_evaluation_depth > 0:
+		# Only this synchronous read-only batch has stable actor/player exclusions.
+		# Every distinct lane still performs its complete convex-shape query.
+		if _muzzle_space == null:
+			query.exclude = context.cover_selection._ray_query(origin, endpoint).exclude
+			_muzzle_space = actor.get_world_3d().direct_space_state
+		space = _muzzle_space
+	else:
+		query.exclude = context.cover_selection._ray_query(origin, endpoint).exclude
+		space = actor.get_world_3d().direct_space_state
 	return space.intersect_shape(query, 1).is_empty()
 
 ## 水平外围弹道的通畅比例参与候选的有效火力估计，不要求极端散布全部避墙。

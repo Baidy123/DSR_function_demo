@@ -1,0 +1,14 @@
+[gd_resource type="Resource" script_class="EnemyTrainingProfile" format=3]
+
+[ext_resource type="Script" path="res://scripts/enemy/config/enemy_training_profile.gd" id="profile"]
+[ext_resource type="Script" path="res://scripts/enemy/config/module_settings.gd" id="module"]
+[ext_resource type="Script" path="res://scripts/enemy/config/melee_tactics_settings.gd" id="settings"]
+
+[sub_resource type="Resource" id="melee_tactics"]
+script = ExtResource("settings")
+
+[resource]
+script = ExtResource("profile")
+display_name = "近战掩体与突进"
+selected_tactics = Array[StringName]([&"melee_cover", &"melee_rush"])
+action_overrides = Array[ExtResource("module")]([SubResource("melee_tactics")])

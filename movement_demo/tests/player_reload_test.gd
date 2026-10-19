@@ -13,7 +13,7 @@ func _initialize() -> void:
 
 
 func _run() -> void:
-	scene = load("res://scenes/main.tscn").instantiate()
+	scene = preload("res://tests/enemy/enemy_fire_fixture.gd").legacy_scene()
 	# 行为断言使用独立初值；用户在检查器调整备弹不影响测试。
 	var initial_slots = scene.get_node("Player/WeaponSlots")
 	for field in ["starting_rifle_ammo", "starting_pistol_ammo", "starting_smg_ammo", "starting_shotgun_ammo"]:
@@ -24,7 +24,7 @@ func _run() -> void:
 	combat = player.get_node("Combat")
 	slots = player.get_node("WeaponSlots")
 	player.set_physics_process(false)
-	scene.get_node("Arena/Enemy/AI").set_physics_process(false)
+	preload("res://tests/enemy/enemy_fire_fixture.gd").primary_enemy(scene).get_node("AI").set_physics_process(false)
 	check(combat.has_method("request_reload"), "玩家提供主动换弹接口")
 	if failed > 0:
 		finish()

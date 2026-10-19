@@ -6,10 +6,10 @@ func _initialize() -> void:
 	_run.call_deferred()
 
 func _run() -> void:
-	var scene = load("res://scenes/main.tscn").instantiate()
+	var scene = preload("res://tests/enemy/enemy_fire_fixture.gd").legacy_scene()
 	root.add_child(scene)
 	current_scene = scene
-	var enemy = scene.get_node("Arena/Enemy")
+	var enemy = preload("res://tests/enemy/enemy_fire_fixture.gd").primary_enemy(scene)
 	enemy.get_node("AI").set_physics_process(false)
 	var player = scene.get_node("Player")
 	player.set_physics_process(false)
@@ -38,8 +38,11 @@ func _run() -> void:
 	player.get_node("Health").debug_invincible = true
 	for frame in range(5):
 		await physics_frame
-	var target: Vector3 = player.global_position + Vector3.UP * 0.8
-	enemy.update_weapon(0.0, target)
+	var target: Vector3 = player.get_torso_position()
+	# 枪口现在随真实身高，先完成俯仰；准备阶段处于恢复等待，不提前抬高首枪概率。
+	enemy.weapon_recovery_timer = 0.1
+	enemy.update_weapon(0.1, target)
+	_check("真实身体点完成瞄准且准备时间不提高初始概率", enemy.aim_acquired and is_equal_approx(enemy.get_center_probability(), 0.9))
 	_check("首枪降低概率并读取武器冷却", enemy.try_fire() and is_equal_approx(enemy.get_center_probability(), 0.75) and is_equal_approx(enemy.shot_cooldown, 0.7))
 	enemy.shot_cooldown = 0.0
 	enemy.try_fire()
@@ -73,7 +76,7 @@ func _run() -> void:
 	_check("运行状态不修改共享资源", weapon.initial_accuracy == 0.9 and weapon.shot_accuracy_penalty == 0.15)
 	var other_arena = load("res://scenes/arena.tscn").instantiate()
 	root.add_child(other_arena)
-	var other = other_arena.get_node("Enemy")
+	var other = preload("res://tests/enemy/enemy_fire_fixture.gd").primary_enemy(other_arena)
 	other.get_node("AI").set_physics_process(false)
 	other.equip_weapon(weapon)
 	_check("两个敌人共享配置但稳定度各自独立", other.weapon == enemy.weapon and is_equal_approx(other.get_center_probability(), 0.9) and enemy.get_center_probability() < 0.9)

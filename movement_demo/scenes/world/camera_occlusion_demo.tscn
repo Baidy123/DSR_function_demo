@@ -1,0 +1,58 @@
+[gd_scene load_steps=7 format=3]
+
+[sub_resource type="StandardMaterial3D" id="CeilingMaterial"]
+albedo_color = Color(0.38, 0.57, 0.64, 1)
+roughness = 0.8
+
+[sub_resource type="BoxMesh" id="CeilingMesh"]
+material = SubResource("CeilingMaterial")
+size = Vector3(3.6, 0.25, 2.8)
+
+[sub_resource type="StandardMaterial3D" id="DecorationMaterial"]
+albedo_color = Color(0.72, 0.5, 0.28, 1)
+roughness = 0.8
+
+[sub_resource type="BoxMesh" id="DecorationMesh"]
+material = SubResource("DecorationMaterial")
+size = Vector3(1.1, 1.1, 1.1)
+
+[sub_resource type="StandardMaterial3D" id="FloorMarkerMaterial"]
+albedo_color = Color(0.28, 0.43, 0.47, 1)
+shading_mode = 0
+
+[sub_resource type="PlaneMesh" id="FloorMarkerMesh"]
+material = SubResource("FloorMarkerMaterial")
+size = Vector2(3.6, 2.8)
+
+[node name="CameraOcclusionDemo" type="Node3D"]
+
+[node name="Ceiling" type="MeshInstance3D" parent="." groups=["camera_fadeable"]]
+position = Vector3(0, 3.1, 0)
+mesh = SubResource("CeilingMesh")
+
+[node name="HangingBlock" type="MeshInstance3D" parent="." groups=["camera_fadeable"]]
+position = Vector3(2.7, 2.65, 0)
+rotation_degrees = Vector3(0, 20, 0)
+mesh = SubResource("DecorationMesh")
+
+[node name="FloorMarker" type="MeshInstance3D" parent="."]
+position = Vector3(0, 0.01, 0)
+mesh = SubResource("FloorMarkerMesh")
+
+[node name="Label" type="Label3D" parent="."]
+position = Vector3(0, 0.04, 1.8)
+rotation_degrees = Vector3(-90, 0, 0)
+pixel_size = 0.01
+text = "天花板遮挡测试"
+font_size = 40
+outline_size = 6
+modulate = Color(0.82, 0.94, 1, 1)
+
+[node name="BlockLabel" type="Label3D" parent="."]
+position = Vector3(2.7, 0.04, 1.1)
+rotation_degrees = Vector3(-90, 0, 0)
+pixel_size = 0.01
+text = "悬挂装饰"
+font_size = 32
+outline_size = 6
+modulate = Color(1, 0.83, 0.61, 1)

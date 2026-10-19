@@ -5,6 +5,20 @@ extends Resource
 enum FireMode { SEMI_AUTO, AUTOMATIC, MELEE }
 enum AmmoType { RIFLE, PISTOL, SMG, SHOTGUN }
 
+@export_group("相机视野（仅玩家）")
+## 正交相机 Size，越大看得越广；0沿用场景原视野，不改变锁定距离或弹道射程。
+@export_range(0.0, 60.0, 0.1, "suffix:m") var camera_view_size: float = 0.0
+## 切换到这把枪时的视野过渡秒数；0立即切换，出生直接使用初始武器视野。
+@export_range(0.0, 3.0, 0.05, "suffix:s") var camera_transition_seconds: float = 0.25
+
+@export_group("武器外观")
+## 可选纯外观场景；留空显示方块占位，不参与弹道、命中或装备资格。
+@export var visual_model: PackedScene
+## 相对于角色武器挂点的模型偏移；同一资源可由多个持有者独立显示。
+@export var visual_position: Vector3 = Vector3.ZERO
+@export var visual_rotation_degrees: Vector3 = Vector3.ZERO
+@export var visual_scale: Vector3 = Vector3.ONE
+
 @export_group("弹匣与换弹")
 ## 玩家使用对应类型的共享备弹池；敌人仍使用有限弹匣、无限备弹。
 @export_enum("步枪弹药:0", "手枪弹药:1", "冲锋枪弹药:2", "霰弹枪弹药:3") var ammo_type: int = AmmoType.PISTOL
@@ -63,6 +77,10 @@ enum AmmoType { RIFLE, PISTOL, SMG, SHOTGUN }
 @export_range(0.0, 5.0, 0.05) var melee_knockback_distance: float = 1.0
 ## 击退外力衰减至零的时间（秒）。
 @export_range(0.05, 2.0, 0.01) var melee_knockback_seconds: float = 0.2
+## 近战命中后目标自主移动保留的比例；0.5为原速度50%，1不减速，不缩小击退外力。
+@export_range(0.0, 1.0, 0.05) var melee_slow_multiplier: float = 0.5
+## 命中减速持续时间（秒）；0关闭。再次命中刷新本次效果，不叠乘速度。
+@export_range(0.0, 5.0, 0.05, "suffix:s") var melee_slow_seconds: float = 0.5
 
 @export_group("概率模式参数（百分比）")
 ## 初始直射中心概率：0.5表示50%；松开瞄准也将概率限制到不超过本值。

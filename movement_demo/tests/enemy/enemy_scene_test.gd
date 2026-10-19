@@ -20,12 +20,12 @@ func add_enemy(parent: Node3D, at: Vector3, label: String):
 	return enemy
 
 func _run() -> void:
-	var scene = load("res://scenes/main.tscn").instantiate()
+	var scene = preload("res://tests/enemy/enemy_fire_fixture.gd").legacy_scene()
 	root.add_child(scene)
 	current_scene = scene
 	root.get_node("DebugSettings").enabled = false
 	var arena = scene.get_node("Arena")
-	var original = arena.get_node("Enemy")
+	var original = preload("res://tests/enemy/enemy_fire_fixture.gd").primary_enemy(arena)
 	original.get_node("AI").set_physics_process(false)
 	var player = scene.get_node("Player")
 	player.set_physics_process(false)
@@ -61,9 +61,9 @@ func _run() -> void:
 	var other_arena = load("res://scenes/arena.tscn").instantiate()
 	other_arena.name = "OtherArena"
 	other_arena.position = Vector3(80, 0, 0)
-	other_arena.get_node("Enemy/AI").set_physics_process(false)
+	preload("res://tests/enemy/enemy_fire_fixture.gd").primary_enemy(other_arena).get_node("AI").set_physics_process(false)
 	scene.add_child(other_arena)
-	var foreign = other_arena.get_node("Enemy")
+	var foreign = preload("res://tests/enemy/enemy_fire_fixture.gd").primary_enemy(other_arena)
 	check(not foreign.get_node("AI").context.environment_ready(), "共享导航地图已同步时仍等待新区域自身同步")
 	foreign.health = 37.0
 	var resets := {"first": 0, "second": 0}
@@ -138,7 +138,7 @@ func _run() -> void:
 	other_ai._physics_process(0.1)
 	check(arena.enemies.count(second) == 1 and other_ai.context.fire.context == other_ai.context and not other_ai.actions.is_empty(), "重新挂父节点恢复服务和动作且不重复注册")
 	# 缺少玩家时安全等待，晚加入玩家仍能正常绑定。
-	var isolated = other_arena.get_node("Enemy/AI")
+	var isolated = preload("res://tests/enemy/enemy_fire_fixture.gd").primary_enemy(other_arena).get_node("AI")
 	scene.remove_child(player)
 	isolated.context.player = null
 	isolated._physics_process(0.1)

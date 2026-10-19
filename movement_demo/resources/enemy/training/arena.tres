@@ -60,14 +60,14 @@ overridden = PackedStringArray()
 script = ExtResource("tactics")
 nearby_shot_accuracy_penalty = 0.1
 fire_stability_target = 0.6
-burst_shot_count = 10
-burst_pause_seconds = 1.5
+burst_shot_count = 3
+burst_pause_seconds = 1.8
 overridden = PackedStringArray("fire_stability_target", "burst_shot_count", "burst_pause_seconds", "damage_accuracy_penalty", "nearby_shot_accuracy_penalty")
 
 [resource]
 script = ExtResource("profile")
 display_name = "竞技场现有训练"
-selected_tactics = Array[StringName]([&"cover"])
+selected_tactics = Array[StringName]([&"cover", &"suppression", &"cooperate"])
 ai = SubResource("ai")
 tactics = SubResource("tactics")
 search = SubResource("search")

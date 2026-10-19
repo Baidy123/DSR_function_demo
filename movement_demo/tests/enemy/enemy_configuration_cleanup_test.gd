@@ -42,7 +42,7 @@ func _run() -> void:
 	var packed := PackedScene.new()
 	check(packed.pack(host) == OK and ResourceSaver.save(packed, "res://logs/cleanup_scene.tscn") == OK, "拖入场景含配置覆盖可保存")
 	var restored = ResourceLoader.load("res://logs/cleanup_scene.tscn", "", ResourceLoader.CACHE_MODE_IGNORE).instantiate()
-	var restored_enemy = restored.get_node("Enemy")
+	var restored_enemy = preload("res://tests/enemy/enemy_fire_fixture.gd").primary_enemy(restored)
 	check(restored_enemy.position == Vector3(2, 0, -3) and is_equal_approx(restored_enemy.get_node("AI").utility_fire_weight, 1.7), "场景往返保留位置和AI参数覆盖")
 	check(is_equal_approx(restored_enemy.get_node("Training").profile.setting(&"suppression", &"target_radius"), 1.35), "嵌套实例训练覆盖重载一致")
 	host.free()

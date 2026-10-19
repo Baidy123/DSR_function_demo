@@ -96,6 +96,15 @@ func receive_hit(damage: float) -> void:
 	_update_display()
 
 
+## 医疗等主动恢复共用的生命结算；不能复活，也不发送受伤通知。
+func restore_health(amount: float) -> float:
+	if is_dead or not is_finite(amount) or amount <= 0.0: return 0.0
+	var restored: float = minf(amount, maxf(0.0, max_health - health))
+	health += restored
+	_update_display()
+	return restored
+
+
 func is_invincible() -> bool:
 	return debug_settings.enabled
 
