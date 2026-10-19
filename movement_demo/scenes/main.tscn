@@ -24,6 +24,12 @@
 [ext_resource type="Script" uid="uid://bumxb08uysksl" path="res://scripts/world/npc_presentation.gd" id="npc_presentation"]
 [ext_resource type="Script" uid="uid://k0q37ja4h4tl" path="res://scripts/player/player_presentation.gd" id="player_presentation"]
 [ext_resource type="Script" uid="uid://bxfli5ujmf35g" path="res://scripts/systems/presentation/visual_presentation.gd" id="presentation"]
+[ext_resource type="Script" uid="uid://cwmqkbg23234v" path="res://scripts/systems/stage/stage_controller.gd" id="22_stage_controller"]
+[ext_resource type="Script" uid="uid://bhipevsgkk0mr" path="res://scripts/systems/stage/quest_controller.gd" id="23_quest_controller"]
+[ext_resource type="Script" uid="uid://mghdwtfibo1" path="res://scripts/systems/stage/stage_state_controller.gd" id="24_stage_state_controller"]
+[ext_resource type="Resource" path="res://resources/stages/stage_table_template.tres" id="25_stage_table"]
+[ext_resource type="Script" uid="uid://by7iy6ibrwkth" path="res://scripts/world/zone_volume.gd" id="26_zone_volume"]
+[ext_resource type="PackedScene" path="res://scenes/ui/quest_panel.tscn" id="27_quest_panel"]
 [ext_resource type="Script" path="res://scripts/systems/camera_ground_anchor.gd" id="camera_anchor"]
 [ext_resource type="Script" path="res://scripts/systems/player_camera.gd" id="player_camera"]
 [ext_resource type="PackedScene" path="res://scenes/world/camera_occlusion_demo.tscn" id="camera_occlusion_demo"]
@@ -100,6 +106,9 @@ radius = 1.2
 [sub_resource type="Resource" id="Resource_5vw27"]
 script = ExtResource("5_272bh")
 
+[sub_resource type="BoxShape3D" id="TavernZoneShape"]
+size = Vector3(18, 3, 10)
+
 [sub_resource type="StandardMaterial3D" id="StandardMaterial3D_kek77"]
 albedo_color = Color(0.82990223, 0.6462546, 0.22172275, 1)
 
@@ -111,6 +120,8 @@ height = 1.75
 [node name="Main" type="Node3D" unique_id=1975287300]
 
 [node name="DialogueUI" parent="." unique_id=36702053 instance=ExtResource("1_7mycd")]
+
+[node name="QuestPanel" parent="." instance=ExtResource("27_quest_panel")]
 
 [node name="WorldEnvironment" type="WorldEnvironment" parent="." unique_id=1879990490]
 environment = SubResource("Environment")
@@ -219,6 +230,7 @@ script = ExtResource("impact_receiver")
 [node name="NPC" type="StaticBody3D" parent="." unique_id=226967711]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -7.883234, 0, 3.7864947)
 script = ExtResource("2")
+npc_id = &"npc_a"
 dialogue_resource = ExtResource("4_5vw27")
 
 [node name="Body" type="MeshInstance3D" parent="NPC" unique_id=973626900]
@@ -282,6 +294,7 @@ metadata/_custom_type_script = "uid://csjccrhj5wnx7"
 [node name="NPCB" type="StaticBody3D" parent="." unique_id=494376989]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -8.0039215, 0, 1.8173995)
 script = ExtResource("2")
+npc_id = &"npc_b"
 dialogue_resource = ExtResource("8_kek77")
 
 [node name="Body" type="MeshInstance3D" parent="NPCB" unique_id=1718810606]
@@ -334,6 +347,27 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 5.4, 0, 4.1)
 transform = Transform3D(0, 0, -1, 0, 1, 0, 1, 0, 0, 9.125, 0, 0)
 
 [node name="ImpactEffects" parent="." unique_id=157028740 instance=ExtResource("impact_effects")]
+
+[node name="TavernZone" type="Area3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1, 0)
+collision_layer = 0
+script = ExtResource("26_zone_volume")
+zone_id = &"tavern"
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="TavernZone"]
+shape = SubResource("TavernZoneShape")
+
+[node name="StageController" type="Node" parent="." node_paths=PackedStringArray("tavern_zone", "site_zone")]
+script = ExtResource("22_stage_controller")
+tavern_zone = NodePath("../TavernZone")
+site_zone = NodePath("../Arena/CombatZone")
+
+[node name="QuestController" type="Node" parent="."]
+script = ExtResource("23_quest_controller")
+
+[node name="StageStateController" type="Node" parent="."]
+script = ExtResource("24_stage_state_controller")
+stage_table = ExtResource("25_stage_table")
 
 [node name="CameraOcclusionDemo" parent="." instance=ExtResource("camera_occlusion_demo")]
 position = Vector3(-3.8, 0, 0.8)

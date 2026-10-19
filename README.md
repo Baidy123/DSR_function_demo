@@ -26,6 +26,7 @@
 - [玩家近战、近战兵战术与武器参数](docs/gameplay/MELEE.md)
 - [竞技场说明](docs/gameplay/ARENA.md)
 - [场景交互物说明](docs/gameplay/INTERACTION.md)
+- [阶段、任务与 NPC 状态](docs/gameplay/STAGE_STATE.md)
 - [模型、动画与命中特效接入](docs/gameplay/PRESENTATION.md)
 - [相机视野、武器绑定与遮挡透明](docs/gameplay/CAMERA.md)
 - [敌人 AI 结构、维护与使用部署](docs/enemy-ai.md)

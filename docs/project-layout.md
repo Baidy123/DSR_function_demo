@@ -35,6 +35,7 @@ movement_demo/
 │   ├── ui/                对话界面与锁定准星
 │   ├── debug/             调试开关、声音和攻击点预览
 │   └── systems/           公共游戏状态与声音数据
+│       ├── stage/         阶段、任务与 NPC 状态控制器
 │       ├── presentation/  模型挂载、动画配置与表现状态
 │       └── effects/       命中快照、表面配置与特效生命周期
 ├── resources/
@@ -49,6 +50,7 @@ movement_demo/
 │   ├── animations/        动画对应表
 │   ├── effects/           表面命中特效配置
 │   ├── navigation/        烘焙导航资源
+│   ├── stages/            阶段／任务／NPC 状态规则配置表
 │   └── dialogue/          NPC 对话、导入元数据与原有剧情源文件
 ├── tests/
 │   ├── enemy/             敌人测试、公共辅助和回归运行器
@@ -60,6 +62,8 @@ movement_demo/
 ```
 
 新增运行脚本按职责放入对应目录；新增敌人动作实现放 `scripts/enemy/actions/`，其定义资源放 `resources/enemy/actions/`。新增交互效果放 `scripts/world/interactions/`，具体交互物场景放 `scenes/world/objects/`；交互物与效果只通过 `InteractionContext` 使用注入的状态，不直接查找全局节点。测试或临时诊断不要放回工程根目录，也不要混入运行脚本目录。
+
+阶段、任务与 NPC 状态规则集中在 `scripts/systems/stage/`：阶段判定、任务状态与状态解析各一个控制器，配置表资源脚本与 `resources/stages/` 下的 `.tres` 配套维护。控制器挂在 `main.tscn`、按 group 互相查找，不新增全局单例；NPC 只按 `npc_id` 与接收接口被驱动，不反向依赖控制器。见 [阶段与任务](gameplay/STAGE_STATE.md)。
 
 三档团队意识由 `scenes/world/squad.tscn` 的 `world/squad_controller.gd` 提供节点入口；节点持有配置和独立的 `services/squad_coordination.gd`。区域按活跃时钟统一调度，个人仍沿原 Utility、动作、身体与 Fire 执行。未迁移成员沿用兼容入口：`config/team_cooperation_binding.gd` 仅保存阵营、通信组与 cooperation 配置引用；现有 Arena 脚本的 `team_cooperation_bindings` 提供给区域 board。`resources/enemy/cooperation/` 提供三档模板和旧区域兼容绑定；个人 Training 继续独立。纯 planner 决定建议、集中／分散部署和行动支援链接，原动作、身体及 Fire 执行实际移动、换弹和射击。小队节点没有独立物理循环。默认场景接入由 `enemy_team_scene_integration_test.gd` 验证；旧行为测试通过公共 `legacy_scene()` 明确保留原个人配置前提，不能用兼容夹具代替当前绑定的实景验收。明确人数的专项可选择 `single_member_scene()` 再添加所需队员，避免保存地图额外成员干扰单人合同和多人性能计数；此辅助只改变测试实例。
 

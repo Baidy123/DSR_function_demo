@@ -2,7 +2,7 @@
 
 [ext_resource type="PackedScene" path="res://scenes/world/interactable.tscn" id="1_interactable"]
 [ext_resource type="Script" path="res://scripts/world/interactions/emit_noise_effect.gd" id="2_emit_noise"]
-[ext_resource type="Script" path="res://scripts/world/interactions/set_flag_effect.gd" id="3_set_flag"]
+[ext_resource type="Script" uid="uid://c3huhvx3y7uaf" path="res://scripts/world/interactions/toggle_flag_effect.gd" id="3_toggle_flag"]
 [ext_resource type="Script" path="res://scripts/world/interactions/interaction_effect.gd" id="4_effect"]
 [ext_resource type="Resource" path="res://resources/noise/music_noise.tres" id="5_music"]
 
@@ -11,8 +11,8 @@ script = ExtResource("2_emit_noise")
 noise = ExtResource("5_music")
 radius = 12.0
 
-[sub_resource type="Resource" id="Effect_music_flag"]
-script = ExtResource("3_set_flag")
+[sub_resource type="Resource" id="Effect_music_toggle"]
+script = ExtResource("3_toggle_flag")
 flag = &"music_playing"
 
 [sub_resource type="StandardMaterial3D" id="StandardMaterial3D_record"]
@@ -32,10 +32,11 @@ bottom_radius = 0.25
 height = 0.04
 
 [node name="RecordPlayer" instance=ExtResource("1_interactable")]
+interact_id = &"record_player"
 display_name = "唱片机"
 verb = "使用"
 used_hint = "音乐正在播放"
-effects = Array[ExtResource("4_effect")]([SubResource("Effect_music_noise"), SubResource("Effect_music_flag")])
+effects = Array[ExtResource("4_effect")]([SubResource("Effect_music_noise"), SubResource("Effect_music_toggle")])
 
 [node name="Body" parent="." index="1"]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.9, 0)
