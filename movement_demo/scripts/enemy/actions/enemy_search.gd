@@ -178,6 +178,10 @@ var _segment_speed := -1.0
 var _trail_pending: Array[Vector3] = []
 var _checked_trail: Array[Vector3] = []
 var _search_claim: Dictionary = {}
+## A witnessed low-cover disappearance remains a local investigation until
+## actually checked. It grants neither current sight nor renewed fire evidence.
+var _low_cover_focus: Dictionary = {}
+var _low_cover_retry := 0.0
 const InspectionGeometry = preload("res://scripts/enemy/services/enemy_cover_inspection_geometry.gd")
 const SearchBodyGeometry = preload("res://scripts/systems/character_geometry.gd")
 enum InspectionPhase { NONE, APPROACH, WAIT_PARTNER, CHECK, OBSERVE }
@@ -310,6 +314,7 @@ func has_committed_segment() -> bool:
 
 ## 搜寻保留自己的目标；公共NavigationAgent可能正被掩体动作使用。
 func is_observing() -> bool:
+	if _has_low_cover_focus(): return not has_suspected_position
 	return investigation_phase == context.State.SEARCH and search_is_pausing and not search_current_target_active
 
 
@@ -332,6 +337,7 @@ func utility_destination() -> Vector3:
 	if not _sector_assignment.is_empty(): return _sector_destination()
 	if _inspection_phase != InspectionPhase.NONE:
 		return _inspection_route.entry if _inspection_phase in [InspectionPhase.APPROACH, InspectionPhase.WAIT_PARTNER] else _inspection_route.peek
+	if _has_low_cover_focus() and not has_suspected_position: return actor.global_position
 	if investigation_phase == context.State.TRACK and has_suspected_position:
 		return suspected_position
 	if investigation_phase == context.State.SEARCH and search_current_target_active:
@@ -357,6 +363,9 @@ func begin_tracking_or_search(allow_hint: bool = true) -> void:
 	search_pause_timer = 0.0
 	search_is_pausing = false
 	search_hint_timer = 0.0
+	if _has_low_cover_focus():
+		_start_low_cover_track()
+		return
 
 	# 第一优先：如果允许“小外挂”，只在这个时刻掷一次骰子。
 	if allow_hint and _try_tracking_cheat_hint(lost_target_hint_chance) and _start_track_to_suspected():
@@ -719,6 +728,14 @@ func _process_track(delta: float) -> Vector3:
 
 func _finish_tracking(failed: bool = false) -> void:
 	_release_search_claim()
+	if _has_low_cover_focus():
+		if failed and has_suspected_position: context.block_utility_destination(suspected_position)
+		has_suspected_position = false
+		_low_cover_retry = context.evidence_elapsed_seconds + 1.0
+		release_segment()
+		agent.target_position = actor.global_position
+		context.invalidate_utility()
+		return
 	if not failed and context.cooperation_enabled() and context.perception.can_observe_position(suspected_look_position):
 		context.cooperation_publish_checked(PackedVector3Array([suspected_look_position]))
 	# 只为首次沿线调查记录已核实位置；区域搜索中的提示支线不无限累积旧轨迹。
@@ -768,6 +785,9 @@ func begin_search(center: Vector3 = Vector3.INF) -> void:
 	_release_search_claim()
 	if not is_enabled():
 		context.state = context.State.IDLE
+		return
+	if _has_low_cover_focus():
+		_start_low_cover_track()
 		return
 	context.state = context.State.SEARCH
 	investigation_phase = context.State.SEARCH
@@ -1069,6 +1089,8 @@ func _end_search() -> void:
 
 
 func reset() -> void:
+	_low_cover_focus.clear()
+	_low_cover_retry = 0.0
 	_resolved_inspection_source.clear()
 	_resolved_inspection_until = 0.0
 	_end_sector(false)
@@ -1116,6 +1138,17 @@ func reset() -> void:
 func step(delta: float) -> Vector3:
 	if not is_enabled():
 		return Vector3.ZERO
+	if not _low_cover_focus.is_empty():
+		if not _has_low_cover_focus() or context.perception.can_observe_position(_low_cover_focus.position) or (context.evidence_elapsed_seconds >= _low_cover_retry and _low_cover_checked_by_team()):
+			_low_cover_focus.clear()
+			has_suspected_position = false
+			begin_search()
+			context.invalidate_utility()
+		else:
+			context.state = context.State.TRACK
+			if not has_suspected_position:
+				if context.evidence_elapsed_seconds >= _low_cover_retry: _start_low_cover_track()
+				return Vector3.ZERO
 	if context.state == context.State.TRACK:
 		return _process_track(delta)
 	if context.state == context.State.SEARCH:
@@ -1140,6 +1173,7 @@ func state_label() -> String:
 	if _inspection_phase == InspectionPhase.WAIT_PARTNER: return "两端入位等待"
 	if _inspection_phase in [InspectionPhase.CHECK, InspectionPhase.OBSERVE]: return "分侧检查掩体"
 	if _inspection_phase == InspectionPhase.APPROACH: return "分侧接近掩体"
+	if _has_low_cover_focus(): return "接近已知掩体" if has_suspected_position else "警戒已知掩体"
 	if noise_search_origin.is_finite(): return "噪声调查"
 	if context.has_combat_contact():
 		return "战斗接敌" if not context.fresh_shared_contact().is_empty() else "失联搜索"
@@ -1151,6 +1185,8 @@ func state_label() -> String:
 
 
 func facing_direction(direction: Vector3) -> Vector3:
+	if _has_low_cover_focus() and not has_suspected_position:
+		return _low_cover_focus.position - actor.global_position
 	if context.state == context.State.TRACK and has_suspected_position:
 		var attention: Vector3 = suspected_look_position - actor.global_position
 		attention.y = 0.0
@@ -1192,7 +1228,7 @@ func collect_candidates(visible: bool) -> Array[Dictionary]:
 	var inspections: Array[Dictionary] = []
 	if not visible: inspections = _inspection_candidates()
 	if _inspection_phase != InspectionPhase.NONE: return inspections
-	if not visible: inspections.append_array(_collect_sector_candidates())
+	if not visible and not _has_low_cover_focus(): inspections.append_array(_collect_sector_candidates())
 	var threat: Vector3 = context._known_reload_threat()
 	if visible or not threat.is_finite():
 		return inspections
@@ -1222,7 +1258,14 @@ func begin(candidate: Dictionary, visible: bool) -> bool:
 	candidate.accepts_noise = true
 	super.begin(candidate, visible)
 	context.utility_suppression_pending = false
-	if _take_exact_clue():
+	if _has_low_cover_focus():
+		if not has_suspected_position or track_timer <= 0.0:
+			has_suspected_position = false
+			if context.evidence_elapsed_seconds >= _low_cover_retry: _start_low_cover_track()
+		else:
+			context.state = context.State.TRACK
+			agent.target_position = suspected_position
+	elif _take_exact_clue():
 		pass
 	elif noise_search_origin.is_finite() and investigation_phase < 0:
 		var position := noise_search_origin
@@ -1246,6 +1289,10 @@ func valid(visible: bool) -> bool:
 func tick(delta: float, _visible: bool) -> Dictionary:
 	if not _sector_assignment.is_empty(): return _tick_sector(delta, _visible)
 	if _inspection_phase != InspectionPhase.NONE: return _tick_inspection(delta)
+	# Restore the personal claim after the generic choice transaction commits,
+	# but before any movement. Claim revisions must not invalidate its prepare.
+	if _has_low_cover_focus() and has_suspected_position and _search_claim.is_empty() and context.cooperation_enabled():
+		if not _claim_search_point(suspected_position, track_timer): _finish_tracking(true)
 	if plan.get("search_recovery", false):
 		plan.erase("search_recovery")
 		if not is_observing() and context.routes.planning_path(actor.global_position, utility_destination()).is_empty():
@@ -1287,6 +1334,20 @@ func hold_released() -> bool:
 	return is_segment_released()
 
 func on_event(event: StringName, data: Dictionary) -> void:
+	if event == &"visibility" and not data.visible:
+		_capture_low_cover_focus(context.last_seen_position, context.perception.last_observed_cover(context.last_seen_position))
+	elif event in [&"noise", &"threat", &"cooperation_intel", &"exact_cover_clue"]:
+		var position: Vector3 = data.get("position", Vector3.INF)
+		if _has_low_cover_focus() and position.is_finite() and position.distance_to(_low_cover_focus.position) < 0.5:
+			# Repeated evidence at the same cover does not restart its route/timers.
+			return
+		_low_cover_focus.clear()
+		if event == &"cooperation_intel":
+			_capture_low_cover_focus(position, context.perception.last_observed_cover(position), true)
+		elif event == &"exact_cover_clue" and data.get("source") in [&"visual_loss", &"shared_visual"]:
+			var cover = data.get("cover")
+			if cover is WeakRef: cover = cover.get_ref()
+			_capture_low_cover_focus(position, cover, true)
 	if not _sector_assignment.is_empty() and event in [&"noise", &"threat", &"exact_cover_clue", &"cooperation_intel"]:
 		var source: Dictionary = context.coordination_source(int(_sector_assignment.get("target_id", 0)))
 		if not source.is_empty() and source.evidence_id == _sector_assignment.get("evidence_id"): return
@@ -1325,6 +1386,96 @@ func on_event(event: StringName, data: Dictionary) -> void:
 	elif event == &"noise":
 		if _running: investigate_noise(data.position, true)
 		else: investigation_phase = -1
+	if _has_low_cover_focus() and event in [&"visibility", &"cooperation_intel", &"exact_cover_clue"]:
+		# Superseding real evidence also invalidates an old committed route.
+		route_motion.reset()
+		plan.erase("route")
+		plan.erase("route_target")
+		has_suspected_position = false
+		investigation_phase = -1
+
+
+func _has_low_cover_focus() -> bool:
+	if _low_cover_focus.is_empty(): return false
+	if _low_cover_focus.generation != context.memory_generation or _low_cover_focus.target_id != context.cooperation_target_id(): return false
+	if _low_cover_focus.shared and _low_cover_focus.identity != context._cooperation_identity: return false
+	var cover = _low_cover_focus.cover.get_ref()
+	if not is_instance_valid(cover) or not cover.is_inside_tree() or not is_instance_valid(context.navigation_region) or not context.navigation_region.is_ancestor_of(cover): return false
+	var box := cover.get_node_or_null("CollisionShape3D") as CollisionShape3D
+	return box != null and not box.disabled and box.shape is BoxShape3D and (cover.collision_layer & 1) != 0 and box.global_transform == _low_cover_focus.transform and box.shape.size == _low_cover_focus.size
+
+
+func _capture_low_cover_focus(position: Vector3, cover: Object, shared: bool = false) -> void:
+	_low_cover_focus.clear()
+	if not position.is_finite() or not is_instance_valid(cover) or not cover.has_method("is_low_cover") or not cover.is_low_cover(): return
+	var box := cover.get_node_or_null("CollisionShape3D") as CollisionShape3D
+	if box == null or not box.shape is BoxShape3D: return
+	_low_cover_focus = {"position": position, "cover": weakref(cover), "observer_position": actor.global_position,
+		"target_id": context.cooperation_target_id(), "generation": context.memory_generation,
+		"transform": box.global_transform, "size": box.shape.size, "shared": shared,
+		"identity": context._cooperation_identity.duplicate(), "captured_at": context.evidence_elapsed_seconds}
+	_low_cover_retry = 0.0
+
+
+func _low_cover_checked_by_team() -> bool:
+	if not context.coordinated_cooperation_enabled(): return false
+	var captured: float = _low_cover_focus.captured_at + context.coordination_now() - context.evidence_elapsed_seconds
+	for checked: Dictionary in context.coordination_checked_points(int(_low_cover_focus.target_id)):
+		if checked.position.is_equal_approx(_low_cover_focus.position) and float(checked.observed_at) >= captured and float(checked.valid_until) > context.coordination_now(): return true
+	return false
+
+
+func _start_low_cover_track() -> void:
+	_release_search_claim()
+	context.state = context.State.TRACK
+	investigation_phase = context.State.TRACK
+	has_suspected_position = false
+	search_current_target_active = false
+	search_is_pausing = false
+	_trail_pending.clear()
+	_low_cover_retry = context.evidence_elapsed_seconds + 1.0
+	var known: Vector3 = _low_cover_focus.position
+	var targets: Array[Vector3] = [known]
+	var geometry := InspectionGeometry.describe(context, _low_cover_focus)
+	if not geometry.is_empty():
+		for end in [-1, 1]: targets.append(geometry.ends[end].peek)
+	var best := Vector3.INF
+	var best_length := INF
+	for target in targets:
+		if not _set_suspected_position_from_raw(target, 0.5): continue
+		if context.is_utility_destination_blocked(suspected_position): continue
+		# A safe nav projection on the observer's side cannot confirm the hideout.
+		if not selection.has_clear_line(actor.get_posture_eye_position(false, suspected_position), actor.get_posture_eye_position(true, known)): continue
+		var path: PackedVector3Array = selection._path_to(actor.global_position, suspected_position)
+		if path.is_empty(): continue
+		var length: float = selection._path_length_from_path(path)
+		if length < best_length:
+			best = suspected_position
+			best_length = length
+	has_suspected_position = best.is_finite()
+	if has_suspected_position:
+		suspected_position = best
+		suspected_look_position = known
+		if _start_track_to_suspected(): return
+	# If both ends are occupied, an unassigned member can still approach the
+	# near face without taking an inspector's endpoint or declaring it checked.
+	if not geometry.is_empty():
+		var entry: Vector3 = geometry.ends[-1].entry
+		if context._horizontal_distance(geometry.ends[1].entry) < context._horizontal_distance(entry): entry = geometry.ends[1].entry
+		# Stay on this member's approach side, outside the endpoint reservation.
+		# Converging on the middle of the wall cuts across both assigned paths.
+		var away: Vector3 = actor.global_position - entry
+		away.y = 0.0
+		var staging: Vector3 = entry + away.normalized() * maxf(1.4, float(geometry.radius) * 2.0 + 0.6)
+		if context._horizontal_distance(staging) > track_arrival_distance * 2.0 and _set_suspected_position_from_raw(staging, 0.5):
+			if not context.is_utility_destination_blocked(suspected_position) and context._horizontal_distance(suspected_position) > track_arrival_distance * 2.0:
+				suspected_look_position = known
+				if _start_track_to_suspected(): return
+	# No legal route is an execution failure, not proof that the cover is empty.
+	has_suspected_position = false
+	track_timer = 0.0
+	release_segment()
+	agent.target_position = actor.global_position
 
 func route_multiplier() -> float:
 	return movement_multiplier()
@@ -1515,6 +1666,7 @@ func _tick_inspection(delta: float) -> Dictionary:
 			if context.perception.can_observe_position(known):
 				_inspection_complete = true
 				_inspection_checked = PackedVector3Array([known])
+				if _has_low_cover_focus() and known.is_equal_approx(_low_cover_focus.position): _low_cover_focus.clear()
 			elif _inspection_observe >= -1.5 and _inspection_observation_blocked_by_ally(known):
 				# A passing friendly body is not negative evidence about the clue.
 				# Keep observing within the original assignment deadline and the

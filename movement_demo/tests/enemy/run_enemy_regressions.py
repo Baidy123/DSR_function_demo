@@ -59,6 +59,7 @@ TESTS = [
     "enemy_half_cover_test",
     "low_cover_band_test",
     "enemy_low_cover_loss_test",
+    "enemy_low_cover_contact_test",
     "enemy_low_cover_behavior_test",
     "enemy_vault_utility_test",
     "enemy_vault_navigation_test",
