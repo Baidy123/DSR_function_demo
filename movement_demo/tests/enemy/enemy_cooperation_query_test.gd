@@ -75,7 +75,7 @@ func _single_role_equivalence() -> void:
 	var actor = actors[0]
 	var ai = actor.get_node("AI")
 	var squad
-	var roles: Array[StringName] = [&"search_sector", &"inspect_left", &"inspect_right", &"assisted_reload", &"assisted_retreat", &"front_support", &"flank", &"team_position", &"unknown"]
+	var roles: Array[StringName] = [&"search_sector", &"inspect_left", &"inspect_right", &"inspect_follow", &"assisted_reload", &"assisted_retreat", &"front_support", &"flank", &"team_position", &"unknown"]
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 15102026
 	for level in [-1, 0, 1, 2]:
@@ -120,7 +120,7 @@ func _single_role_equivalence() -> void:
 		actor.communication_group = &"tactical_test"
 		caller.permitted = permitted
 		caller.noise_search_origin = Vector3.INF
-		check(exact and compared == 6912 and Engine.get_physics_frames() == frame, "Level %d: one-role checks match all 6912 full-enumeration results across same-frame permissions, target, vision, noise, body, death, radio and pause changes" % level)
+		check(exact and compared == 7680 and Engine.get_physics_frames() == frame, "Level %d: one-role checks match all 7680 full-enumeration results across same-frame permissions, target, vision, noise, body, death, radio and pause changes" % level)
 		check(allowed > 0 if level != 0 else allowed == 0, "Level %d: equivalence covers legal posts as well as denials" % level)
 	_reset_tactical()
 

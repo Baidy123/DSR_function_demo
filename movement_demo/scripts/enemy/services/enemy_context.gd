@@ -234,6 +234,7 @@ func _known_reload_threat() -> Vector3:
 	return last_known_position if is_alerted and last_known_position.is_finite() else noise_search_origin
 
 func update_evidence(delta: float, visible: bool) -> void:
+	var acquired := visible and not was_seeing_player
 	sees_player = visible
 	evidence_elapsed_seconds += maxf(0.0, delta)
 	_expire_ally_path_blocks()
@@ -269,7 +270,7 @@ func update_evidence(delta: float, visible: bool) -> void:
 		invalidate_utility()
 	perception.update_close_cover(delta)
 	was_seeing_player = visible
-	_update_cooperation_evidence()
+	_update_cooperation_evidence(acquired)
 	_publish_coordination_evidence()
 	if state == State.IDLE:
 		patrol_pause_timer = maxf(0.0, patrol_pause_timer - delta)
@@ -714,7 +715,7 @@ func cooperation_target_evidence() -> Dictionary:
 		"captured_at": personal_time, "valid_until": personal_time + float(setting(&"cooperation", &"intel_seconds", 5.0)),
 		"id": 0, "source": &"visual", "shared": false, "confidence": pow(0.5, utility_unseen_seconds / maxf(0.1, utility_threat_half_life_seconds))}
 
-func _update_cooperation_evidence() -> void:
+func _update_cooperation_evidence(acquired: bool = false) -> void:
 	if cooperation == null: return
 	var identity := [cooperation.get_instance_id(), EnemyTeamCooperationBinding.effective_faction(actor), EnemyTeamCooperationBinding.effective_communication_group(actor), cooperation_target_id(), cooperation.generation, cooperation.relation_revision]
 	if identity != _cooperation_identity:
@@ -728,7 +729,7 @@ func _update_cooperation_evidence() -> void:
 		_inspection_notification_id = -1
 		_cooperation_identity = identity
 		cooperation.register(self)
-	if sees_player: cooperation.publish_visual(self)
+	if sees_player: cooperation.publish_visual(self, acquired)
 	_receive_shared_inspection()
 	var report: Dictionary = cooperation.evidence(self, cooperation_target_id())
 	if report.is_empty(): return
@@ -742,7 +743,7 @@ func _update_cooperation_evidence() -> void:
 		_shared_visual = report # Re-map original timestamps if this individual was inactive.
 		return
 	_shared_visual = report
-	if cooperation_enabled() and cooperation_member_count() > 1 and not sees_player and int(report.id) != _inspection_shared_report_id:
+	if cooperation_enabled() and cooperation_member_count() > 1 and not sees_player and not cooperation.has_visual_contact(self, cooperation_target_id()) and int(report.id) != _inspection_shared_report_id:
 		_inspection_shared_report_id = int(report.id)
 		var active: Dictionary = cooperation.inspection_evidence(self, cooperation_target_id())
 		# Alternating observers can publish every frame. A live frozen round
@@ -761,14 +762,17 @@ func _update_cooperation_evidence() -> void:
 	if sees_player: return
 	var personal_time: float = evidence_elapsed_seconds - utility_unseen_seconds
 	if has_visual_memory and float(report.captured_at) < personal_time: return
-	var changed: bool = first_contact or not _shared_notification_position.is_finite() or _shared_notification_position.distance_to(report.position) >= 0.5
+	var reacquired: bool = int(report.get("contact_id", 0)) > int(old.get("contact_id", 0))
+	var changed: bool = reacquired or first_contact or not _shared_notification_position.is_finite() or _shared_notification_position.distance_to(report.position) >= 0.5
 	last_known_position = report.position
 	is_alerted = true
 	noise_search_origin = Vector3.INF
 	utility_threat_age_seconds = maxf(0.0, evidence_elapsed_seconds - float(report.captured_at))
 	if changed:
 		_shared_notification_position = report.position
-		event_received.emit(&"cooperation_intel", report.duplicate(true))
+		var notification := report.duplicate(true)
+		notification.reacquired = reacquired
+		event_received.emit(&"cooperation_intel", notification)
 		invalidate_utility()
 
 var _cooperation_preview_snapshot: Dictionary = {}
@@ -938,6 +942,15 @@ func _publish_coordination_evidence() -> void:
 			"target_id": cooperation_target_id(), "position": inspection.position,
 			"captured_at": inspection.captured_at, "valid_until": inspection.valid_until})
 
+func inspection_order() -> Dictionary:
+	return _coordinator().inspection_order(self) if cooperation != null else {}
+
+func inspection_predecessor(order: Dictionary) -> Vector3:
+	if cooperation == null or int(order.get("predecessor_id", 0)) == 0: return Vector3.INF
+	var member = cooperation._context(int(order.predecessor_id))
+	if member == null or not is_instance_valid(member.actor) or member.actor.is_dead: return Vector3.INF
+	return member.actor.global_position
+
 func publish_coordination_offers(options: Array[Dictionary], offers: Array[Dictionary]) -> void:
 	if cooperation == null or not cooperation.has_method("submit_offers") or not _publish_coordination_versions(): return
 	var by_key: Dictionary = {}
@@ -1030,7 +1043,9 @@ func coordination_choices(options: Array[Dictionary]) -> Array[Dictionary]:
 	if assignment.is_empty():
 		var independent: Array[Dictionary] = []
 		var advice := coordination_recommendation()
+		var assembling := not inspection_order().is_empty()
 		for candidate in basic:
+			if assembling and not candidate.get("assignment_escape_verified", false) and candidate.get("plan") != &"inspect_assemble": continue
 			if candidate.has("coordination_role"):
 				if advice.is_empty() or candidate.get("id") != advice.get("owner_action") or not advice.allowed_offer_keys.has(candidate.get("coordination_offer_key", "")): continue
 				var advised := candidate.duplicate()

@@ -36,6 +36,8 @@ TESTS = [
     "enemy_action_coordination_protocol_test",
     "enemy_team_tactical_board_test",
     "enemy_team_inspection_runtime_test",
+    "enemy_team_reacquisition_test",
+    "enemy_search_formation_test",
     "enemy_inspection_observation_test",
     "enemy_team_flank_runtime_test",
     "enemy_cooperation_yield_runtime_test",
@@ -132,7 +134,8 @@ def main():
                       "Enemy regressions",
                       {"enemy_squad_runtime_test": 180, "enemy_cooperation_flank_runtime_test": 300, "enemy_team_flank_runtime_test": 120, "cooperation_runtime_test": 180,
                        "enemy_team_awareness_levels_runtime_test": 240,
-                       "enemy_team_support_execution_test": 240, "enemy_team_search_runtime_test": 180})
+                       "enemy_team_support_execution_test": 240, "enemy_team_search_runtime_test": 180,
+                       "enemy_search_formation_test": 150})
 
 if __name__ == "__main__":
     raise SystemExit(main())

@@ -46,6 +46,7 @@ var _coordination_due: Dictionary = {}
 var _coordination_failures: Array[Dictionary] = []
 var _coordination_counters: Dictionary = {}
 var _coordination_checked: Dictionary = {}
+var _inspection_orders: Dictionary = {}
 var _recommendations: Dictionary = {}
 var _recommendation_cooldowns: Dictionary = {}
 var _team_planner = TeamPlanner.new()
@@ -635,6 +636,7 @@ func support_pressure(context) -> float:
 # evaluation batch. None of these functions runs an action, navigates or fires.
 
 func _clear_coordination() -> void:
+	_inspection_orders.clear()
 	_coordination_baselines.clear()
 	_recommendations.clear()
 	_recommendation_cooldowns.clear()
@@ -706,10 +708,17 @@ func publish_coordination_source(context, source: Dictionary) -> void:
 	if deadline <= elapsed: return
 	_coordination_receipts[receipt_key] = {"source_id": source.source_id, "captured_at": captured, "valid_until": deadline, "team_id": team_id}
 	var previous := _active_coordination_source(key)
+	# Read the contact identity from the authoritative report, not a caller's
+	# payload. A reacquisition contradicts old search progress even at one point.
+	var contact_id := 0
+	if source.source in [&"shared_visual", &"observation_memory"]:
+		for report: Dictionary in _reports.values():
+			if report.id == source.source_id: contact_id = int(report.get("contact_id", 0))
+	if contact_id > 0 and contact_id < int(previous.get("contact_id", 0)): return
 	# A newer sight at another location contradicts an older investigation. An
 	# older, longer-lived clue at the SAME frozen anchor remains a valid fallback.
 	if not previous.is_empty() and captured < previous.captured_at and previous.position.distance_to(source.position) >= COORDINATION_SOURCE_DISTANCE: return
-	var new_anchor: bool = previous.is_empty() or previous.position.distance_to(source.position) >= COORDINATION_SOURCE_DISTANCE
+	var new_anchor: bool = previous.is_empty() or previous.position.distance_to(source.position) >= COORDINATION_SOURCE_DISTANCE or contact_id > int(previous.get("contact_id", 0))
 	var evidence_id: int = int(previous.get("evidence_id", 0))
 	if new_anchor:
 		_serial += 1
@@ -729,7 +738,7 @@ func publish_coordination_source(context, source: Dictionary) -> void:
 	_coordination_source_pool[key] = pool
 	_coordination_sources[key] = {"target_id": source.target_id, "position": anchor, "front_axis": axis,
 		"flank_clustered": _coordination_clustered(team_id, anchor, axis, source.target_id) if new_anchor else previous.flank_clustered,
-		"evidence_id": evidence_id, "generation": generation, "team_id": team_id}
+		"evidence_id": evidence_id, "contact_id": maxi(contact_id, int(previous.get("contact_id", 0))), "generation": generation, "team_id": team_id}
 	if new_anchor:
 		_coordination_due[team_id] = elapsed
 		revision += 1
@@ -753,6 +762,70 @@ func coordination_source(context, target_id: int = 0) -> Dictionary:
 	var team_id := _coordination_team(context)
 	if team_id == 0 or (target_id != 0 and target_id != context.cooperation_target_id()): return {}
 	return _active_coordination_source(_coordination_key(team_id, target_id))
+
+## Strong squads decide the investigation objective before comparing local
+## movement offers. Stable slots belong to this evidence, not current positions.
+func inspection_order(context) -> Dictionary:
+	if not has_team_binding(context) or not context.coordinated_cooperation_enabled(): return {}
+	var team_id := _coordination_team(context)
+	var order: Dictionary = _inspection_orders.get(team_id, {})
+	if order.is_empty() or environment.has_visual_contact(context, context.cooperation_target_id()): return {}
+	var source := coordination_source(context, context.cooperation_target_id())
+	if source.is_empty() or order.evidence_id != source.evidence_id: return {}
+	return order.slots.get(context.actor.get_instance_id(), {}).duplicate(true)
+
+func _prepare_inspection_order(team_id: int, source: Dictionary, ids: Array) -> void:
+	var representative = _context(ids[0])
+	if not has_team_binding(representative) or not representative.coordinated_cooperation_enabled(): return
+	var clue: Dictionary = representative.cover_inspection_evidence()
+	if clue.is_empty() or environment.has_visual_contact(representative, source.target_id):
+		_inspection_orders.erase(team_id)
+		return
+	var eligible: Array = []
+	var spacing := 1.2
+	for id: int in ids:
+		var member = _context(id)
+		if not _coordination_role_allowed(member, source.target_id, &"inspect_left"): continue
+		eligible.append(id)
+		var shape: CollisionShape3D = member.actor.get_node("CollisionShape3D")
+		spacing = maxf(spacing, float(shape.shape.radius) * 2.0 * maxf(shape.global_basis.x.length(), shape.global_basis.z.length()) + float(member.setting(&"cooperation", &"spacing_margin", 0.45)) + 0.2)
+	if eligible.size() < 2:
+		_inspection_orders.erase(team_id)
+		return
+	eligible.sort()
+	var old: Dictionary = _inspection_orders.get(team_id, {})
+	if old.get("evidence_id") == source.evidence_id and old.get("members") == eligible: return
+	var ordered := eligible.duplicate()
+	var right: Vector3 = Vector3.UP.cross(source.front_axis)
+	var body = clue.get("cover")
+	if body is WeakRef: body = body.get_ref()
+	if is_instance_valid(body):
+		var box := body.get_node_or_null("CollisionShape3D") as CollisionShape3D
+		if box != null and box.shape is BoxShape3D:
+			var origin: Vector3 = box.to_local(clue.observer_position)
+			var half: Vector3 = box.shape.size * 0.5
+			right = box.global_basis.x.normalized() if absf(origin.z) / maxf(0.01, half.z) >= absf(origin.x) / maxf(0.01, half.x) else box.global_basis.z.normalized()
+	ordered.sort_custom(func(a, b): return _context(a).actor.global_position.dot(right) < _context(b).actor.global_position.dot(right))
+	var sides := [[], []]
+	# Outside bodies lead their own side; rear ranks are assigned inward without
+	# reshuffling as the actual formation moves.
+	while not ordered.is_empty():
+		sides[0].append(ordered.pop_front())
+		if not ordered.is_empty(): sides[1].append(ordered.pop_back())
+	for side_members: Array in sides:
+		side_members.sort_custom(func(a, b): return _context(a).actor.global_position.distance_squared_to(source.position) < _context(b).actor.global_position.distance_squared_to(source.position))
+	var slots := {}
+	for side in 2:
+		for row in sides[side].size():
+			slots[sides[side][row]] = {"side": -1 if side == 0 else 1, "row": row,
+				"depth": sides[side].size(), "spacing": spacing, "members": eligible.duplicate(),
+				"predecessor_id": sides[side][row - 1] if row > 0 else 0,
+				"evidence_id": source.evidence_id, "target_id": source.target_id}
+	_inspection_orders[team_id] = {"evidence_id": source.evidence_id, "members": eligible, "slots": slots}
+	var previous_plan: Dictionary = _coordination_plans.get(team_id, {})
+	if not previous_plan.is_empty() and previous_plan.tactic != &"inspect":
+		_drop_coordination_plan(team_id, &"whole_squad_search")
+	revision += 1
 
 func _coordination_source_axis(team_id: int, anchor: Vector3, target_id: int) -> Vector3:
 	var center := Vector3.ZERO
@@ -794,11 +867,12 @@ func _coordination_roles(context, target_id: int) -> Array:
 	if not context.is_alerted and not context.noise_search_origin.is_finite(): return result
 	if target_id != 0 and context.cooperation_target_id() != target_id: return result
 	var mobile: bool = context.actor.can_move() and not context.actor.is_vaulting() and not context.actor.melee_active
-	if context.coordinated_cooperation_enabled() and mobile and not context.sees_player and context.can_use_action(&"search") and (context.is_alerted or context.noise_search_origin.is_finite()):
+	if context.coordinated_cooperation_enabled() and mobile and not context.sees_player and not environment.has_visual_contact(context, target_id) and context.can_use_action(&"search") and (context.is_alerted or context.noise_search_origin.is_finite()):
 		result.append(&"search_sector")
 		if target_id != 0:
 			result.append(&"inspect_left")
 			result.append(&"inspect_right")
+			result.append(&"inspect_follow")
 	if target_id != 0 and context.coordinated_cooperation_enabled() and has_team_binding(context):
 		if context.actor.can_use_firearms() and context.can_use_action(&"reload"): result.append(&"assisted_reload")
 		if mobile and context.can_use_action(&"covering_retreat"): result.append(&"assisted_retreat")
@@ -817,7 +891,8 @@ func _coordination_role_allowed(context, target_id: int, role: StringName) -> bo
 	if not _reservation_member_valid(context) or not context.cooperation_enabled(): return false
 	if not context.is_alerted and not context.noise_search_origin.is_finite(): return false
 	if target_id != 0 and context.cooperation_target_id() != target_id: return false
-	if role in [&"search_sector", &"inspect_left", &"inspect_right"]:
+	if role in [&"search_sector", &"inspect_left", &"inspect_right", &"inspect_follow"]:
+		if environment.has_visual_contact(context, target_id): return false
 		if role != &"search_sector" and target_id == 0: return false
 		return context.coordinated_cooperation_enabled() and context.actor.can_move() and not context.actor.is_vaulting() and not context.actor.melee_active and not context.sees_player and context.can_use_action(&"search")
 	if target_id == 0: return false
@@ -841,7 +916,7 @@ func _coordination_offer_valid(context, offer: Dictionary, board_time: bool = fa
 	for key in [&"offer_key", &"owner_action", &"position_set_key", &"role"]:
 		if not _reservation_text(offer.get(key)): return false
 	if not context.can_use_action(StringName(offer.owner_action)): return false
-	var owners: Array = [&"search"] if offer.role in [&"inspect_left", &"inspect_right", &"search_sector"] else [&"cooperate"]
+	var owners: Array = [&"search"] if offer.role in [&"inspect_left", &"inspect_right", &"inspect_follow", &"search_sector"] else [&"cooperate"]
 	if has_team_binding(context) and context.coordinated_cooperation_enabled():
 		if offer.role == &"front_support": owners.append(&"suppression")
 		elif offer.role == &"assisted_reload": owners = [&"reload"]
@@ -859,12 +934,18 @@ func _coordination_offer_valid(context, offer: Dictionary, board_time: bool = fa
 	if not _team_planner._values_only(offer, budget, 0) or not _team_planner._summary_valid(offer.get("path_summary")): return false
 	if not _reservation_summary_valid(offer.path_summary): return false
 	var summary: Dictionary = offer.path_summary
+	if offer.role in [&"inspect_left", &"inspect_right", &"inspect_follow"]:
+		var order := inspection_order(context)
+		if offer.role == &"inspect_follow" and order.is_empty(): return false
+		if not order.is_empty():
+			if summary.get("formation_row") != order.row or summary.get("side") != order.side: return false
+			if (order.row > 0) != (offer.role == &"inspect_follow"): return false
 	if offer.role == &"search_sector" and summary.has("sector_key"):
 		if not context.has_method("coordination_search_template_valid") or not context.coordination_search_template_valid(String(summary.sector_key), int(summary.get("source_revision", -1)), int(summary.get("template_navigation_revision", -1))): return false
 	if not summary.get("staging_position") is Vector3 or not summary.staging_position.is_finite(): return false
 	if not _reservation_number(summary.get("staging_seconds")) or summary.staging_seconds < 0.0: return false
 	if not _coordination_frame_valid(summary, source, StringName(offer.role), offer.position, has_team_binding(context) and context.coordinated_cooperation_enabled()): return false
-	if offer.role in [&"inspect_left", &"inspect_right", &"search_sector"]:
+	if offer.role in [&"inspect_left", &"inspect_right", &"inspect_follow", &"search_sector"]:
 		var observations: Variant = summary.get("observation_points")
 		if not observations is Array or observations.is_empty() or observations.size() > 64: return false
 		for point in observations:
@@ -1136,9 +1217,9 @@ func report_assignment(context, report: Dictionary) -> bool:
 		if entry.role not in [&"front_support", &"assisted_reload"] and not context.actor.can_move(): return false
 	if state == &"complete":
 		if entry.complete: return true
-		if entry.role in [&"flank", &"inspect_left", &"inspect_right"] and context.actor.global_position.distance_to(entry.selected_position) > 0.35: return false
+		if entry.role in [&"flank", &"inspect_left", &"inspect_right", &"inspect_follow"] and context.actor.global_position.distance_to(entry.selected_position) > 0.35: return false
 		if plan.phase != &"executing" or plan.release_at < 0.0 or elapsed < plan.release_at: return false
-		if entry.role in [&"inspect_left", &"inspect_right", &"search_sector"]:
+		if entry.role in [&"inspect_left", &"inspect_right", &"inspect_follow", &"search_sector"]:
 			if not _record_assignment_observations(context, entry, plan, report): return false
 			for expected: Vector3 in entry.observation_points:
 				if not entry.get("observed_points", {}).has(expected): return false
@@ -1157,7 +1238,7 @@ func report_assignment(context, report: Dictionary) -> bool:
 ## Re-reporting a point never renews its original observation or expiry.
 
 func _record_assignment_observations(context, entry: Dictionary, plan: Dictionary, report: Dictionary) -> bool:
-	if entry.role not in [&"inspect_left", &"inspect_right", &"search_sector"]: return true
+	if entry.role not in [&"inspect_left", &"inspect_right", &"inspect_follow", &"search_sector"]: return true
 	var checked: Variant = report.get("checked_points", PackedVector3Array())
 	if not checked is PackedVector3Array or checked.size() > 64: return false
 	for point: Vector3 in checked:
@@ -1213,7 +1294,7 @@ func _coordination_requests(ids: Array, source: Dictionary) -> Array:
 	var plan: Dictionary = _coordination_plans.get(source.team_id, {})
 	if not plan.is_empty():
 		for entry: Dictionary in plan.assignments:
-			if not entry.accepted or entry.complete or not entry.role in [&"flank", &"team_position", &"assisted_reload", &"assisted_retreat", &"inspect_left", &"inspect_right", &"search_sector"] or not _coordination_assignment_valid(plan, entry): continue
+			if not entry.accepted or entry.complete or not entry.role in [&"flank", &"team_position", &"assisted_reload", &"assisted_retreat", &"inspect_left", &"inspect_right", &"inspect_follow", &"search_sector"] or not _coordination_assignment_valid(plan, entry): continue
 			var status: Dictionary = _members[entry.actor_id].status
 			var moving: bool = elapsed - float(status.get("updated_at", -INF)) <= 0.35 and status.get("moving", false)
 			var kind: StringName = &"reload" if entry.role == &"assisted_reload" else (&"retreat" if entry.role == &"assisted_retreat" else &"advance")
@@ -1236,7 +1317,7 @@ func _coordination_frame_valid(summary: Dictionary, source: Dictionary, role: St
 	return side < -FLANK_SIDE_MARGIN if role == &"flank" else side > FLANK_SIDE_MARGIN
 
 func _coordination_offer_observed(source: Dictionary, offer: Dictionary) -> bool:
-	if _coordination_checked.is_empty() or offer.role not in [&"inspect_left", &"inspect_right", &"search_sector"]: return false
+	if _coordination_checked.is_empty() or offer.role not in [&"inspect_left", &"inspect_right", &"inspect_follow", &"search_sector"]: return false
 	for point: Vector3 in offer.path_summary.observation_points:
 		var grid := Vector3i(roundi(point.x * 100.0), roundi(point.y * 100.0), roundi(point.z * 100.0))
 		var checked: Dictionary = _coordination_checked.get([source.team_id, source.evidence_id, grid], {})
@@ -1258,6 +1339,7 @@ func publish_personal_baseline(context, summary: Dictionary) -> void:
 	_coordination_baselines[id] = value
 
 func _coordination_snapshot(team_id: int, source: Dictionary, ids: Array) -> Dictionary:
+	_prepare_inspection_order(team_id, source, ids)
 	var environment := _coordination_environment(team_id, ids)
 	var current: Dictionary = _coordination_plans.get(team_id, {})
 	var frame: Dictionary = current.get("tactical_frame", {}) if not current.is_empty() else {"anchor": source.position, "axis": source.front_axis}
@@ -1300,6 +1382,9 @@ func _coordination_snapshot(team_id: int, source: Dictionary, ids: Array) -> Dic
 	if has_team_binding(representative):
 		snapshot_value.cooperation_level = team_level(representative)
 		snapshot_value.team_config_revision = team_configuration_revision(representative)
+		var order: Dictionary = _inspection_orders.get(team_id, {})
+		if order.get("evidence_id") == source.evidence_id:
+			snapshot_value.search_members = order.members.duplicate()
 	for id: int in ids:
 		if _recommendations.get(id, {}).get("accepted", false): snapshot_value.flank_owner_ids.append(id)
 	if not current.is_empty():

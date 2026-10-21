@@ -11,6 +11,7 @@ var _elapsed := 0.0
 var _nearby_elapsed := 0.0
 var _nearby: Array[WeakRef] = []
 var _desired := Vector3.ZERO
+var _stop_position := Vector3.INF
 var _intent_frame := -1
 var _point := Vector3.INF
 var _next_point := Vector3.INF
@@ -371,7 +372,14 @@ func _blocked_friend(neighbors: Array[WeakRef], desired: Vector3):
 			nearest_distance = along
 	if nearest == null: return null
 	var collision := KinematicCollision3D.new()
-	if not actor.test_move(actor.global_transform, axis * minf(1.15, nearest_distance), collision): return null
+	# A queued body stops at its own slot. Looking beyond that destination
+	# mistakes the next parked rank for an obstacle and asks it to scatter.
+	var probe := minf(1.15, nearest_distance)
+	if _stop_position.is_finite():
+		var remaining: Vector3 = _stop_position - actor.global_position
+		remaining.y = 0.0
+		if remaining.dot(axis) > 0.0: probe = minf(probe, remaining.length())
+	if not actor.test_move(actor.global_transform, axis * probe, collision): return null
 	return nearest if collision.get_collider() == nearest else null
 
 func _spacing_clearance(point: Vector3, neighbors: Array[WeakRef]) -> float:
@@ -445,7 +453,8 @@ func _start_spacing(neighbors: Array[WeakRef], desired: Vector3) -> bool:
 	_return_point = Vector3.INF
 	return true
 
-func resolve(desired: Vector3, delta: float, speed_limit: float) -> Vector3:
+func resolve(desired: Vector3, delta: float, speed_limit: float, stop_position: Vector3 = Vector3.INF) -> Vector3:
+	_stop_position = stop_position
 	_elapsed += maxf(0.0, delta)
 	_desired = desired
 	_intent_frame = Engine.get_physics_frames()

@@ -1,5 +1,7 @@
 # 项目目录结构
 
+2026-10-21 掩体整队搜查沿用现有分层：`scripts/enemy/services/squad_coordination.gd` 持有队级搜查目标和前后岗位，纯 `enemy_team_planner.gd` 提交完整队伍方案；新增 `services/enemy_search_formation.gd` 只校验两侧队列几何和路径，`actions/enemy_search.gd` 执行集结及按序绕角。移动输出的可选 `stop_position` 经 AI／Actor 交给 `enemy_local_motion.gd`，仅限定友军阻挡的前探距离，不替代实际碰撞。场景节点、旧资源路径及 UID 保持。
+
 游戏工程在 `movement_demo/`，说明文档集中在仓库的 `docs/`；仓库根目录仅保留 README 作为入口。脚本、场景与资源已按用途分类，移动时保留脚本 `.gd.uid` 和场景资源内的 UID。
 
 玩家医疗包沿用 `scenes/player/player_health.tscn`：Health/Medkit 挂 `scripts/player/player_medkit.gd`，只管理本实例数量与治疗进度；`scripts/player/medkit_data.gd` 和 `resources/player/default_medkit.tres` 保存静态效果／时长，生命结算仍在 Health。Health/MedkitIndicator 的 `scripts/ui/medkit_indicator.gd` 只做头顶投影和绘制；`scripts/ui/medkit_stock_label.gd` 挂在原武器栏内，只订阅并显示医疗库存。原移动、Combat、武器槽和敌人运行职责不变。配置及输入打断规则见 [生命与医疗包](gameplay/PLAYER_HEALTH.md)。

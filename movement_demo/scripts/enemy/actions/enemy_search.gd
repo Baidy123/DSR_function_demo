@@ -298,6 +298,7 @@ func investigate_known_threat(position: Vector3) -> void:
 
 
 func has_committed_segment() -> bool:
+	if _inspection_phase == InspectionPhase.NONE and not context.inspection_order().is_empty(): return false
 	# 单发擦弹不必立即折返；明显新增的连续近弹允许重新判断风险。
 	if context.nearby_shot_pressure > _segment_nearby_pressure + 0.25:
 		release_segment()
@@ -1228,6 +1229,17 @@ func collect_candidates(visible: bool) -> Array[Dictionary]:
 	var inspections: Array[Dictionary] = []
 	if not visible: inspections = _inspection_candidates()
 	if _inspection_phase != InspectionPhase.NONE: return inspections
+	if not visible and not context.inspection_order().is_empty():
+		# The coordinator has chosen this cover, but the all-member transaction
+		# may still be gathering routes. Assemble at the assigned near-side slot
+		# instead of independently crossing the cover while waiting for orders.
+		for route: Dictionary in _inspection_routes.values():
+			if route.is_empty() or route.get("formation", {}).is_empty(): continue
+			var assembly := option({"position": route.entry, "path": route.approach}, context.utility_horizon_seconds, 0.0, 0.0, &"inspect_assemble")
+			assembly.inspection = route
+			assembly.accepts_noise = true
+			inspections.append(assembly)
+		return inspections
 	if not visible and not _has_low_cover_focus(): inspections.append_array(_collect_sector_candidates())
 	var threat: Vector3 = context._known_reload_threat()
 	if visible or not threat.is_finite():
@@ -1255,6 +1267,11 @@ func collect_candidates(visible: bool) -> Array[Dictionary]:
 func begin(candidate: Dictionary, visible: bool) -> bool:
 	if candidate.get("plan", &"") == &"search_sector": return _begin_sector(candidate, visible)
 	if candidate.get("plan", &"") == &"inspect_end": return _begin_inspection(candidate, visible)
+	if candidate.get("plan", &"") == &"inspect_assemble":
+		if visible or candidate.inspection.formation != context.inspection_order(): return false
+		_release_search_claim()
+		route_motion.reset()
+		return super.begin(candidate, visible)
 	candidate.accepts_noise = true
 	super.begin(candidate, visible)
 	context.utility_suppression_pending = false
@@ -1284,11 +1301,13 @@ func begin(candidate: Dictionary, visible: bool) -> bool:
 func valid(visible: bool) -> bool:
 	if not _sector_assignment.is_empty(): return _sector_execution_valid(visible)
 	if _inspection_phase != InspectionPhase.NONE: return _inspection_execution_valid(visible)
+	if plan.get("plan", &"") == &"inspect_assemble": return _running and not visible and plan.inspection.formation == context.inspection_order() and InspectionGeometry.valid(context, plan.inspection.geometry)
 	return _running and not visible and (context.is_alerted or noise_search_origin.is_finite())
 
 func tick(delta: float, _visible: bool) -> Dictionary:
 	if not _sector_assignment.is_empty(): return _tick_sector(delta, _visible)
 	if _inspection_phase != InspectionPhase.NONE: return _tick_inspection(delta)
+	if plan.get("plan", &"") == &"inspect_assemble": return _tick_inspection_assembly(delta, _visible)
 	# Restore the personal claim after the generic choice transaction commits,
 	# but before any movement. Claim revisions must not invalidate its prepare.
 	if _has_low_cover_focus() and has_suspected_position and _search_claim.is_empty() and context.cooperation_enabled():
@@ -1334,6 +1353,10 @@ func hold_released() -> bool:
 	return is_segment_released()
 
 func on_event(event: StringName, data: Dictionary) -> void:
+	if event == &"cooperation_intel" and data.get("reacquired", false):
+		# Same-position reacquisition is new contact, not a repeated wall clue.
+		# Release both coordinated and personal routes before using that report.
+		reset()
 	if event == &"visibility" and not data.visible:
 		_capture_low_cover_focus(context.last_seen_position, context.perception.last_observed_cover(context.last_seen_position))
 	elif event in [&"noise", &"threat", &"cooperation_intel", &"exact_cover_clue"]:
@@ -1530,6 +1553,8 @@ func _inspection_candidates() -> Array[Dictionary]:
 	if body is WeakRef: body = body.get_ref()
 	var box: CollisionShape3D = body.get_node_or_null("CollisionShape3D") as CollisionShape3D if is_instance_valid(body) else null
 	var geometry_key: Array = [evidence.id, NavigationServer3D.map_get_iteration_id(agent.get_navigation_map()), actor.get_body_height(), box.global_transform if box != null else Transform3D.IDENTITY, box.shape.size if box != null and box.shape is BoxShape3D else Vector3.ZERO, box.disabled if box != null else true, body.collision_layer if is_instance_valid(body) else 0]
+	var order: Dictionary = context.inspection_order()
+	geometry_key.append(order)
 	if geometry_key != _inspection_geometry_key or (_inspection_geometry.is_empty() and context.evidence_elapsed_seconds >= _inspection_geometry_retry):
 		_inspection_geometry_key = geometry_key
 		_inspection_geometry = InspectionGeometry.describe(context, evidence)
@@ -1540,7 +1565,10 @@ func _inspection_candidates() -> Array[Dictionary]:
 	if context.evidence_elapsed_seconds >= _inspection_cached_route_until or actor.global_position.distance_to(_inspection_route_origin) > 0.5:
 		_inspection_routes.clear()
 		# Both ends precede assignment. There is no local actor/slot allocator.
-		for end in [-1, 1]: _inspection_routes[end] = InspectionGeometry.route(context, _inspection_geometry, end)
+		if order.is_empty():
+			for end in [-1, 1]: _inspection_routes[end] = InspectionGeometry.route(context, _inspection_geometry, end)
+		else:
+			_inspection_routes[order.side] = preload("res://scripts/enemy/services/enemy_search_formation.gd").route(context, _inspection_geometry, order)
 		_inspection_route_origin = actor.global_position
 		_inspection_cached_route_until = context.evidence_elapsed_seconds + 0.75
 	var identity: Dictionary = context.coordination_offer_identity()
@@ -1555,17 +1583,19 @@ func _inspection_candidates() -> Array[Dictionary]:
 		var horizon: float = context.utility_horizon_seconds
 		var candidate := option({"position": route.peek, "path": route.approach}, horizon, float(travel.exposure) + context._reload_exposure(route.entry, evidence.position) * maxf(0.0, horizon - float(travel.seconds)), minf(horizon, seconds), &"inspect_end")
 		var role: StringName = &"inspect_left" if end < 0 else &"inspect_right"
+		if not order.is_empty() and order.row > 0: role = &"inspect_follow"
 		var tactical_key := "inspect:%s:%s" % [source.evidence_id, route.geometry.cover_id]
-		var offer_key := "%s:%s:%s:%s" % [actor.get_instance_id(), tactical_key, end, identity.navigation_revision]
+		var slot_key := "%s:%s:%s" % [tactical_key, end, order.get("row", 0)]
+		var offer_key := "%s:%s:%s" % [actor.get_instance_id(), slot_key, identity.navigation_revision]
 		candidate.inspection = route
 		candidate.accepts_noise = true
 		candidate.coordination_offer_key = offer_key
 		candidate.coordination_role = role
 		var offer: Dictionary = identity.duplicate()
 		offer.merge({"scope": &"tactical", "owner_action": action_id, "offer_key": offer_key, "role": role,
-			"position_set_key": "%s:%s" % [tactical_key, end], "position": route.peek,
+			"position_set_key": slot_key, "position": route.peek,
 			"target_id": source.target_id, "evidence_id": source.evidence_id,
-			"path_summary": {"tactical_key": tactical_key, "side": end, "body_radius": route.geometry.radius,
+			"path_summary": {"tactical_key": tactical_key, "side": end, "formation_row": order.get("row", -1), "body_radius": route.geometry.radius,
 				"staging_position": route.entry, "staging_seconds": travel.seconds, "observation_points": [route.geometry.known]},
 			"travel_seconds": seconds, "unavailable_seconds": horizon, "exposed_seconds": candidate.outcome.exposed_seconds,
 			"information_loss": candidate.outcome.information_loss, "movement_possible": true, "fire_ready": false, "measured_support_seconds": 0.0,
@@ -1612,6 +1642,8 @@ func _begin_inspection(candidate: Dictionary, visible: bool) -> bool:
 
 func _inspection_execution_valid(visible: bool) -> bool:
 	if not _running or visible or not _inspection_coordinator_available() or _inspection_route.is_empty(): return false
+	var formation: Dictionary = _inspection_route.get("formation", {})
+	if not formation.is_empty() and formation != context.inspection_order(): return false
 	var assignment: Dictionary = context.coordination_assignment()
 	if assignment.is_empty() or not assignment.get("accepted", false) or float(assignment.expires_at) <= context.coordination_now(): return false
 	for key in [&"generation", &"team_id", &"plan_id", &"assignment_id", &"assignment_revision"]:
@@ -1645,12 +1677,13 @@ func _tick_inspection(delta: float) -> Dictionary:
 		if _inspection_recheck <= 0.0:
 			_inspection_recheck = 0.25
 			var route_status := _inspection_route_status(_inspection_route.peek)
-			_inspection_ready = route_status > 0
+			var queued: bool = _inspection_route.get("formation", {}).get("row", 0) > 0
+			_inspection_ready = route_status > 0 or (queued and route_status == 0)
 			if route_status < 0:
 				_end_inspection(true)
 				_running = false
 				return motion(Vector3.ZERO)
-			_set_inspection_ally_blocked(route_status == 0)
+			_set_inspection_ally_blocked(route_status == 0 and not queued)
 		if _inspection_ally_blocked: return _wait_inspection_ally(delta, known)
 		if assignment.phase != &"executing" or float(assignment.release_at) < 0.0 or context.coordination_now() < float(assignment.release_at):
 			return motion(Vector3.ZERO, 1.0, known - actor.global_position)
@@ -1677,6 +1710,19 @@ func _tick_inspection(delta: float) -> Dictionary:
 				_running = false
 		return motion(Vector3.ZERO, 1.0, known - actor.global_position)
 	var goal: Vector3 = _inspection_route.entry if _inspection_phase == InspectionPhase.APPROACH else _inspection_route.peek
+	var formation: Dictionary = _inspection_route.get("formation", {})
+	if not formation.is_empty() and formation.row > 0:
+		var predecessor: Vector3 = context.inspection_predecessor(formation)
+		if not predecessor.is_finite():
+			_end_inspection(true)
+			_running = false
+			return motion(Vector3.ZERO)
+		var forward: Vector3 = (_inspection_route.peek - _inspection_route.entry).normalized()
+		# A rear member cannot overtake its own queue's predecessor. Waiting for
+		# measured progress is not static-path failure and does not renew a lease.
+		if _inspection_phase == InspectionPhase.CHECK and (predecessor - actor.global_position).dot(forward) < float(formation.spacing) * 0.8:
+			_inspection_stuck = 0.0
+			return motion(Vector3.ZERO, 1.0, known - actor.global_position)
 	var distance: float = context._horizontal_distance(goal)
 	_inspection_recheck -= delta
 	if _inspection_recheck <= 0.0 or distance <= 0.18:
@@ -1715,7 +1761,27 @@ func _tick_inspection(delta: float) -> Dictionary:
 	context.state = context.State.TRACK
 	if not direction.is_zero_approx() and actor.can_move():
 		plan.support_request = {"kind": &"advance", "duration": minf(context.utility_horizon_seconds, _inspection_remaining), "lane_id": &"target"}
-	return motion(direction.normalized() * minf(1.0, distance / maxf(0.001, actor.move_speed * delta)), 1.0, known - actor.global_position)
+	var output := motion(direction.normalized() * minf(1.0, distance / maxf(0.001, actor.move_speed * delta)), 1.0, known - actor.global_position)
+	if not formation.is_empty(): output.stop_position = goal
+	return output
+
+func _tick_inspection_assembly(delta: float, visible: bool) -> Dictionary:
+	if not valid(visible):
+		_running = false
+		return motion(Vector3.ZERO)
+	var route: Dictionary = plan.inspection
+	var goal: Vector3 = route.entry
+	var distance: float = context._horizontal_distance(goal)
+	context.state = context.State.TRACK
+	if distance <= 0.18: return motion(Vector3.ZERO, 1.0, route.geometry.known - actor.global_position)
+	agent.target_position = goal
+	var next: Vector3 = agent.get_next_path_position()
+	if distance <= 0.65 and not actor.test_move(actor.global_transform, Vector3(goal.x - actor.global_position.x, 0.0, goal.z - actor.global_position.z)): next = goal
+	var direction: Vector3 = next - actor.global_position
+	direction.y = 0.0
+	var output := motion(direction.normalized() * minf(1.0, distance / maxf(0.001, actor.move_speed * delta)), 1.0, route.geometry.known - actor.global_position)
+	output.stop_position = goal
+	return output
 
 func _inspection_observation_blocked_by_ally(known: Vector3) -> bool:
 	if context.cooperation == null or not context.perception._position_in_sight(known): return false
@@ -1739,6 +1805,12 @@ func _set_inspection_ally_blocked(blocked: bool) -> void:
 
 func _wait_inspection_ally(delta: float, known: Vector3) -> Dictionary:
 	_inspection_ready = false
+	if _inspection_route.get("formation", {}).get("row", 0) > 0:
+		# Earlier ranks legitimately traverse a rear rank's eventual position.
+		# The shared fixed plan deadline bounds this queue; do not classify a
+		# normal multi-person crossing as the old single-passer stuck timeout.
+		_inspection_stuck = 0.0
+		return motion(Vector3.ZERO, 1.0, known - actor.global_position)
 	_inspection_stuck += maxf(0.0, delta)
 	if _inspection_stuck > 1.5:
 		_end_inspection(true)

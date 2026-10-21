@@ -177,7 +177,7 @@ func _physics_process(delta: float) -> void:
 	actor.face_direction(output.get("facing", Vector3.ZERO), delta)
 	# 先登记近战执行占用，再消费移动／射击意图；新行为同帧提交冲突请求也受身体约束。
 	context.melee.update(delta, visible, output.get("melee", {}))
-	actor.move_character(direction, delta, output.get("multiplier", 1.0))
+	actor.move_character(direction, delta, output.get("multiplier", 1.0), output.get("stop_position", Vector3.INF))
 	var moving: bool = not actor.get_local_movement_velocity().is_zero_approx() or Vector2(actor.velocity.x, actor.velocity.z).length_squared() > 0.0025
 	context.fire.update(delta, visible, moving, output.get("fire", {}))
 	context.cooperation_publish_execution(output)
@@ -281,7 +281,7 @@ func _publish_coordination_inputs(visible: bool) -> void:
 	for candidate in utility_options:
 		# Always overwrite caller metadata; an urgent label grants no permission.
 		candidate.assignment_escape_verified = false
-		if assignment.is_empty(): continue
+		if assignment.is_empty() and context.inspection_order().is_empty(): continue
 		var owner = actions.get(candidate.get("id"))
 		if owner != null: candidate.assignment_escape_verified = owner.assignment_escape(candidate, visible)
 

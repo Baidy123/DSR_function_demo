@@ -710,7 +710,24 @@ func can_share_space(first_id: int, second_id: int) -> bool:
 	var second_faction := member_faction(second)
 	return first_faction == second_faction or _relations.get([first_faction, second_faction], &"") == &"allied"
 
-func publish_visual(context) -> void:
+## A live allied observer prevents blind members from investigating an already
+## located target. Never consult the target transform or grant personal sight.
+func has_visual_contact(context, target: int, excluded_observer: int = 0) -> bool:
+	var recent := false
+	for report: Dictionary in _reports.values():
+		if report.target_id == target and report.valid_until > elapsed and _inspection_domain_matches(context, report):
+			recent = true
+			break
+	if not recent: return false
+	for id: int in _members:
+		if id == excluded_observer: continue
+		var observer = _context(id)
+		if not _reservation_member_valid(observer) or not observer.sees_player or observer.cooperation_target_id() != target: continue
+		if not _inspection_domain_matches(context, {"faction": member_faction(observer.actor), "group": member_group(observer.actor)}): continue
+		return true
+	return false
+
+func publish_visual(context, acquired: bool = false) -> void:
 	if not context.sees_player or not context.last_seen_position.is_finite(): return
 	var observer: int = context.actor.get_instance_id()
 	if not _members.has(observer): register(context)
@@ -719,20 +736,25 @@ func publish_visual(context) -> void:
 	for inspection_key in _inspection_reports.keys():
 		var investigation: Dictionary = _inspection_reports[inspection_key]
 		if investigation.target_id != target or not _inspection_domain_matches(context, investigation): continue
-		if investigation.source != &"shared_visual" or investigation.position.distance_to(context.last_seen_position) >= 0.5:
-			_inspection_reports.erase(inspection_key)
-			_drop_inspection_claims(int(investigation.id))
+		_inspection_reports.erase(inspection_key)
+		_drop_inspection_claims(int(investigation.id))
 	var key := _key(_members[observer].domain, target)
 	var old: Dictionary = _reports.get(key, {})
+	var renewed: bool = acquired and not has_visual_contact(context, target, observer)
 	var reloading: bool = context.observed_reload_remaining > 0.0
-	if not old.is_empty() and old.observer_id == observer and elapsed - float(old.captured_at) < 0.2 and old.position.distance_to(context.last_seen_position) < 0.1 and old.reloading == reloading:
+	if not renewed and not old.is_empty() and old.observer_id == observer and elapsed - float(old.captured_at) < 0.2 and old.position.distance_to(context.last_seen_position) < 0.1 and old.reloading == reloading:
 		_publish_visual_coordination(context, old)
 		return
 	_serial += 1
+	var contact_id := 0
+	for report: Dictionary in _reports.values():
+		if report.target_id == target and _inspection_domain_matches(context, report):
+			contact_id = maxi(contact_id, int(report.get("contact_id", 0)))
+	if renewed or contact_id == 0: contact_id = _serial
 	_reports[key] = {"target_id": target, "observer_id": observer, "faction": member_faction(context.actor), "group": member_group(context.actor),
 		"position": context.last_seen_position, "observer_position": context.actor.global_position, "aim_position": context.last_seen_aim_position, "direction": context.last_seen_direction, "velocity": context.observed_velocity,
 		"captured_at": elapsed, "valid_until": elapsed + maxf(0.1, context.setting(&"cooperation", &"intel_seconds", 5.0)),
-		"id": _serial, "generation": generation, "source": &"shared_visual", "shared": true,
+		"id": _serial, "contact_id": contact_id, "generation": generation, "source": &"shared_visual", "shared": true,
 		"reloading": reloading, "reload_until": elapsed + context.observed_reload_remaining}
 	revision += 1
 	_publish_visual_coordination(context, _reports[key])
@@ -758,6 +780,7 @@ func publish_inspection(context, evidence: Dictionary) -> Dictionary:
 	var target: int = int(evidence.get("target_id", 0))
 	var point: Vector3 = evidence.get("position", Vector3.INF)
 	if target == 0 or target != context.cooperation_target_id() or not point.is_finite(): return {}
+	if has_visual_contact(context, target): return {}
 	if not _members.has(context.actor.get_instance_id()): register(context)
 	var key := _key(_domain(context.actor), target)
 	var offset: float = elapsed - context.evidence_elapsed_seconds

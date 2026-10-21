@@ -2,7 +2,7 @@ extends RefCounted
 
 ## Pure, bounded proposals. The board owns authorization, IDs, clocks, deadlines,
 ## reservations and execution truth; this helper never calls an actor or a world.
-const ROLES := [&"inspect_left", &"inspect_right", &"front_support", &"flank", &"team_position", &"assisted_reload", &"assisted_retreat", &"search_sector", &"independent_position"]
+const ROLES := [&"inspect_left", &"inspect_right", &"inspect_follow", &"front_support", &"flank", &"team_position", &"assisted_reload", &"assisted_retreat", &"search_sector", &"independent_position"]
 const MAX_MEMBERS := 32
 const MAX_INPUT_OFFERS := 32
 const MAX_OFFERS := 6
@@ -89,6 +89,12 @@ func _nonnegative_integer(value: Variant) -> bool:
 	return typeof(value) == TYPE_INT and value >= 0
 
 func _header_valid(snapshot: Dictionary) -> bool:
+	var search_members: Variant = snapshot.get("search_members", [])
+	if not search_members is Array or search_members.size() > MAX_MEMBERS: return false
+	var search_ids := {}
+	for id in search_members:
+		if typeof(id) != TYPE_INT or id <= 0 or search_ids.has(id): return false
+		search_ids[id] = true
 	if snapshot.has("cooperation_level"):
 		if typeof(snapshot.cooperation_level) != TYPE_INT or snapshot.cooperation_level not in [0, 1, 2] or not _nonnegative_integer(snapshot.get("team_config_revision")): return false
 	for key in [&"generation", &"team_id", &"target_id", &"evidence_id", &"environment_revision", &"navigation_revision", &"relation_revision"]:
@@ -193,7 +199,7 @@ func _offer_valid(work: Dictionary, member: Dictionary, offer: Dictionary) -> bo
 	else:
 		if offer.get("scope") != &"tactical" or not _member_enabled(work, member) or not member.get("eligible_roles", []).has(role): return false
 		if snapshot.target_id == 0 and snapshot.evidence_id == 0: return false
-		if role in [&"inspect_left", &"inspect_right", &"flank", &"team_position", &"assisted_retreat", &"search_sector"] and not offer.movement_possible: return false
+		if role in [&"inspect_left", &"inspect_right", &"inspect_follow", &"flank", &"team_position", &"assisted_retreat", &"search_sector"] and not offer.movement_possible: return false
 	if role in [&"assisted_reload", &"assisted_retreat"] and snapshot.get("cooperation_level", -1) != 2: return false
 	if role == &"assisted_retreat" and offer.path_summary.get("defensive_need", false) != true: return false
 	if role == &"team_position" and offer.path_summary.get("posture") not in [&"concentrate", &"disperse"]: return false
@@ -201,7 +207,7 @@ func _offer_valid(work: Dictionary, member: Dictionary, offer: Dictionary) -> bo
 		var summary: Dictionary = offer.path_summary
 		if not _text(summary.get("grid_key")) or not _nonnegative_integer(summary.get("search_round_id")) or summary.search_round_id == 0: return false
 		if not summary.get("sample_ids") is Array or summary.sample_ids.is_empty() or summary.sample_ids.size() > 64: return false
-	if role in [&"inspect_left", &"inspect_right", &"flank"] and not _text(offer.path_summary.get("tactical_key")): return false
+	if role in [&"inspect_left", &"inspect_right", &"inspect_follow", &"flank"] and not _text(offer.path_summary.get("tactical_key")): return false
 	for failure in work.failures:
 		if int(failure.get("actor_id", 0)) not in [0, member.actor_id]: continue
 		if failure.get("offer_key") == offer.offer_key or failure.get("position_set_key") == offer.position_set_key: return false
@@ -466,6 +472,8 @@ func _next_pair(queue: Dictionary) -> Array:
 
 func _new_plan(work: Dictionary) -> Dictionary:
 	if work.members.size() < 2: return _result(work, &"none", &"solo")
+	if work.snapshot.get("cooperation_level", -1) == 2 and not work.snapshot.get("search_members", []).is_empty():
+		return _formation_inspection(work)
 	var compare_team: bool = work.snapshot.get("cooperation_level", -1) == 2
 	if compare_team and not _team_comparison_ready(work): return _result(work, &"none", &"personal_baseline_pending")
 	var advanced := 0
@@ -548,6 +556,34 @@ func _new_plan(work: Dictionary) -> Dictionary:
 	if compare_team:
 		result.support_links = _proposed_links(best)
 		if best.tactic in [&"reload", &"retreat", &"concentrate", &"disperse"]: result.required_participants = [best.bundles[0].actor_id]
+	return result
+
+## The coordinator has selected one cover for the whole search party. Require
+## a validated slot for every participant; a cheap individual route does not
+## silently split this mission. Combat and emergency escapes keep their rules.
+func _formation_inspection(work: Dictionary) -> Dictionary:
+	var members: Array = work.snapshot.search_members
+	var selected: Array = []
+	for id in members:
+		if not work.members.has(id): return _result(work, &"none", &"invalid_search_member")
+		var best: Dictionary = {}
+		for bundle: Dictionary in work.bundles:
+			if bundle.actor_id != id or bundle.role not in [&"inspect_left", &"inspect_right", &"inspect_follow"]: continue
+			if not _trial(work): return _result(work, &"none", &"search_budget")
+			if not _free(work, bundle): continue
+			if selected.any(func(other): return not _same_tactical_key(bundle, other) or not _compatible(work, bundle, other)): continue
+			if best.is_empty() or bundle.cost < best.cost: best = bundle
+		if best.is_empty(): return _result(work, &"none", &"search_slots_pending")
+		selected.append(best)
+	var roles: Array = selected.map(func(bundle): return bundle.role)
+	if roles.count(&"inspect_left") != 1 or roles.count(&"inspect_right") != 1:
+		return _result(work, &"none", &"search_leaders_pending")
+	var result := _result(work, &"replace", &"whole_squad_search", &"inspect")
+	result.posture = &"concentrate"
+	result.required_participants = members.duplicate()
+	for bundle: Dictionary in selected:
+		result.assignments.append(_assignment(bundle, members.filter(func(id): return id != bundle.actor_id)))
+		result.changed_actor_ids.append(bundle.actor_id)
 	return result
 
 func _pair_plan(work: Dictionary, tactic: StringName, pair: Array) -> Dictionary:
