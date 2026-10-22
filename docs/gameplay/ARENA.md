@@ -4,7 +4,7 @@
 
 ## 编辑场景
 
-独立的五张图纸掩体布局位于 `scenes/world/levels/`，未替换当前竞技场。对应图纸、尺寸与接入方法见 [关卡掩体地图](LEVEL_MAPS.md)。
+独立的五张地图位于 `scenes/world/levels/lvl_1.tscn` 至 `lvl_5.tscn`，均含战斗区域、独立导航与空 Squad，未替换当前竞技场。对应图纸、尺寸与专用重烘命令见 [关卡地图](LEVEL_MAPS.md)。
 
 - 敌人身体、生命与武器在 `Enemy`；兵种资源在 `Enemy/UnitType`，训练资源和战术勾选在 `Enemy/Training`。
 - `Enemy/AI` 协调运行，`Perception` 和 `Cover` 子节点提供感知与空间查询。动作按资源装配，无需逐个添加动作节点。

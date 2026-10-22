@@ -13,6 +13,8 @@ python movement_demo/tests/run_regressions.py --check
 
 ## 运行游戏回归
 
+地图维护命令 `tests/bake_levels.gd` 只重烘五张独立地图的导航，已列入维护脚本排除清单，不作为回归运行；用法与实体轮廓排除说明见 [关卡地图](gameplay/LEVEL_MAPS.md)。
+
 ```powershell
 python movement_demo/tests/run_regressions.py --godot E:/Godot/Godot_v4.7.2-stable_win64_console.exe
 python movement_demo/tests/run_regressions.py --godot E:/Godot/Godot_v4.7.2-stable_win64_console.exe --suite systems

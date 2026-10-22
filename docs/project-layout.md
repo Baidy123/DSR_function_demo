@@ -37,7 +37,7 @@ movement_demo/
 │   ├── enemy/             可直接拖入竞技场的 enemy.tscn
 │   ├── player/            玩家战斗、生命与武器槽场景
 │   ├── world/             掩体、训练区域、墙体、交互物与门禁通道场景
-│   │   ├── levels/        Lvl_1–5 图纸对应的掩体、普通边界及地板，不含关卡逻辑
+│   │   ├── levels/        Lvl_1–5 独立地图，含区域、导航、空 Squad 及地图实体
 │   │   └── objects/       具体交互物：门禁卡、酒杯、终端、唱片机
 │   ├── presentation/      模型包装场景和独立接口演示
 │   ├── effects/           共用命中特效管理器和粒子场景
@@ -82,7 +82,7 @@ movement_demo/
 
 新增运行脚本按职责放入对应目录；新增敌人动作实现放 `scripts/enemy/actions/`，其定义资源放 `resources/enemy/actions/`。新增交互效果放 `scripts/world/interactions/`，具体交互物场景放 `scenes/world/objects/`；交互物与效果只通过 `InteractionContext` 使用注入的状态，不直接查找全局节点。测试或临时诊断不要放回工程根目录，也不要混入运行脚本目录。
 
-`scenes/Lvl_1.svg` 至 `Lvl_5.svg` 是关卡俯视参考图；`scenes/world/levels/lvl_1_cover.tscn` 至 `lvl_5_cover.tscn` 的内部掩体实例化原高、低掩体预制场景，外围墙和地板为普通静态碰撞体。按 FullCover、HalfCover、Walls、Boundary、Ground 分组，不挂新运行脚本。尺寸、图纸编号差异及导航接入要求见 [关卡掩体地图](gameplay/LEVEL_MAPS.md)。
+`scenes/Lvl_1.svg` 至 `Lvl_5.svg` 是关卡俯视参考图；`scenes/world/levels/lvl_1.tscn` 至 `lvl_5.tscn` 是独立地图，根节点复用原区域控制器，含 CombatZone、空 Squad、NavigationRegion3D。地图实体在导航区域的 Environment 下，内部掩体继承原预制场景，外围墙和地板为普通静态碰撞体。各图独立引用 `resources/navigation/lvl_N_navigation.tres`。维护命令 `tests/bake_levels.gd` 解析完整碰撞并用盒体轮廓排除实体内部及顶部导航，不由游戏加载。尺寸、编号差异及重烘方式见 [关卡地图](gameplay/LEVEL_MAPS.md)。
 
 阶段、任务与 NPC 状态规则集中在 `scripts/systems/stage/`：阶段判定、任务状态与状态解析各一个控制器，配置表资源脚本与 `resources/stages/` 下的 `.tres` 配套维护。控制器挂在 `main.tscn`、按 group 互相查找，不新增全局单例；NPC 只按 `npc_id` 与接收接口被驱动，不反向依赖控制器。见 [阶段与任务](gameplay/STAGE_STATE.md)。
 

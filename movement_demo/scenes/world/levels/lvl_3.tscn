@@ -3,6 +3,20 @@
 [ext_resource type="PackedScene" path="res://scenes/world/cover.tscn" id="1_full"]
 [ext_resource type="PackedScene" path="res://scenes/world/low_cover.tscn" id="2_low"]
 
+[ext_resource type="Script" path="res://scripts/world/shooting_range.gd" id="area"]
+[ext_resource type="Script" path="res://scripts/world/zone_volume.gd" id="zone"]
+[ext_resource type="PackedScene" path="res://scenes/world/squad.tscn" id="squad"]
+[ext_resource type="Script" path="res://scripts/enemy/config/cooperation_settings.gd" id="profile"]
+[ext_resource type="NavigationMesh" path="res://resources/navigation/lvl_3_navigation.tres" id="navigation"]
+
+[sub_resource type="BoxShape3D" id="CombatZoneShape"]
+size = Vector3(54.5, 3, 37.5)
+
+[sub_resource type="Resource" id="SquadProfile"]
+resource_local_to_scene = true
+script = ExtResource("profile")
+level = 0
+
 [sub_resource type="StandardMaterial3D" id="Material_FullCover"]
 albedo_color = Color(0.4, 0.431373, 0.466667, 1)
 roughness = 1.0
@@ -118,129 +132,148 @@ size = Vector3(55.1, 0.2, 38.1)
 resource_local_to_scene = true
 size = Vector3(55.1, 0.2, 38.1)
 
-[node name="Lvl3Cover" type="Node3D"]
+[node name="Lvl3" type="Node3D"]
+script = ExtResource("area")
 metadata/source_svg = "res://scenes/Lvl_3.svg"
 metadata/meters_per_svg_unit = 0.05
 metadata/interior_size = Vector2(54.5, 37.5)
 
-[node name="FullCover" type="Node3D" parent="."]
+[node name="CombatZone" type="Area3D" parent="." groups=["combat_zone"]]
+position = Vector3(0, 1, 0)
+collision_layer = 0
+collision_mask = 1
+script = ExtResource("zone")
+zone_id = &"lvl_3"
 
-[node name="FullCover01" parent="FullCover" instance=ExtResource("1_full")]
+[node name="CollisionShape3D" type="CollisionShape3D" parent="CombatZone"]
+shape = SubResource("CombatZoneShape")
+
+[node name="Squad" parent="." instance=ExtResource("squad")]
+profile = SubResource("SquadProfile")
+
+[node name="NavigationRegion3D" type="NavigationRegion3D" parent="."]
+navigation_mesh = ExtResource("navigation")
+
+[node name="Environment" type="Node3D" parent="NavigationRegion3D"]
+
+[node name="FullCover" type="Node3D" parent="NavigationRegion3D/Environment"]
+
+[node name="FullCover01" parent="NavigationRegion3D/Environment/FullCover" instance=ExtResource("1_full")]
 position = Vector3(-0.45, 1.1, 0.175)
 metadata/source_rect = Rect2(360, 245, 400, 307)
 
-[node name="Mesh" parent="FullCover/FullCover01" index="0"]
+[node name="Mesh" parent="NavigationRegion3D/Environment/FullCover/FullCover01" index="0"]
 mesh = SubResource("Mesh_FullCover_FullCover01")
 
-[node name="CollisionShape3D" parent="FullCover/FullCover01" index="1"]
+[node name="CollisionShape3D" parent="NavigationRegion3D/Environment/FullCover/FullCover01" index="1"]
 shape = SubResource("Shape_FullCover_FullCover01")
 
-[node name="FullCover02" parent="FullCover" instance=ExtResource("1_full")]
+[node name="FullCover02" parent="NavigationRegion3D/Environment/FullCover" instance=ExtResource("1_full")]
 position = Vector3(23.6, 1.1, 2.95)
 metadata/source_rect = Rect2(968, 267, 146, 374)
 
-[node name="Mesh" parent="FullCover/FullCover02" index="0"]
+[node name="Mesh" parent="NavigationRegion3D/Environment/FullCover/FullCover02" index="0"]
 mesh = SubResource("Mesh_FullCover_FullCover02")
 
-[node name="CollisionShape3D" parent="FullCover/FullCover02" index="1"]
+[node name="CollisionShape3D" parent="NavigationRegion3D/Environment/FullCover/FullCover02" index="1"]
 shape = SubResource("Shape_FullCover_FullCover02")
 
-[node name="HalfCover" type="Node3D" parent="."]
+[node name="HalfCover" type="Node3D" parent="NavigationRegion3D/Environment"]
 
-[node name="HalfCover01" parent="HalfCover" instance=ExtResource("2_low")]
+[node name="HalfCover01" parent="NavigationRegion3D/Environment/HalfCover" instance=ExtResource("2_low")]
 position = Vector3(-0.925, 0.55, -12.375)
 metadata/source_rect = Rect2(525, 85, 51, 125)
 
-[node name="Mesh" parent="HalfCover/HalfCover01" index="0"]
+[node name="Mesh" parent="NavigationRegion3D/Environment/HalfCover/HalfCover01" index="0"]
 mesh = SubResource("Mesh_HalfCover_HalfCover01")
 
-[node name="CollisionShape3D" parent="HalfCover/HalfCover01" index="1"]
+[node name="CollisionShape3D" parent="NavigationRegion3D/Environment/HalfCover/HalfCover01" index="1"]
 shape = SubResource("Shape_HalfCover_HalfCover01")
 
-[node name="HalfCover02" parent="HalfCover" instance=ExtResource("2_low")]
+[node name="HalfCover02" parent="NavigationRegion3D/Environment/HalfCover" instance=ExtResource("2_low")]
 position = Vector3(-21.25, 0.55, -0.025)
 metadata/source_rect = Rect2(62, 373, 164, 43)
 
-[node name="Mesh" parent="HalfCover/HalfCover02" index="0"]
+[node name="Mesh" parent="NavigationRegion3D/Environment/HalfCover/HalfCover02" index="0"]
 mesh = SubResource("Mesh_HalfCover_HalfCover02")
 
-[node name="CollisionShape3D" parent="HalfCover/HalfCover02" index="1"]
+[node name="CollisionShape3D" parent="NavigationRegion3D/Environment/HalfCover/HalfCover02" index="1"]
 shape = SubResource("Shape_HalfCover_HalfCover02")
 
-[node name="HalfCover03" parent="HalfCover" instance=ExtResource("2_low")]
+[node name="HalfCover03" parent="NavigationRegion3D/Environment/HalfCover" instance=ExtResource("2_low")]
 position = Vector3(14.75, 0.55, 1.775)
 metadata/source_rect = Rect2(760, 409, 208, 43)
 
-[node name="Mesh" parent="HalfCover/HalfCover03" index="0"]
+[node name="Mesh" parent="NavigationRegion3D/Environment/HalfCover/HalfCover03" index="0"]
 mesh = SubResource("Mesh_HalfCover_HalfCover03")
 
-[node name="CollisionShape3D" parent="HalfCover/HalfCover03" index="1"]
+[node name="CollisionShape3D" parent="NavigationRegion3D/Environment/HalfCover/HalfCover03" index="1"]
 shape = SubResource("Shape_HalfCover_HalfCover03")
 
-[node name="HalfCover04" parent="HalfCover" instance=ExtResource("2_low")]
+[node name="HalfCover04" parent="NavigationRegion3D/Environment/HalfCover" instance=ExtResource("2_low")]
 position = Vector3(2.85, 0.55, 13.95)
 metadata/source_rect = Rect2(605, 627, 42, 94)
 
-[node name="Mesh" parent="HalfCover/HalfCover04" index="0"]
+[node name="Mesh" parent="NavigationRegion3D/Environment/HalfCover/HalfCover04" index="0"]
 mesh = SubResource("Mesh_HalfCover_HalfCover04")
 
-[node name="CollisionShape3D" parent="HalfCover/HalfCover04" index="1"]
+[node name="CollisionShape3D" parent="NavigationRegion3D/Environment/HalfCover/HalfCover04" index="1"]
 shape = SubResource("Shape_HalfCover_HalfCover04")
 
-[node name="Walls" type="Node3D" parent="."]
+[node name="Walls" type="Node3D" parent="NavigationRegion3D/Environment"]
 
-[node name="Boundary" type="Node3D" parent="."]
+[node name="Boundary" type="Node3D" parent="NavigationRegion3D/Environment"]
 
-[node name="North" type="StaticBody3D" parent="Boundary"]
+[node name="North" type="StaticBody3D" parent="NavigationRegion3D/Environment/Boundary"]
 position = Vector3(0, 1.1, -18.9)
 
-[node name="Mesh" type="MeshInstance3D" parent="Boundary/North"]
+[node name="Mesh" type="MeshInstance3D" parent="NavigationRegion3D/Environment/Boundary/North"]
 mesh = SubResource("Mesh_Boundary_North")
 
-[node name="CollisionShape3D" type="CollisionShape3D" parent="Boundary/North"]
+[node name="CollisionShape3D" type="CollisionShape3D" parent="NavigationRegion3D/Environment/Boundary/North"]
 shape = SubResource("Shape_Boundary_North")
 
-[node name="South" type="StaticBody3D" parent="Boundary"]
+[node name="South" type="StaticBody3D" parent="NavigationRegion3D/Environment/Boundary"]
 position = Vector3(0, 1.1, 18.9)
 
-[node name="Mesh" type="MeshInstance3D" parent="Boundary/South"]
+[node name="Mesh" type="MeshInstance3D" parent="NavigationRegion3D/Environment/Boundary/South"]
 mesh = SubResource("Mesh_Boundary_South")
 
-[node name="CollisionShape3D" type="CollisionShape3D" parent="Boundary/South"]
+[node name="CollisionShape3D" type="CollisionShape3D" parent="NavigationRegion3D/Environment/Boundary/South"]
 shape = SubResource("Shape_Boundary_South")
 
-[node name="West" type="StaticBody3D" parent="Boundary"]
+[node name="West" type="StaticBody3D" parent="NavigationRegion3D/Environment/Boundary"]
 position = Vector3(-27.4, 1.1, 0)
 
-[node name="Mesh" type="MeshInstance3D" parent="Boundary/West"]
+[node name="Mesh" type="MeshInstance3D" parent="NavigationRegion3D/Environment/Boundary/West"]
 mesh = SubResource("Mesh_Boundary_West")
 
-[node name="CollisionShape3D" type="CollisionShape3D" parent="Boundary/West"]
+[node name="CollisionShape3D" type="CollisionShape3D" parent="NavigationRegion3D/Environment/Boundary/West"]
 shape = SubResource("Shape_Boundary_West")
 
-[node name="East" type="StaticBody3D" parent="Boundary"]
+[node name="East" type="StaticBody3D" parent="NavigationRegion3D/Environment/Boundary"]
 position = Vector3(27.4, 1.1, 0)
 
-[node name="Mesh" type="MeshInstance3D" parent="Boundary/East"]
+[node name="Mesh" type="MeshInstance3D" parent="NavigationRegion3D/Environment/Boundary/East"]
 mesh = SubResource("Mesh_Boundary_East")
 
-[node name="CollisionShape3D" type="CollisionShape3D" parent="Boundary/East"]
+[node name="CollisionShape3D" type="CollisionShape3D" parent="NavigationRegion3D/Environment/Boundary/East"]
 shape = SubResource("Shape_Boundary_East")
 
-[node name="Ground" type="Node3D" parent="."]
+[node name="Ground" type="Node3D" parent="NavigationRegion3D/Environment"]
 
-[node name="Floor" type="StaticBody3D" parent="Ground"]
+[node name="Floor" type="StaticBody3D" parent="NavigationRegion3D/Environment/Ground"]
 position = Vector3(0, -0.1, 0)
 
-[node name="Mesh" type="MeshInstance3D" parent="Ground/Floor"]
+[node name="Mesh" type="MeshInstance3D" parent="NavigationRegion3D/Environment/Ground/Floor"]
 mesh = SubResource("Mesh_Ground_Floor")
 
-[node name="CollisionShape3D" type="CollisionShape3D" parent="Ground/Floor"]
+[node name="CollisionShape3D" type="CollisionShape3D" parent="NavigationRegion3D/Environment/Ground/Floor"]
 shape = SubResource("Shape_Ground_Floor")
 
-[editable path="FullCover/FullCover01"]
-[editable path="FullCover/FullCover02"]
-[editable path="HalfCover/HalfCover01"]
-[editable path="HalfCover/HalfCover02"]
-[editable path="HalfCover/HalfCover03"]
-[editable path="HalfCover/HalfCover04"]
+[editable path="NavigationRegion3D/Environment/FullCover/FullCover01"]
+[editable path="NavigationRegion3D/Environment/FullCover/FullCover02"]
+[editable path="NavigationRegion3D/Environment/HalfCover/HalfCover01"]
+[editable path="NavigationRegion3D/Environment/HalfCover/HalfCover02"]
+[editable path="NavigationRegion3D/Environment/HalfCover/HalfCover03"]
+[editable path="NavigationRegion3D/Environment/HalfCover/HalfCover04"]
