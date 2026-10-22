@@ -1,9 +1,9 @@
-[gd_resource type="Resource" script_class="WeaponData" format=3]
+[gd_resource type="Resource" script_class="WeaponData" format=3 uid="uid://8t5qrt7ekvtc"]
 
-[ext_resource type="Script" path="res://scripts/weapons/weapon_data.gd" id="weapon"]
+[ext_resource type="Resource" path="res://resources/noise/gunshot_noise.tres" id="2_hmg1w"]
+[ext_resource type="Script" uid="uid://b7iqg2tyib57x" path="res://scripts/weapons/weapon_data.gd" id="weapon"]
 
 [resource]
 script = ExtResource("weapon")
-fire_mode = 2
 display_name = "近战测试武器"
-melee_enabled = true
+fire_mode = 2

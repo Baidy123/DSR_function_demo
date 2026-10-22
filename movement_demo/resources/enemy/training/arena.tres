@@ -1,6 +1,7 @@
 [gd_resource type="Resource" script_class="EnemyTrainingProfile" format=3 uid="uid://dpp6fjr8paihk"]
 
 [ext_resource type="Script" uid="uid://b0j3a627844ku" path="res://scripts/enemy/config/module_settings.gd" id="1_frhl0"]
+[ext_resource type="Script" uid="uid://cqdvipxtj05rx" path="res://scripts/enemy/config/cooperation_settings.gd" id="3_8446m"]
 [ext_resource type="Script" uid="uid://lauyebht4oxa" path="res://scripts/enemy/config/ai_settings.gd" id="ai"]
 [ext_resource type="Script" uid="uid://c2eu2biwoikls" path="res://scripts/enemy/config/cover_settings.gd" id="cover"]
 [ext_resource type="Script" uid="uid://d1ra7e76dnl5k" path="res://scripts/enemy/config/exit_suppression_settings.gd" id="exit_suppression"]
@@ -14,6 +15,10 @@
 
 [sub_resource type="Resource" id="ai"]
 script = ExtResource("ai")
+overridden = PackedStringArray()
+
+[sub_resource type="Resource" id="Resource_tsrkt"]
+script = ExtResource("3_8446m")
 overridden = PackedStringArray()
 
 [sub_resource type="Resource" id="cover"]
@@ -31,20 +36,20 @@ overridden = PackedStringArray()
 
 [sub_resource type="Resource" id="perception"]
 script = ExtResource("perception")
-sight_distance = 8.0
 overridden = PackedStringArray("sight_distance")
 
 [sub_resource type="Resource" id="search"]
 script = ExtResource("search")
 lost_target_hint_chance = 1.0
-search_hint_decay_mode = 3
-search_hint_min_multiplier = 0.4
+search_hint_chance = 1.0
+search_hint_decay_mode = 0
+search_hint_min_multiplier = 1.0
 search_hint_distance_falloff = 10.0
 debug_tracking_cheat = true
 track_seconds = 10.0
 search_pause_seconds = 0.6
 search_stuck_repath_seconds = 0.8
-overridden = PackedStringArray("lost_target_hint_chance", "search_hint_decay_mode", "search_hint_min_multiplier", "search_hint_distance_falloff", "debug_tracking_cheat", "track_seconds", "search_pause_seconds", "search_stuck_repath_seconds")
+overridden = PackedStringArray("lost_target_hint_chance", "search_hint_decay_mode", "search_hint_min_multiplier", "search_hint_distance_falloff", "debug_tracking_cheat", "track_seconds", "search_pause_seconds", "search_stuck_repath_seconds", "search_hint_chance")
 
 [sub_resource type="Resource" id="selection"]
 script = ExtResource("selection")
@@ -60,14 +65,12 @@ overridden = PackedStringArray()
 script = ExtResource("tactics")
 nearby_shot_accuracy_penalty = 0.1
 fire_stability_target = 0.6
-burst_shot_count = 3
-burst_pause_seconds = 1.8
 overridden = PackedStringArray("fire_stability_target", "burst_shot_count", "burst_pause_seconds", "damage_accuracy_penalty", "nearby_shot_accuracy_penalty")
 
 [resource]
 script = ExtResource("profile")
 display_name = "竞技场现有训练"
-selected_tactics = Array[StringName]([&"cover", &"suppression", &"cooperate"])
+selected_tactics = Array[StringName]([&"cover", &"covering_retreat", &"suppression", &"attack_position", &"melee_rush", &"melee_cover", &"cooperate"])
 ai = SubResource("ai")
 tactics = SubResource("tactics")
 search = SubResource("search")
@@ -77,3 +80,4 @@ exit_suppression = SubResource("exit_suppression")
 fire_decision = SubResource("fire_decision")
 perception = SubResource("perception")
 selection = SubResource("selection")
+cooperation = SubResource("Resource_tsrkt")

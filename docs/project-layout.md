@@ -1,6 +1,22 @@
 # 项目目录结构
 
+2026-10-22 支援续接修复没有新增控制层：`enemy_team_planner.gd` 内分开新计划请求关系与追加成员的移动掩护关系，`squad_coordination.gd` 继续持有任务和原请求。Context 的只读调试快照同时提供真实移动／换弹事实及等级；`debug/coordinator_paths.gd` 分开显示实际行动和团队调度，不把未分配岗位等同于停步。
+
+2026-10-22 持续调度仍使用原模块：Context 向协调器提供可直接读取的身体事实，原动作及空间服务持续准备合法能力候选，纯 planner 在原预算内补齐战斗岗位并提出局部 `revise`，协调器持有任务与预约。`enemy_search_formation.gd::entry_travel_seconds` 只返回两端经验证的行程，左右队列分界由协调器选择。新增 `enemy_team_continuity_test.gd` 检查完整方案与续接合同，`enemy_team_continuity_runtime_test.gd` 检查当前保存地图中实际接受、执行覆盖及真实开火；测试不能用岗位标签替代动作执行。
+
+2026-10-21 搜索交接重整沿用原模块边界，计划见 [搜索调度实施计划](superpowers/plans/2026-10-21-squad-search-handoff.md)。`squad_coordination.gd` 持有整队命令、具体站位、通行与修复状态；`enemy_search_formation.gd` 只做有限的几何／路线候选和行程预览，不执行移动；`EnemyContext` 提供公开状态、路线查询及只读诊断；原 `Search`、Utility、Actor 和火控分别执行各自职责。新 `enemy_search_traffic_test.gd` 登记拥挤、两／三人占位循环、模块撤销和旧反馈拒绝，保存地图反复进入另用 `enemy_search_formation_fallback_test.gd --saved-left-repeat`。
+
 2026-10-21 掩体整队搜查沿用现有分层：`scripts/enemy/services/squad_coordination.gd` 持有队级搜查目标和前后岗位，纯 `enemy_team_planner.gd` 提交完整队伍方案；新增 `services/enemy_search_formation.gd` 只校验两侧队列几何和路径，`actions/enemy_search.gd` 执行集结及按序绕角。移动输出的可选 `stop_position` 经 AI／Actor 交给 `enemy_local_motion.gd`，仅限定友军阻挡的前探距离，不替代实际碰撞。场景节点、旧资源路径及 UID 保持。
+
+整队准备的路线反馈经 `EnemyContext.report_inspection_preparation` 返回协调器；单双侧布局、有限尝试和准备期限由协调器持有，纯 planner 根据 `search_sides` 核对完整成员岗位。几何 helper 支持单侧合法端口及整列观察站位微调，实际移动仍归原搜索动作。`enemy_search_formation_fallback_test.gd` 覆盖高墙失视、单端封闭、前排站位阻塞和无可行布局；保存地图专项使用显式 `--saved-arena` 或 `--saved-left-cover`，不作为可移植夹具运行。
+
+队列和旧双人检查共用几何 helper 的入位路径约束，拒绝经墙背后对端绕行。个人掩体动作在原 `can_interrupt` 中处理失视后向整队搜查交接；近战掩体动作复用此条件，AI 和身体层继续保留翻越／近战锁。队列回归同时覆盖完整训练及全员实际到位前不越过掩体背面。
+
+失视未关联掩体时，Context 的共享线索携带冻结的目击方向和速度；`squad_coordination.gd` 一次选择全队的调查假设，`enemy_cover_inspection_geometry.gd` 只查询已知静态掩体与有限运动投影。没有合适掩体则由 `enemy_search_formation.gd` 生成共同目击点观察队形，仍经原搜索动作、接受事务和共同阶段执行。该假设不改写射击证据。可选 `--saved-left-approach` 从保存的原出生位置验证仅一人目击时的全队参与；默认夹具另覆盖无墙失视。普通等级继续消费同一协调器的包抄建议，无严格集合屏障。
+
+几何推断同时检查运动投影对墙角的接近，避免墙中心取点漏掉斜向绕角。`enemy_search_formation_fallback_test.gd` 默认包含旋转墙体、背离／正面短投影及隐藏位置隔离的边界检查；可选 `--saved-left-diagonal` 在保存地图的真实物理 AI 循环中验证两条斜向入墙路线，要求三人共同任务不在墙前提前结束、实际集合后绕角再接敌。保存地图参数不纳入可移植默认用例。
+
+2026-10-21 入队通路补修：`squad_coordination.gd` 在 `inspection_order` 中提前保存每人的具体站位、冻结接近／绕角路线和通行优先级，并通过 `inspection_motion` 按真实身体占位给出本步通行边界。`enemy_search_formation.gd` 使用成员本地导航／胶囊服务准备这些值，提供无跨帧状态的路线投影与有限通路相交计算；Context 只转发，Search 沿原身体接口执行，不另建小队移动控制器。可选 `--saved-left-contact` 覆盖先真实交战再退回左墙；保存地图用例新增具体位置归属、全程碰撞／临时侧移和间距断言，默认夹具增加通路几何边界。
 
 游戏工程在 `movement_demo/`，说明文档集中在仓库的 `docs/`；仓库根目录仅保留 README 作为入口。脚本、场景与资源已按用途分类，移动时保留脚本 `.gd.uid` 和场景资源内的 UID。
 
@@ -35,8 +51,9 @@ movement_demo/
 │   ├── world/             掩体、训练靶、区域、门、NPC、交互物与屏障
 │   │   └── interactions/  交互效果基类、注入上下文与各效果实现
 │   ├── ui/                对话界面与锁定准星
-│   ├── debug/             调试开关、声音和攻击点预览
+│   ├── debug/             调试开关、协调器路径；声音圈及旧攻击区域预览默认关闭
 │   └── systems/           公共游戏状态与声音数据
+│       ├── stage/         阶段、任务与 NPC 状态控制器
 │       ├── presentation/  模型挂载、动画配置与表现状态
 │       └── effects/       命中快照、表面配置与特效生命周期
 ├── resources/
@@ -51,6 +68,7 @@ movement_demo/
 │   ├── animations/        动画对应表
 │   ├── effects/           表面命中特效配置
 │   ├── navigation/        烘焙导航资源
+│   ├── stages/            阶段／任务／NPC 状态规则配置表
 │   └── dialogue/          NPC 对话、导入元数据与原有剧情源文件
 ├── tests/
 │   ├── enemy/             敌人测试、公共辅助和回归运行器
@@ -63,9 +81,13 @@ movement_demo/
 
 新增运行脚本按职责放入对应目录；新增敌人动作实现放 `scripts/enemy/actions/`，其定义资源放 `resources/enemy/actions/`。新增交互效果放 `scripts/world/interactions/`，具体交互物场景放 `scenes/world/objects/`；交互物与效果只通过 `InteractionContext` 使用注入的状态，不直接查找全局节点。测试或临时诊断不要放回工程根目录，也不要混入运行脚本目录。
 
-三档团队意识由 `scenes/world/squad.tscn` 的 `world/squad_controller.gd` 提供节点入口；节点持有配置和独立的 `services/squad_coordination.gd`。区域按活跃时钟统一调度，个人仍沿原 Utility、动作、身体与 Fire 执行。未迁移成员沿用兼容入口：`config/team_cooperation_binding.gd` 仅保存阵营、通信组与 cooperation 配置引用；现有 Arena 脚本的 `team_cooperation_bindings` 提供给区域 board。`resources/enemy/cooperation/` 提供三档模板和旧区域兼容绑定；个人 Training 继续独立。纯 planner 决定建议、集中／分散部署和行动支援链接，原动作、身体及 Fire 执行实际移动、换弹和射击。小队节点没有独立物理循环。默认场景接入由 `enemy_team_scene_integration_test.gd` 验证；旧行为测试通过公共 `legacy_scene()` 明确保留原个人配置前提，不能用兼容夹具代替当前绑定的实景验收。明确人数的专项可选择 `single_member_scene()` 再添加所需队员，避免保存地图额外成员干扰单人合同和多人性能计数；此辅助只改变测试实例。
+阶段、任务与 NPC 状态规则集中在 `scripts/systems/stage/`：阶段判定、任务状态与状态解析各一个控制器，配置表资源脚本与 `resources/stages/` 下的 `.tres` 配套维护。控制器挂在 `main.tscn`、按 group 互相查找，不新增全局单例；NPC 只按 `npc_id` 与接收接口被驱动，不反向依赖控制器。见 [阶段与任务](gameplay/STAGE_STATE.md)。
 
-敌人协作由 `world/shooting_range.gd` 持有每战斗区一份 `enemy/services/enemy_cooperation.gd`；Context 提供值快照与任务接口，服务不访问其他行为实例或执行身体命令。`actions/enemy_cooperation_action.gd` / `resources/enemy/actions/cooperate.tres` 提供有限侧移、另一侧包抄和射击支援候选；显式小队的权限统一来自节点 Profile，未迁移旧场景保留区域绑定或个人训练开关。分工搜索与主动补弹仍属于原搜索／换弹模块。统一压制保留旧出口脚本 UID 作为兼容入口，默认目录只装配一个压制实例。参数位于 `config/cooperation_settings.gd`，详见 [敌人协作](enemy-ai.md#敌人协作)。
+`scripts/debug/coordinator_paths.gd` 是 DebugSettings 挂载的只读 CanvasLayer，不放入 AI 或小队执行循环。它每秒最多十次读取 Context 的公开快照并绘制，不查询导航或生成候选。`enemy_coordination_debug_test.gd` 复用真实三人搜索过程，检查快照复制隔离、刷新上限、场景清理及不改变实际行动；不替代其他队列场景验收。
+
+团队意识由 `scenes/world/squad.tscn` 的 `world/squad_controller.gd` 提供入口；节点持有配置和独立的 `services/squad_coordination.gd`。区域按活跃时钟推进，个人仍沿原 Utility、动作、身体及 Fire 执行。`config/team_cooperation_binding.gd` 将显式区域绑定转换为同类协调器；没有 Squad 或显式绑定时，个人训练不创建隐式队伍。普通与强配合共用任务身份、版本、接受事务、执行反馈和期限。`enemy_team_scene_integration_test.gd` 验证保存地图；`unbound_scene()` 创建无团队绑定的实例，需要团队权限的专项必须明确 `bind_team()`。人数明确的专项用 `single_member_scene()` 再添加所需成员。夹具不修改保存场景，不能替代当前地图验收。
+
+区域公共服务由 `world/shooting_range.gd` 持有每战斗区一份 `enemy/services/enemy_cooperation.gd`，负责情报、成员事实与公共空间预约。协调器直接读取 Context 的实际站位、速度及身体占用；`actions/enemy_cooperation_action.gd` 提供经导航和火控验证的候选，并执行授权任务。旧 claim、个人自主团队推进／overwatch、旧包抄轮次、双端抢位及隐式兼容协调器已删除。Search、Reload、身体和 Fire 保留原模块职责；旧出口压制脚本 UID 仅保留资源加载兼容，默认只有一个压制实例。详见 [敌人 AI](enemy-ai.md)。
 
 [统一队伍规划器设计](superpowers/specs/2026-10-10-enemy-team-coordinator-design.md)已接入基础预约、高级岗位和共同阶段。个人 Utility、原动作、身体与 Fire 继续负责执行；功能接入不代表性能及所有旧行为验收已完成。阶段结果与未完成项统一见 [敌人测试](enemy-tests.md#当前回归)及 [实施记录](superpowers/plans/2026-10-10-enemy-team-coordinator.md#实施记录)。
 

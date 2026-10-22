@@ -4,7 +4,9 @@
 
 当前工程包含玩家移动与耐力、对话、枪械锁定与 3D 散射、训练靶、场景交互物、竞技场及敌人巡逻、感知、搜索和掩体走位。竞技场 AI 在玩家进入区域后运行，离场后刷新并等待再次进入。
 
-团队意识在 `Arena/Squad` 小队节点的 `Profile` 中统一设置，提供仅视野共享、战术配合、强配合三档；当前竞技场保留强配合，新建 `scenes/world/squad.tscn` 默认仅共享情报。将敌人放在相应小队下面即可建立独立分工，个人 Training 继续独立。区域统一更新地图与公共预约，小队协调器安排任务，各成员实际执行。配置入口和验证限制见 [敌人 AI](docs/enemy-ai.md)。
+团队意识在 `Arena/Squad` 小队节点的 `Profile` 中统一设置，提供仅视野共享、战术配合、强配合三档；竞技场使用所保存的 Profile 等级，新建 `scenes/world/squad.tscn` 默认仅共享情报。将敌人放在相应小队下面即可建立独立分工，个人 Training 继续独立。区域统一更新地图与公共预约，小队协调器安排任务，各成员实际执行。配置入口和验证限制见 [敌人 AI](docs/enemy-ai.md)。
+
+普通配合与强配合共用任务身份、接受事务、执行反馈和取消接口；普通档不要求全员集结。没有 Squad 或显式区域队伍绑定时，个人训练不会偷偷开启团队调度。个人 Utility、搜索、导航、身体和火控仍分别维护。
 
 半身掩体操作：**C** 切换蹲／站，**空格** 翻越面前矮墙。蹲在矮墙后瞄准会按当前方向临时起身，普通蹲姿可直接瞄准；翻越后恢复手动姿态。竞技场新增绿色低掩体，参数与限制见 [移动说明](docs/gameplay/MOVEMENT.md)。
 
@@ -26,6 +28,7 @@
 - [玩家近战、近战兵战术与武器参数](docs/gameplay/MELEE.md)
 - [竞技场说明](docs/gameplay/ARENA.md)
 - [场景交互物说明](docs/gameplay/INTERACTION.md)
+- [阶段、任务与 NPC 状态](docs/gameplay/STAGE_STATE.md)
 - [模型、动画与命中特效接入](docs/gameplay/PRESENTATION.md)
 - [相机视野、武器绑定与遮挡透明](docs/gameplay/CAMERA.md)
 - [敌人 AI 结构、维护与使用部署](docs/enemy-ai.md)

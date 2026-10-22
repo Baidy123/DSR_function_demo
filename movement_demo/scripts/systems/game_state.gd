@@ -1,9 +1,41 @@
 extends Node
 
+## 对话字段被写入时通知监听者（例如任务控制器按表同步任务状态）；
+## 值没有变化时不发信号，避免同一结果反复刷新。旗标与物品另有专用信号。
+signal value_changed(key: StringName, value: Variant)
+
 # 本次运行共享的对话状态；重新运行游戏会重置。
-var talked_to_a: bool = false
+var talked_to_a: bool = false:
+	set(value):
+		if talked_to_a == value:
+			return
+		talked_to_a = value
+		value_changed.emit(&"talked_to_a", value)
 # 空字符串：尚未选择；accepted：答应；refused：拒绝。
-var help_choice: String = ""
+var help_choice: String = "":
+	set(value):
+		if help_choice == value:
+			return
+		help_choice = value
+		value_changed.emit(&"help_choice", value)
+# 唱片机支线：空字符串＝尚未选择；accepted＝已接取；refused＝已拒绝。
+var music_quest_choice: String = "":
+	set(value):
+		if music_quest_choice == value:
+			return
+		music_quest_choice = value
+		value_changed.emit(&"music_quest_choice", value)
+# 唱片机支线交差提交：done＝已提交（是否完成由任务条件按音乐旗标判定）。
+var music_quest_turnin: String = "":
+	set(value):
+		if music_quest_turnin == value:
+			return
+		music_quest_turnin = value
+		value_changed.emit(&"music_quest_turnin", value)
+## 只读镜像：对话剧本按属性名读取唱片机旗标；旗标本身仍是唯一来源，由交互物写入。
+var music_playing: bool:
+	get:
+		return get_flag(&"music_playing")
 
 ## 交互产生的物品与旗标；与对话状态一样，重新运行游戏才重置，死亡重开场景保留。
 signal item_gained(item_id: StringName, display_name: String, total: int)

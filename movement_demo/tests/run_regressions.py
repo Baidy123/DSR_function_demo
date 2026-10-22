@@ -15,6 +15,8 @@ SYSTEM_TESTS = [
     "movement_noise_modes_test", "debug_mode_test", "noise_debug_test",
     "presentation_interfaces_test", "presentation_movement_compatibility_test",
     "presentation_range_reset_test", "dialogue_cache_test",
+    "quest_conditions_test", "quest_system_test", "stage_system_test",
+    "quest_panel_test", "record_player_quest_test",
 ]
 # The optional interaction prototype is absent from some local project baselines.
 if (DIRECTORY / "interactable_test.gd").is_file():

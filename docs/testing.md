@@ -21,7 +21,7 @@ python movement_demo/tests/run_regressions.py --godot E:/Godot/Godot_v4.7.2-stab
 
 | 分组 | 内容与清单来源 |
 | --- | --- |
-| `systems` | 移动、奔跑、NPC 交互、听觉、声音模式、Debug、表现接口／复位、对话文件扫描；由统一入口登记。可选交互物原型测试仅在本地文件存在时加入 |
+| `systems` | 移动、奔跑、NPC 交互、听觉、声音模式、Debug、表现接口／复位、对话文件扫描，以及任务条件、任务状态、阶段接线、任务面板和唱片机支线；由统一入口登记。可选交互物原型测试仅在本地文件存在时加入 |
 | `combat` | `tests/run_combat_regressions.py` 的原玩家战斗清单 |
 | `enemy` | `tests/enemy/run_enemy_regressions.py` 的原敌人清单 |
 
@@ -37,6 +37,8 @@ python movement_demo/tests/enemy/run_enemy_regressions.py --godot E:/Godot/Godot
 两个旧入口继续写各自固定日志目录；需要保留多轮结果时使用统一入口或另存日志。共用进程执行及判错逻辑位于 `tests/regression_runner.py`：非零退出、超时、启动失败、`SCRIPT ERROR:`、`FAIL `／`FAIL:` 和普通 `ERROR:` 均判失败；仅沿用此前针对 `root certificate store` 的例外。
 
 游戏回归必须保留实际运行基线。用户场景、武器或训练的本地修改可能与某些旧夹具的固定预期不同；保留失败及必要的修改前对照，不通过覆盖用户资源、跳过失败或放宽断言取得全绿。当前敌人整体性能与旧行为未完成项见 [敌人测试](enemy-tests.md#当前回归)和 [待办](TODO.md)。测试登记、局部通过及完整通过是不同事实。
+
+PR #2 的五套任务／阶段测试已登记到 `systems`。2026-10-19 在 PR 与 `main` 的独立合并工作树中，任务条件、任务状态、阶段接线、任务面板、唱片机支线、交互物、Debug、相机共8/8套通过；竞技场场景整合与敌人场景共2/2套通过，主场景180帧启动无脚本或引擎错误。清单检查与运行器自身8项检查通过。空缓存首次导入出现已有的字体导入前引用错误，第二次导入退出码0且无错误。该记录仅代表本次合并定向验证，不代表完整系统、战斗或敌人回归全绿。
 
 ## 需要其他环境的测试
 

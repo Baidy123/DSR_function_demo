@@ -1,26 +1,26 @@
-[gd_scene format=3]
+[gd_scene format=3 uid="uid://ruy4wd5vjpqt"]
 
 [ext_resource type="PackedScene" path="res://scenes/world/cover.tscn" id="1_cover"]
 
 [sub_resource type="StandardMaterial3D" id="LowMaterial"]
-albedo_color = Color(0.40, 0.48, 0.42, 1)
+albedo_color = Color(0.4, 0.48, 0.42, 1)
 
-[sub_resource type="BoxMesh" id="LowMesh"]
+[sub_resource type="BoxMesh" id="BoxMesh_cppth"]
 resource_local_to_scene = true
 material = SubResource("LowMaterial")
 size = Vector3(3, 1.1, 0.6)
 
-[sub_resource type="BoxShape3D" id="LowShape"]
+[sub_resource type="BoxShape3D" id="BoxShape3D_ax2t8"]
 resource_local_to_scene = true
 size = Vector3(3, 1.1, 0.6)
 
-[node name="LowCover" instance=ExtResource("1_cover")]
-position = Vector3(0, 0.55, 0)
+[node name="LowCover" unique_id=1511369531 instance=ExtResource("1_cover")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.55, 0)
 low_cover = true
 vault_enabled = true
 
 [node name="Mesh" parent="." index="0"]
-mesh = SubResource("LowMesh")
+mesh = SubResource("BoxMesh_cppth")
 
 [node name="CollisionShape3D" parent="." index="1"]
-shape = SubResource("LowShape")
+shape = SubResource("BoxShape3D_ax2t8")

@@ -22,9 +22,9 @@ script = ExtResource("1_state_debug")
 
 [node name="Panel" type="PanelContainer" parent="."]
 offset_left = 16.0
-offset_top = 16.0
+offset_top = 176.0
 offset_right = 476.0
-offset_bottom = 116.0
+offset_bottom = 276.0
 theme_override_styles/panel = SubResource("StyleBoxFlat_panel")
 
 [node name="Margin" type="MarginContainer" parent="Panel"]
