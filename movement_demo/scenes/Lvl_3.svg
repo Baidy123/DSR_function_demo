@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1100" height="790" viewBox="0 0 1140 815" role="img" aria-label="第三关地图俯视草图：中央大型全身掩体，右侧贴墙全身掩体，四处半身掩体，右侧半身掩体连接中央和右侧全身掩体、封闭通道，右下玩家起点">
+  <rect width="1140" height="815" fill="#ffffff"/>
+  <!-- Simple rectangular arena -->
+  <rect x="24" y="20" width="1090" height="750" fill="#fafafa" stroke="#39434d" stroke-width="4"/>
+  <!-- Full-height cover, anchored to the original sketch's layout -->
+  <rect x="360" y="245" width="400" height="307" fill="#666e77" stroke="#353e48" stroke-width="3"/>
+  <!-- Right-hand full cover touches the arena's right boundary exactly -->
+  <rect x="968" y="267" width="146" height="374" fill="#666e77" stroke="#353e48" stroke-width="3"/>
+  <!-- Half-height cover: top, left, right-middle bridge sealed against the two full-height covers, bottom transition -->
+  <g fill="#c7cfd7" stroke="#87939e" stroke-width="3">
+    <rect x="525" y="85" width="51" height="125"/>
+    <rect x="62" y="373" width="164" height="43"/>
+    <rect x="760" y="409" width="208" height="43"/>
+    <rect x="605" y="627" width="42" height="94"/>
+  </g>
+  <!-- Full-height labels -->
+  <g fill="#ffffff" font-family="Arial, sans-serif" font-weight="700" font-size="41" text-anchor="middle" dominant-baseline="middle">
+    <text x="560" y="399">F</text>
+    <text x="1041" y="452">F</text>
+  </g>
+  <!-- Half-height labels -->
+  <g fill="#3c4650" font-family="Arial, sans-serif" font-weight="650" font-size="29" text-anchor="middle" dominant-baseline="middle">
+    <text x="551" y="148">L</text>
+    <text x="144" y="395">L</text>
+    <text x="862" y="430">L</text>
+    <text x="626" y="674">L</text>
+  </g>
+  <!-- Player marker; facing left -->
+  <circle cx="1031" cy="716" r="14" fill="#2f9865" stroke="#206947" stroke-width="2"/>
+  <path d="M994 716 H940 M940 716 L954 706 M940 716 L954 726" stroke="#2f9865" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+</svg>

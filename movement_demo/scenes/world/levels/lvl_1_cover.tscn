@@ -1,0 +1,206 @@
+[gd_scene format=3]
+
+[ext_resource type="PackedScene" path="res://scenes/world/cover.tscn" id="1_full"]
+[ext_resource type="PackedScene" path="res://scenes/world/low_cover.tscn" id="2_low"]
+
+[sub_resource type="StandardMaterial3D" id="Material_FullCover"]
+albedo_color = Color(0.423529, 0.462745, 0.498039, 1)
+roughness = 1.0
+
+[sub_resource type="StandardMaterial3D" id="Material_HalfCover"]
+albedo_color = Color(0.752941, 0.796078, 0.823529, 1)
+roughness = 1.0
+
+[sub_resource type="StandardMaterial3D" id="Material_Boundary"]
+albedo_color = Color(0.313725, 0.360784, 0.4, 1)
+roughness = 1.0
+
+[sub_resource type="StandardMaterial3D" id="Material_Ground"]
+albedo_color = Color(0.898039, 0.894118, 0.870588, 1)
+roughness = 1.0
+
+[sub_resource type="BoxMesh" id="Mesh_FullCover_FullCover01"]
+resource_local_to_scene = true
+material = SubResource("Material_FullCover")
+size = Vector3(4.4, 2.2, 7.4)
+
+[sub_resource type="BoxShape3D" id="Shape_FullCover_FullCover01"]
+resource_local_to_scene = true
+size = Vector3(4.4, 2.2, 7.4)
+
+[sub_resource type="BoxMesh" id="Mesh_FullCover_FullCover02"]
+resource_local_to_scene = true
+material = SubResource("Material_FullCover")
+size = Vector3(5.55, 2.2, 3.1)
+
+[sub_resource type="BoxShape3D" id="Shape_FullCover_FullCover02"]
+resource_local_to_scene = true
+size = Vector3(5.55, 2.2, 3.1)
+
+[sub_resource type="BoxMesh" id="Mesh_HalfCover_HalfCover01"]
+resource_local_to_scene = true
+material = SubResource("Material_HalfCover")
+size = Vector3(3.2, 1.1, 0.65)
+
+[sub_resource type="BoxShape3D" id="Shape_HalfCover_HalfCover01"]
+resource_local_to_scene = true
+size = Vector3(3.2, 1.1, 0.65)
+
+[sub_resource type="BoxMesh" id="Mesh_HalfCover_HalfCover02"]
+resource_local_to_scene = true
+material = SubResource("Material_HalfCover")
+size = Vector3(2.65, 1.1, 0.65)
+
+[sub_resource type="BoxShape3D" id="Shape_HalfCover_HalfCover02"]
+resource_local_to_scene = true
+size = Vector3(2.65, 1.1, 0.65)
+
+[sub_resource type="BoxMesh" id="Mesh_Boundary_North"]
+resource_local_to_scene = true
+material = SubResource("Material_Boundary")
+size = Vector3(19.1, 2.2, 0.3)
+
+[sub_resource type="BoxShape3D" id="Shape_Boundary_North"]
+resource_local_to_scene = true
+size = Vector3(19.1, 2.2, 0.3)
+
+[sub_resource type="BoxMesh" id="Mesh_Boundary_South"]
+resource_local_to_scene = true
+material = SubResource("Material_Boundary")
+size = Vector3(19.1, 2.2, 0.3)
+
+[sub_resource type="BoxShape3D" id="Shape_Boundary_South"]
+resource_local_to_scene = true
+size = Vector3(19.1, 2.2, 0.3)
+
+[sub_resource type="BoxMesh" id="Mesh_Boundary_West"]
+resource_local_to_scene = true
+material = SubResource("Material_Boundary")
+size = Vector3(0.3, 2.2, 18.5)
+
+[sub_resource type="BoxShape3D" id="Shape_Boundary_West"]
+resource_local_to_scene = true
+size = Vector3(0.3, 2.2, 18.5)
+
+[sub_resource type="BoxMesh" id="Mesh_Boundary_East"]
+resource_local_to_scene = true
+material = SubResource("Material_Boundary")
+size = Vector3(0.3, 2.2, 18.5)
+
+[sub_resource type="BoxShape3D" id="Shape_Boundary_East"]
+resource_local_to_scene = true
+size = Vector3(0.3, 2.2, 18.5)
+
+[sub_resource type="BoxMesh" id="Mesh_Ground_Floor"]
+resource_local_to_scene = true
+material = SubResource("Material_Ground")
+size = Vector3(19.1, 0.2, 19.1)
+
+[sub_resource type="BoxShape3D" id="Shape_Ground_Floor"]
+resource_local_to_scene = true
+size = Vector3(19.1, 0.2, 19.1)
+
+[node name="Lvl1Cover" type="Node3D"]
+metadata/source_svg = "res://scenes/Lvl_1.svg"
+metadata/meters_per_svg_unit = 0.05
+metadata/interior_size = Vector2(18.5, 18.5)
+
+[node name="FullCover" type="Node3D" parent="."]
+
+[node name="FullCover01" parent="FullCover" instance=ExtResource("1_full")]
+position = Vector3(-2.8, 1.1, -0.9)
+metadata/source_rect = Rect2(100, 108, 88, 148)
+
+[node name="Mesh" parent="FullCover/FullCover01" index="0"]
+mesh = SubResource("Mesh_FullCover_FullCover01")
+
+[node name="CollisionShape3D" parent="FullCover/FullCover01" index="1"]
+shape = SubResource("Shape_FullCover_FullCover01")
+
+[node name="FullCover02" parent="FullCover" instance=ExtResource("1_full")]
+position = Vector3(4.625, 1.1, 0.4)
+metadata/source_rect = Rect2(237, 177, 111, 62)
+
+[node name="Mesh" parent="FullCover/FullCover02" index="0"]
+mesh = SubResource("Mesh_FullCover_FullCover02")
+
+[node name="CollisionShape3D" parent="FullCover/FullCover02" index="1"]
+shape = SubResource("Shape_FullCover_FullCover02")
+
+[node name="HalfCover" type="Node3D" parent="."]
+
+[node name="HalfCover01" parent="HalfCover" instance=ExtResource("2_low")]
+position = Vector3(-5.4, 0.55, 4.875)
+metadata/source_rect = Rect2(60, 291, 64, 13)
+
+[node name="Mesh" parent="HalfCover/HalfCover01" index="0"]
+mesh = SubResource("Mesh_HalfCover_HalfCover01")
+
+[node name="CollisionShape3D" parent="HalfCover/HalfCover01" index="1"]
+shape = SubResource("Shape_HalfCover_HalfCover01")
+
+[node name="HalfCover02" parent="HalfCover" instance=ExtResource("2_low")]
+position = Vector3(4.275, 0.55, 4.775)
+metadata/source_rect = Rect2(259, 289, 53, 13)
+
+[node name="Mesh" parent="HalfCover/HalfCover02" index="0"]
+mesh = SubResource("Mesh_HalfCover_HalfCover02")
+
+[node name="CollisionShape3D" parent="HalfCover/HalfCover02" index="1"]
+shape = SubResource("Shape_HalfCover_HalfCover02")
+
+[node name="Walls" type="Node3D" parent="."]
+
+[node name="Boundary" type="Node3D" parent="."]
+
+[node name="North" type="StaticBody3D" parent="Boundary"]
+position = Vector3(0, 1.1, -9.4)
+
+[node name="Mesh" type="MeshInstance3D" parent="Boundary/North"]
+mesh = SubResource("Mesh_Boundary_North")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="Boundary/North"]
+shape = SubResource("Shape_Boundary_North")
+
+[node name="South" type="StaticBody3D" parent="Boundary"]
+position = Vector3(0, 1.1, 9.4)
+
+[node name="Mesh" type="MeshInstance3D" parent="Boundary/South"]
+mesh = SubResource("Mesh_Boundary_South")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="Boundary/South"]
+shape = SubResource("Shape_Boundary_South")
+
+[node name="West" type="StaticBody3D" parent="Boundary"]
+position = Vector3(-9.4, 1.1, 0)
+
+[node name="Mesh" type="MeshInstance3D" parent="Boundary/West"]
+mesh = SubResource("Mesh_Boundary_West")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="Boundary/West"]
+shape = SubResource("Shape_Boundary_West")
+
+[node name="East" type="StaticBody3D" parent="Boundary"]
+position = Vector3(9.4, 1.1, 0)
+
+[node name="Mesh" type="MeshInstance3D" parent="Boundary/East"]
+mesh = SubResource("Mesh_Boundary_East")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="Boundary/East"]
+shape = SubResource("Shape_Boundary_East")
+
+[node name="Ground" type="Node3D" parent="."]
+
+[node name="Floor" type="StaticBody3D" parent="Ground"]
+position = Vector3(0, -0.1, 0)
+
+[node name="Mesh" type="MeshInstance3D" parent="Ground/Floor"]
+mesh = SubResource("Mesh_Ground_Floor")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="Ground/Floor"]
+shape = SubResource("Shape_Ground_Floor")
+
+[editable path="FullCover/FullCover01"]
+[editable path="FullCover/FullCover02"]
+[editable path="HalfCover/HalfCover01"]
+[editable path="HalfCover/HalfCover02"]
