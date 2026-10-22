@@ -335,6 +335,7 @@ func reset() -> void:
 	_low_hide_remaining = -1.0
 
 func can_interrupt(next: Dictionary, visible: bool) -> bool:
+	if _yield_to_investigation(visible): return true
 	if _charge_remaining > 0.0: return true
 	var outcome: Dictionary = next.get("outcome", {})
 	# 换弹证据只为能更早接敌的方案放行，不能单凭机会让搜索打断有效推进。

@@ -14,7 +14,7 @@ func check(ok: bool, label: String) -> void:
 	print(("PASS " if ok else "FAIL ") + label)
 
 func _run() -> void:
-	var scene = preload("res://tests/enemy/enemy_fire_fixture.gd").legacy_scene()
+	var scene = preload("res://tests/enemy/enemy_fire_fixture.gd").unbound_scene()
 	var arena = scene.get_node("Arena")
 	for child in arena.get_children():
 		if child.has_node("AI"): child.free()
@@ -105,7 +105,7 @@ func _run() -> void:
 	arena.team_cooperation_bindings.clear()
 	arena.enemy_environment()
 	for actor in actors: actor.get_node("AI").refresh_configuration()
-	check(contexts[0].cooperation_level() == 2 and contexts[1].cooperation_level() == 0, "Removing bindings returns to the preserved legacy individual configuration")
+	check(contexts[0].cooperation_level() == 0 and contexts[1].cooperation_level() == 0 and contexts[0]._coordinator() == null and contexts[1]._coordinator() == null, "Removing bindings preserves personal modules without silently creating strong team control")
 	scene.queue_free()
 	await scene.tree_exited
 	await process_frame

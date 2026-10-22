@@ -41,7 +41,7 @@ func _case(explicit_squad: bool) -> void:
 	var assigned: Array = []
 	for frame in 600:
 		await _tick()
-		assigned = actors.filter(func(actor): return actor.get_node("AI").context.coordination_assignment().get("role") in [&"inspect_left", &"inspect_right"] and not actor.get_node("AI").actions[&"search"]._inspection_claim.is_empty())
+		assigned = actors.filter(func(actor): return actor.get_node("AI").context.coordination_assignment().get("role") in [&"inspect_left", &"inspect_right"] and not actor.get_node("AI").actions[&"search"]._inspection_assignment.is_empty())
 		if assigned.size() == 2: break
 	check(assigned.size() == 2, "Ordinary Utility accepts a real pair of endpoint assignments")
 	if assigned.size() == 2:
@@ -69,7 +69,7 @@ func _case(explicit_squad: bool) -> void:
 		check(observer.get_node("AI").context.sees_player, "The third enemy really reacquires the crouched player beyond cover")
 		for frame in 3: await _tick()
 		check(not events.is_empty(), "Same-position reacquisition notifies already informed teammates")
-		check(assigned.all(func(actor): return actor.get_node("AI").actions[&"search"]._inspection_claim.is_empty()), "Both old endpoint executions cancel promptly")
+		check(assigned.all(func(actor): return actor.get_node("AI").actions[&"search"]._inspection_assignment.is_empty()), "Both old endpoint executions cancel promptly")
 		check(reservations.all(func(id): return not arena.cooperation._reservations.has(id)), "Both old endpoint reservations are released")
 		var source: Dictionary = receiver.context.coordination_source(receiver.context.cooperation_target_id())
 		check(not source.is_empty() and source.evidence_id != old_source.evidence_id, "Reacquisition gives planning a new identity at the same position")

@@ -172,17 +172,21 @@ func _physics_process(delta: float) -> void:
 	if current_action != null:
 		output = current_action.execute_tick(delta, visible)
 	var direction: Vector3 = output.get("direction", Vector3.ZERO)
+	var scheduled_members: Array = output.get("scheduled_members", [])
+	if scheduled_members.is_empty() and direction.is_zero_approx(): scheduled_members = context.coordinated_stationary_members()
 	actor.request_crouch(output.get("crouch", false))
 	if not output.get("vault", {}).is_empty(): actor.begin_vault(output.vault)
 	actor.face_direction(output.get("facing", Vector3.ZERO), delta)
 	# 先登记近战执行占用，再消费移动／射击意图；新行为同帧提交冲突请求也受身体约束。
 	context.melee.update(delta, visible, output.get("melee", {}))
-	actor.move_character(direction, delta, output.get("multiplier", 1.0), output.get("stop_position", Vector3.INF))
+	actor.move_character(direction, delta, output.get("multiplier", 1.0), output.get("stop_position", Vector3.INF), scheduled_members)
 	var moving: bool = not actor.get_local_movement_velocity().is_zero_approx() or Vector2(actor.velocity.x, actor.velocity.z).length_squared() > 0.0025
 	context.fire.update(delta, visible, moving, output.get("fire", {}))
 	context.cooperation_publish_execution(output)
+	var execution: Dictionary = current_action.execution_contract(visible) if current_action != null else {}
+	context.publish_execution_availability(execution, current_action.action_id if current_action != null else &"")
 	if current_action != null and not context._coordination_execution.is_empty():
-		context.report_coordination_execution(current_action.execution_contract(visible))
+		context.report_coordination_execution(execution)
 	frame_costs.execution = Time.get_ticks_usec() - stamp
 	if current_action != null and not output.get("running", true):
 		context.investigation_hint_allowed = true
@@ -204,6 +208,10 @@ func _update_utility_decision(delta: float, visible: bool) -> void:
 	context.prepare_coordination_evaluation()
 	utility_options = action_selector.assess_options(self, visible)
 	_publish_coordination_inputs(visible)
+	var pending: Dictionary = context.coordination_assignment()
+	if not pending.is_empty() and not pending.get("accepted", false) and context.coordination_motion_state().get("available_in", 0.0) <= 0.0:
+		if not utility_options.any(func(candidate): return candidate.get("id") == pending.owner_action and pending.allowed_offer_keys.has(candidate.get("coordination_offer_key", ""))):
+			context.reject_coordination_assignment(&"candidate_unavailable")
 	var contract: Dictionary = current_action.execution_contract(visible) if current_action != null and not context._coordination_execution.is_empty() else {}
 	context.report_coordination_execution(contract)
 	var bound: bool = current_action != null and context.coordination_continuation(contract, current_action.action_id)
@@ -255,6 +263,8 @@ func _update_utility_decision(delta: float, visible: bool) -> void:
 func _publish_coordination_inputs(visible: bool) -> void:
 	var offers: Array[Dictionary] = []
 	var assignment: Dictionary = context.coordination_assignment()
+	var execution: Dictionary = current_action.execution_contract(visible) if current_action != null else {}
+	context.publish_execution_availability(execution, current_action.action_id if current_action != null else &"")
 	if context.cooperation_enabled() and context.cooperation != null and context.cooperation_member_count() > 1:
 		for action in actions.values():
 			if action.is_enabled(): offers.append_array(action.coordination_offers(visible))
@@ -263,12 +273,16 @@ func _publish_coordination_inputs(visible: bool) -> void:
 	var publishable: Array[Dictionary] = utility_options
 	if context.cooperation_enabled() and context.cooperation != null and context.cooperation_member_count() > 1:
 		publishable = []
-		var contract: Dictionary = current_action.execution_contract(visible) if current_action != null else {}
+		var contract: Dictionary = execution
 		var continuing: bool = current_action != null and context.coordination_continuation(contract, current_action.action_id)
 		var acceptance_times: Dictionary = {}
 		for candidate in utility_options:
 			var same_execution: bool = continuing and candidate.get("id") == current_action.action_id and candidate.get("coordination_offer_key", "") == context._coordination_execution.get("selected_offer_key", "")
-			if same_execution or current_action == null or current_action.can_interrupt(candidate, visible):
+			var occupied: float = float(contract.get("available_after_seconds", 0.0))
+			if not same_execution and candidate.has("coordination_offer_key") and is_finite(occupied) and occupied > 0.0:
+				publishable.append(candidate)
+				acceptance_times[candidate.coordination_offer_key] = context.evidence_elapsed_seconds + occupied + utility_recheck_seconds
+			elif same_execution or current_action == null or current_action.can_interrupt(candidate, visible):
 				publishable.append(candidate)
 			elif candidate.get("id") == current_action.action_id and contract.get("valid", false):
 				var remaining: float = float(contract.get("remaining_seconds", 0.0))
@@ -288,6 +302,7 @@ func _publish_coordination_inputs(visible: bool) -> void:
 func _start_utility_option(candidate: Dictionary, visible: bool) -> void:
 	var next = actions.get(candidate.get("id"))
 	if next == null or not next.validate(candidate, visible):
+		if not candidate.get("coordination_assignment", {}).is_empty(): context.reject_coordination_assignment(&"local_validation_failed")
 		invalidate_utility()
 		return
 	var transaction: Dictionary = context.prepare_coordination_choice(candidate)

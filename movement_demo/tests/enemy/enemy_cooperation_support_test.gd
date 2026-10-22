@@ -21,8 +21,9 @@ func check(ok: bool, label: String) -> void:
 	print(("PASS " if ok else "FAIL ") + label)
 
 func _run() -> void:
-	scene = preload("res://tests/enemy/enemy_fire_fixture.gd").legacy_scene()
+	scene = preload("res://tests/enemy/enemy_fire_fixture.gd").unbound_scene()
 	var arena = scene.get_node("Arena")
+	preload("res://tests/enemy/enemy_fire_fixture.gd").bind_team(arena, 2)
 	shooter = preload("res://tests/enemy/enemy_fire_fixture.gd").primary_enemy(arena)
 	for child in arena.get_children():
 		if child != shooter and child.has_node("AI"): child.free()
@@ -215,7 +216,7 @@ func _invalid_cycles(region: NavigationRegion3D) -> void:
 	_no_cycle("Removing the real request removes its pressure rather than preserving a promise")
 
 func _zero_hold(action, label: String) -> void:
-	var candidates: Array[Dictionary] = action.collect_candidates(true)
+	var candidates: Array[Dictionary] = action.collect_candidates(true).filter(func(candidate): return candidate.get("coordination_offer_key") == action.plan.get("coordination_offer_key"))
 	check(candidates.size() == 1 and is_zero_approx(candidates[0].cooperation.support_seconds) and is_zero_approx(context.cooperation_candidate_seconds(candidates[0])), label)
 
 func _hold_predictions() -> void:
@@ -232,22 +233,25 @@ func _hold_predictions() -> void:
 	partner.request_reload()
 	partner_context.cooperation_publish_execution({})
 	var action = shooter.get_node("AI").actions[&"cooperate"]
-	var selected: Dictionary = action._overwatch_candidate()
+	context.spatial.advance_evaluation()
+	context.prepare_coordination_evaluation()
+	var source: Dictionary = context.coordination_source(context.cooperation_target_id())
+	var selected: Dictionary = action._front_candidate(source) if not source.is_empty() else {}
 	check(not selected.is_empty() and selected.cooperation.support_seconds > 0.0 and selected.cooperation.support_seconds <= float(selected.hold_seconds), "A legal overwatch candidate predicts fire only within its actual initial hold")
 	if selected.is_empty(): return
-	context.utility_current = selected
-	var began: bool = action.begin(selected, true)
-	check(began and action.phase == action.Phase.HOLD, "The legal overwatch candidate starts through its normal validation and claim contract")
+	var began := Fixture.accept_prepared_task(shooter.get_node("AI"), selected, source)
+	if began: action.tick(0.0, true)
+	check(began and action.phase == action.Phase.HOLD, "The legal overwatch candidate starts through its normal task validate/prepare/begin/commit contract")
 	if not began: return
-	var saved_hold: float = action._hold_remaining
+	var saved_hold: float = action._remaining
 	fire.fire_pause_remaining = saved_hold + 0.3
-	check(action._overwatch_candidate().is_empty(), "A burst pause outliving the initial hold cannot sell a later action's shots")
+	check(action._hold_support_prediction(action._remaining).support_seconds == 0.0, "A burst pause outliving the initial hold cannot sell a later action's shots")
 	_zero_hold(action, "A committed HOLD whose remaining life is shorter than its burst pause has zero support credit")
 	fire.fire_pause_remaining = 0.0
 	shooter.shot_cooldown = saved_hold + 0.3
 	_zero_hold(action, "A committed HOLD cannot credit shots beyond its real mechanical cooldown")
 	shooter.shot_cooldown = 0.0
-	action._hold_remaining = minf(0.1, fire.fire_reaction_seconds * 0.5)
+	action._remaining = minf(0.1, fire.fire_reaction_seconds * 0.5)
 	fire.fire_reaction_elapsed = 0.0
 	_zero_hold(action, "A short committed HOLD cannot credit shots before reaction completes")
 	fire.fire_reaction_elapsed = fire.fire_reaction_seconds
@@ -262,15 +266,15 @@ func _hold_predictions() -> void:
 	partner.global_position = shooter.global_position.lerp(player.global_position, 0.5)
 	partner_context.cooperation_publish_execution({})
 	_zero_hold(action, "A friendly blocker removes both the initial and committed HOLD's support credit")
-	check(action._overwatch_candidate().is_empty(), "An initial overwatch candidate also respects the real friendly firing line")
+	check(action._hold_support_prediction(action._remaining).support_seconds == 0.0, "An initial overwatch candidate also respects the real friendly firing line")
 	partner.global_position = partner_position
 	partner_context.cooperation_publish_execution({})
-	var before := [action._hold_remaining, action._remaining, action.plan.duplicate(true), fire.fire_pause_remaining, fire.fire_reaction_elapsed, fire.fire_burst_shots, fire.fire_interval_remaining, fire.fire_decision.wait_seconds, shooter.shot_count]
-	var candidates: Array[Dictionary] = action.collect_candidates(true)
-	check(candidates.size() == 1 and candidates[0].cooperation.support_seconds > 0.0 and candidates[0].cooperation.support_seconds <= action._hold_remaining and context.cooperation_candidate_seconds(candidates[0]) > 0.0, "Restoring a legal gun restores credit bounded by the actual remaining hold")
-	check(before == [action._hold_remaining, action._remaining, action.plan, fire.fire_pause_remaining, fire.fire_reaction_elapsed, fire.fire_burst_shots, fire.fire_interval_remaining, fire.fire_decision.wait_seconds, shooter.shot_count], "HOLD prediction leaves claims, timers, aim pressure and actual shots unchanged")
+	var before := [action._remaining, action._remaining, action.plan.duplicate(true), fire.fire_pause_remaining, fire.fire_reaction_elapsed, fire.fire_burst_shots, fire.fire_interval_remaining, fire.fire_decision.wait_seconds, shooter.shot_count]
+	var candidates: Array[Dictionary] = action.collect_candidates(true).filter(func(candidate): return candidate.get("coordination_offer_key") == action.plan.get("coordination_offer_key"))
+	check(candidates.size() == 1 and candidates[0].cooperation.support_seconds > 0.0 and candidates[0].cooperation.support_seconds <= action._remaining and context.cooperation_candidate_seconds(candidates[0]) > 0.0, "Restoring a legal gun restores credit bounded by the actual remaining hold")
+	check(before == [action._remaining, action._remaining, action.plan, fire.fire_pause_remaining, fire.fire_reaction_elapsed, fire.fire_burst_shots, fire.fire_interval_remaining, fire.fire_decision.wait_seconds, shooter.shot_count], "HOLD prediction leaves claims, timers, aim pressure and actual shots unchanged")
 	check(_publish().get("ready", false), "The continuing hold publishes actual current support before offering its position")
-	before = [action._hold_remaining, action._remaining, action.plan.duplicate(true), fire.fire_pause_remaining, fire.fire_reaction_elapsed, fire.fire_burst_shots, fire.fire_interval_remaining, fire.fire_decision.wait_seconds, shooter.shot_count]
+	before = [action._remaining, action._remaining, action.plan.duplicate(true), fire.fire_pause_remaining, fire.fire_reaction_elapsed, fire.fire_burst_shots, fire.fire_interval_remaining, fire.fire_decision.wait_seconds, shooter.shot_count]
 	# Match the normal AI order: establish the spatial/navigation revision before
 	# publishing member versions and scoring offers bound to those versions.
 	context.spatial.advance_evaluation()
@@ -279,8 +283,8 @@ func _hold_predictions() -> void:
 	partner_context.prepare_coordination_evaluation()
 	check(not context.coordination_source(context.cooperation_target_id()).is_empty(), "The held shooter has a real shared source for a future complementary assignment")
 	candidates = action.collect_candidates(true)
-	check(action._coordination_offers.any(func(offer): return offer.role == &"front_support" and offer.position == shooter.global_position), "An unassigned held shooter continues offering its actual front position to a complementary team plan")
-	check(candidates.filter(func(candidate): return not candidate.has("coordination_role")).size() == 1 and before == [action._hold_remaining, action._remaining, action.plan, fire.fire_pause_remaining, fire.fire_reaction_elapsed, fire.fire_burst_shots, fire.fire_interval_remaining, fire.fire_decision.wait_seconds, shooter.shot_count], "Advertising a future role neither replaces nor renews the current hold or credits its future fire as current support")
+	check(candidates.any(func(candidate): return candidate.get("coordination_role") == &"front_support" and candidate.destination.position == shooter.global_position), "An assigned held shooter continues offering its actual position and validated alternatives")
+	check(candidates.all(func(candidate): return candidate.has("coordination_role")) and before == [action._remaining, action._remaining, action.plan, fire.fire_pause_remaining, fire.fire_reaction_elapsed, fire.fire_burst_shots, fire.fire_interval_remaining, fire.fire_decision.wait_seconds, shooter.shot_count], "Advertising a future role neither replaces nor renews the current hold or credits its future fire as current support")
 	var ai = shooter.get_node("AI")
 	var scored: Array[Dictionary] = ai.action_selector.assess_options(ai, true)
 	context.publish_coordination_offers(scored, action.coordination_offers(true))

@@ -38,7 +38,7 @@ func _dispose() -> void:
 
 func _fixture() -> void:
 	await _dispose()
-	scene = preload("res://tests/enemy/enemy_fire_fixture.gd").legacy_scene()
+	scene = preload("res://tests/enemy/enemy_fire_fixture.gd").unbound_scene()
 	var arena = scene.get_node("Arena")
 	actor = preload("res://tests/enemy/enemy_fire_fixture.gd").primary_enemy(arena)
 	for child in arena.get_children():

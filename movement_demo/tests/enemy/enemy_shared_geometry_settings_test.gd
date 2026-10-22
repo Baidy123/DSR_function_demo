@@ -16,7 +16,7 @@ func _run() -> void:
 		var saved = ResourceLoader.load("res://logs/shared_geometry_training.tres", "", ResourceLoader.CACHE_MODE_IGNORE)
 		check(is_equal_approx(saved.setting(&"selection", &"cover_inference_distance"), 2.35) and saved.selection.overridden.has("cover_inference_distance"), "共享参数重载保留数值及显式覆盖")
 		check(not saved.exit_suppression.get_property_list().any(func(item): return item.name == "cover_inference_distance"), "出口配置不再提供重复调参入口")
-		var scene = preload("res://tests/enemy/enemy_fire_fixture.gd").legacy_scene()
+		var scene = preload("res://tests/enemy/enemy_fire_fixture.gd").unbound_scene()
 		root.add_child(scene)
 		current_scene = scene
 		var actor = preload("res://tests/enemy/enemy_fire_fixture.gd").primary_enemy(scene)

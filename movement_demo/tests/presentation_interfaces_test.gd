@@ -200,7 +200,7 @@ func test_effects() -> void:
 
 
 func test_real_scene() -> void:
-	var scene := preload("res://tests/enemy/enemy_fire_fixture.gd").legacy_scene() as Node3D
+	var scene := preload("res://tests/enemy/enemy_fire_fixture.gd").unbound_scene() as Node3D
 	root.add_child(scene)
 	current_scene = scene
 	await settle()

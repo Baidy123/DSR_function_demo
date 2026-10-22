@@ -16,7 +16,7 @@ func check(ok: bool, label: String) -> void:
 		push_error(label)
 
 func _run() -> void:
-	var scene = preload("res://tests/enemy/enemy_fire_fixture.gd").legacy_scene()
+	var scene = preload("res://tests/enemy/enemy_fire_fixture.gd").unbound_scene()
 	root.add_child(scene)
 	current_scene = scene
 	var arena = scene.get_node("Arena")
@@ -92,28 +92,31 @@ func _run() -> void:
 	second.faction_id = &"enemy"
 	b.update_evidence(STEP, false)
 	for actor in [first, second]: Fixture.set_training_action(actor.get_node("AI"), &"cooperate", true)
-	var task := {"kind": &"search", "position": Vector3(22, 0, 1), "duration": 1.0, "owner_action": &"search"}
-	var owned: Dictionary = a.cooperation_claim(task)
-	check(not owned.is_empty() and b.cooperation_claim(task).is_empty(), "atomic task claims allow only one searcher at the same point")
+	var point := Vector3(22, 0, 1)
+	var owned := Fixture.reserve_position(a, point, 1.0, &"cooperate")
+	check(not owned.is_empty() and Fixture.reserve_position(b, point, 1.0, &"cooperate").is_empty(), "One public space transaction excludes a second destination at the same point")
 	var expiry: float = owned.get("expires_at", -1.0)
-	a.cooperation_update(owned, {"duration": 999.0, "ready": true})
-	check(a.cooperation_snapshot().claims[0].expires_at == expiry and a.cooperation_snapshot().supports.is_empty(), "updates cannot renew a claim or fabricate support readiness")
-	a.cooperation_release(owned)
-	var next: Dictionary = b.cooperation_claim(task)
-	check(not next.is_empty(), "release makes the position available to another member")
+	check(original_board.commit_reservation(a, owned) and original_board.reservation_value(owned.reservation_id).expires_at == expiry and a.cooperation_snapshot().supports.is_empty(), "Repeated commit cannot renew a lease or fabricate support readiness")
+	original_board.release_reservation(a, owned)
+	var next := Fixture.reserve_position(b, point, 1.0, &"cooperate")
+	check(not next.is_empty(), "Release makes the position available to another member")
 	original_board.advance(1.1)
-	check(not b.cooperation_update(next, {}) and not a.cooperation_claim(task).is_empty(), "expired ownership cannot be renewed and another member can claim the task")
+	check(not original_board.validate_reservation(b, next), "Expired ownership cannot be renewed")
+	owned = Fixture.reserve_position(a, point, 1.0, &"cooperate")
+	check(not owned.is_empty(), "Another member can reserve the expired destination")
 	Fixture.set_training_action(first.get_node("AI"), &"cooperate", false)
 	original_board.advance(0.01)
-	check(b.cooperation_snapshot().claims.is_empty(), "revoking training clears outstanding cooperation tasks")
+	check(original_board.reservation_snapshot(b).is_empty(), "Removing the executing action releases its outstanding destination")
 	Fixture.set_training_action(first.get_node("AI"), &"cooperate", true)
-	owned = a.cooperation_claim(task)
+	owned = Fixture.reserve_position(a, point, 1.0, &"cooperate")
 	original_board.reset()
-	check(not a.cooperation_update(owned, {}) and b.cooperation_snapshot().claims.is_empty(), "arena reset invalidates tokens from the prior generation")
-	var advance: Dictionary = a.cooperation_claim({"kind": &"advance", "lane_id": &"position:22:1", "position": Vector3(22, 0, 1), "duration": 1.0, "owner_action": &"cooperate"})
-	var observed: Dictionary = b.cooperation_snapshot()
-	check(not advance.is_empty() and observed.claims[0].lane_id == &"position:22:1" and observed.requests[0].lane_id == &"target", "support request conversion preserves the exclusive position lane in the claim snapshot")
-	a.cooperation_release(advance)
+	check(not original_board.validate_reservation(a, owned) and original_board.reservation_snapshot(b).is_empty(), "Arena reset invalidates tokens from the prior generation")
+	Fixture.bind_team(arena, 2)
+	for actor in [first, second]: actor.get_node("AI").refresh_configuration(true)
+	a.cooperation_publish_execution({"support_request": {"kind": &"advance", "duration": 1.0, "lane_id": &"target"}})
+	# Execution publication reads the selected action's real request; position
+	# leases themselves never manufacture an instruction to another actor.
+	check(not original_board.has_method("claim") and original_board.reservation_snapshot(b).is_empty(), "Position reservation no longer doubles as an independent team task allocator")
 
 	# The support gate is measured by the actual fire controller and actor.
 	first.global_position = Vector3(18, 0, 0)

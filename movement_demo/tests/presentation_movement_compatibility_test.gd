@@ -21,7 +21,7 @@ func run() -> void:
 
 
 func trace(interfaces: bool) -> Array:
-	var scene = preload("res://tests/enemy/enemy_fire_fixture.gd").legacy_scene()
+	var scene = preload("res://tests/enemy/enemy_fire_fixture.gd").unbound_scene()
 	var player = scene.get_node("Player")
 	if not interfaces:
 		for path in ["Visual/Presentation", "PlayerPresentation", "ImpactReceiver"]:

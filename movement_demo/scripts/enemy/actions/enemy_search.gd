@@ -176,8 +176,8 @@ var _track_stuck_seconds := 0.0
 ## 本搜索实例的已承诺路段与待核实轨迹，不写入公共记忆或其他动作。
 var _segment_speed := -1.0
 var _trail_pending: Array[Vector3] = []
+var _trail_cover_points: Array[Vector3] = []
 var _checked_trail: Array[Vector3] = []
-var _search_claim: Dictionary = {}
 ## A witnessed low-cover disappearance remains a local investigation until
 ## actually checked. It grants neither current sight nor renewed fire evidence.
 var _low_cover_focus: Dictionary = {}
@@ -186,7 +186,7 @@ const InspectionGeometry = preload("res://scripts/enemy/services/enemy_cover_ins
 const SearchBodyGeometry = preload("res://scripts/systems/character_geometry.gd")
 enum InspectionPhase { NONE, APPROACH, WAIT_PARTNER, CHECK, OBSERVE }
 var _inspection_phase := InspectionPhase.NONE
-var _inspection_claim: Dictionary = {}
+var _inspection_assignment: Dictionary = {}
 var _inspection_offers: Array[Dictionary] = []
 var _inspection_routes: Dictionary = {}
 var _inspection_complete := false
@@ -198,7 +198,7 @@ var _inspection_route: Dictionary = {}
 var _inspection_remaining := 0.0
 var _inspection_observe := 0.0
 var _inspection_stuck := 0.0
-var _inspection_ally_blocked := false
+var _inspection_passage: Dictionary = {}
 var _inspection_best := INF
 var _inspection_waypoint := Vector3.INF
 var _inspection_recheck := 0.0
@@ -244,7 +244,11 @@ func predicted_position() -> Vector3:
 
 
 func _search_evidence() -> Dictionary:
-	return context.cooperation_target_evidence()
+	var observation: Dictionary = context.cooperation_target_evidence()
+	var investigation: Dictionary = context.cover_inspection_evidence()
+	if not investigation.is_empty() and (observation.is_empty() or float(investigation.captured_at) >= float(observation.captured_at)):
+		return investigation
+	return observation
 
 
 func _known_search_position() -> Vector3:
@@ -255,21 +259,6 @@ func _known_search_position() -> Vector3:
 func _search_evidence_age() -> float:
 	var evidence := _search_evidence()
 	return maxf(0.0, context.evidence_elapsed_seconds - float(evidence.get("captured_at", context.evidence_elapsed_seconds - context.utility_unseen_seconds)))
-
-
-func _release_search_claim() -> void:
-	if context != null and not _search_claim.is_empty(): context.cooperation_release(_search_claim)
-	_search_claim = {}
-
-
-func _claim_search_point(point: Vector3, seconds: float) -> bool:
-	_release_search_claim()
-	# Targetless sound remains personal while its own evidence-domain offers warm.
-	if noise_search_origin.is_finite(): return true
-	if not context.cooperation_enabled(): return true
-	var default_seconds: float = float(context.setting(&"cooperation", &"search_claim_seconds", 6.0))
-	_search_claim = context.cooperation_claim_search(point, maxf(0.1, maxf(default_seconds, seconds)))
-	return not _search_claim.is_empty()
 
 
 func _begin_segment() -> void:
@@ -291,6 +280,7 @@ func investigate_known_threat(position: Vector3) -> void:
 	_return_to_area_search = false
 	has_suspected_position = false
 	_trail_pending.clear()
+	_trail_cover_points.clear()
 	_checked_trail.clear()
 	if not (_set_suspected_position_from_raw(position, 2.0) and _start_track_to_suspected()):
 		begin_search(position)
@@ -357,6 +347,7 @@ func begin_tracking_or_search(allow_hint: bool = true) -> void:
 	investigation_phase = -1
 	_return_to_area_search = false
 	_trail_pending.clear()
+	_trail_cover_points.clear()
 	_checked_trail.clear()
 
 
@@ -368,13 +359,10 @@ func begin_tracking_or_search(allow_hint: bool = true) -> void:
 		_start_low_cover_track()
 		return
 
-	# 第一优先：如果允许“小外挂”，只在这个时刻掷一次骰子。
-	if allow_hint and _try_tracking_cheat_hint(lost_target_hint_chance) and _start_track_to_suspected():
-		return
-
 	# 先确认失视附近，再沿最后可见方向查下一段；不会一步跨过藏身处。
 	var known := _known_search_position()
 	if known.is_finite(): _trail_pending.append(known)
+	_append_cover_trail()
 	var observed_direction: Vector3 = _search_evidence().get("direction", context.last_seen_direction)
 	if context.has_combat_contact() and not observed_direction.is_zero_approx():
 		search_direction = observed_direction.normalized()
@@ -382,16 +370,40 @@ func begin_tracking_or_search(allow_hint: bool = true) -> void:
 		if context._horizontal_distance_between(prediction, known) > track_arrival_distance * 2.0:
 			_trail_pending.append(prediction)
 	if _start_next_trail(): return
+	# Optional hints cannot replace an unvisited last-seen point or its cover.
+	if allow_hint and _try_tracking_cheat_hint(lost_target_hint_chance) and _start_track_to_suspected(): return
 
 	# 已知位置也不可达时，继续搜索附近可达区域，不借用隐藏玩家坐标。
 	has_suspected_position = false
 	begin_search(context.last_known_position)
 
 
+func _append_cover_trail() -> void:
+	_trail_cover_points.clear()
+	var clue := _search_evidence().duplicate(true)
+	if clue.is_empty(): return
+	if not clue.has("observer_position"): clue.observer_position = actor.global_position
+	var cover = clue.get("cover")
+	if cover is WeakRef: cover = cover.get_ref()
+	if not is_instance_valid(cover):
+		clue.merge(InspectionGeometry.nearby_investigation_cover(context, clue), true)
+	var geometry := InspectionGeometry.describe(context, clue, false)
+	if geometry.is_empty(): return
+	var ends: Array = geometry.ends.values()
+	ends.sort_custom(func(a, b): return selection._path_length_from_path(a.path) < selection._path_length_from_path(b.path) if a.has("path") and b.has("path") else actor.global_position.distance_squared_to(a.peek) < actor.global_position.distance_squared_to(b.peek))
+	for end: Dictionary in ends:
+		_trail_pending.append(end.peek)
+		_trail_cover_points.append(end.peek)
+
 func _start_next_trail() -> bool:
 	while not _trail_pending.is_empty():
 		var point: Vector3 = _trail_pending.pop_front()
-		if not _set_suspected_position_from_raw(point, 2.0): continue
+		if _trail_cover_points.has(point):
+			if not context.is_position_free(point) or selection._path_to(actor.global_position, point).is_empty(): continue
+			suspected_position = point
+			suspected_look_position = _known_search_position()
+			has_suspected_position = true
+		elif not _set_suspected_position_from_raw(point, 2.0): continue
 		if _start_track_to_suspected(): return true
 	return false
 
@@ -662,7 +674,7 @@ func _set_suspected_position_relaxed(raw_target: Vector3) -> bool:
 func _start_track_to_suspected() -> bool:
 	if not has_suspected_position:
 		return false
-	if not _claim_search_point(suspected_position, track_seconds):
+	if not context.cooperation_search_available(suspected_position):
 		has_suspected_position = false
 		return false
 
@@ -693,20 +705,23 @@ func _process_track(delta: float) -> Vector3:
 		if not context.has_combat_contact() and search_seconds > 0.0:
 			search_timer = maxf(0.0, search_timer - delta)
 
+	var next_position: Vector3 = agent.get_next_path_position()
+	var cover_endpoint := _trail_cover_points.has(suspected_position)
 	var reached_track_target: bool = (
 		has_suspected_position
-		and context._horizontal_distance(suspected_position) <= track_arrival_distance
+		and context._horizontal_distance(suspected_position) <= (0.05 if cover_endpoint else track_arrival_distance)
 	)
+	var final_approach: bool = cover_endpoint and context._horizontal_distance(suspected_position) <= 0.7 and not selection._path_to(actor.global_position, suspected_position).is_empty()
 
 	# TRACK 只负责去怀疑位置。
 	# 到达、超时，或 NavigationAgent 已经结束当前路径时，就进入 SEARCH。
 	# SEARCH 的圆心始终回到玩家最后真正出现/最后已知的位置，
 	# 不把 TRACK 的预测终点当成新的搜索中心。
-	if track_timer <= 0.0 or reached_track_target or agent.is_navigation_finished():
+	if track_timer <= 0.0 or reached_track_target or (agent.is_navigation_finished() and not final_approach):
 		_finish_tracking(not reached_track_target)
 		return Vector3.ZERO
 
-	var next_position: Vector3 = agent.get_next_path_position()
+	if final_approach: next_position = suspected_position
 	var distance: float = context._horizontal_distance(next_position)
 	if not _track_waypoint.is_finite() or _track_waypoint.distance_to(next_position) > 0.25:
 		_track_waypoint = next_position
@@ -728,7 +743,6 @@ func _process_track(delta: float) -> Vector3:
 
 
 func _finish_tracking(failed: bool = false) -> void:
-	_release_search_claim()
 	if _has_low_cover_focus():
 		if failed and has_suspected_position: context.block_utility_destination(suspected_position)
 		has_suspected_position = false
@@ -742,10 +756,11 @@ func _finish_tracking(failed: bool = false) -> void:
 	# 只为首次沿线调查记录已核实位置；区域搜索中的提示支线不无限累积旧轨迹。
 	if not failed and not _return_to_area_search: _checked_trail.append(suspected_position)
 	has_suspected_position = false
-	if not _return_to_area_search and not failed and _focused_evidence() and _start_next_trail():
+	if not _return_to_area_search and (_focused_evidence() or not _trail_cover_points.is_empty()) and _start_next_trail():
 		context.invalidate_utility()
 		return
 	_trail_pending.clear()
+	_trail_cover_points.clear()
 	if not _return_to_area_search:
 		begin_search(context.last_known_position)
 		if failed:
@@ -783,7 +798,6 @@ func _take_exact_clue() -> bool:
 	return true
 
 func begin_search(center: Vector3 = Vector3.INF) -> void:
-	_release_search_claim()
 	if not is_enabled():
 		context.state = context.State.IDLE
 		return
@@ -973,7 +987,6 @@ func _search_point_cost(point: Vector3) -> float:
 
 
 func _advance_systematic_search_target() -> bool:
-	_release_search_claim()
 	if get_search_coverage() >= search_coverage_goal:
 		return false
 	var next: Dictionary = coverage.take_next(predicted_position(), _focused_evidence())
@@ -996,7 +1009,7 @@ func _advance_systematic_search_target() -> bool:
 		for index in range(1, path.size()):
 			path_length += path[index - 1].distance_to(path[index])
 		search_target_timer = _bound_fast_segment(path_length / maxf(0.1, actor.move_speed * movement_multiplier()) + 3.0)
-		if not _claim_search_point(destination, search_target_timer):
+		if not context.cooperation_search_available(destination):
 			search_current_target_active = false
 			return false
 		agent.target_position = destination
@@ -1017,7 +1030,6 @@ func _advance_systematic_search_target() -> bool:
 
 func _finish_current_search_point() -> void:
 	_mark_search_coverage(search_current_target)
-	_release_search_claim()
 	# 到达搜寻目标才记录覆盖并停留；普通寻路拐点不会调用这里。
 	search_current_target_active = false
 	search_progress_best_distance = INF
@@ -1028,7 +1040,6 @@ func _finish_current_search_point() -> void:
 
 
 func _skip_current_search_point() -> void:
-	_release_search_claim()
 	release_segment()
 	context.invalidate_utility()
 	search_current_target_active = false
@@ -1041,12 +1052,12 @@ func _skip_current_search_point() -> void:
 
 
 func _end_search() -> void:
-	_release_search_claim()
 	if context.has_combat_contact() and is_enabled():
 		# 搜完一轮或暂时无路可走都不解除交战警戒，也不刷新证据和提示衰减。
 		var elapsed := search_elapsed_seconds
 		var hint_remaining := search_hint_timer
 		_trail_pending.clear()
+		_trail_cover_points.clear()
 		_checked_trail.clear()
 		has_suspected_position = false
 		track_timer = 0.0
@@ -1059,6 +1070,7 @@ func _end_search() -> void:
 		return
 	_segment_speed = -1.0
 	_trail_pending.clear()
+	_trail_cover_points.clear()
 	_checked_trail.clear()
 	investigation_phase = -1
 	_return_to_area_search = false
@@ -1105,11 +1117,11 @@ func reset() -> void:
 	_inspection_geometry_retry = 0.0
 	_inspection_routes.clear()
 	_inspection_offers.clear()
-	_release_search_claim()
 	_exact_search_origin = Vector3.INF
 	route_motion.reset()
 	_segment_speed = -1.0
 	_trail_pending.clear()
+	_trail_cover_points.clear()
 	_checked_trail.clear()
 	investigation_phase = -1
 	_return_to_area_search = false
@@ -1171,9 +1183,20 @@ func movement_multiplier() -> float:
 
 func state_label() -> String:
 	if not _sector_assignment.is_empty(): return "分区调查 %d/%d" % [mini(_sector_index + 1, _sector_plan.get("samples", []).size()), _sector_plan.get("samples", []).size()]
-	if _inspection_phase == InspectionPhase.WAIT_PARTNER: return "两端入位等待"
+	if plan.get("plan") in [&"inspect_assemble", &"inspect_end"]:
+		var waiting: Array = _inspection_passage.get("waiting_for", [])
+		if not waiting.is_empty():
+			var members: Array = context.inspection_order().get("members", [])
+			if _inspection_passage.get("motion_reason") == &"assembly_barrier": return "等待队员%d入位" % (members.find(waiting[0]) + 1)
+			return "等待队员%d让路" % (members.find(waiting[0]) + 1)
+		if _inspection_passage.get("motion_reason") in [&"repair", &"yield"]: return "重新安排通行"
+		if _inspection_passage.get("motion_state") == &"blocked": return "通路受阻"
+	if plan.get("plan") == &"inspect_assemble": return "接近集合站位"
+	if _inspection_phase == InspectionPhase.WAIT_PARTNER: return "整队入位等待"
+	if _inspection_route.get("formation", {}).get("kind") == &"point":
+		return "整队接近线索" if _inspection_phase == InspectionPhase.APPROACH else "共同检查线索"
 	if _inspection_phase in [InspectionPhase.CHECK, InspectionPhase.OBSERVE]: return "分侧检查掩体"
-	if _inspection_phase == InspectionPhase.APPROACH: return "分侧接近掩体"
+	if _inspection_phase == InspectionPhase.APPROACH: return "接近搜索站位"
 	if _has_low_cover_focus(): return "接近已知掩体" if has_suspected_position else "警戒已知掩体"
 	if noise_search_origin.is_finite(): return "噪声调查"
 	if context.has_combat_contact():
@@ -1247,7 +1270,12 @@ func collect_candidates(visible: bool) -> Array[Dictionary]:
 	var horizon: float = context.utility_horizon_seconds
 	var point := utility_destination()
 	var path: PackedVector3Array = PackedVector3Array() if is_observing() else context.routes.planning_path(actor.global_position, point)
-	if is_observing() or path.is_empty():
+	# A shared clue is an investigation objective, not an exclusive standing
+	# position. If a teammate occupies its current destination, let Search run
+	# its normal recovery before proposing a replacement movement reservation.
+	# Otherwise the basic destination filter removes the only search option,
+	# leaving an alerted actor idle without ever reaching that recovery.
+	if is_observing() or path.is_empty() or not context.cooperation_search_available(point):
 		var candidate := option({}, horizon, context._reload_exposure(actor.global_position, threat) * horizon)
 		var report: Dictionary = context.fresh_shared_contact()
 		if not report.is_empty(): candidate.outcome.information_loss = context.shared_contact_information(actor.global_position, 0.0, report)
@@ -1265,11 +1293,11 @@ func collect_candidates(visible: bool) -> Array[Dictionary]:
 	return inspections
 
 func begin(candidate: Dictionary, visible: bool) -> bool:
+	_inspection_passage.clear()
 	if candidate.get("plan", &"") == &"search_sector": return _begin_sector(candidate, visible)
 	if candidate.get("plan", &"") == &"inspect_end": return _begin_inspection(candidate, visible)
 	if candidate.get("plan", &"") == &"inspect_assemble":
 		if visible or candidate.inspection.formation != context.inspection_order(): return false
-		_release_search_claim()
 		route_motion.reset()
 		return super.begin(candidate, visible)
 	candidate.accepts_noise = true
@@ -1289,7 +1317,7 @@ func begin(candidate: Dictionary, visible: bool) -> bool:
 		investigate_noise(position)
 	elif investigation_phase >= 0:
 		context.state = investigation_phase
-		if (has_suspected_position or search_current_target_active) and not _claim_search_point(utility_destination(), track_timer if investigation_phase == context.State.TRACK else search_target_timer):
+		if (has_suspected_position or search_current_target_active) and not context.cooperation_search_available(utility_destination()):
 			recover_unreachable_destination()
 		else:
 			agent.target_position = utility_destination()
@@ -1302,16 +1330,21 @@ func valid(visible: bool) -> bool:
 	if not _sector_assignment.is_empty(): return _sector_execution_valid(visible)
 	if _inspection_phase != InspectionPhase.NONE: return _inspection_execution_valid(visible)
 	if plan.get("plan", &"") == &"inspect_assemble": return _running and not visible and plan.inspection.formation == context.inspection_order() and InspectionGeometry.valid(context, plan.inspection.geometry)
-	return _running and not visible and (context.is_alerted or noise_search_origin.is_finite())
+	# A new squad order replaces personal pursuit immediately. Returning false
+	# only requests the normal Utility transaction; it does not start movement.
+	if not context.inspection_order().is_empty(): return false
+	var moving := (has_suspected_position and track_timer > 0.0) or (search_current_target_active and search_target_timer > 0.0)
+	var observing := (search_is_pausing and search_pause_timer > 0.0) or (_has_low_cover_focus() and not has_suspected_position)
+	return _running and not visible and (context.is_alerted or noise_search_origin.is_finite()) and (moving or observing)
 
 func tick(delta: float, _visible: bool) -> Dictionary:
 	if not _sector_assignment.is_empty(): return _tick_sector(delta, _visible)
-	if _inspection_phase != InspectionPhase.NONE: return _tick_inspection(delta)
-	if plan.get("plan", &"") == &"inspect_assemble": return _tick_inspection_assembly(delta, _visible)
-	# Restore the personal claim after the generic choice transaction commits,
-	# but before any movement. Claim revisions must not invalidate its prepare.
-	if _has_low_cover_focus() and has_suspected_position and _search_claim.is_empty() and context.cooperation_enabled():
-		if not _claim_search_point(suspected_position, track_timer): _finish_tracking(true)
+	if _inspection_phase != InspectionPhase.NONE:
+		var output := _tick_inspection(delta)
+		return _formation_motion(output, _inspection_route)
+	if plan.get("plan", &"") == &"inspect_assemble":
+		var output := _tick_inspection_assembly(delta, _visible)
+		return _formation_motion(output, plan.get("inspection", {}) if _running else {})
 	if plan.get("search_recovery", false):
 		plan.erase("search_recovery")
 		if not is_observing() and context.routes.planning_path(actor.global_position, utility_destination()).is_empty():
@@ -1325,6 +1358,14 @@ func tick(delta: float, _visible: bool) -> Dictionary:
 	if not is_observing() and personal_target.is_finite() and not context.cooperation_search_available(personal_target, 0.0):
 		recover_unreachable_destination()
 	var direction := step(delta)
+	# A search can choose its next point while executing. Update the same basic
+	# reservation used by Utility before the body consumes that new direction.
+	var destination_choice := plan.duplicate()
+	destination_choice.route_target = utility_destination()
+	if not context.maintain_personal_destination(destination_choice):
+		context.block_utility_destination(destination_choice.route_target)
+		recover_unreachable_destination()
+		direction = Vector3.ZERO
 	_running = context.is_alerted or noise_search_origin.is_finite()
 	return motion(direction, movement_multiplier(), facing_direction(direction))
 
@@ -1333,13 +1374,15 @@ func cancel(reason: StringName = &"switch") -> void:
 	_running = false
 	_end_sector(false)
 	_end_inspection(false)
-	_release_search_claim()
 	route_motion.reset()
 	plan = {}
 	if reason != &"switch": reset()
 
 func can_interrupt(next: Dictionary, visible: bool) -> bool:
 	if visible or next.get("urgent", false): return true
+	# An ordinary personal investigation cannot veto a newly assigned team
+	# duty. Accepted task segments remain protected by the common AI contract.
+	if next.has("coordination_role") and _team_orders_enabled() and not actor.is_vaulting() and not actor.melee_active: return true
 	# A newly evaluated combat approach may replace an earlier investigation,
 	# but still has to win the ordinary Utility cost and switch comparison.
 	if next.get("combat_contact", false) and not context.fresh_shared_contact().is_empty(): return true
@@ -1388,7 +1431,6 @@ func on_event(event: StringName, data: Dictionary) -> void:
 		plan.erase("route")
 		plan.erase("route_target")
 		_exact_search_origin = Vector3.INF
-		_release_search_claim()
 		if _running: investigate_known_threat(data.position)
 		else: investigation_phase = -1
 	elif event == &"exact_cover_clue":
@@ -1449,23 +1491,30 @@ func _low_cover_checked_by_team() -> bool:
 
 
 func _start_low_cover_track() -> void:
-	_release_search_claim()
 	context.state = context.State.TRACK
 	investigation_phase = context.State.TRACK
 	has_suspected_position = false
 	search_current_target_active = false
 	search_is_pausing = false
 	_trail_pending.clear()
+	_trail_cover_points.clear()
 	_low_cover_retry = context.evidence_elapsed_seconds + 1.0
 	var known: Vector3 = _low_cover_focus.position
 	var targets: Array[Vector3] = [known]
-	var geometry := InspectionGeometry.describe(context, _low_cover_focus)
+	var geometry := InspectionGeometry.describe(context, _low_cover_focus, false)
 	if not geometry.is_empty():
-		for end in [-1, 1]: targets.append(geometry.ends[end].peek)
+		for endpoint: Dictionary in geometry.ends.values(): targets.append(endpoint.peek)
 	var best := Vector3.INF
 	var best_length := INF
 	for target in targets:
-		if not _set_suspected_position_from_raw(target, 0.5): continue
+		if target == known:
+			if not _set_suspected_position_from_raw(target, 0.5): continue
+		else:
+			# Endpoints already include capsule clearance and are on navigation.
+			# Generic search's extra inward margin could project them back across
+			# the wall and reject every real observation point indefinitely.
+			if not context.is_position_free(target): continue
+			suspected_position = target
 		if context.is_utility_destination_blocked(suspected_position): continue
 		# A safe nav projection on the observer's side cannot confirm the hideout.
 		if not selection.has_clear_line(actor.get_posture_eye_position(false, suspected_position), actor.get_posture_eye_position(true, known)): continue
@@ -1483,8 +1532,9 @@ func _start_low_cover_track() -> void:
 	# If both ends are occupied, an unassigned member can still approach the
 	# near face without taking an inspector's endpoint or declaring it checked.
 	if not geometry.is_empty():
-		var entry: Vector3 = geometry.ends[-1].entry
-		if context._horizontal_distance(geometry.ends[1].entry) < context._horizontal_distance(entry): entry = geometry.ends[1].entry
+		var entry: Vector3 = geometry.ends.values()[0].entry
+		for endpoint: Dictionary in geometry.ends.values():
+			if context._horizontal_distance(endpoint.entry) < context._horizontal_distance(entry): entry = endpoint.entry
 		# Stay on this member's approach side, outside the endpoint reservation.
 		# Converging on the middle of the wall cuts across both assigned paths.
 		var away: Vector3 = actor.global_position - entry
@@ -1532,10 +1582,6 @@ func coordination_offers(_visible: bool) -> Array[Dictionary]:
 	result.append_array(_sector_offers)
 	return result.duplicate(true)
 
-## Compatibility inspection of execution, without the former local end allocator.
-func _inspection_candidate() -> Dictionary:
-	return plan.duplicate(true) if _inspection_phase != InspectionPhase.NONE and _inspection_execution_valid(context.sees_player) else {}
-
 func _inspection_coordinator_available() -> bool:
 	return context.coordinated_cooperation_enabled() and context.cooperation != null and context.cooperation_member_count() > 1 and context.has_method("coordination_source")
 
@@ -1549,28 +1595,33 @@ func _inspection_candidates() -> Array[Dictionary]:
 	var source: Dictionary = context.coordination_source(context.cooperation_target_id())
 	var evidence: Dictionary = context.cover_inspection_evidence()
 	if source.is_empty() or evidence.is_empty() or evidence.position.distance_to(source.position) > 0.5: return result
+	var order: Dictionary = context.inspection_order()
+	# Every team size uses a complete coordinator allocation before execution.
+	if order.is_empty(): return result
+	if order.has("clue"): evidence = order.clue
 	var body = evidence.get("cover")
 	if body is WeakRef: body = body.get_ref()
 	var box: CollisionShape3D = body.get_node_or_null("CollisionShape3D") as CollisionShape3D if is_instance_valid(body) else null
 	var geometry_key: Array = [evidence.id, NavigationServer3D.map_get_iteration_id(agent.get_navigation_map()), actor.get_body_height(), box.global_transform if box != null else Transform3D.IDENTITY, box.shape.size if box != null and box.shape is BoxShape3D else Vector3.ZERO, box.disabled if box != null else true, body.collision_layer if is_instance_valid(body) else 0]
-	var order: Dictionary = context.inspection_order()
 	geometry_key.append(order)
 	if geometry_key != _inspection_geometry_key or (_inspection_geometry.is_empty() and context.evidence_elapsed_seconds >= _inspection_geometry_retry):
 		_inspection_geometry_key = geometry_key
-		_inspection_geometry = InspectionGeometry.describe(context, evidence)
+		_inspection_geometry = preload("res://scripts/enemy/services/enemy_search_formation.gd").point_geometry(context, evidence, order) if order.get("kind") == &"point" else InspectionGeometry.describe(context, evidence, false)
 		_inspection_geometry_retry = context.evidence_elapsed_seconds + 1.0
 		_inspection_routes.clear()
 		_inspection_cached_route_until = 0.0
-	if _inspection_geometry.is_empty(): return result
+	if _inspection_geometry.is_empty():
+		if not order.is_empty(): context.report_inspection_preparation(order, false)
+		return result
 	if context.evidence_elapsed_seconds >= _inspection_cached_route_until or actor.global_position.distance_to(_inspection_route_origin) > 0.5:
 		_inspection_routes.clear()
-		# Both ends precede assignment. There is no local actor/slot allocator.
-		if order.is_empty():
-			for end in [-1, 1]: _inspection_routes[end] = InspectionGeometry.route(context, _inspection_geometry, end)
-		else:
-			_inspection_routes[order.side] = preload("res://scripts/enemy/services/enemy_search_formation.gd").route(context, _inspection_geometry, order)
+		_inspection_routes[order.side] = preload("res://scripts/enemy/services/enemy_search_formation.gd").route(context, _inspection_geometry, order)
 		_inspection_route_origin = actor.global_position
 		_inspection_cached_route_until = context.evidence_elapsed_seconds + 0.75
+	if not order.is_empty():
+		var prepared: Dictionary = _inspection_routes.get(order.side, {})
+		var approach_seconds: float = selection._path_length_from_path(prepared.approach) / maxf(0.1, actor.move_speed) if not prepared.is_empty() else 0.0
+		context.report_inspection_preparation(order, not prepared.is_empty(), approach_seconds)
 	var identity: Dictionary = context.coordination_offer_identity()
 	if identity.is_empty(): return result
 	var lifetime: float = minf(float(context.setting(&"cooperation", &"cover_inspection_plan_seconds", 16.0)), float(source.valid_until) - context.coordination_now())
@@ -1578,14 +1629,15 @@ func _inspection_candidates() -> Array[Dictionary]:
 		var route: Dictionary = _inspection_routes.get(end, {})
 		if route.is_empty() or not context.is_position_free(route.entry) or not context.is_position_free(route.peek): continue
 		var seconds: float = float(route.length) / maxf(0.1, actor.move_speed)
-		if seconds + 0.5 > lifetime: continue
+		var scheduled_seconds: float = maxf(seconds, float(order.get("scheduled_seconds", 0.0)) - maxf(0.0, context.coordination_now() - float(order.get("issued_at", context.coordination_now()))))
+		if scheduled_seconds + 0.5 > lifetime: continue
 		var travel: Dictionary = context.spatial.assess_route(context, route.approach, evidence.position, 1.0, 0.0)
 		var horizon: float = context.utility_horizon_seconds
 		var candidate := option({"position": route.peek, "path": route.approach}, horizon, float(travel.exposure) + context._reload_exposure(route.entry, evidence.position) * maxf(0.0, horizon - float(travel.seconds)), minf(horizon, seconds), &"inspect_end")
 		var role: StringName = &"inspect_left" if end < 0 else &"inspect_right"
 		if not order.is_empty() and order.row > 0: role = &"inspect_follow"
 		var tactical_key := "inspect:%s:%s" % [source.evidence_id, route.geometry.cover_id]
-		var slot_key := "%s:%s:%s" % [tactical_key, end, order.get("row", 0)]
+		var slot_key := "%s:%s:%s:%s" % [tactical_key, end, order.get("row", 0), order.get("layout", 0)]
 		var offer_key := "%s:%s:%s" % [actor.get_instance_id(), slot_key, identity.navigation_revision]
 		candidate.inspection = route
 		candidate.accepts_noise = true
@@ -1595,9 +1647,9 @@ func _inspection_candidates() -> Array[Dictionary]:
 		offer.merge({"scope": &"tactical", "owner_action": action_id, "offer_key": offer_key, "role": role,
 			"position_set_key": slot_key, "position": route.peek,
 			"target_id": source.target_id, "evidence_id": source.evidence_id,
-			"path_summary": {"tactical_key": tactical_key, "side": end, "formation_row": order.get("row", -1), "body_radius": route.geometry.radius,
-				"staging_position": route.entry, "staging_seconds": travel.seconds, "observation_points": [route.geometry.known]},
-			"travel_seconds": seconds, "unavailable_seconds": horizon, "exposed_seconds": candidate.outcome.exposed_seconds,
+			"path_summary": {"tactical_key": tactical_key, "side": end, "formation_row": order.get("row", -1), "formation_layout": order.get("layout", 0), "body_radius": route.geometry.radius,
+				"staging_position": route.entry, "staging_seconds": maxf(travel.seconds, float(order.get("staging_seconds", 0.0))), "observation_points": [route.geometry.known]},
+			"travel_seconds": scheduled_seconds, "unavailable_seconds": horizon, "exposed_seconds": candidate.outcome.exposed_seconds,
 			"information_loss": candidate.outcome.information_loss, "movement_possible": true, "fire_ready": false, "measured_support_seconds": 0.0,
 			"captured_at": context.evidence_elapsed_seconds, "valid_until": context.evidence_elapsed_seconds + minf(0.75, lifetime)})
 		_inspection_offers.append(offer)
@@ -1620,15 +1672,13 @@ func _begin_inspection(candidate: Dictionary, visible: bool) -> bool:
 	var assignment: Dictionary = candidate.get("coordination_assignment", {})
 	if assignment.is_empty(): return false
 	# AI prepares and commits the sole board reservation around this begin.
-	_release_search_claim()
-	_inspection_claim = assignment.duplicate(true)
+	_inspection_assignment = assignment.duplicate(true)
 	_inspection_route = candidate.inspection
 	_inspection_phase = InspectionPhase.APPROACH
 	_inspection_remaining = maxf(0.0, float(assignment.expires_at) - context.coordination_now())
 	_inspection_observe = maxf(0.1, float(context.setting(&"cooperation", &"cover_inspection_observe_seconds", 0.5)))
 	_inspection_stuck = 0.0
 	_inspection_best = INF
-	_inspection_ally_blocked = false
 	_inspection_waypoint = Vector3.INF
 	_inspection_recheck = 0.0
 	_inspection_complete = false
@@ -1647,7 +1697,7 @@ func _inspection_execution_valid(visible: bool) -> bool:
 	var assignment: Dictionary = context.coordination_assignment()
 	if assignment.is_empty() or not assignment.get("accepted", false) or float(assignment.expires_at) <= context.coordination_now(): return false
 	for key in [&"generation", &"team_id", &"plan_id", &"assignment_id", &"assignment_revision"]:
-		if assignment.get(key) != _inspection_claim.get(key): return false
+		if assignment.get(key) != _inspection_assignment.get(key): return false
 	return InspectionGeometry.valid(context, _inspection_route.geometry)
 
 func execution_contract(visible: bool) -> Dictionary:
@@ -1660,7 +1710,10 @@ func execution_contract(visible: bool) -> Dictionary:
 	return {"valid": executable, "segment_boundary": _inspection_phase in [InspectionPhase.WAIT_PARTNER, InspectionPhase.OBSERVE],
 		"remaining_seconds": maxf(0.0, float(assignment.get("expires_at", 0.0)) - context.coordination_now()),
 		"progress": 1.0 if _inspection_complete else (0.5 if _inspection_phase in [InspectionPhase.CHECK, InspectionPhase.OBSERVE] else 0.0),
-		"ready_for_phase": staged, "complete": executable and _inspection_complete, "checked_points": _inspection_checked.duplicate()}
+		"ready_for_phase": staged, "complete": executable and _inspection_complete, "checked_points": _inspection_checked.duplicate(),
+		"motion_state": _inspection_passage.get("motion_state", &"moving"),
+		"waiting_for": _inspection_passage.get("waiting_for", []).duplicate(), "motion_reason": _inspection_passage.get("motion_reason", &""),
+		"motion_revision": _inspection_passage.get("motion_revision", 0)}
 
 func _tick_inspection(delta: float) -> Dictionary:
 	plan.erase("support_request")
@@ -1671,20 +1724,28 @@ func _tick_inspection(delta: float) -> Dictionary:
 		_running = false
 		return motion(Vector3.ZERO)
 	var known: Vector3 = _inspection_route.geometry.known
+	if _inspection_route.get("formation", {}).has("approach"):
+		var goal: Vector3 = _inspection_route.entry if _inspection_phase in [InspectionPhase.APPROACH, InspectionPhase.WAIT_PARTNER] else _inspection_route.peek
+		var passage: Dictionary = context.inspection_motion(_inspection_route.formation, goal, delta)
+		if passage.get("temporary_goal", Vector3.INF).is_finite():
+			_inspection_ready = false
+			return _tick_planned_inspection(delta, _inspection_route, goal, true)
+		if context._horizontal_distance(goal) > 0.025:
+			if _inspection_phase == InspectionPhase.WAIT_PARTNER: _inspection_phase = InspectionPhase.APPROACH
+			elif _inspection_phase == InspectionPhase.OBSERVE and not _inspection_complete: _inspection_phase = InspectionPhase.CHECK
+		elif _inspection_phase in [InspectionPhase.WAIT_PARTNER, InspectionPhase.OBSERVE]:
+			_inspection_passage = passage
 	if _inspection_complete: return motion(Vector3.ZERO, 1.0, known - actor.global_position)
 	if _inspection_phase == InspectionPhase.WAIT_PARTNER:
 		_inspection_recheck -= maxf(0.0, delta)
 		if _inspection_recheck <= 0.0:
 			_inspection_recheck = 0.25
 			var route_status := _inspection_route_status(_inspection_route.peek)
-			var queued: bool = _inspection_route.get("formation", {}).get("row", 0) > 0
-			_inspection_ready = route_status > 0 or (queued and route_status == 0)
+			_inspection_ready = route_status >= 0
 			if route_status < 0:
-				_end_inspection(true)
-				_running = false
-				return motion(Vector3.ZERO)
-			_set_inspection_ally_blocked(route_status == 0 and not queued)
-		if _inspection_ally_blocked: return _wait_inspection_ally(delta, known)
+				_inspection_passage.motion_state = &"blocked"
+				_inspection_passage.motion_reason = &"static_crossing"
+				return motion(Vector3.ZERO, 1.0, known - actor.global_position)
 		if assignment.phase != &"executing" or float(assignment.release_at) < 0.0 or context.coordination_now() < float(assignment.release_at):
 			return motion(Vector3.ZERO, 1.0, known - actor.global_position)
 		# Continue within the first legal physics update after the shared release.
@@ -1710,60 +1771,7 @@ func _tick_inspection(delta: float) -> Dictionary:
 				_running = false
 		return motion(Vector3.ZERO, 1.0, known - actor.global_position)
 	var goal: Vector3 = _inspection_route.entry if _inspection_phase == InspectionPhase.APPROACH else _inspection_route.peek
-	var formation: Dictionary = _inspection_route.get("formation", {})
-	if not formation.is_empty() and formation.row > 0:
-		var predecessor: Vector3 = context.inspection_predecessor(formation)
-		if not predecessor.is_finite():
-			_end_inspection(true)
-			_running = false
-			return motion(Vector3.ZERO)
-		var forward: Vector3 = (_inspection_route.peek - _inspection_route.entry).normalized()
-		# A rear member cannot overtake its own queue's predecessor. Waiting for
-		# measured progress is not static-path failure and does not renew a lease.
-		if _inspection_phase == InspectionPhase.CHECK and (predecessor - actor.global_position).dot(forward) < float(formation.spacing) * 0.8:
-			_inspection_stuck = 0.0
-			return motion(Vector3.ZERO, 1.0, known - actor.global_position)
-	var distance: float = context._horizontal_distance(goal)
-	_inspection_recheck -= delta
-	if _inspection_recheck <= 0.0 or distance <= 0.18:
-		_inspection_recheck = 0.25
-		var route_status := _inspection_route_status(goal)
-		if route_status < 0:
-			_end_inspection(true)
-			_running = false
-			return motion(Vector3.ZERO)
-		_set_inspection_ally_blocked(route_status == 0)
-	if _inspection_ally_blocked: return _wait_inspection_ally(delta, known)
-	if distance <= 0.18:
-		_inspection_phase = InspectionPhase.WAIT_PARTNER if _inspection_phase == InspectionPhase.APPROACH else InspectionPhase.OBSERVE
-		_inspection_recheck = 0.0
-		agent.target_position = actor.global_position
-		context.invalidate_utility()
-		return motion(Vector3.ZERO, 1.0, known - actor.global_position)
-	agent.target_position = goal
-	var next: Vector3 = agent.get_next_path_position()
-	if distance <= 0.65 and not actor.test_move(actor.global_transform, Vector3(goal.x - actor.global_position.x, 0.0, goal.z - actor.global_position.z)): next = goal
-	var waypoint_distance: float = context._horizontal_distance(next)
-	if not next.is_equal_approx(_inspection_waypoint):
-		_inspection_waypoint = next
-		_inspection_best = waypoint_distance
-		_inspection_stuck = 0.0
-	elif waypoint_distance < _inspection_best - 0.04:
-		_inspection_best = waypoint_distance
-		_inspection_stuck = 0.0
-	else: _inspection_stuck += delta
-	if _inspection_stuck > 1.5:
-		_end_inspection(true)
-		_running = false
-		return motion(Vector3.ZERO)
-	var direction: Vector3 = next - actor.global_position
-	direction.y = 0.0
-	context.state = context.State.TRACK
-	if not direction.is_zero_approx() and actor.can_move():
-		plan.support_request = {"kind": &"advance", "duration": minf(context.utility_horizon_seconds, _inspection_remaining), "lane_id": &"target"}
-	var output := motion(direction.normalized() * minf(1.0, distance / maxf(0.001, actor.move_speed * delta)), 1.0, known - actor.global_position)
-	if not formation.is_empty(): output.stop_position = goal
-	return output
+	return _tick_planned_inspection(delta, _inspection_route, goal, true)
 
 func _tick_inspection_assembly(delta: float, visible: bool) -> Dictionary:
 	if not valid(visible):
@@ -1771,17 +1779,77 @@ func _tick_inspection_assembly(delta: float, visible: bool) -> Dictionary:
 		return motion(Vector3.ZERO)
 	var route: Dictionary = plan.inspection
 	var goal: Vector3 = route.entry
+	return _tick_planned_inspection(delta, route, goal, false)
+
+func _formation_motion(output: Dictionary, route: Dictionary) -> Dictionary:
+	var formation: Dictionary = route.get("formation", {})
+	if formation.has("approach"):
+		output.scheduled_members = formation.members
+	return output
+
+func _tick_planned_inspection(delta: float, route: Dictionary, goal: Vector3, assigned: bool) -> Dictionary:
 	var distance: float = context._horizontal_distance(goal)
+	var known: Vector3 = route.geometry.known
 	context.state = context.State.TRACK
-	if distance <= 0.18: return motion(Vector3.ZERO, 1.0, route.geometry.known - actor.global_position)
-	agent.target_position = goal
-	var next: Vector3 = agent.get_next_path_position()
-	if distance <= 0.65 and not actor.test_move(actor.global_transform, Vector3(goal.x - actor.global_position.x, 0.0, goal.z - actor.global_position.z)): next = goal
+	var passage: Dictionary = context.inspection_motion(route.formation, goal, delta)
+	_inspection_passage = passage.duplicate(true)
+	var yielding: bool = passage.get("temporary_goal", Vector3.INF).is_finite()
+	# A loose arrival radius accumulates down a column and leaves the next
+	# slot physically occupied. Planned ranks stop at their actual coordinates.
+	if distance <= 0.025 and not yielding:
+		if assigned:
+			_inspection_phase = InspectionPhase.WAIT_PARTNER if _inspection_phase == InspectionPhase.APPROACH else InspectionPhase.OBSERVE
+			_inspection_recheck = 0.0
+			context.invalidate_utility()
+		agent.target_position = actor.global_position
+		return motion(Vector3.ZERO, 1.0, known - actor.global_position)
+	if passage.is_empty(): return motion(Vector3.ZERO, 1.0, known - actor.global_position)
+	if passage.distance <= 0.01:
+		_inspection_stuck = 0.0
+		return motion(Vector3.ZERO, 1.0, known - actor.global_position)
+	var next: Vector3 = passage.next
+	# Report changed physical feasibility. The squad owns the route repair and
+	# its fixed deadline; this executor must not run another failure timer.
+	_inspection_recheck -= delta
+	if _inspection_recheck <= 0.0:
+		_inspection_recheck = 0.25
+		if not InspectionGeometry._walkable_path(context, PackedVector3Array([actor.global_position, next]), route.geometry.radius):
+			_inspection_passage.motion_state = &"blocked"
+			_inspection_passage.motion_reason = &"static_obstacle"
+			return motion(Vector3.ZERO, 1.0, known - actor.global_position)
+	var waypoint_distance: float = context._horizontal_distance(next)
+	if context._horizontal_distance_between(next, _inspection_waypoint) > 0.01:
+		_inspection_waypoint = next
+		_inspection_best = waypoint_distance
+		_inspection_stuck = 0.0
+	elif waypoint_distance < _inspection_best - 0.04:
+		_inspection_best = waypoint_distance
+		_inspection_stuck = 0.0
+	elif not actor.local_motion.has_temporary_correction():
+		_inspection_stuck += delta
+	if _inspection_stuck > 0.35:
+		_inspection_passage.motion_state = &"blocked"
+		_inspection_passage.motion_reason = &"physical_motion"
 	var direction: Vector3 = next - actor.global_position
 	direction.y = 0.0
-	var output := motion(direction.normalized() * minf(1.0, distance / maxf(0.001, actor.move_speed * delta)), 1.0, route.geometry.known - actor.global_position)
-	output.stop_position = goal
+	var speed := _inspection_approach_speed(route) if goal.is_equal_approx(route.entry) else 1.0
+	agent.target_position = goal
+	var output := motion(direction.normalized() * minf(1.0, float(passage.distance) / maxf(0.001, actor.move_speed * speed * delta)), speed, known - actor.global_position)
+	output.stop_position = passage.stop
 	return output
+
+## Assembly shares the existing short pursuit window. Receiving an order does
+## not restart that clock; the actual corner crossing keeps its walking speed.
+func _inspection_approach_speed(route: Dictionary) -> float:
+	var formation: Dictionary = route.get("formation", {})
+	var clue: Dictionary = formation.get("clue", {})
+	if clue.is_empty(): return 1.0
+	# Walk while fitting into the queue; running is only for the longer approach.
+	if context._horizontal_distance(route.entry) <= float(formation.spacing) * 2.0: return 1.0
+	var age: float = maxf(0.0, context.coordination_now() - float(clue.captured_at))
+	if age < maxf(0.0, float(_setting(&"combat_pursuit_seconds", 4.0))):
+		return maxf(1.0, float(_setting(&"combat_pursuit_speed_multiplier", 1.8)))
+	return 1.0
 
 func _inspection_observation_blocked_by_ally(known: Vector3) -> bool:
 	if context.cooperation == null or not context.perception._position_in_sight(known): return false
@@ -1797,35 +1865,14 @@ func _inspection_route_status(goal: Vector3) -> int:
 	if context.is_position_free(goal): return 0 if ally_path_blocked else 1
 	return 0 if context.is_position_blocked_by_allies(goal) else -1
 
-func _set_inspection_ally_blocked(blocked: bool) -> void:
-	if _inspection_ally_blocked and not blocked:
-		_inspection_stuck = 0.0
-		_inspection_waypoint = Vector3.INF
-	_inspection_ally_blocked = blocked
-
-func _wait_inspection_ally(delta: float, known: Vector3) -> Dictionary:
-	_inspection_ready = false
-	if _inspection_route.get("formation", {}).get("row", 0) > 0:
-		# Earlier ranks legitimately traverse a rear rank's eventual position.
-		# The shared fixed plan deadline bounds this queue; do not classify a
-		# normal multi-person crossing as the old single-passer stuck timeout.
-		_inspection_stuck = 0.0
-		return motion(Vector3.ZERO, 1.0, known - actor.global_position)
-	_inspection_stuck += maxf(0.0, delta)
-	if _inspection_stuck > 1.5:
-		_end_inspection(true)
-		_running = false
-	return motion(Vector3.ZERO, 1.0, known - actor.global_position)
-
 func _end_inspection(failed: bool) -> void:
 	plan.erase("support_request")
 	# The Context transaction owns assignment/reservation release.
-	_inspection_claim = {}
+	_inspection_assignment = {}
 	_inspection_route = {}
 	_inspection_phase = InspectionPhase.NONE
 	_inspection_remaining = 0.0
 	_inspection_stuck = 0.0
-	_inspection_ally_blocked = false
 	_inspection_complete = false
 	_inspection_checked.clear()
 	_inspection_ready = false
@@ -2032,7 +2079,6 @@ func _validate_sector(candidate: Dictionary, visible: bool) -> bool:
 
 func _begin_sector(candidate: Dictionary, visible: bool) -> bool:
 	if not _validate_sector(candidate, visible) or candidate.get("coordination_assignment", {}).is_empty(): return false
-	_release_search_claim()
 	_end_sector(false)
 	_sector_assignment = candidate.coordination_assignment.duplicate(true)
 	_sector_plan = candidate.sector.duplicate(true)

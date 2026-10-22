@@ -37,11 +37,23 @@ func propose(snapshot: Dictionary, limits: Dictionary = {}) -> Dictionary:
 		if continuity.assignments.is_empty(): return _result(work, &"none", &"invalid_assignments")
 		if continuity.invalid.is_empty():
 			if current.get("execution_valid", true) == false: return _result(work, &"none", &"plan_execution_invalid", current.get("tactic", &""))
+			var assistance_patch := _revise_assisted_reload(work, current, continuity.assignments)
+			if assistance_patch.operation == &"revise":
+				return _with_basic(work, assistance_patch, continuity.assignments.filter(func(entry): return not assistance_patch.changed_actor_ids.has(entry.actor_id)) + assistance_patch.assignments)
+			# A finished flank/deployment is also a safe team decision boundary.
+			# Holding its old label until lease expiry used to prevent a low-ammo
+			# member from accepting assistance while all posts were occupied.
+			if current.tactic in [&"hold", &"flank", &"concentrate", &"disperse"] and current.get("segment_boundary", true) and (current.tactic == &"hold" or work.bundles.any(func(bundle): return bundle.role in [&"assisted_reload", &"assisted_retreat"])):
+				var assistance := _new_plan(work)
+				if assistance.tactic in [&"reload", &"retreat"] or (current.tactic == &"hold" and assistance.tactic == &"flank"): return _with_basic(work, assistance, assistance.assignments)
 			if snapshot.get("cooperation_level", -1) == 2 and not current.get("support_links", []).is_empty():
 				var handoff := _propose_handoff(work, current, continuity.assignments)
-				if not handoff.assignments.is_empty(): return _with_basic(work, handoff, continuity.assignments + handoff.assignments)
+				if handoff.operation == &"handoff": return _with_basic(work, handoff, continuity.assignments + handoff.assignments)
 			if current.tactic == &"search":
 				var extension := _extend_search(work, current, continuity.assignments)
+				if not extension.assignments.is_empty(): return _with_basic(work, extension, continuity.assignments + extension.assignments)
+			elif snapshot.get("cooperation_level", -1) == 2 and current.tactic != &"inspect":
+				var extension := _extend_combat(work, current, continuity.assignments)
 				if not extension.assignments.is_empty(): return _with_basic(work, extension, continuity.assignments + extension.assignments)
 			# A missing offer or a cheaper unrelated option is not execution failure.
 			return _with_basic(work, _result(work, &"keep", &"execution_valid", current.get("tactic", &"")), continuity.assignments)
@@ -91,6 +103,10 @@ func _nonnegative_integer(value: Variant) -> bool:
 func _header_valid(snapshot: Dictionary) -> bool:
 	var search_members: Variant = snapshot.get("search_members", [])
 	if not search_members is Array or search_members.size() > MAX_MEMBERS: return false
+	var search_sides: Variant = snapshot.get("search_sides", [-1, 1])
+	if not search_sides is Array or search_sides.is_empty() or search_sides.size() > 2: return false
+	if search_sides.any(func(side): return typeof(side) != TYPE_INT or side not in [-1, 1]): return false
+	if search_sides.size() == 2 and search_sides[0] == search_sides[1]: return false
 	var search_ids := {}
 	for id in search_members:
 		if typeof(id) != TYPE_INT or id <= 0 or search_ids.has(id): return false
@@ -202,7 +218,8 @@ func _offer_valid(work: Dictionary, member: Dictionary, offer: Dictionary) -> bo
 		if role in [&"inspect_left", &"inspect_right", &"inspect_follow", &"flank", &"team_position", &"assisted_retreat", &"search_sector"] and not offer.movement_possible: return false
 	if role in [&"assisted_reload", &"assisted_retreat"] and snapshot.get("cooperation_level", -1) != 2: return false
 	if role == &"assisted_retreat" and offer.path_summary.get("defensive_need", false) != true: return false
-	if role == &"team_position" and offer.path_summary.get("posture") not in [&"concentrate", &"disperse"]: return false
+	if role == &"team_position" and offer.path_summary.get("posture") not in [&"concentrate", &"disperse"]:
+		if offer.path_summary.get("posture") != &"hold" or not offer.path_summary.get("holds_position", false) or offer.travel_seconds > 0.05: return false
 	if role == &"search_sector":
 		var summary: Dictionary = offer.path_summary
 		if not _text(summary.get("grid_key")) or not _nonnegative_integer(summary.get("search_round_id")) or summary.search_round_id == 0: return false
@@ -215,6 +232,10 @@ func _offer_valid(work: Dictionary, member: Dictionary, offer: Dictionary) -> bo
 
 func _summary_valid(value: Variant) -> bool:
 	if not value is Dictionary: return false
+	if value.has("planned_path"):
+		if not value.planned_path is Array or value.planned_path.size() > 64: return false
+		for point in value.planned_path:
+			if not point is Vector3 or not point.is_finite(): return false
 	for key in [&"expected_fire_seconds", &"action_seconds"]:
 		if value.has(key) and (not _number(value[key]) or value[key] < 0.0): return false
 	for key in [&"blocked_position_sets", &"sample_ids"]:
@@ -475,7 +496,10 @@ func _new_plan(work: Dictionary) -> Dictionary:
 	if work.snapshot.get("cooperation_level", -1) == 2 and not work.snapshot.get("search_members", []).is_empty():
 		return _formation_inspection(work)
 	var compare_team: bool = work.snapshot.get("cooperation_level", -1) == 2
-	if compare_team and not _team_comparison_ready(work): return _result(work, &"none", &"personal_baseline_pending")
+	# Missing personal previews must not veto already validated team duties.
+	# Compare the common horizon only when every baseline is fresh; otherwise
+	# compare the prepared offers themselves, without inventing personal costs.
+	var compare_cost := compare_team and _team_comparison_ready(work)
 	var advanced := 0
 	for member in work.members.values():
 		if _member_enabled(work, member) and not member.get("eligible_roles", []).is_empty(): advanced += 1
@@ -495,8 +519,11 @@ func _new_plan(work: Dictionary) -> Dictionary:
 	queues.append(_queue(&"support", front, work.requests.slice(0, MAX_ROLE_MEMBERS)))
 	queues = queues.filter(func(entry): return not entry.left.is_empty() and not entry.right.is_empty())
 	var best := {}
+	# Establish the complete stationary alternative before pair enumeration can
+	# consume the finite trial budget. Compare full coverage before cost.
+	var held: Array = _complete_combat(work, [], true) if compare_team else []
 	# Reserve a small part of the SAME 36 trials for extra non-conflicting members.
-	var core_limit: int = mini(work.pair_limit, maxi(1, floori(float(work.pair_limit) * 0.75)))
+	var core_limit: int = maxi(1, work.pair_limit - mini(work.members.size() * 2, floori(float(work.pair_limit) * 0.5)))
 	var cursor := 0
 	while not queues.is_empty() and work.counters.pair_trials < core_limit:
 		cursor %= queues.size()
@@ -509,7 +536,7 @@ func _new_plan(work: Dictionary) -> Dictionary:
 		if not _trial(work): break
 		var proposed := _pair_plan(work, queue.tactic, pair)
 		if proposed.is_empty(): continue
-		if compare_team:
+		if compare_cost:
 			proposed.cost = _team_cost(work, proposed.bundles)
 			if proposed.tactic in [&"reload", &"retreat"]: proposed.cost -= _planned_overlap_credit(work, proposed.bundles[0], proposed.bundles[1])
 		if best.is_empty() or proposed.cost < best.cost or (proposed.cost == best.cost and proposed.key < best.key): best = proposed
@@ -519,9 +546,19 @@ func _new_plan(work: Dictionary) -> Dictionary:
 			if not _trial(work): break
 			if _free(work, bundle):
 				best = {"tactic": &"search", "bundles": [bundle], "cost": bundle.cost, "key": "single_search", "beneficiary_id": 0}
-				if compare_team: best.cost = _team_cost(work, best.bundles)
+				if compare_cost: best.cost = _team_cost(work, best.bundles)
 				break
-	if best.is_empty(): return _result(work, &"none", &"no_complete_combination")
+	if compare_team:
+		if not best.is_empty() and best.tactic not in [&"inspect", &"search"]:
+			best.bundles = _complete_combat(work, best.bundles, false)
+			best.cost = _combat_cost(work, best, compare_cost)
+		# Keeping the current front is a real reserved/executed team plan, not
+		# permission for every unassigned member to start unrelated movement.
+		if not held.is_empty():
+			var held_cost: float = _team_cost(work, held) if compare_cost else _bundle_cost(held)
+			if best.is_empty() or held.size() > best.bundles.size() or (held.size() == best.bundles.size() and held_cost <= best.cost):
+				best = {"tactic": &"hold", "bundles": held, "cost": held_cost, "key": "hold", "beneficiary_id": 0}
+	if best.is_empty(): return _result(work, &"none", &"personal_baseline_pending" if compare_team and not compare_cost else &"no_complete_combination")
 	if best.tactic in [&"flank", &"search", &"concentrate", &"disperse"]:
 		var more := _pool(work, &"flank" if best.tactic == &"flank" else (&"search_sector" if best.tactic == &"search" else &"team_position"))
 		for bundle in more:
@@ -531,16 +568,14 @@ func _new_plan(work: Dictionary) -> Dictionary:
 			if not _free(work, bundle): continue
 			if best.tactic == &"flank" and (not _flank_allowed(work, best.bundles + [bundle]) or not _opposite(best.bundles[0], bundle) or not _same_tactical_key(best.bundles[0], bundle)): continue
 			if best.bundles.any(func(other): return not _compatible(work, bundle, other)): continue
-			if compare_team:
+			if compare_cost:
 				var next_cost := _team_cost(work, best.bundles + [bundle])
 				if next_cost >= best.cost: continue
 				best.cost = next_cost
 			best.bundles.append(bundle)
-	if compare_team and best.cost >= _team_cost(work, []) - 0.0001:
-		var hold := _result(work, &"none", &"personal_deployment_better")
-		hold.posture = &"hold"
-		hold.decision = {"baseline_cost": _team_cost(work, []), "proposed_cost": best.cost, "member_count": work.members.size()}
-		return hold
+	if compare_team and best.tactic not in [&"inspect", &"search"]:
+		best.bundles = _complete_combat(work, best.bundles, false)
+		best.cost = _combat_cost(work, best, compare_cost)
 	var assignments: Array = []
 	var actors: Array = best.bundles.map(func(bundle): return bundle.actor_id)
 	for bundle in best.bundles:
@@ -550,12 +585,109 @@ func _new_plan(work: Dictionary) -> Dictionary:
 	result.assignments = assignments
 	result.changed_actor_ids = actors
 	result.required_participants = actors if best.tactic in [&"inspect", &"flank"] else []
+	if best.tactic == &"flank":
+		# Additional holding posts are still real duties, but their firing cycle
+		# must not become another prerequisite for the front/maneuver pair.
+		result.required_participants = best.bundles.filter(func(bundle): return bundle == best.bundles[0] or bundle.role == &"flank").map(func(bundle): return bundle.actor_id)
 	result.posture = &"disperse" if best.tactic == &"flank" else (best.tactic if best.tactic in [&"concentrate", &"disperse"] else &"hold")
-	if compare_team: result.decision = {"baseline_cost": _team_cost(work, []), "proposed_cost": best.cost, "member_count": work.members.size()}
+	if compare_team:
+		result.decision = {"proposed_cost": best.cost, "member_count": work.members.size(),
+			"assigned_count": actors.size(), "baseline_ready": compare_cost}
+		if compare_cost: result.decision.baseline_cost = _team_cost(work, [])
 	if best.has("request_id"): result.request_id = best.request_id
 	if compare_team:
 		result.support_links = _proposed_links(best)
 		if best.tactic in [&"reload", &"retreat", &"concentrate", &"disperse"]: result.required_participants = [best.bundles[0].actor_id]
+	return result
+
+func _bundle_cost(bundles: Array) -> float:
+	var result := 0.0
+	for bundle: Dictionary in bundles: result += float(bundle.cost)
+	return result
+
+func _combat_cost(work: Dictionary, plan: Dictionary, compare_cost: bool) -> float:
+	var cost := _team_cost(work, plan.bundles) if compare_cost else _bundle_cost(plan.bundles)
+	if compare_cost and plan.tactic in [&"reload", &"retreat"]:
+		cost -= _planned_overlap_credit(work, plan.bundles[0], plan.bundles[1])
+	return cost
+
+## Fill every feasible remaining combat post using the same bounded candidates
+## and collision checks. A missing capability stays explicit; no phantom offer.
+func _complete_combat(work: Dictionary, selected: Array, holds_only: bool) -> Array:
+	var result := selected.duplicate()
+	for member: Dictionary in work.members.values():
+		if result.any(func(bundle): return bundle.actor_id == member.actor_id): continue
+		var candidates: Array = work.bundles.filter(func(bundle):
+			return (bundle.actor_id == member.actor_id and bundle.role in [&"front_support", &"team_position"]
+				and (not holds_only or bundle.offers.all(func(offer): return float(offer.get("travel_seconds", 0.0)) <= 0.05))))
+		candidates.sort_custom(func(a, b): return a.cost < b.cost if a.cost != b.cost else String(a.position_set_key) < String(b.position_set_key))
+		for bundle: Dictionary in candidates:
+			if not _trial(work): return result
+			if not _free(work, bundle) or result.any(func(other): return not _compatible(work, bundle, other)): continue
+			result.append(bundle)
+			break
+	return result
+
+func _extend_combat(work: Dictionary, current: Dictionary, existing: Array) -> Dictionary:
+	var reserved: Array = []
+	for entry: Dictionary in existing:
+		var bundle := _protected_bundle(entry)
+		if bundle.is_empty(): return _result(work, &"keep", &"execution_valid", current.tactic)
+		reserved.append(bundle)
+	var completed := _complete_combat(work, reserved, false)
+	var result := _result(work, &"extend", &"prepared_combat_member", current.tactic)
+	result.required_participants = current.required_participants.duplicate()
+	for bundle: Dictionary in completed.slice(reserved.size()):
+		if bundle.offers.any(func(offer): return float(offer.get("travel_seconds", 0.0)) >= float(current.expires_at) - float(work.snapshot.now)): continue
+		result.assignments.append(_assignment(bundle, existing.map(func(entry): return entry.actor_id)))
+		result.changed_actor_ids.append(bundle.actor_id)
+	# Joining an established front must preserve the same support contract as
+	# the initial proposal. A movement label alone never establishes cover fire.
+	# An extension does not create the current tactic's original request again.
+	# The coordinator retains that request/link; only newly admitted movers
+	# need additional dependencies, even when the current tactic is support.
+	var linked := _movement_support_links(completed)
+	result.support_links = linked.filter(func(link): return result.changed_actor_ids.has(link.beneficiary_id))
+	return result
+
+## An idle post can accept a real reload while another member is traversing a
+## committed segment. Preserve that member's identity, route, phase and lease.
+func _revise_assisted_reload(work: Dictionary, current: Dictionary, existing: Array) -> Dictionary:
+	var result := _result(work, &"keep", &"execution_valid", current.tactic)
+	if current.tactic not in [&"hold", &"flank", &"concentrate", &"disperse"] or not current.get("handoff", {}).is_empty(): return result
+	if existing.any(func(entry): return entry.role == &"assisted_reload") or work.members.values().any(func(member): return member.get("status", {}).get("reloading", false)): return result
+	for bundle: Dictionary in _pool(work, &"assisted_reload"):
+		if not _trial(work): break
+		var owned: Array = existing.filter(func(entry): return entry.actor_id == bundle.actor_id)
+		if not owned.is_empty() and (not owned[0].get("accepted", false) or not owned[0].get("segment_boundary", false)): continue
+		# A current provider must hand over its existing dependencies first.
+		if current.get("support_links", []).any(func(link): return link.provider_id == bundle.actor_id or link.get("pending_provider_id", 0) == bundle.actor_id): continue
+		var duration := 0.0
+		for offer: Dictionary in bundle.offers: duration = maxf(duration, float(offer.travel_seconds) + float(offer.path_summary.get("action_seconds", offer.unavailable_seconds)))
+		if duration + 0.1 >= float(current.expires_at) - float(work.snapshot.now) or not _free(work, bundle, [bundle.actor_id]): continue
+		var retained: Array = existing.filter(func(entry): return entry.actor_id != bundle.actor_id)
+		if retained.any(func(entry): return not _compatible(work, bundle, _protected_bundle(entry))): continue
+		var provider := 0
+		for entry: Dictionary in retained:
+			if entry.role != &"front_support" or not entry.get("accepted", false): continue
+			var status: Dictionary = work.members[entry.actor_id].get("status", {})
+			if status.get("needs_fire_handoff", false) or int(status.get("rounds", 0)) <= 0: continue
+			if _front_can_establish(work, _protected_bundle(entry)):
+				provider = entry.actor_id
+				break
+		if provider == 0: continue
+		var links: Array = current.get("support_links", []).filter(func(link): return link.beneficiary_id != bundle.actor_id).duplicate(true)
+		links.append({"provider_id": provider, "beneficiary_id": bundle.actor_id, "kind": &"reload", "request_id": 0, "requires_ready": true})
+		if not _support_links_valid(links, work.members.keys()): continue
+		var assignment := _assignment(bundle, retained.map(func(entry): return entry.actor_id))
+		assignment.previous_actor_id = bundle.actor_id
+		result.operation = &"revise"
+		result.reason = &"service_member_with_established_support"
+		result.assignments = [assignment]
+		result.changed_actor_ids = [bundle.actor_id]
+		result.required_participants = current.required_participants.filter(func(id): return id != bundle.actor_id)
+		result.support_links = links
+		return result
 	return result
 
 ## The coordinator has selected one cover for the whole search party. Require
@@ -576,7 +708,8 @@ func _formation_inspection(work: Dictionary) -> Dictionary:
 		if best.is_empty(): return _result(work, &"none", &"search_slots_pending")
 		selected.append(best)
 	var roles: Array = selected.map(func(bundle): return bundle.role)
-	if roles.count(&"inspect_left") != 1 or roles.count(&"inspect_right") != 1:
+	var sides: Array = work.snapshot.get("search_sides", [-1, 1])
+	if roles.count(&"inspect_left") != int(sides.has(-1)) or roles.count(&"inspect_right") != int(sides.has(1)):
 		return _result(work, &"none", &"search_leaders_pending")
 	var result := _result(work, &"replace", &"whole_squad_search", &"inspect")
 	result.posture = &"concentrate"
@@ -589,6 +722,7 @@ func _formation_inspection(work: Dictionary) -> Dictionary:
 func _pair_plan(work: Dictionary, tactic: StringName, pair: Array) -> Dictionary:
 	var a: Dictionary = pair[0]
 	var b: Dictionary = pair[1]
+	if tactic == &"retreat" and not work.members[b.actor_id].get("personal_baseline", {}).get("preparation_ready", true): return {}
 	if not _free(work, a): return {}
 	if tactic == &"support":
 		if a.actor_id == b.actor_id or not _front_can_establish(work, a): return {}
@@ -664,7 +798,7 @@ func _current_header_valid(plan: Dictionary, snapshot: Dictionary) -> bool:
 	for key in [&"generation", &"team_id", &"domain", &"target_id", &"evidence_id"]:
 		if plan.get(key) != snapshot[key]: return false
 	return (_number(plan.get("expires_at")) and plan.expires_at > snapshot.now
-		and _text(plan.get("tactic")) and plan.tactic in [&"inspect", &"flank", &"support", &"search", &"concentrate", &"disperse", &"reload", &"retreat"]
+		and _text(plan.get("tactic")) and plan.tactic in [&"inspect", &"flank", &"support", &"search", &"concentrate", &"disperse", &"reload", &"retreat", &"hold"]
 		and plan.get("execution_valid") is bool and plan.get("segment_boundary") is bool
 		and plan.get("required_participants") is Array
 		and plan.get("assignments") is Array and plan.assignments.size() <= MAX_MEMBERS)
@@ -768,6 +902,10 @@ func _repair(work: Dictionary, current: Dictionary, continuity: Dictionary) -> D
 			replacement = bundle
 			break
 		if replacement.is_empty():
+			if current.tactic in [&"hold", &"flank", &"concentrate", &"disperse"] and not current.required_participants.has(old.actor_id) and not current.get("support_links", []).any(func(link): return link.provider_id == old.actor_id or link.get("pending_provider_id", 0) == old.actor_id or link.beneficiary_id == old.actor_id) and not chosen.is_empty():
+				removed.append(old.actor_id)
+				changed.append(old.actor_id)
+				continue
 			# A failed additional flanker must not cancel a still executable front
 			# and flank pair. Required support and the last maneuvering member may
 			# never be removed this way; other joint tactics keep their own roles.
@@ -850,17 +988,22 @@ func _planned_overlap_credit(work: Dictionary, provider: Dictionary, beneficiary
 	return credit if is_finite(credit) else 0.0
 
 func _proposed_links(best: Dictionary) -> Array:
-	var result: Array = []
+	if best.tactic != &"support": return _movement_support_links(best.bundles)
 	var providers: Array = best.bundles.filter(func(bundle): return bundle.role == &"front_support")
+	if providers.is_empty(): return []
+	return [{"provider_id": providers[0].actor_id, "beneficiary_id": best.beneficiary_id, "kind": &"support", "request_id": best.request_id, "requires_ready": false}]
+
+## Movement dependencies are independent of the plan's original support request.
+func _movement_support_links(bundles: Array) -> Array:
+	var result: Array = []
+	var providers: Array = bundles.filter(func(bundle): return bundle.role == &"front_support")
 	if providers.is_empty(): return result
 	var provider: int = providers[0].actor_id
-	if best.tactic == &"support":
-		result.append({"provider_id": provider, "beneficiary_id": best.beneficiary_id, "kind": &"support", "request_id": best.request_id, "requires_ready": false})
-	else:
-		for bundle: Dictionary in best.bundles:
-			if bundle.actor_id == provider: continue
-			var kind: StringName = &"reload" if bundle.role == &"assisted_reload" else (&"retreat" if bundle.role == &"assisted_retreat" else &"advance")
-			result.append({"provider_id": provider, "beneficiary_id": bundle.actor_id, "kind": kind, "request_id": 0, "requires_ready": true})
+	for bundle: Dictionary in bundles:
+		if bundle.actor_id == provider: continue
+		if bundle.role == &"front_support" or bundle.offers[0].path_summary.get("holds_position", false): continue
+		var kind: StringName = &"reload" if bundle.role == &"assisted_reload" else (&"retreat" if bundle.role == &"assisted_retreat" else &"advance")
+		result.append({"provider_id": provider, "beneficiary_id": bundle.actor_id, "kind": kind, "request_id": 0, "requires_ready": true})
 	return result
 
 func _support_links_valid(links: Variant, owners: Array) -> bool:
@@ -894,6 +1037,22 @@ func _propose_handoff(work: Dictionary, current: Dictionary, assignments: Array)
 		var status: Dictionary = work.members.get(link.provider_id, {}).get("status", {})
 		var capacity: int = int(status.get("magazine_capacity", 0))
 		if capacity <= 0 or not status.get("needs_fire_handoff", false) or status.get("reloading", false): continue
+		# Full-team planning leaves no unassigned spare. An already accepted,
+		# stationary post can take over the dependency without duplicate leases.
+		for entry: Dictionary in assignments:
+			if entry.actor_id in [link.provider_id, link.beneficiary_id] or not entry.get("accepted", false): continue
+			if entry.role != &"front_support" and not entry.reserved_offers[0].path_summary.get("holds_position", false): continue
+			var member: Dictionary = work.members.get(entry.actor_id, {})
+			var replacement: Dictionary = member.get("status", {})
+			if replacement.get("reloading", false) or replacement.get("needs_fire_handoff", false) or int(replacement.get("rounds", 0)) <= int(status.get("rounds", 0)): continue
+			# The accepted front may still be travelling or between bursts. Start
+			# preparation now; the board retains the old provider until REAL fire.
+			if entry.role != &"front_support" and not member.get("actual_support", {}).get("fire_ready", false): continue
+			result.operation = &"handoff"
+			result.reason = &"use_established_replacement_fire"
+			result.required_participants = current.required_participants.duplicate()
+			result.handoff = {"previous_provider_id": link.provider_id, "replacement_provider_id": entry.actor_id, "existing_replacement": true}
+			return result
 		for bundle: Dictionary in _pool(work, &"front_support"):
 			if occupied.has(bundle.actor_id): continue
 			if not _trial(work): return result

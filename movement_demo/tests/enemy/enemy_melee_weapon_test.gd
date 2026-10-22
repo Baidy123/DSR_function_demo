@@ -33,7 +33,7 @@ func _run() -> void:
 	var restored: WeaponData = load("res://logs/melee_weapon_work/roundtrip.tres")
 	check(saved == OK and restored.fire_mode == WeaponData.FireMode.MELEE and restored.melee_damage == weapon.melee_damage, "Fire Mode及近战数值保存重载正确")
 
-	var scene = preload("res://tests/enemy/enemy_fire_fixture.gd").legacy_scene()
+	var scene = preload("res://tests/enemy/enemy_fire_fixture.gd").unbound_scene()
 	root.add_child(scene)
 	current_scene = scene
 	var actor = preload("res://tests/enemy/enemy_fire_fixture.gd").primary_enemy(scene)
@@ -129,7 +129,7 @@ func _run() -> void:
 	await process_frame
 	await process_frame
 	for has_fallback in [true, false]:
-		var configured = preload("res://tests/enemy/enemy_fire_fixture.gd").legacy_scene()
+		var configured = preload("res://tests/enemy/enemy_fire_fixture.gd").unbound_scene()
 		var configured_slots = configured.get_node("Player/WeaponSlots")
 		configured_slots.primary_weapon = MeleeWeapon
 		configured_slots.secondary_weapon = gun if has_fallback else MeleeWeapon

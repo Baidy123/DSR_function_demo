@@ -31,8 +31,8 @@ func _ready() -> void:
 
 
 func _apply_debug_mode(enabled: bool) -> void:
-	set_physics_process(enabled)
-	if not enabled:
+	set_physics_process(enabled and selection.debug_attack_points)
+	if not is_physics_processing():
 		clear()
 
 

@@ -1,14 +1,12 @@
-[gd_resource type="Resource" script_class="EnemyActionDefinition" format=3]
+[gd_resource type="Resource" script_class="EnemyActionDefinition" format=3 uid="uid://fvl8rp51nnd4"]
 
-[ext_resource type="Script" path="res://scripts/enemy/config/enemy_action_definition.gd" id="1"]
-[ext_resource type="Script" path="res://scripts/enemy/actions/enemy_suppression_action.gd" id="2"]
+[ext_resource type="Script" uid="uid://c006j0dqgxqyj" path="res://scripts/enemy/config/enemy_action_definition.gd" id="1"]
+[ext_resource type="Script" uid="uid://1pru7c4h6lcb" path="res://scripts/enemy/actions/enemy_suppression_action.gd" id="2"]
 
 [resource]
 script = ExtResource("1")
 action_id = &"suppression"
 display_name = "火力压制"
-category = 1
 implementation = ExtResource("2")
-config_section = &"suppression"
 required_capabilities = Array[StringName]([&"firearms"])
-includes = Array[StringName]([])
+config_section = &"suppression"

@@ -15,7 +15,7 @@ func _initialize() -> void:
 	_run.call_deferred()
 
 func _run() -> void:
-	scene = preload("res://tests/enemy/enemy_fire_fixture.gd").legacy_scene()
+	scene = preload("res://tests/enemy/enemy_fire_fixture.gd").unbound_scene()
 	root.add_child(scene)
 	current_scene = scene
 	enemy = preload("res://tests/enemy/enemy_fire_fixture.gd").primary_enemy(scene)

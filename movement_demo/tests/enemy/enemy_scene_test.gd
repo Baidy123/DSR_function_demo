@@ -20,7 +20,7 @@ func add_enemy(parent: Node3D, at: Vector3, label: String):
 	return enemy
 
 func _run() -> void:
-	var scene = preload("res://tests/enemy/enemy_fire_fixture.gd").legacy_scene()
+	var scene = preload("res://tests/enemy/enemy_fire_fixture.gd").unbound_scene()
 	root.add_child(scene)
 	current_scene = scene
 	root.get_node("DebugSettings").enabled = false

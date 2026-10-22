@@ -12,7 +12,11 @@ func _initialize() -> void:
 	_run.call_deferred()
 
 func _run() -> void:
-	var scene = preload("res://tests/enemy/enemy_fire_fixture.gd").legacy_scene()
+	# This test explicitly adds its only peer and tests unobstructed noise.
+	# Saved arena members/walls must not inject events or attenuate that fixture.
+	var scene = preload("res://tests/enemy/enemy_fire_fixture.gd").single_member_scene()
+	for body in scene.get_node("Arena/NavigationRegion3D/Environment").get_children():
+		if body is StaticBody3D and body.name != "Floor": body.collision_layer = 0
 	root.add_child(scene)
 	current_scene = scene
 	var player = scene.get_node("Player")

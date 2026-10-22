@@ -14,7 +14,7 @@ func check(value: bool, label: String) -> void:
 	print("PASS " if value else "FAIL ", label)
 
 func _run() -> void:
-	var scene = preload("res://tests/enemy/enemy_fire_fixture.gd").legacy_scene()
+	var scene = preload("res://tests/enemy/enemy_fire_fixture.gd").unbound_scene()
 	root.add_child(scene)
 	current_scene = scene
 	var enemy = preload("res://tests/enemy/enemy_fire_fixture.gd").primary_enemy(scene)
@@ -164,7 +164,7 @@ func _real_configuration_starts() -> void:
 	# Keep saved weapon, burst cadence, aim settings and all learned alternatives.
 	# These starts previously stayed in open engage despite a nearby legal wall.
 	for offset: Vector3 in [Vector3(0, 0, 1.1), Vector3(0, 0, 2.5), Vector3(1.8, 0, 1.5), Vector3(2.5, 0, 1.5)]:
-		var scene = preload("res://tests/enemy/enemy_fire_fixture.gd").legacy_scene()
+		var scene = preload("res://tests/enemy/enemy_fire_fixture.gd").unbound_scene()
 		root.add_child(scene)
 		current_scene = scene
 		var enemy = preload("res://tests/enemy/enemy_fire_fixture.gd").primary_enemy(scene)
@@ -213,7 +213,7 @@ func _real_configuration_starts() -> void:
 func _live_attack_start() -> void:
 	# Exact live-game positions where collection accepted a head lane but the
 	# former begin/recheck path rejected the wall-blocked torso every frame.
-	var scene = preload("res://tests/enemy/enemy_fire_fixture.gd").legacy_scene()
+	var scene = preload("res://tests/enemy/enemy_fire_fixture.gd").unbound_scene()
 	root.add_child(scene)
 	current_scene = scene
 	var enemy = preload("res://tests/enemy/enemy_fire_fixture.gd").primary_enemy(scene)

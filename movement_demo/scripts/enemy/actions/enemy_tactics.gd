@@ -138,9 +138,15 @@ func step_evaluated_engagement(destination: Dictionary, delta: float, sees_playe
 		agent.target_position = point
 	ranged_has_destination = true
 	var distance: float = context._horizontal_distance(point)
-	if distance <= 0.12:
+	# A shared report still needs personal sight at the validated wall edge.
+	# The ordinary firing-post tolerance can stop on the occluded side of it.
+	if distance <= (0.025 if shared_approach else 0.12):
 		reset_movement_progress()
 		context.state = context.State.HOLD_POSITION
+		if shared_approach and not sees_player:
+			context.block_utility_destination(point)
+			_running = false
+			context.invalidate_utility()
 		if context._horizontal_distance(context.last_known_position) < _ranged_distance_band().x:
 			_running = false
 		return Vector3.ZERO
@@ -345,6 +351,11 @@ func tick(delta: float, visible: bool) -> Dictionary:
 			retreat = step_evaluated_engagement(plan.destination, delta, visible)
 			_running = true # 到达或路径失效只停止移动，不能跳过未完成的收招。
 		return motion(retreat, 1.0, context.last_known_position - actor.global_position, {}, {"owner": action_id})
+	# A newly proposed squad choice can fail its acceptance transaction. Do not
+	# keep emitting the previous visible-contact intent while it is replaced.
+	if not visible:
+		_running = false
+		return motion(Vector3.ZERO)
 	var direction := Vector3.ZERO
 	if plan.destination.is_empty():
 		context.state = context.State.HOLD_POSITION

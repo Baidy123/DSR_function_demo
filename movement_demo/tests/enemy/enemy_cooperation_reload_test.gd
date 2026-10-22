@@ -13,6 +13,7 @@ func _run() -> void:
 	root.add_child(scene)
 	current_scene = scene
 	var arena = scene.get_node("Arena")
+	preload("res://tests/enemy/enemy_fire_fixture.gd").bind_team(arena, 1)
 	var first = preload("res://tests/enemy/enemy_fire_fixture.gd").primary_enemy(arena)
 	var second = load("res://scenes/enemy/enemy.tscn").instantiate()
 	second.position = arena.to_local(Vector3(18, 0, 2))
@@ -64,10 +65,10 @@ func _run() -> void:
 		if not candidate.get("proactive_reload", false): continue
 		precise = precise and candidate.outcome.unavailable_seconds >= first.weapon.reload_seconds - 0.001 and candidate.outcome.cooperation_seconds <= first.weapon.reload_seconds + 0.001
 	check(precise and not candidates.is_empty(), "余弹换弹估计包含真实完整耗时，合作收益不超过实际支持窗口")
-	var before: int = first_ai.context.cooperation_snapshot().claims.size()
+	var before: Array = first_ai.context.cooperation.reservation_snapshot(first_ai.context)
 	reload_action.collect_candidates(true)
 	reload_action.collect_candidates(true)
-	check(before == first_ai.context.cooperation_snapshot().claims.size(), "候选评估不提前抢占补弹名额")
+	check(before == first_ai.context.cooperation.reservation_snapshot(first_ai.context), "候选评估不提前抢占补弹名额")
 	# 双方的余弹可覆盖一次换弹及恢复射界，允许正常 Utility 自主错开补弹。
 	second.ammo.magazine_rounds = 14
 	var started := [false, false]

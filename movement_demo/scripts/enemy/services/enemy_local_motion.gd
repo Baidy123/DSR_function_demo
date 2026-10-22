@@ -12,6 +12,7 @@ var _nearby_elapsed := 0.0
 var _nearby: Array[WeakRef] = []
 var _desired := Vector3.ZERO
 var _stop_position := Vector3.INF
+var _scheduled_members: Array = []
 var _intent_frame := -1
 var _point := Vector3.INF
 var _next_point := Vector3.INF
@@ -95,6 +96,7 @@ func reset() -> void:
 	_nearby_elapsed = 0.0
 	_nearby.clear()
 	_desired = Vector3.ZERO
+	_scheduled_members.clear()
 	_intent_frame = -1
 	_point = Vector3.INF
 	_next_point = Vector3.INF
@@ -336,6 +338,9 @@ func request_pass(requester, direction: Vector3) -> void:
 
 func _receive_pass() -> void:
 	for id in _requests.keys():
+		if id in _scheduled_members:
+			_requests.erase(id)
+			continue
 		var request: Dictionary = _requests[id]
 		var other = request.actor.get_ref()
 		if request.until <= _elapsed or Engine.get_physics_frames() - int(request.frame) > Engine.physics_ticks_per_second * 1.1 or not _friend(other) or actor.global_position.distance_to(other.global_position) > 2.5 or Engine.get_physics_frames() - other.local_motion._intent_frame > 2:
@@ -402,6 +407,7 @@ func _start_spacing(neighbors: Array[WeakRef], desired: Vector3) -> bool:
 	for ref in neighbors:
 		var other = _body(ref)
 		if not _friend(other): continue
+		if other.get_instance_id() in _scheduled_members: continue
 		var away: Vector3 = actor.global_position - other.global_position
 		if absf(away.y) > 1.0: continue
 		away.y = 0.0
@@ -453,8 +459,9 @@ func _start_spacing(neighbors: Array[WeakRef], desired: Vector3) -> bool:
 	_return_point = Vector3.INF
 	return true
 
-func resolve(desired: Vector3, delta: float, speed_limit: float, stop_position: Vector3 = Vector3.INF) -> Vector3:
+func resolve(desired: Vector3, delta: float, speed_limit: float, stop_position: Vector3 = Vector3.INF, scheduled_members: Array = []) -> Vector3:
 	_stop_position = stop_position
+	_scheduled_members = scheduled_members.duplicate()
 	_elapsed += maxf(0.0, delta)
 	_desired = desired
 	_intent_frame = Engine.get_physics_frames()
@@ -477,11 +484,14 @@ func resolve(desired: Vector3, delta: float, speed_limit: float, stop_position: 
 			_intent_frame = Engine.get_physics_frames()
 		return desired
 	var partner = _body(_partner)
-	if not _friend(partner):
+	if not _friend(partner) or partner.get_instance_id() in _scheduled_members:
 		_point = Vector3.INF
 		_next_point = Vector3.INF
 		_return_point = Vector3.INF
 		_hold_remaining = 0.0
+		_point_kind = &""
+		_partner = null
+		partner = null
 	if _hold_remaining > 0.0:
 		_hold_remaining -= delta
 		if _hold_remaining > 0.0 and _friend(partner) and (partner.global_position - _yield_origin).dot(_yield_axis) < _radius(actor) + _radius(partner) + 0.2:
@@ -521,6 +531,9 @@ func resolve(desired: Vector3, delta: float, speed_limit: float, stop_position: 
 		_start_spacing(_neighbors(), desired)
 		return desired
 	var failed = _body(_failed_partner)
+	if is_instance_valid(failed) and failed.get_instance_id() in _scheduled_members:
+		_failed_partner = null
+		failed = null
 	if _elapsed < _failed_until and _friend(failed) and not _failed_direction.is_zero_approx() and desired.normalized().dot(_failed_direction) > 0.8:
 		var offset: Vector3 = failed.global_position - actor.global_position
 		offset.y = 0.0
@@ -531,6 +544,14 @@ func resolve(desired: Vector3, delta: float, speed_limit: float, stop_position: 
 	var other = _blocked_friend(_neighbors(), desired)
 	if other == null:
 		return Vector3.ZERO if _start_spacing(_neighbors(), desired) else desired
+	if other.get_instance_id() in _scheduled_members:
+		# Same-plan bodies already have an explicit passage order. Preserve the
+		# physical collision guard, but do not invent a second side-step or ask
+		# an assigned rank to scatter. Nonparticipants retain ordinary avoidance.
+		var collision := KinematicCollision3D.new()
+		if actor.test_move(actor.global_transform, desired * delta, collision):
+			return desired.limit_length(maxf(0.0, collision.get_travel().length() - 0.005) / maxf(0.001, delta))
+		return desired
 	var other_intent: Vector3 = other.local_motion._desired
 	if Engine.get_physics_frames() - other.local_motion._intent_frame > 2:
 		if _observing_partner != other.get_instance_id():

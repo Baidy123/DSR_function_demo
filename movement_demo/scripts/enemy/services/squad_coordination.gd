@@ -1,6 +1,6 @@
 extends RefCounted
 
-## Owned by one explicit SquadController, or the area's legacy adapter.
+## Owned by one explicitly configured squad; unbound actors have no team tasks.
 ## The area owns observations, physical reservations and the only active clock.
 ## This service owns tactical leases, proposals, assignments and their progress.
 const TeamPlanner = preload("res://scripts/enemy/services/enemy_team_planner.gd")
@@ -33,8 +33,6 @@ var _relations: Dictionary:
 	get: return environment._relations
 var _inspection_reports: Dictionary:
 	get: return environment._inspection_reports
-var _claims: Dictionary = {}
-var _flank_rounds: Dictionary = {}
 var _coordination_sources: Dictionary = {}
 var _coordination_source_pool: Dictionary = {}
 var _coordination_receipts: Dictionary = {}
@@ -45,10 +43,9 @@ var _coordination_environments: Dictionary = {}
 var _coordination_due: Dictionary = {}
 var _coordination_failures: Array[Dictionary] = []
 var _coordination_counters: Dictionary = {}
+var _coordination_diagnostics: Dictionary = {}
 var _coordination_checked: Dictionary = {}
 var _inspection_orders: Dictionary = {}
-var _recommendations: Dictionary = {}
-var _recommendation_cooldowns: Dictionary = {}
 var _team_planner = TeamPlanner.new()
 const COORDINATION_PERIOD := 0.2 # Implementation default, not a user constraint.
 const COORDINATION_ACCEPT_SECONDS := 1.0
@@ -57,10 +54,7 @@ const COORDINATION_MAX_SECONDS := 20.0
 const COORDINATION_SOURCE_DISTANCE := 0.5
 const COORDINATION_REPORT_SECONDS := 0.35
 const FLANK_SIDE_MARGIN := 0.5
-const FLANK_DESTINATION_SPACING := 1.2
 const FLANK_SEPARATION_COSINE := -0.5 # cos(120 degrees), horizontal directions.
-const FLANK_GEOMETRY_MEMBER_STEP := 0.5
-const FLANK_GEOMETRY_TARGET_STEP := 0.25
 
 
 func bind_environment(board) -> void:
@@ -92,62 +86,26 @@ func member_group(actor: Node) -> StringName:
 
 func advance() -> void:
 	var started := Time.get_ticks_usec()
-	for token in _claims.keys():
-		var entry: Dictionary = _claims[token]
-		var context = _context(entry.owner_id)
-		if elapsed >= entry.expires_at or context == null or not context.cooperation_enabled() or not context.can_use_action(entry.owner_action) or context.cooperation_target_id() != entry.target_id:
-			_claims.erase(token)
-			revision += 1
-	_maintain_flank_rounds()
-	_maintain_recommendations()
 	_advance_coordination()
+	_advance_inspection_traffic()
 	last_advance_usec = Time.get_ticks_usec() - started
 
 func reset() -> void:
 	for team_id in _coordination_plans.keys(): _drop_coordination_plan(team_id, &"reset")
-	_claims.clear()
-	_flank_rounds.clear()
 	_clear_coordination()
 
 func release_member(id: int) -> void:
-	_recommendations.erase(id)
 	_coordination_baselines.erase(id)
 	_coordination_offers.erase(id)
 	_invalidate_coordination_member(id, &"member_released")
-	for token in _claims.keys():
-		if _claims[token].owner_id == id or _claims[token].get("beneficiary_id", 0) == id: _claims.erase(token)
 
 func invalidate_member(id: int) -> void:
 	_coordination_offers.erase(id)
 	_coordination_baselines.erase(id)
 	_invalidate_coordination_member(id, &"member_version_changed")
 
-func clear_execution(id: int) -> void:
-	var advice: Dictionary = _recommendations.get(id, {})
-	if advice.get("accepted", false) and not environment.reservation_values().any(func(entry): return entry.owner_id == id and entry.phase == &"pending" and entry.get("recommendation_id") == advice.recommendation_id):
-		_recommendations.erase(id)
-	for token in _claims.keys():
-		if int(_claims[token].owner_id) == id: _claims.erase(token)
-
-func crossed_flank(context, previous: Vector3, current: Vector3) -> bool:
-	for round: Dictionary in _flank_rounds.values():
-		if _flank_round_matches(round, context) and _flank_opposite(round, previous) != _flank_opposite(round, current): return true
-	return false
-
-func append_snapshot(context, target: int, result: Dictionary, include_claims: bool = true) -> void:
+func append_snapshot(context, target: int, result: Dictionary) -> void:
 	var id: int = context.actor.get_instance_id()
-	for claim in _claims.values():
-		if not include_claims and (claim.kind not in [&"advance", &"flank"] or claim.owner_id == id): continue
-		if claim.target_id != target or not _claim_valid(claim) or not can_cooperate(claim.owner_id, id): continue
-		var copy: Dictionary = claim.duplicate(true)
-		copy.remaining = claim.expires_at - elapsed
-		if include_claims: result.claims.append(copy)
-		if claim.kind in [&"advance", &"flank"] and claim.owner_id != id:
-			var request := copy.duplicate(true)
-			request.request_id = claim.id
-			request.beneficiary_id = claim.owner_id
-			request.lane_id = &"target"
-			result.requests.append(request)
 	var source := coordination_source(context, target)
 	# Only accepted plan requests are appended below. Raw status requests were
 	# already projected by the area, so an absent plan needs no second member scan.
@@ -158,28 +116,6 @@ func append_snapshot(context, target: int, result: Dictionary, include_claims: b
 				"target_id": target, "beneficiary_id": need.actor_id, "lane_id": &"target",
 				"position": _context(need.actor_id).actor.global_position, "remaining": maxf(0.0, need.valid_until - elapsed)})
 
-
-func _claim_valid(entry: Dictionary) -> bool:
-	var owner = _context(entry.owner_id)
-	var valid: bool = entry.expires_at > elapsed and owner != null and is_instance_valid(owner.actor) and owner.actor.is_inside_tree() and owner.cooperation_enabled() and owner.can_use_action(entry.owner_action) and owner.cooperation_target_id() == entry.target_id
-	if valid and entry.kind == &"inspect_end":
-		var evidence := inspection_evidence(owner, entry.target_id)
-		if evidence.is_empty() or int(evidence.id) != int(entry.get("inspection_id", -1)) or entry.get("domain", "") != _domain(owner.actor): return false
-		var body = entry.get("cover").get_ref() if entry.get("cover") is WeakRef else null
-		if not is_instance_valid(body) or not body is StaticBody3D or (body.collision_layer & 1) == 0 or not is_instance_valid(owner.navigation_region) or not owner.navigation_region.is_ancestor_of(body): return false
-		var box = body.get_node_or_null("CollisionShape3D")
-		return box is CollisionShape3D and not box.disabled and box.shape is BoxShape3D and box.global_transform == entry.get("cover_transform") and box.shape.size == entry.get("cover_size")
-	if not valid or entry.kind != &"flank": return valid
-	var round: Dictionary = _flank_rounds.get(entry.get("flank_round_id", 0), {})
-	return not round.is_empty() and _flank_round_matches(round, owner)
-
-func _drop_inspection_claims(inspection_id: int) -> void:
-	for token in _claims.keys():
-		if int(_claims[token].get("inspection_id", -1)) == inspection_id: _claims.erase(token)
-	revision += 1
-
-## Called only for an acquired observation. Input uses the observer's clock;
-## returned/shared values use board time and never gain life when read again.
 
 func _inspection_eligible_members(context, target: int) -> Array[Dictionary]:
 	var members: Array[Dictionary] = []
@@ -195,337 +131,14 @@ func _inspection_eligible_members(context, target: int) -> Array[Dictionary]:
 func inspection_eligible_count(context, target: int) -> int:
 	return _inspection_eligible_members(context, target).size()
 
-func inspection_end(context, geometry: Dictionary) -> int:
-	if not context.cooperation_enabled(): return 0
-	var evidence := inspection_evidence(context, geometry.target_id)
-	if evidence.is_empty() or int(evidence.id) != int(geometry.inspection_id): return 0
-	var owner: int = context.actor.get_instance_id()
-	var occupied: Dictionary = {}
-	for entry: Dictionary in _claims.values():
-		if entry.kind != &"inspect_end" or int(entry.get("inspection_id", -1)) != int(evidence.id) or not _claim_valid(entry) or not can_cooperate(entry.owner_id, owner): continue
-		if int(entry.owner_id) == owner: return int(entry.end)
-		occupied[int(entry.end)] = int(entry.owner_id)
-	var members := _inspection_eligible_members(context, int(geometry.target_id))
-	if members.size() < 2: return 0
-	var best: Dictionary = {}
-	var best_cost := INF
-	for first: Dictionary in members:
-		for second: Dictionary in members:
-			if first.id == second.id: continue
-			if occupied.has(-1) and occupied[-1] != first.id: continue
-			if occupied.has(1) and occupied[1] != second.id: continue
-			var cost: float = first.position.distance_to(geometry.ends[-1].entry) + second.position.distance_to(geometry.ends[1].entry)
-			if cost < best_cost - 0.001 or (absf(cost - best_cost) <= 0.001 and int(first.id) < int(best.get(-1, 9223372036854775807))):
-				best_cost = cost
-				best = {-1: first.id, 1: second.id}
-	for end in [-1, 1]:
-		if best.get(end, 0) == owner and not evidence.checked_ends.has(end): return end
-	return 0
-
-func inspection_revision(context, inspection_id: int) -> int:
-	var state: Array = [generation, relation_revision, inspection_id]
-	for id in _members:
-		var other = _context(id)
-		if other == null or not can_cooperate(id, context.actor.get_instance_id()) or not other.cooperation_enabled(): continue
-		state.append([id, other.cooperation_target_id(), other.is_alerted, other.actor.can_move(), other.actor.global_position.snapped(Vector3.ONE * 0.5)])
-	for entry: Dictionary in _claims.values():
-		if entry.kind == &"inspect_end" and int(entry.get("inspection_id", -1)) == inspection_id and _claim_valid(entry): state.append([entry.owner_id, entry.end])
-	var evidence := inspection_evidence(context, context.cooperation_target_id())
-	state.append(evidence.get("checked_ends", []))
-	return hash(state)
-
-func inspection_partner_ready(context, token: Dictionary) -> bool:
-	if not _claim_valid(token): return false
-	for entry: Dictionary in _claims.values():
-		if entry.kind != &"inspect_end" or entry.owner_id == context.actor.get_instance_id() or int(entry.get("inspection_id", -1)) != int(token.inspection_id) or not _claim_valid(entry): continue
-		if not can_cooperate(entry.owner_id, context.actor.get_instance_id()): continue
-		var other = _context(entry.owner_id)
-		if int(entry.get("phase", 0)) >= 2 and other.actor.can_move() and other.actor.global_position.distance_to(entry.entry) <= 0.35: return true
-	return false
-
-func complete_inspection(context, token: Dictionary) -> void:
-	if not _claim_valid(token): return
-	if context.actor.global_position.distance_to(token.peek) > 0.35: return
-	var known: Vector3 = token.get("geometry", {}).get("known", Vector3.INF)
-	if not known.is_finite() or not context.perception.can_observe_position(known): return
-	for report: Dictionary in _inspection_reports.values():
-		if int(report.id) == int(token.inspection_id) and not report.checked_ends.has(int(token.end)): report.checked_ends.append(int(token.end))
-	release(context, token)
-
-func flank_opportunity(context) -> Dictionary:
-	var result := {"round_id": 0, "anchor": Vector3.INF, "front_axis": Vector3.ZERO, "capacity": 0, "remaining_slots": 0}
-	if not context.cooperation_enabled(): return result
-	var target: int = context.cooperation_target_id()
-	var evidence: Dictionary = context.cooperation_target_evidence()
-	if target == 0 or not _flank_evidence_live(context, evidence): return result
-	var members := _flank_members(context, target)
-	return _flank_opportunity_for_members(context, evidence, members)
-
-## Only geometric inputs invalidate the bounded spatial queue. Report IDs,
-## timestamps and firing cadence still reprice live candidates without clearing
-## their geometry. Quantization is an invalidation hint, never an input to paths,
-## occupancy, destination validation or actual movement.
-
-func flank_geometry_revision(context) -> int:
-	if not context.cooperation_enabled(): return 0
-	var target: int = context.cooperation_target_id()
-	var evidence: Dictionary = context.cooperation_target_evidence()
-	if target == 0 or not _flank_evidence_live(context, evidence): return 0
-	var members := _flank_members(context, target)
-	if members.size() < 2: return 0
-	members.sort_custom(func(a: Dictionary, b: Dictionary): return int(a.id) < int(b.id))
-	var key: Array = [generation, member_faction(context.actor), member_group(context.actor), target,
-		_geometry_cell(evidence.position, FLANK_GEOMETRY_TARGET_STEP)]
-	for member: Dictionary in members:
-		key.append([member.id, _geometry_cell(member.position, FLANK_GEOMETRY_MEMBER_STEP)])
-	var opportunity := _flank_opportunity_for_members(context, evidence, members)
-	# Occupancy uses real body positions, so crossing a quota plane invalidates
-	# immediately even when both positions fall inside the same half-metre cell.
-	key.append([opportunity.round_id, opportunity.capacity, opportunity.remaining_slots])
-	if opportunity.round_id != 0: key.append([opportunity.anchor, opportunity.front_axis])
-	var slots: Array = []
-	var id: int = context.actor.get_instance_id()
-	for entry: Dictionary in _claims.values():
-		if entry.target_id != target or entry.kind not in [&"advance", &"flank"] or not _claim_valid(entry) or not can_cooperate(entry.owner_id, id): continue
-		slots.append([entry.id, entry.owner_id, entry.kind, entry.lane_id, entry.get("flank_destination", Vector3.INF)])
-	slots.sort_custom(func(a: Array, b: Array): return int(a[0]) < int(b[0]))
-	key.append(slots)
-	return hash(key)
-
-func _geometry_cell(position: Vector3, step: float) -> Vector3i:
-	return Vector3i(roundi(position.x / step), roundi(position.y / step), roundi(position.z / step))
-
-func _flank_opportunity_for_members(context, evidence: Dictionary, members: Array[Dictionary]) -> Dictionary:
-	var result := {"round_id": 0, "anchor": Vector3.INF, "front_axis": Vector3.ZERO, "capacity": 0, "remaining_slots": 0}
-	if members.size() < 2: return result
-	var capacity := floori(members.size() / 2.0)
-	for round: Dictionary in _flank_rounds.values():
-		if not _flank_round_matches(round, context): continue
-		# Do not rotate or start a second frame while the first round is alive.
-		if evidence.position.distance_to(round.anchor) > 2.0: return result
-		return {"round_id": round.id, "anchor": round.anchor, "front_axis": round.front_axis,
-			"capacity": capacity, "remaining_slots": maxi(0, capacity - _flank_occupants(round, members).size()),
-			"expires_at": round.expires_at, "remaining_seconds": maxf(0.0, round.expires_at - elapsed)}
-	var anchor: Vector3 = evidence.position
-	var axis := Vector3.ZERO
-	var directions: Array[Vector3] = []
-	for member: Dictionary in members:
-		var radial: Vector3 = member.position - anchor
-		radial.y = 0.0
-		axis += radial
-		directions.append(radial.normalized())
-	if axis.is_zero_approx(): return result
-	axis = axis.normalized()
-	for member: Dictionary in members:
-		if (member.position - anchor).dot(axis) <= FLANK_SIDE_MARGIN: return result
-	for first in directions.size():
-		for second in range(first + 1, directions.size()):
-			if directions[first].dot(directions[second]) <= FLANK_SEPARATION_COSINE: return result
-	return {"round_id": 0, "anchor": anchor, "front_axis": axis, "capacity": capacity, "remaining_slots": capacity}
-
-func _flank_evidence_live(context, evidence: Dictionary) -> bool:
-	return not evidence.is_empty() and evidence.get("target_id", 0) == context.cooperation_target_id() and evidence.get("position", Vector3.INF).is_finite() and float(evidence.get("valid_until", -INF)) > context.evidence_elapsed_seconds
-
-func _flank_members(context, target: int) -> Array[Dictionary]:
-	var result: Array[Dictionary] = []
-	var id: int = context.actor.get_instance_id()
-	for other_id in _members:
-		if not can_cooperate(other_id, id): continue
-		var other = _context(other_id)
-		if other == null or not other.actor.is_inside_tree() or other.cooperation_target_id() != target: continue
-		var activity: Dictionary = _members[other_id].activity
-		if activity.is_empty() or int(activity.get("target_id", 0)) != target or elapsed - float(activity.updated_at) > 0.35: continue
-		result.append({"id": other_id, "position": other.actor.global_position})
-	return result
-
-func _flank_round_matches(round: Dictionary, context) -> bool:
-	var id: int = context.actor.get_instance_id()
-	if round.expires_at <= elapsed or round.generation != generation or round.target_id != context.cooperation_target_id(): return false
-	if not _members.has(id) or not can_share_intel(id, id) or not context.actor.is_inside_tree(): return false
-	return round.group == member_group(context.actor) and (round.faction == member_faction(context.actor) or _relations.get([round.faction, member_faction(context.actor)], &"") == &"allied")
-
-func _flank_opposite(round: Dictionary, position: Vector3) -> bool:
-	return (position - round.anchor).dot(round.front_axis) < -FLANK_SIDE_MARGIN
-
-func _flank_occupants(round: Dictionary, members: Array[Dictionary]) -> Dictionary:
-	var occupied: Dictionary = {}
-	for member: Dictionary in members:
-		if _flank_opposite(round, member.position): occupied[member.id] = true
-	for entry: Dictionary in _claims.values():
-		if entry.kind == &"flank" and entry.get("flank_round_id", 0) == round.id and _claim_valid(entry): occupied[entry.owner_id] = true
-	return occupied
-
-func _claim_flank(context, task: Dictionary) -> Dictionary:
-	_maintain_flank_rounds()
-	var id: int = context.actor.get_instance_id()
-	var target: int = context.cooperation_target_id()
-	if int(task.get("target_id", target)) != target or not context.can_use_action(task.get("owner_action", &"cooperate")): return {}
-	var opportunity := flank_opportunity(context)
-	if opportunity.capacity <= 0: return {}
-	var anchor: Vector3 = task.get("flank_anchor", Vector3.INF)
-	var axis: Vector3 = task.get("flank_axis", Vector3.ZERO)
-	var destination: Vector3 = task.get("flank_destination", Vector3.INF)
-	var proposed_round: int = task.get("flank_round_id", 0)
-	if not anchor.is_finite() or not axis.is_finite() or not destination.is_finite(): return {}
-	if anchor.distance_to(opportunity.anchor) > 0.1 or axis.distance_to(opportunity.front_axis) > 0.01: return {}
-	if proposed_round != 0 and proposed_round != opportunity.round_id: return {}
-	if (destination - opportunity.anchor).dot(opportunity.front_axis) >= -FLANK_SIDE_MARGIN: return {}
-	for existing: Dictionary in _claims.values():
-		if existing.kind != &"flank" or existing.target_id != target or not _claim_valid(existing) or not can_cooperate(existing.owner_id, id): continue
-		if existing.owner_id == id:
-			return existing.duplicate(true) if existing.flank_destination.distance_to(destination) < 0.05 else {}
-		if existing.flank_destination.distance_to(destination) < FLANK_DESTINATION_SPACING: return {}
-	for member: Dictionary in _flank_members(context, target):
-		if member.id != id and member.position.distance_to(destination) < FLANK_DESTINATION_SPACING: return {}
-	if opportunity.remaining_slots <= 0: return {}
-	var duration: float = task.get("duration", 4.0)
-	if not is_finite(duration) or duration <= 0.0: return {}
-	var round_id: int = opportunity.round_id
-	if round_id == 0:
-		_serial += 1
-		round_id = _serial
-		_flank_rounds[round_id] = {"id": round_id, "target_id": target, "anchor": opportunity.anchor,
-			"front_axis": opportunity.front_axis, "faction": member_faction(context.actor), "group": member_group(context.actor),
-			"generation": generation, "expires_at": elapsed + duration}
-	var round: Dictionary = _flank_rounds[round_id]
-	_serial += 1
-	var value := task.duplicate(true)
-	value.merge({"id": _serial, "owner_id": id, "target_id": target, "kind": &"flank", "lane_id": task.get("lane_id", &"opposite"),
-		"position": context.actor.global_position, "generation": generation, "created_at": elapsed,
-		"expires_at": minf(elapsed + duration, round.expires_at), "owner_action": task.get("owner_action", &"cooperate"),
-		"flank_round_id": round_id, "flank_anchor": round.anchor, "flank_axis": round.front_axis, "flank_destination": destination}, true)
-	_claims[_serial] = value
-	revision += 1
-	return value.duplicate(true)
-
-func _discard_flank_round(round_id: int) -> void:
-	for token in _claims.keys():
-		if _claims[token].get("flank_round_id", 0) == round_id: _claims.erase(token)
-	_flank_rounds.erase(round_id)
-	revision += 1
-
-## Execution maintenance only. A falling population first revokes departures
-## that have not crossed; already moved bodies are never teleported back.
-
-func _maintain_flank_rounds() -> void:
-	for round_id in _flank_rounds.keys():
-		var round: Dictionary = _flank_rounds[round_id]
-		var representative = null
-		var evidence_moved := false
-		for id in _members:
-			var member = _context(id)
-			if member == null or not is_instance_valid(member.actor) or not _flank_round_matches(round, member): continue
-			var evidence: Dictionary = member.cooperation_target_evidence()
-			if _flank_evidence_live(member, evidence):
-				if evidence.position.distance_to(round.anchor) > 2.0: evidence_moved = true
-				if member.cooperation_enabled(): representative = member
-		if representative == null or evidence_moved:
-			_discard_flank_round(round_id)
-			continue
-		var members := _flank_members(representative, round.target_id)
-		if members.size() < 2:
-			_discard_flank_round(round_id)
-			continue
-		var crossed: Dictionary = {}
-		for member: Dictionary in members:
-			if _flank_opposite(round, member.position): crossed[member.id] = true
-		var claims: Array[Dictionary] = []
-		for token in _claims.keys():
-			var entry: Dictionary = _claims[token]
-			if entry.get("flank_round_id", 0) != round_id: continue
-			if not _claim_valid(entry):
-				_claims.erase(token)
-				revision += 1
-			else: claims.append(entry)
-		claims.sort_custom(func(a: Dictionary, b: Dictionary):
-			if crossed.has(a.owner_id) != crossed.has(b.owner_id): return crossed.has(a.owner_id)
-			return int(a.id) < int(b.id))
-		var unclaimed_crossed := crossed.duplicate()
-		for entry: Dictionary in claims: unclaimed_crossed.erase(entry.owner_id)
-		var slots: int = maxi(0, floori(members.size() / 2.0) - unclaimed_crossed.size())
-		for index in range(slots, claims.size()):
-			_claims.erase(claims[index].id)
-			revision += 1
-
-func claim(context, task: Dictionary) -> Dictionary:
-	if not context.cooperation_enabled(): return {}
-	var id: int = context.actor.get_instance_id()
-	if not _members.has(id): register(context)
-	if not _members.has(id) or _context(id) != context: return {}
-	var target: int = task.get("target_id", context.cooperation_target_id())
-	var kind: StringName = task.get("kind", &"")
-	var lane: String = String(task.get("lane_id", ""))
-	var point: Vector3 = task.get("position", context.actor.global_position)
-	if target == 0 or kind.is_empty() or not point.is_finite(): return {}
-	if kind == &"flank": return _claim_flank(context, task)
-	if kind == &"inspect_end":
-		var report := inspection_evidence(context, target)
-		if report.is_empty() or int(report.id) != int(task.get("inspection_id", -1)) or report.checked_ends.has(int(task.get("end", 0))): return {}
-		if int(task.get("end", 0)) not in [-1, 1] or task.get("geometry", {}).is_empty() or inspection_end(context, task.geometry) != int(task.end): return {}
-	for existing in _claims.values():
-		if not _claim_valid(existing) or existing.target_id != target or not can_cooperate(existing.owner_id, id): continue
-		if existing.owner_id == id and existing.kind == kind and String(existing.lane_id) == lane: return existing.duplicate(true)
-		var collision: bool = existing.kind == kind and not lane.is_empty() and String(existing.lane_id) == lane
-		if kind == &"search" and existing.kind == kind:
-			collision = existing.position.distance_to(point) < float(task.get("radius", 1.0))
-		if kind == &"reload" and existing.kind == kind: collision = true
-		if collision: return {}
-	_serial += 1
-	var value := task.duplicate(true)
-	value.merge({"id": _serial, "owner_id": id, "target_id": target, "kind": kind, "lane_id": lane, "position": point,
-		"generation": generation, "created_at": elapsed, "expires_at": elapsed + maxf(0.1, float(task.get("duration", 4.0))),
-		"owner_action": task.get("owner_action", context.utility_current.get("id", &"cooperate"))}, true)
-	if kind == &"inspect_end":
-		value.domain = _domain(context.actor)
-		value.expires_at = minf(value.expires_at, float(inspection_evidence(context, target).valid_until))
-	_claims[_serial] = value
-	revision += 1
-	return value.duplicate(true)
-
-func update_claim(context, token: Dictionary, state: Dictionary) -> bool:
-	var id: int = token.get("id", 0)
-	if not _claims.has(id) or token.get("generation", -1) != generation: return false
-	if _claims[id].kind == &"flank":
-		_maintain_flank_rounds()
-		if not _claims.has(id): return false
-	var entry: Dictionary = _claims[id]
-	if entry.owner_id != context.actor.get_instance_id() or not _claim_valid(entry): return false
-	# Status cannot renew evidence or impersonate measured ready fire.
-	for key in [&"phase", &"progress", &"position"]:
-		if state.has(key):
-			if key == &"phase" and entry.get(key) != state[key]: revision += 1
-			entry[key] = state[key]
-	return true
-
-func release(context, token: Dictionary) -> void:
-	var id: int = token.get("id", 0)
-	if _claims.has(id) and _claims[id].owner_id == context.actor.get_instance_id():
-		_claims.erase(id)
-		revision += 1
-
-func search_available(context, point: Vector3, radius: float) -> bool:
-	var id: int = context.actor.get_instance_id()
-	var footprint := _reservation_footprint(context, point)
-	for reservation: Dictionary in environment.reservation_values():
-		if reservation.owner_id == id or not _reservation_valid(reservation) or not can_share_space(id, reservation.owner_id): continue
-		for projection: Dictionary in _reservation_projections(reservation):
-			var occupied := _reservation_footprint(_context(reservation.owner_id), projection.position)
-			if _reservation_geometry_conflict(footprint, occupied): return false
-	if not context.cooperation_enabled(): return true
-	var target: int = context.cooperation_target_id()
-	for item in _claims.values():
-		if item.owner_id != id and item.kind == &"search" and item.target_id == target and _claim_valid(item) and can_cooperate(item.owner_id, id) and item.position.distance_to(point) < radius: return false
-	return true
-
 func reload_opportunity(context) -> Dictionary:
 	var result := {"allowed": false, "support_seconds": 0.0, "provider_id": 0, "request_id": 0}
 	if not context.cooperation_enabled(): return result
 	var id: int = context.actor.get_instance_id()
 	var data: Dictionary = context.cooperation_snapshot()
-	for item in data.claims:
-		if item.kind == &"reload" and item.owner_id != id: return result
 	for member in data.members:
-		if member.id != id and member.get("can_cooperate", false) and member.get("reloading", false): return result
+		var other = _context(int(member.id))
+		if member.id != id and other != null and other.actor.ammo.is_reloading: return result
 	for support in data.supports + data.threats:
 		if support.owner_id == id: continue
 		if float(support.support_seconds) > float(result.support_seconds):
@@ -636,10 +249,9 @@ func support_pressure(context) -> float:
 # evaluation batch. None of these functions runs an action, navigates or fires.
 
 func _clear_coordination() -> void:
+	_coordination_diagnostics.clear()
 	_inspection_orders.clear()
 	_coordination_baselines.clear()
-	_recommendations.clear()
-	_recommendation_cooldowns.clear()
 	_coordination_sources.clear()
 	_coordination_source_pool.clear()
 	_coordination_receipts.clear()
@@ -766,13 +378,315 @@ func coordination_source(context, target_id: int = 0) -> Dictionary:
 ## Strong squads decide the investigation objective before comparing local
 ## movement offers. Stable slots belong to this evidence, not current positions.
 func inspection_order(context) -> Dictionary:
-	if not has_team_binding(context) or not context.coordinated_cooperation_enabled(): return {}
+	if not has_team_binding(context) or not context.coordinated_cooperation_enabled() or not context.can_use_action(&"search"): return {}
 	var team_id := _coordination_team(context)
 	var order: Dictionary = _inspection_orders.get(team_id, {})
 	if order.is_empty() or environment.has_visual_contact(context, context.cooperation_target_id()): return {}
 	var source := coordination_source(context, context.cooperation_target_id())
 	if source.is_empty() or order.evidence_id != source.evidence_id: return {}
 	return order.slots.get(context.actor.get_instance_id(), {}).duplicate(true)
+
+## The squad owns passage through the planned ingress corridors. Waiting here
+## is normal formation progress, not a personal stuck/repath/dissolve request.
+func inspection_motion(context, slot: Dictionary, goal: Vector3, delta: float) -> Dictionary:
+	if slot != inspection_order(context) or not slot.has("approach"): return {}
+	var order: Dictionary = _inspection_orders[_coordination_team(context)]
+	return _inspection_passage(context, order, slot, goal, delta)
+
+## Read-only diagnostics use the same live order and passage calculation as
+## execution. Inspecting the backend cannot advance a repair or renew a lease.
+func inspection_status(context) -> Dictionary:
+	var slot := inspection_order(context)
+	if slot.is_empty(): return {}
+	var order: Dictionary = _inspection_orders[_coordination_team(context)]
+	var traffic: Dictionary = order.get("traffic", {})
+	var state: Dictionary = context.coordination_motion_state()
+	var entry := _assignment_for_owner(state.actor_id)
+	var goal: Vector3 = slot.get("entry", Vector3.INF) if traffic.get("phase") != &"crossing" else slot.peek
+	var passage: Dictionary = _inspection_passage(context, order, slot, goal, 0.0) if slot.has("approach") and slot.has("entry") else {}
+	return {"order_id": order.order_id, "generation": generation, "plan_id": entry.get("plan_id", 0),
+		"assignment_id": entry.get("assignment_id", 0), "assignment_revision": entry.get("assignment_revision", 0),
+		"motion_revision": traffic.get("repairs", 0), "role": entry.get("role", &"assembly"),
+		"phase": traffic.get("phase", &"preparing"), "position": state.position, "staging_position": slot.get("entry", Vector3.INF),
+		"goal": traffic.get("goals", {}).get(state.actor_id, goal), "expires_at": entry.get("expires_at", slot.expires_at),
+		"waiting_for": passage.get("waiting_for", []).duplicate(), "state": passage.get("motion_state", &"waiting"),
+		"reason": passage.get("motion_reason", &"preparing"), "last_report": entry.get("execution_state", &"unaccepted")}
+
+## Debug reads frozen plans and real feedback only; no candidate/nav queries.
+## No stored route means no line: a destination is not a planned straight path.
+func debug_member_snapshot(context) -> Dictionary:
+	var result := inspection_status(context)
+	var owner: int = context.actor.get_instance_id()
+	var slot := inspection_order(context)
+	if not slot.is_empty():
+		var order: Dictionary = _inspection_orders[_coordination_team(context)]
+		var traffic: Dictionary = order.get("traffic", {})
+		var crossing: bool = traffic.get("phase") == &"crossing"
+		result.source = &"inspection"
+		result.route = traffic.get("routes", {}).get(owner, slot.get("crossing" if crossing else "approach", PackedVector3Array())).duplicate()
+		result.next_route = PackedVector3Array() if crossing else slot.get("crossing", PackedVector3Array()).duplicate()
+		result.target_position = slot.get("peek", Vector3.INF)
+		result.remaining_seconds = maxf(0.0, float(result.expires_at) - elapsed)
+		result.order_phase = _coordination_plans.get(_coordination_team(context), {}).get("phase", &"preparing")
+		return result
+	var entry := _assignment_for_owner(owner)
+	if entry.is_empty():
+		var diagnostic: Dictionary = _coordination_diagnostics.get(_coordination_team(context), {})
+		var source := coordination_source(context, context.cooperation_target_id())
+		return {"source": &"pending" if not source.is_empty() and context.cooperation_level() == 2 else &"personal",
+			"phase": &"planning", "state": &"unassigned", "reason": diagnostic.get("reason", &"awaiting_candidates"),
+			"planning_reason": diagnostic.get("reason", &"awaiting_candidates"),
+			"assigned_count": diagnostic.get("assigned_count", 0), "member_count": diagnostic.get("member_count", 0),
+			"offer_count": _coordination_offers.get(owner, []).size(),
+			"available_in": context.coordination_motion_state().get("available_in", 0.0),
+			"remaining_seconds": maxf(0.0, float(source.get("valid_until", elapsed)) - elapsed)}
+	var plan: Dictionary = _coordination_plans.get(entry.team_id, {})
+	result = {"source": &"assignment", "plan_id": entry.plan_id, "assignment_id": entry.assignment_id,
+		"assignment_revision": entry.assignment_revision, "role": entry.role,
+		"accepted": entry.accepted, "constraint_mode": entry.get("constraint_mode", &"coordinated"),
+		"phase": plan.get("phase", &"assigning"), "state": entry.get("execution_state", &"unaccepted"),
+		"staging_position": entry.get("staging_position", Vector3.INF),
+		"target_position": entry.get("selected_position", Vector3.INF),
+		"goal": entry.get("selected_position", Vector3.INF), "remaining_seconds": maxf(0.0, float(entry.expires_at) - elapsed),
+		"waiting_for": entry.get("waiting_for", []).duplicate(), "reason": entry.get("motion_reason", &"")}
+	for offer: Dictionary in entry.reserved_offers:
+		if offer.offer_key != entry.get("selected_offer_key", entry.allowed_offer_keys[0]): continue
+		if not entry.accepted:
+			result.goal = offer.position
+			result.target_position = offer.position
+			result.staging_position = offer.path_summary.staging_position
+		var path: Array = offer.path_summary.get("planned_path", [])
+		if not path.is_empty(): result.route = PackedVector3Array(path)
+		break
+	return result
+
+func _inspection_passage(context, order: Dictionary, slot: Dictionary, goal: Vector3, delta: float) -> Dictionary:
+	var helper = preload("res://scripts/enemy/services/enemy_search_formation.gd")
+	var approaching: bool = goal.is_equal_approx(slot.entry)
+	var state: Dictionary = context.coordination_motion_state()
+	var position: Vector3 = state.position
+	var stopped := {"next": position, "stop": position, "distance": 0.0,
+		"motion_state": &"waiting", "waiting_for": [], "motion_reason": &"preparing"}
+	if order.slots.values().any(func(member): return not member.has("approach")):
+		return stopped
+	var traffic: Dictionary = order.get("traffic", {})
+	stopped.motion_revision = traffic.get("repairs", 0)
+	var owner: int = state.actor_id
+	if traffic.is_empty() or traffic.phase != (&"approach" if approaching else &"crossing"):
+		return stopped
+	if float(state.get("available_in", 0.0)) > 0.0:
+		stopped.motion_reason = state.get("availability_reason", &"execution_busy")
+		return stopped
+	var remaining: PackedVector3Array = helper.remaining_path(position, traffic.routes.get(owner, slot.approach if approaching else slot.crossing))
+	var repair_priority: int = traffic.priority_moves.find(owner)
+	if traffic.holds.has(owner):
+		stopped.waiting_for = [traffic.holds[owner]]
+		stopped.motion_reason = &"yield"
+		return stopped
+	goal = traffic.goals.get(owner, goal)
+	if position.distance_to(goal) <= 0.025:
+		stopped.motion_reason = &"assembly_barrier" if approaching else &"observing"
+		stopped.temporary_goal = traffic.goals.get(owner, Vector3.INF)
+		if approaching:
+			stopped.waiting_for = order.slots.keys().filter(func(id): return id != owner and _context(id) != null and _context(id)._horizontal_distance(order.slots[id].entry) > 0.025)
+		return stopped
+	var next: Vector3 = remaining[1] if remaining.size() > 1 else goal
+	var allowed: float = position.distance_to(next)
+	var waiting_for: Array = []
+	var reason: StringName = &""
+	for id: int in order.slots:
+		if id == owner: continue
+		var other = _context(id)
+		if other == null: continue
+		var clearance: float = float(slot.spacing) - 0.06
+		var other_state: Dictionary = other.coordination_motion_state()
+		var point: Vector3 = other_state.position
+		# Both measured occupancy and the next physical step remain protected,
+		# regardless of passage priority or whether that member has arrived.
+		var available: float = helper.corridor_entry(position, next, point, point + other_state.velocity * delta, clearance, true)
+		allowed = minf(allowed, available)
+		if available <= 0.01:
+			waiting_for.append(id)
+			reason = &"occupied"
+		var other_slot: Dictionary = order.slots[id]
+		var priority: int = slot.passage_priority if approaching else slot.crossing_priority
+		var other_priority: int = other_slot.passage_priority if approaching else other_slot.crossing_priority
+		var other_repair: int = traffic.priority_moves.find(id)
+		var precedes: bool = other_repair >= 0 and (repair_priority < 0 or other_repair < repair_priority)
+		if repair_priority < 0 and other_repair < 0: precedes = other_priority < priority
+		if not precedes or traffic.holds.has(id) or not other_slot.has("approach"): continue
+		var path: PackedVector3Array = helper.remaining_path(point, traffic.routes.get(id, other_slot.approach if approaching else other_slot.crossing))
+		if other_repair < 0 and approaching and slot.get("ordered_departures", false) and helper.paths_conflict(remaining, path, clearance):
+			allowed = 0.0
+			if not waiting_for.has(id): waiting_for.append(id)
+			if reason.is_empty(): reason = &"passage_order"
+			continue
+		# Reserve only the untraversed corridor. Following members can approach
+		# its moving boundary while a predecessor advances; a distant conflict
+		# must not lock their entire trip. Actual body clearance still applies.
+		# A member initially occupying a predecessor's passage may leave it
+		# only when its assigned destination fully clears that passage. Merely
+		# moving sideways and parking inside it would trap the predecessor.
+		var clears_passage := true
+		for i in range(1, path.size()):
+			var nearest: Vector3 = Geometry3D.get_closest_point_to_segment(goal, path[i - 1], path[i])
+			if context._horizontal_distance_between(goal, nearest) < clearance: clears_passage = false
+		for i in range(1, path.size()):
+			available = helper.corridor_entry(position, next, path[i - 1], path[i], clearance, clears_passage)
+			allowed = minf(allowed, available)
+			if available <= 0.01 and not waiting_for.has(id):
+				waiting_for.append(id)
+				if reason.is_empty(): reason = &"passage_order"
+	var direction: Vector3 = (next - position).normalized()
+	return {"next": next, "stop": position + direction * allowed, "distance": allowed,
+		"motion_state": &"moving" if allowed > 0.01 else (&"blocked" if reason == &"occupied" else &"waiting"),
+		"waiting_for": waiting_for, "motion_reason": &"repair" if traffic.priority_moves.has(owner) else reason,
+		"temporary_goal": traffic.goals.get(owner, Vector3.INF), "repairs": traffic.repairs, "motion_revision": traffic.repairs}
+
+## Waiting permissions alone cannot resolve a cycle caused by occupied routes.
+## Progress belongs to each member. A third member walking elsewhere cannot
+## hide two mutually blocked members. Queries never advance this state.
+func _advance_inspection_traffic() -> void:
+	for team_id: int in _inspection_orders:
+		var order: Dictionary = _inspection_orders[team_id]
+		if order.slots.is_empty() or order.slots.values().any(func(slot): return not slot.has("entry") or not slot.has("passage_priority")): continue
+		var plan: Dictionary = _coordination_plans.get(team_id, {})
+		var crossing: bool = plan.get("tactic") == &"inspect" and plan.get("phase") == &"executing" and float(plan.get("release_at", INF)) <= elapsed
+		_update_inspection_traffic(order, not crossing)
+
+func _update_inspection_traffic(order: Dictionary, approaching: bool) -> void:
+	var phase: StringName = &"approach" if approaching else &"crossing"
+	if order.get("traffic", {}).get("phase") != phase:
+		order.traffic = {"phase": phase, "positions": {}, "progress_at": {}, "waiting_for": {},
+			"next_repair": elapsed, "repairs": 0, "priority_moves": [], "routes": {}, "goals": {}, "holds": {}, "yield_for": {}}
+	var traffic: Dictionary = order.traffic
+	var waiting: Array = []
+	for id: int in order.slots:
+		var member = _context(id)
+		if member == null: continue
+		var execution := _assignment_for_owner(id)
+		if approaching and execution.get("execution_state") == &"blocked" and execution.get("motion_reason") == &"static_crossing":
+			_fail_inspection_traffic(order)
+			return
+		var position: Vector3 = member.coordination_motion_state().position
+		if not traffic.positions.has(id) or position.distance_to(traffic.positions[id]) >= 0.08:
+			traffic.positions[id] = position
+			traffic.progress_at[id] = elapsed
+		var slot: Dictionary = order.slots[id]
+		var goal: Vector3 = traffic.goals.get(id, slot.entry if approaching else slot.peek)
+		if member._horizontal_distance(goal) > 0.025: waiting.append(id)
+	for arrived: int in traffic.priority_moves.duplicate():
+		if waiting.has(arrived): continue
+		if traffic.yield_for.has(arrived):
+			traffic.holds[arrived] = traffic.yield_for[arrived]
+			traffic.yield_for.erase(arrived)
+			traffic.goals.erase(arrived)
+			traffic.routes.erase(arrived)
+		traffic.priority_moves.erase(arrived)
+	for id: int in traffic.holds.keys():
+		if not waiting.has(traffic.holds[id]):
+			traffic.holds.erase(id)
+			traffic.progress_at[id] = elapsed
+	if waiting.is_empty() or elapsed < float(traffic.next_repair): return
+	traffic.waiting_for.clear()
+	for id: int in waiting:
+		var slot: Dictionary = order.slots[id]
+		traffic.waiting_for[id] = _inspection_passage(_context(id), order, slot, slot.entry if approaching else slot.peek, 0.0).waiting_for
+	var blocked: Array = waiting.filter(func(id): return not _inspection_dependency_advancing(id, waiting, traffic, []))
+	if blocked.is_empty(): return
+	traffic.next_repair = elapsed + 0.5
+	if traffic.repairs >= order.slots.size() * 2:
+		_fail_inspection_traffic(order)
+		return
+	blocked.sort_custom(func(a, b): return order.slots[a].passage_priority < order.slots[b].passage_priority if approaching else order.slots[a].crossing_priority < order.slots[b].crossing_priority)
+	# First change passage order using a locally validated route. Only if no
+	# member can progress do we ask a blocker to vacate a concrete holding point.
+	for id: int in blocked:
+		var member = _context(id)
+		if not member.coordination_motion_state().movable or traffic.holds.has(id): continue
+		var slot: Dictionary = order.slots[id]
+		var goal: Vector3 = traffic.goals.get(id, slot.entry if approaching else slot.peek)
+		var occupied: Array = []
+		for other: int in order.slots:
+			if other != id and _context(other) != null: occupied.append(_context(other).coordination_motion_state().position)
+		var route: PackedVector3Array = member.inspection_route(slot, goal, occupied, traffic.routes.get(id, slot.approach if approaching else slot.crossing))
+		if route.is_empty(): continue
+		traffic.routes[id] = route
+		traffic.priority_moves.erase(id)
+		traffic.priority_moves.append(id)
+		traffic.repairs += 1
+		traffic.progress_at[id] = elapsed
+		return
+	for id: int in blocked:
+		var goal: Vector3 = order.slots[id].entry if approaching else order.slots[id].peek
+		# Free a destination before a merely intermediate obstruction. Otherwise
+		# a three-way swap can require several pointless out-and-back detours.
+		var blockers: Array = order.slots.keys().filter(func(other): return other != id and _context(other) != null and _context(other)._horizontal_distance(goal) < float(order.slots[id].spacing) - 0.06)
+		for other: int in traffic.waiting_for.get(id, []):
+			if not blockers.has(other): blockers.append(other)
+		for blocker: int in blockers:
+			if traffic.holds.has(blocker) or not order.slots.has(blocker): continue
+			var member = _context(blocker)
+			if member == null or not member.coordination_motion_state().movable: continue
+			if _assignment_for_owner(blocker).get("complete", false): continue
+			var occupied: Array = []
+			var destinations: Array = []
+			for other: int in order.slots:
+				if other != blocker and _context(other) != null: occupied.append(_context(other).coordination_motion_state().position)
+				destinations.append(order.slots[other].entry if approaching else order.slots[other].peek)
+			var route: PackedVector3Array = preload("res://scripts/enemy/services/enemy_search_formation.gd").yield_route(member, order.slots[blocker], occupied, destinations)
+			if route.is_empty(): continue
+			traffic.routes[blocker] = route
+			traffic.goals[blocker] = route[-1]
+			traffic.yield_for[blocker] = id
+			traffic.priority_moves.erase(blocker)
+			traffic.priority_moves.append(blocker)
+			traffic.repairs += 1
+			traffic.progress_at[blocker] = elapsed
+			return
+	_fail_inspection_traffic(order)
+
+func _fail_inspection_traffic(order: Dictionary) -> void:
+	# Exhausting legal repair candidates is a layout failure, never a checked
+	# observation. Reuse the original finite whole-party fallback once.
+	for slot: Dictionary in order.slots.values():
+		if not order.failed_sides.has(slot.side): order.failed_sides.append(slot.side)
+	var context = _context(order.members[0])
+	if context != null:
+		var team_id := _coordination_team(context)
+		_drop_coordination_plan(team_id, &"traffic_blocked")
+		_coordination_due[team_id] = elapsed
+
+func _inspection_dependency_advancing(id: int, waiting: Array, traffic: Dictionary, visited: Array) -> bool:
+	if not waiting.has(id) or visited.has(id): return false
+	var member = _context(id)
+	if member != null and float(member.coordination_motion_state().get("available_in", 0.0)) > 0.0: return true
+	var assignment := _assignment_for_owner(id)
+	if not assignment.is_empty() and not assignment.accepted and elapsed < float(assignment.accept_until): return true
+	if elapsed - float(traffic.progress_at.get(id, elapsed)) < 0.35: return true
+	visited = visited.duplicate()
+	visited.append(id)
+	for other: int in traffic.waiting_for.get(id, []):
+		if _inspection_dependency_advancing(other, waiting, traffic, visited): return true
+	return false
+
+## Local actions report only feasibility for their exact current slot. A failed
+## layout must not keep filtering everybody's choices until the clue expires.
+func report_inspection_preparation(context, slot: Dictionary, available: bool, approach_seconds: float = 0.0) -> void:
+	if slot.is_empty() or slot != inspection_order(context): return
+	var team_id := _coordination_team(context)
+	var order: Dictionary = _inspection_orders[team_id]
+	if available:
+		approach_seconds = maxf(approach_seconds, float(slot.get("staging_seconds", 0.0)))
+		# Allow the measured assembly journey, not only two seconds from order
+		# creation. Capture it once per member; polling cannot renew the deadline.
+		var id: int = context.actor.get_instance_id()
+		if not order.prepared_members.has(id) and is_finite(approach_seconds) and approach_seconds >= 0.0:
+			order.prepared_members.append(id)
+			order.prepare_until = maxf(order.prepare_until, minf(order.expires_at, order.created_at + approach_seconds + COORDINATION_WAIT_SECONDS))
+		return
+	if not order.failed_sides.has(slot.side): order.failed_sides.append(slot.side)
+	_coordination_due[team_id] = elapsed
 
 func _prepare_inspection_order(team_id: int, source: Dictionary, ids: Array) -> void:
 	var representative = _context(ids[0])
@@ -781,47 +695,120 @@ func _prepare_inspection_order(team_id: int, source: Dictionary, ids: Array) -> 
 	if clue.is_empty() or environment.has_visual_contact(representative, source.target_id):
 		_inspection_orders.erase(team_id)
 		return
+	var clock_offset: float = representative.evidence_elapsed_seconds - elapsed
+	clue.captured_at = float(clue.captured_at) - clock_offset
+	clue.valid_until = float(clue.valid_until) - clock_offset
 	var eligible: Array = []
 	var spacing := 1.2
 	for id: int in ids:
 		var member = _context(id)
 		if not _coordination_role_allowed(member, source.target_id, &"inspect_left"): continue
 		eligible.append(id)
-		var shape: CollisionShape3D = member.actor.get_node("CollisionShape3D")
-		spacing = maxf(spacing, float(shape.shape.radius) * 2.0 * maxf(shape.global_basis.x.length(), shape.global_basis.z.length()) + float(member.setting(&"cooperation", &"spacing_margin", 0.45)) + 0.2)
+		var motion: Dictionary = member.coordination_motion_state()
+		spacing = maxf(spacing, float(motion.radius) * 2.0 + float(motion.spacing_margin) + 0.2)
 	if eligible.size() < 2:
 		_inspection_orders.erase(team_id)
 		return
 	eligible.sort()
 	var old: Dictionary = _inspection_orders.get(team_id, {})
-	if old.get("evidence_id") == source.evidence_id and old.get("members") == eligible: return
-	var ordered := eligible.duplicate()
-	var right: Vector3 = Vector3.UP.cross(source.front_axis)
+	# The squad chooses one investigation objective, even when no wall was hit
+	# by the last visual ray. Members consume this frozen goal, not separate
+	# guesses made while they advance.
+	if old.get("evidence_id") == source.evidence_id and old.has("clue"):
+		clue = old.clue.duplicate(true)
 	var body = clue.get("cover")
 	if body is WeakRef: body = body.get_ref()
-	if is_instance_valid(body):
-		var box := body.get_node_or_null("CollisionShape3D") as CollisionShape3D
-		if box != null and box.shape is BoxShape3D:
-			var origin: Vector3 = box.to_local(clue.observer_position)
-			var half: Vector3 = box.shape.size * 0.5
-			right = box.global_basis.x.normalized() if absf(origin.z) / maxf(0.01, half.z) >= absf(origin.x) / maxf(0.01, half.x) else box.global_basis.z.normalized()
+	if not is_instance_valid(body) and (old.get("evidence_id") != source.evidence_id or not old.has("clue")):
+		var inferred: Dictionary = preload("res://scripts/enemy/services/enemy_cover_inspection_geometry.gd").nearby_investigation_cover(representative, clue)
+		if not inferred.is_empty():
+			clue.merge(inferred, true)
+			body = clue.cover.get_ref()
+	var box := body.get_node_or_null("CollisionShape3D") as CollisionShape3D if is_instance_valid(body) else null
+	var geometry_key: Array = [body.get_instance_id() if is_instance_valid(body) else 0, box.global_transform if box != null else Transform3D.IDENTITY,
+		box.shape.size if box != null and box.shape is BoxShape3D else Vector3.ZERO,
+		box.disabled if box != null else true, body.collision_layer if is_instance_valid(body) else 0,
+		eligible.map(func(id): return _members[id].navigation_revision)]
+	var kind: StringName = &"cover" if box != null else &"point"
+	var layout := 0 if kind == &"cover" else 1
+	var attempted: Array = []
+	if old.get("evidence_id") == source.evidence_id and old.get("members") == eligible and old.get("geometry_key") == geometry_key:
+		if old.slots.is_empty(): return
+		var current: Dictionary = _coordination_plans.get(team_id, {})
+		if not current.is_empty() and current.tactic == &"inspect": return
+		if old.failed_sides.is_empty() and elapsed < float(old.prepare_until): return
+		attempted = old.attempted.duplicate()
+		if old.kind == &"point":
+			old.slots.clear()
+			revision += 1
+			return
+		# Prefer the side whose local routes did not fail. Every alternative is
+		# tried at most once for this evidence/member set, with a finite window.
+		var alternatives: Array = [1, -1] if old.failed_sides.has(-1) else [-1, 1]
+		var next: Array = alternatives.filter(func(side): return not attempted.has(side))
+		if next.is_empty():
+			kind = &"point"
+			layout = 1
+		else: layout = next[0]
+	if kind == &"cover": attempted.append(layout)
+	else: attempted.append(&"point")
+	var ordered := eligible.duplicate()
+	var right: Vector3 = Vector3.UP.cross(source.front_axis)
+	if kind == &"cover" and box != null and box.shape is BoxShape3D:
+		var origin: Vector3 = box.to_local(clue.observer_position)
+		var half: Vector3 = box.shape.size * 0.5
+		right = box.global_basis.x.normalized() if absf(origin.z) / maxf(0.01, half.z) >= absf(origin.x) / maxf(0.01, half.x) else box.global_basis.z.normalized()
 	ordered.sort_custom(func(a, b): return _context(a).actor.global_position.dot(right) < _context(b).actor.global_position.dot(right))
 	var sides := [[], []]
-	# Outside bodies lead their own side; rear ranks are assigned inward without
-	# reshuffling as the actual formation moves.
-	while not ordered.is_empty():
-		sides[0].append(ordered.pop_front())
-		if not ordered.is_empty(): sides[1].append(ordered.pop_back())
-	for side_members: Array in sides:
-		side_members.sort_custom(func(a, b): return _context(a).actor.global_position.distance_squared_to(source.position) < _context(b).actor.global_position.distance_squared_to(source.position))
+	var contexts := {}
+	for id: int in eligible: contexts[id] = _context(id)
+	# Preserve lateral ordering so members do not exchange sides through one
+	# another. Choose the split from checked routes, not odd/even head count.
+	if layout != 0:
+		sides[0 if layout < 0 else 1] = ordered
+	else:
+		var costs: Dictionary = preload("res://scripts/enemy/services/enemy_search_formation.gd").entry_travel_seconds(contexts,
+			{"kind": kind, "clue": clue, "spacing": spacing, "layout": layout})
+		var split := ceili(ordered.size() * 0.5)
+		var best_finish := INF
+		var best_total := INF
+		var cuts: Array = [split]
+		for cut in range(1, ordered.size()):
+			if cut != split: cuts.append(cut)
+		for cut: int in cuts:
+			var finish := 0.0
+			var total := 0.0
+			for index in ordered.size():
+				var id: int = ordered[index]
+				var side := -1 if index < cut else 1
+				var state: Dictionary = contexts[id].coordination_motion_state()
+				var depth: int = cut if side < 0 else ordered.size() - cut
+				var travel: float = costs[id][side]
+				finish = maxf(finish, float(state.get("available_in", 0.0)) + travel + (depth - 1) * spacing / maxf(0.1, state.move_speed))
+				total += travel
+			if finish < best_finish - 0.1 or (absf(finish - best_finish) <= 0.1 and total < best_total - 0.25):
+				split = cut
+				best_finish = finish
+				best_total = total
+		sides = [ordered.slice(0, split), ordered.slice(split)]
 	var slots := {}
+	var order_expires: float = minf(source.valid_until, elapsed + float(representative.setting(&"cooperation", &"cover_inspection_plan_seconds", 16.0)))
+	if old.get("evidence_id") == source.evidence_id:
+		order_expires = minf(order_expires, float(old.expires_at))
+	_serial += 1
+	var order_id := _serial
 	for side in 2:
 		for row in sides[side].size():
 			slots[sides[side][row]] = {"side": -1 if side == 0 else 1, "row": row,
-				"depth": sides[side].size(), "spacing": spacing, "members": eligible.duplicate(),
-				"predecessor_id": sides[side][row - 1] if row > 0 else 0,
-				"evidence_id": source.evidence_id, "target_id": source.target_id}
-	_inspection_orders[team_id] = {"evidence_id": source.evidence_id, "members": eligible, "slots": slots}
+				"depth": sides[side].size(), "spacing": spacing, "members": eligible.duplicate(), "layout": layout,
+				"kind": kind, "clue": clue.duplicate(true), "front_axis": source.front_axis,
+				"order_id": order_id, "evidence_id": source.evidence_id, "target_id": source.target_id,
+				"issued_at": elapsed, "expires_at": order_expires,
+				"release_condition": &"all_staged"}
+	preload("res://scripts/enemy/services/enemy_search_formation.gd").prepare_slots(contexts, slots)
+	_inspection_orders[team_id] = {"order_id": order_id, "evidence_id": source.evidence_id, "members": eligible, "slots": slots,
+		"kind": kind, "clue": clue.duplicate(true),
+		"attempted": attempted, "failed_sides": [], "created_at": elapsed, "expires_at": slots.values()[0].expires_at,
+		"prepared_members": [], "prepare_until": elapsed + COORDINATION_WAIT_SECONDS, "geometry_key": geometry_key}
 	var previous_plan: Dictionary = _coordination_plans.get(team_id, {})
 	if not previous_plan.is_empty() and previous_plan.tactic != &"inspect":
 		_drop_coordination_plan(team_id, &"whole_squad_search")
@@ -873,6 +860,7 @@ func _coordination_roles(context, target_id: int) -> Array:
 			result.append(&"inspect_left")
 			result.append(&"inspect_right")
 			result.append(&"inspect_follow")
+	if not context.cover_inspection_evidence().is_empty() and not environment.has_visual_contact(context, target_id): return result
 	if target_id != 0 and context.coordinated_cooperation_enabled() and has_team_binding(context):
 		if context.actor.can_use_firearms() and context.can_use_action(&"reload"): result.append(&"assisted_reload")
 		if mobile and context.can_use_action(&"covering_retreat"): result.append(&"assisted_retreat")
@@ -896,6 +884,7 @@ func _coordination_role_allowed(context, target_id: int, role: StringName) -> bo
 		if role != &"search_sector" and target_id == 0: return false
 		return context.coordinated_cooperation_enabled() and context.actor.can_move() and not context.actor.is_vaulting() and not context.actor.melee_active and not context.sees_player and context.can_use_action(&"search")
 	if target_id == 0: return false
+	if not context.cover_inspection_evidence().is_empty() and not environment.has_visual_contact(context, target_id): return false
 	if role == &"assisted_reload":
 		return context.coordinated_cooperation_enabled() and has_team_binding(context) and context.actor.can_use_firearms() and context.can_use_action(&"reload")
 	if role == &"assisted_retreat":
@@ -939,6 +928,7 @@ func _coordination_offer_valid(context, offer: Dictionary, board_time: bool = fa
 		if offer.role == &"inspect_follow" and order.is_empty(): return false
 		if not order.is_empty():
 			if summary.get("formation_row") != order.row or summary.get("side") != order.side: return false
+			if summary.get("formation_layout", 0) != order.get("layout", 0): return false
 			if (order.row > 0) != (offer.role == &"inspect_follow"): return false
 	if offer.role == &"search_sector" and summary.has("sector_key"):
 		if not context.has_method("coordination_search_template_valid") or not context.coordination_search_template_valid(String(summary.sector_key), int(summary.get("source_revision", -1)), int(summary.get("template_navigation_revision", -1))): return false
@@ -963,6 +953,9 @@ func _coordination_offer_valid(context, offer: Dictionary, board_time: bool = fa
 
 ## Atomic publication: malformed arrays preserve the last legitimate batch.
 ## An empty legitimate batch withdraws offers, not a running valid assignment.
+
+func coordination_offer_available(context, offer: Dictionary) -> bool:
+	return _coordination_offer_valid(context, offer)
 
 func submit_offers(context, offers: Array) -> bool:
 	if not _reservation_member_valid(context) or offers.size() > 6: return false
@@ -1016,7 +1009,7 @@ func _coordination_assignment_valid(plan: Dictionary, entry: Dictionary) -> bool
 	if entry.get("failed", false): return false
 	var primary: Dictionary = environment.reservation_value(entry.reservation_id)
 	var pending: Dictionary = environment.reservation_value(entry.get("pending_reservation_id", 0))
-	if primary.is_empty() and (pending.is_empty() or pending.accept_until <= elapsed): return false
+	if primary.is_empty() and (pending.is_empty() or pending.accept_until <= elapsed) and not (entry.get("constraint_mode") == &"advisory" and not entry.accepted): return false
 	if not entry.accepted and entry.accept_until <= elapsed: return false
 	return true
 
@@ -1025,11 +1018,14 @@ func _coordination_assignment_valid(plan: Dictionary, entry: Dictionary) -> bool
 
 func assignment_decision_revision(context) -> int:
 	var owner_id: int = context.actor.get_instance_id()
-	var plan: Dictionary = _coordination_plans.get(_team_by_member.get(owner_id, 0), {})
+	var team_id: int = _team_by_member.get(owner_id, 0)
+	var order: Dictionary = _inspection_orders.get(team_id, {})
+	var order_revision: int = order.get("order_id", 0) if order.get("slots", {}).has(owner_id) else 0
+	var plan: Dictionary = _coordination_plans.get(team_id, {})
 	for entry: Dictionary in plan.get("assignments", []):
 		if entry.actor_id == owner_id:
-			return hash([generation, plan.plan_id, entry.assignment_id, entry.assignment_revision])
-	return 0
+			return hash([generation, order_revision, plan.plan_id, entry.assignment_id, entry.assignment_revision])
+	return hash([generation, order_revision]) if order_revision != 0 else 0
 
 func _assignment_for_owner(owner_id: int) -> Dictionary:
 	var plan: Dictionary = _coordination_plans.get(_team_by_member.get(owner_id, 0), {})
@@ -1102,7 +1098,7 @@ func _coordination_reservation(context, entry: Dictionary, plan: Dictionary) -> 
 	var first: Dictionary = entry.reserved_offers[0]
 	var reservation := _reservation_footprint(context, first.position)
 	reservation.merge(coordination_identity(context))
-	reservation.merge({"reservation_id": entry.reservation_id, "assignment_id": entry.assignment_id,
+	reservation.merge({"reservation_id": entry.reservation_id, "assignment_id": entry.assignment_id, "coordinator_id": get_instance_id(),
 		"owner_id": entry.actor_id, "owner_action": entry.owner_action, "offer_key": first.offer_key,
 		"position_set_key": first.position_set_key, "path_summary": _reservation_summary(first.path_summary),
 		"scope": &"tactical", "role": entry.role, "target_id": plan.target_id, "evidence_id": plan.evidence_id,
@@ -1112,7 +1108,7 @@ func _coordination_reservation(context, entry: Dictionary, plan: Dictionary) -> 
 
 func prepare_assignment(context, identity: Dictionary, offer_key: String) -> Dictionary:
 	var entry := _assignment_token(context, identity)
-	if entry.is_empty() or not entry.allowed_offer_keys.has(offer_key): return {}
+	if entry.is_empty() or not entry.allowed_offer_keys.has(offer_key) or not _advisory_slot_available(context, entry): return {}
 	if entry.accepted and not entry.get("segment_boundary", false): return {}
 	var selected: Dictionary = {}
 	for option: Dictionary in entry.reserved_offers:
@@ -1122,6 +1118,7 @@ func prepare_assignment(context, identity: Dictionary, offer_key: String) -> Dic
 	if not existing_pending.is_empty() and existing_pending.offer_key == offer_key and _reservation_valid(existing_pending):
 		return existing_pending.duplicate(true) if _reservation_position_available(context, existing_pending, existing_pending.reservation_id) else {}
 	var reservation: Dictionary = environment.reservation_value(entry.reservation_id)
+	if reservation.is_empty() and entry.get("constraint_mode") == &"advisory": reservation = _coordination_reservation(context, entry, _coordination_plans[entry.team_id])
 	if reservation.is_empty() or not _reservation_valid(reservation): return {}
 	var proposed := reservation.duplicate(true)
 	proposed.merge({"position": selected.position, "offer_key": selected.offer_key,
@@ -1144,7 +1141,7 @@ func prepare_assignment(context, identity: Dictionary, offer_key: String) -> Dic
 
 func commit_assignment(context, identity: Dictionary, reservation_token: Dictionary) -> bool:
 	var entry := _assignment_token(context, identity)
-	if entry.is_empty(): return false
+	if entry.is_empty() or not _advisory_slot_available(context, entry): return false
 	var expected: int = int(entry.get("pending_reservation_id", entry.reservation_id))
 	if expected != reservation_token.get("reservation_id"): return false
 	var reservation: Dictionary = environment.reservation_value(expected)
@@ -1199,16 +1196,23 @@ func report_assignment(context, report: Dictionary) -> bool:
 	if entry.is_empty(): return false
 	var plan: Dictionary = _coordination_plans[entry.team_id]
 	if report.get("phase_id") != plan.phase_id: return false
+	if entry.role in [&"inspect_left", &"inspect_right", &"inspect_follow"] and report.get("state") not in [&"unavailable", &"self_preservation"]:
+		var traffic: Dictionary = _inspection_orders.get(plan.team_id, {}).get("traffic", {})
+		if int(report.get("motion_revision", 0)) != int(traffic.get("repairs", 0)): return false
 	var state: StringName = report.get("state", &"")
-	if state not in [&"moving", &"arrived", &"complete", &"unavailable", &"self_preservation"]: return false
+	if state not in [&"moving", &"waiting", &"blocked", &"arrived", &"complete", &"unavailable", &"self_preservation"]: return false
 	if not entry.accepted and state not in [&"unavailable", &"self_preservation"]: return false
 	if not report.get("segment_boundary", false) is bool: return false
 	if state in [&"unavailable", &"self_preservation"]:
 		entry.failed = true
 		entry.failure_reason = state
+		_coordination_offers[entry.actor_id] = _coordination_offers.get(entry.actor_id, []).filter(func(offer): return not entry.allowed_offer_keys.has(offer.offer_key))
 		environment.release_tactical_reservation(self, entry.reservation_id)
 		environment.release_tactical_reservation(self, entry.get("pending_reservation_id", 0))
-		_record_coordination_failure(entry, plan)
+		# Self-preservation withdraws this member's capability. It says nothing
+		# about whether the reserved standing position or route is obstructed.
+		var held_post: bool = context.actor.global_position.distance_to(entry.get("selected_position", Vector3.INF)) <= 0.35 and (entry.role == &"front_support" or entry.reserved_offers[0].path_summary.get("holds_position", false))
+		if state != &"self_preservation" and report.get("reason") != &"candidate_unavailable" and not held_post: _record_coordination_failure(entry, plan)
 		_coordination_due[plan.team_id] = elapsed
 		return true
 	if report.get("execution_valid", true) != true: return false
@@ -1229,6 +1233,9 @@ func report_assignment(context, report: Dictionary) -> bool:
 	entry.last_report_at = elapsed
 	entry.segment_boundary = report.get("segment_boundary", false)
 	entry.position = context.actor.global_position
+	entry.execution_state = state
+	entry.waiting_for = report.get("waiting_for", []).duplicate()
+	entry.motion_reason = report.get("motion_reason", &"")
 	entry.ready_for_phase = state == &"arrived"
 	entry.report_phase_id = plan.phase_id
 	return true
@@ -1340,6 +1347,11 @@ func publish_personal_baseline(context, summary: Dictionary) -> void:
 
 func _coordination_snapshot(team_id: int, source: Dictionary, ids: Array) -> Dictionary:
 	_prepare_inspection_order(team_id, source, ids)
+	# A complete team investigation replaces incompatible combat posts. Keep
+	# preparation owned by the coordinator; do not wait for personal holds to end.
+	var order: Dictionary = _inspection_orders.get(team_id, {})
+	if not order.get("slots", {}).is_empty() and _coordination_plans.get(team_id, {}).get("tactic", &"inspect") != &"inspect":
+		_drop_coordination_plan(team_id, &"search_handoff")
 	var environment := _coordination_environment(team_id, ids)
 	var current: Dictionary = _coordination_plans.get(team_id, {})
 	var frame: Dictionary = current.get("tactical_frame", {}) if not current.is_empty() else {"anchor": source.position, "axis": source.front_axis}
@@ -1368,7 +1380,7 @@ func _coordination_snapshot(team_id: int, source: Dictionary, ids: Array) -> Dic
 			"navigation_revision": identity.navigation_revision, "position": context.actor.global_position,
 			"advanced_enabled": context.cooperation_enabled(), "eligible_roles": _coordination_roles(context, source.target_id),
 			"offers": offers, "actual_support": actual, "on_far_side": far,
-			"advisory_active": _recommendations.get(id, {}).get("accepted", false),
+			"advisory_active": _assignment_for_owner(id).get("constraint_mode") == &"advisory" and _assignment_for_owner(id).get("accepted", false),
 			"personal_baseline": _coordination_baselines.get(id, {}).duplicate(true),
 			"status": {"rounds": int(status.get("rounds", 0)), "magazine_capacity": int(status.get("magazine_capacity", 0)),
 				"needs_fire_handoff": float(status.get("rounds", 0)) / maxf(1.0, float(status.get("magazine_capacity", 0))) <= float(context.setting(&"cooperation", &"reload_rounds_ratio", 0.35)),
@@ -1382,11 +1394,12 @@ func _coordination_snapshot(team_id: int, source: Dictionary, ids: Array) -> Dic
 	if has_team_binding(representative):
 		snapshot_value.cooperation_level = team_level(representative)
 		snapshot_value.team_config_revision = team_configuration_revision(representative)
-		var order: Dictionary = _inspection_orders.get(team_id, {})
-		if order.get("evidence_id") == source.evidence_id:
+		if order.get("evidence_id") == source.evidence_id and not order.slots.is_empty():
 			snapshot_value.search_members = order.members.duplicate()
+			snapshot_value.search_sides = [-1, 1] if order.slots.values()[0].layout == 0 else [order.slots.values()[0].layout]
 	for id: int in ids:
-		if _recommendations.get(id, {}).get("accepted", false): snapshot_value.flank_owner_ids.append(id)
+		var task: Dictionary = _assignment_for_owner(id)
+		if task.get("role") == &"flank" and task.get("accepted", false): snapshot_value.flank_owner_ids.append(id)
 	if not current.is_empty():
 		var projected := current.duplicate()
 		projected.erase("assignments")
@@ -1402,7 +1415,7 @@ func _coordination_snapshot(team_id: int, source: Dictionary, ids: Array) -> Dic
 				for reserved: Dictionary in entry.reserved_offers:
 					reserved.path_summary = _coordination_physical_summary(owner, reserved.path_summary, current.target_id)
 			projected.segment_boundary = projected.segment_boundary and entry.get("segment_boundary", true)
-			if entry.role == &"flank" and entry.execution_valid: snapshot_value.flank_owner_ids.append(entry.actor_id)
+			if entry.role == &"flank" and entry.execution_valid and not snapshot_value.flank_owner_ids.has(entry.actor_id): snapshot_value.flank_owner_ids.append(entry.actor_id)
 			projected.assignments.append(entry)
 		snapshot_value.current_plan = projected
 	return snapshot_value
@@ -1410,12 +1423,18 @@ func _coordination_snapshot(team_id: int, source: Dictionary, ids: Array) -> Dic
 func _coordination_find_source(team_id: int, ids: Array) -> Dictionary:
 	var current: Dictionary = _coordination_plans.get(team_id, {})
 	if not current.is_empty(): return _coordination_plan_source(current)
+	var representative = _context(ids[0])
+	var inspection: Dictionary = representative.cover_inspection_evidence() if has_team_binding(representative) and representative.coordinated_cooperation_enabled() else {}
 	var best: Dictionary = {}
 	for key: String in _coordination_sources:
 		if _coordination_sources[key].team_id != team_id: continue
 		var source := _active_coordination_source(key)
 		if source.is_empty() or (not best.is_empty() and source.captured_at <= best.captured_at): continue
-		var offered := false
+		var order: Dictionary = _inspection_orders.get(team_id, {})
+		var offered: bool = order.get("evidence_id") == source.evidence_id and not order.get("slots", {}).is_empty()
+		# Decide to inspect a witnessed hideout before waiting for unrelated
+		# personal combat offers. Local routes still authorize every real slot.
+		if not inspection.is_empty() and inspection.position.distance_to(source.position) <= 0.5 and not environment.has_visual_contact(representative, source.target_id): offered = true
 		for id: int in ids:
 			for offer: Dictionary in _coordination_offers.get(id, []):
 				if offer.target_id == source.target_id and offer.evidence_id == source.evidence_id and _coordination_offer_valid(_context(id), offer, true):
@@ -1447,6 +1466,7 @@ func _coordination_entry(proposal: Dictionary, plan: Dictionary) -> Dictionary:
 	entry.assignment_revision = 1
 	entry.plan_id = plan.plan_id
 	entry.plan_version = plan.plan_version
+	entry.constraint_mode = plan.get("constraint_mode", &"coordinated")
 	entry.target_id = plan.target_id
 	entry.evidence_id = plan.evidence_id
 	entry.created_at = elapsed
@@ -1474,6 +1494,17 @@ func _coordination_plan_duration(proposal: Dictionary) -> float:
 
 func _install_coordination_proposal(team_id: int, source: Dictionary, proposal: Dictionary) -> void:
 	var previous: Dictionary = _coordination_plans.get(team_id, {})
+	if proposal.operation == &"recommend":
+		proposal = proposal.duplicate(true)
+		proposal.constraint_mode = &"advisory"
+		proposal.tactic = &"flank"
+		proposal.required_participants = []
+		proposal.assignments = proposal.get("recommendations", []).filter(func(item): return _assignment_for_owner(item.actor_id).is_empty())
+		for item: Dictionary in proposal.assignments:
+			item.partner_ids = []
+			item.beneficiary_id = 0
+		if proposal.assignments.is_empty(): return
+		proposal.operation = &"extend" if not previous.is_empty() else &"new"
 	if proposal.operation == &"keep": return
 	if proposal.operation == &"handoff" and not previous.is_empty():
 		_install_support_handoff(previous, proposal)
@@ -1482,7 +1513,8 @@ func _install_coordination_proposal(team_id: int, source: Dictionary, proposal: 
 		if not previous.is_empty(): _drop_coordination_plan(team_id, StringName(proposal.reason))
 		return
 	var extending: bool = proposal.operation == &"extend" and not previous.is_empty()
-	var repairing: bool = proposal.operation in [&"repair", &"extend"] and not previous.is_empty()
+	var revising: bool = proposal.operation == &"revise" and not previous.is_empty()
+	var repairing: bool = proposal.operation in [&"repair", &"extend", &"revise"] and not previous.is_empty()
 	var plan: Dictionary = previous.duplicate(true) if repairing else {}
 	if not repairing:
 		_serial += 1
@@ -1491,11 +1523,16 @@ func _install_coordination_proposal(team_id: int, source: Dictionary, proposal: 
 			"tactic": proposal.tactic, "phase": &"assigning", "phase_id": 1, "release_at": -1.0,
 			"created_at": elapsed, "expires_at": minf(source.valid_until, elapsed + _coordination_plan_duration(proposal)),
 			"stage_until": elapsed + COORDINATION_ACCEPT_SECONDS, "assignments": [], "tactical_frame": {}}
+		plan.constraint_mode = proposal.get("constraint_mode", &"coordinated")
+		if plan.constraint_mode == &"advisory":
+			plan.phase = &"executing"
+			plan.release_at = elapsed
 		plan.posture = proposal.get("posture", &"hold")
 		plan.decision = proposal.get("decision", {}).duplicate(true)
 		plan.team_config_revision = team_configuration_revision(_context(_coordination_team_members(team_id)[0]))
+		if plan.tactic == &"inspect" and _inspection_orders.has(team_id): plan.expires_at = minf(plan.expires_at, _inspection_orders[team_id].expires_at)
 		plan.stage_until = minf(plan.stage_until, plan.expires_at)
-	elif not extending:
+	elif not extending and not revising:
 		# Repair never extends the original overall deadline or unaffected leases.
 		plan.phase = &"assigning"
 		plan.phase_id += 1
@@ -1526,7 +1563,7 @@ func _install_coordination_proposal(team_id: int, source: Dictionary, proposal: 
 				for index in entry.partner_ids.size():
 					entry.partner_ids[index] = replaced.get(entry.partner_ids[index], entry.partner_ids[index])
 				entry.partner_ids = entry.partner_ids.filter(func(id): return id != 0)
-			if not extending:
+			if not extending and not revising:
 				entry.ready_for_phase = false
 				# A retained flank has already paid for its completed route segments.
 				# Freeze this repair phase's entry at its actual current body instead
@@ -1535,13 +1572,22 @@ func _install_coordination_proposal(team_id: int, source: Dictionary, proposal: 
 					entry.staging_position = _context(entry.actor_id).actor.global_position
 			retained.append(entry)
 	plan.assignments = retained + new_entries
-	if not repairing:
+	if not repairing or revising:
 		plan.support_links = proposal.get("support_links", []).duplicate(true)
 		for link: Dictionary in plan.support_links:
 			link.expires_at = plan.expires_at
-			link.revision = 1
+			link.revision = int(link.get("revision", 0)) + 1
 			for entry: Dictionary in plan.assignments:
 				if entry.actor_id == link.beneficiary_id and link.request_id == 0: link.request_id = entry.assignment_id
+	elif extending:
+		for proposed_link: Dictionary in proposal.get("support_links", []):
+			var link := proposed_link.duplicate(true)
+			if plan.get("support_links", []).any(func(old): return old.beneficiary_id == link.beneficiary_id): continue
+			link.expires_at = plan.expires_at
+			link.revision = 1
+			for entry: Dictionary in new_entries:
+				if entry.actor_id == link.beneficiary_id and link.request_id == 0: link.request_id = entry.assignment_id
+			plan.support_links.append(link)
 	elif not extending:
 		plan.support_links = plan.get("support_links", []).filter(func(link): return replaced.get(link.get("pending_provider_id", link.provider_id), -1) != 0 and replaced.get(link.beneficiary_id, -1) != 0)
 		for link: Dictionary in plan.get("support_links", []):
@@ -1560,12 +1606,17 @@ func _install_coordination_proposal(team_id: int, source: Dictionary, proposal: 
 				environment.release_tactical_reservation(self, old.get("pending_reservation_id", 0))
 	_coordination_plans[team_id] = plan
 	for entry: Dictionary in new_entries:
-		environment.store_tactical_reservation(self, _coordination_reservation(_context(entry.actor_id), entry, plan))
+		if entry.get("constraint_mode") != &"advisory": environment.store_tactical_reservation(self, _coordination_reservation(_context(entry.actor_id), entry, plan))
 	revision += 1
 
 func _drop_coordination_plan(team_id: int, _reason: StringName) -> void:
 	var plan: Dictionary = _coordination_plans.get(team_id, {})
 	if plan.is_empty(): return
+	# A successfully checked objective is finished, not a failed layout to
+	# retry after its short negative-observation cache expires.
+	var order: Dictionary = _inspection_orders.get(team_id, {})
+	if _reason == &"complete" and plan.tactic == &"inspect" and order.get("evidence_id") == plan.evidence_id:
+		order.slots.clear()
 	for entry: Dictionary in plan.assignments:
 		environment.release_tactical_reservation(self, entry.reservation_id)
 		environment.release_tactical_reservation(self, entry.get("pending_reservation_id", 0))
@@ -1586,13 +1637,24 @@ func _invalidate_coordination_member(owner_id: int, reason: StringName) -> void:
 
 func _record_coordination_failure(entry: Dictionary, plan: Dictionary) -> void:
 	for failure: Dictionary in _coordination_failures:
-		if failure.actor_id == entry.actor_id and failure.position_set_key == entry.reserved_position_sets[0] and failure.team_id == plan.team_id and failure.evidence_id == plan.evidence_id and failure.valid_until > elapsed: return
+		if failure.actor_id == entry.actor_id and failure.get("position_set_key", "") == entry.reserved_position_sets[0] and failure.team_id == plan.team_id and failure.evidence_id == plan.evidence_id and failure.valid_until > elapsed: return
 	_coordination_failures.append({"actor_id": entry.actor_id, "position_set_key": entry.reserved_position_sets[0],
 		"valid_until": elapsed + 2.0, "team_id": plan.team_id, "target_id": plan.target_id, "evidence_id": plan.evidence_id})
 	if _coordination_failures.size() > 128: _coordination_failures.pop_front()
 
 func _install_support_handoff(plan: Dictionary, proposal: Dictionary) -> void:
-	if not plan.get("handoff", {}).is_empty() or proposal.assignments.size() != 1: return
+	if not plan.get("handoff", {}).is_empty(): return
+	if proposal.get("handoff", {}).get("existing_replacement", false):
+		var existing := _assignment_for_owner(proposal.handoff.replacement_provider_id)
+		if existing.is_empty() or not existing.accepted or existing.plan_id != plan.plan_id: return
+		plan.handoff = proposal.handoff.duplicate(true)
+		var travel := 0.0
+		if _context(existing.actor_id).actor.global_position.distance_to(existing.staging_position) > 0.35:
+			for offer: Dictionary in existing.raw_offers: travel = maxf(travel, float(offer.travel_seconds))
+		plan.handoff.expires_at = minf(plan.expires_at, elapsed + travel + COORDINATION_WAIT_SECONDS)
+		revision += 1
+		return
+	if proposal.assignments.size() != 1: return
 	var entry := _coordination_entry(proposal.assignments[0], plan)
 	if entry.is_empty(): return
 	var handoff: Dictionary = proposal.handoff.duplicate(true)
@@ -1633,7 +1695,7 @@ func _advance_support_handoff(plan: Dictionary) -> bool:
 			plan.handoff_wait = {}
 			revision += 1
 		elif replacement.is_empty() or handoff.expires_at <= elapsed:
-			_remove_support_assignment(plan, handoff.replacement_provider_id)
+			if not handoff.get("existing_replacement", false): _remove_support_assignment(plan, handoff.replacement_provider_id)
 			plan.handoff = {}
 			# Keep the old dependency only until its original bounded recovery.
 			plan.handoff_wait = {"provider_id": handoff.previous_provider_id, "until": elapsed}
@@ -1663,8 +1725,22 @@ func _remove_support_assignment(plan: Dictionary, owner_id: int) -> void:
 func _advance_coordination_phase(plan: Dictionary) -> void:
 	if plan.expires_at <= elapsed or _coordination_plan_source(plan).is_empty():
 		for entry: Dictionary in plan.assignments:
-			if not entry.complete: _record_coordination_failure(entry, plan)
+			# Finishing a finite holding lease is normal. Banning an established
+			# post here made every renewal send its occupant elsewhere for 2 s.
+			var member = _context(entry.actor_id)
+			var held: bool = member != null and entry.accepted and (entry.role == &"front_support" or entry.reserved_offers[0].path_summary.get("holds_position", false)) and member.actor.global_position.distance_to(entry.get("selected_position", Vector3.INF)) <= 0.35
+			if not entry.complete and not held: _record_coordination_failure(entry, plan)
 		_drop_coordination_plan(plan.team_id, &"expired")
+		return
+	if plan.get("constraint_mode") == &"advisory":
+		# No all-member barrier. Each accepted task reports through the same
+		# versioned contract and keeps its original deadline and physical lease.
+		for entry: Dictionary in plan.assignments.duplicate():
+			if not entry.complete and _coordination_assignment_valid(plan, entry): continue
+			environment.release_tactical_reservation(self, entry.reservation_id)
+			environment.release_tactical_reservation(self, entry.get("pending_reservation_id", 0))
+			plan.assignments.erase(entry)
+		if plan.assignments.is_empty(): _drop_coordination_plan(plan.team_id, &"complete")
 		return
 	if not _advance_support_handoff(plan): return
 	var all_accepted := true
@@ -1682,7 +1758,7 @@ func _advance_coordination_phase(plan: Dictionary) -> void:
 			return
 		all_accepted = all_accepted and entry.accepted
 		all_complete = all_complete and entry.complete
-		if entry.role != &"front_support":
+		if entry.role != &"front_support" and not entry.reserved_offers[0].path_summary.get("holds_position", false):
 			mover_count += 1
 			movers_complete = movers_complete and entry.complete
 		if plan.required_participants.has(entry.actor_id) and not entry.complete:
@@ -1703,6 +1779,11 @@ func _advance_coordination_phase(plan: Dictionary) -> void:
 		for entry: Dictionary in plan.assignments:
 			for offer: Dictionary in entry.raw_offers: longest = maxf(longest, float(offer.path_summary.staging_seconds))
 		plan.stage_until = minf(plan.expires_at, elapsed + longest + COORDINATION_WAIT_SECONDS)
+		if plan.tactic == &"inspect" and not _inspection_orders.get(plan.team_id, {}).get("slots", {}).is_empty():
+			# Whole-party traffic already detects blocked dependencies and owns
+			# bounded repair. The old nominal arrival timeout must not cancel a
+			# progressing repair. The mission's original fixed expiry still holds.
+			plan.stage_until = plan.expires_at
 		for entry: Dictionary in plan.assignments: entry.support_prepare_until = minf(entry.expires_at, plan.stage_until)
 		# Non-synchronized support/search tasks start after acceptance; inspect
 		# and flank wait on real same-phase entry facts, never preview ready.
@@ -1762,29 +1843,16 @@ func _advance_coordination() -> void:
 		var snapshot_value := _coordination_snapshot(team_id, source, ids)
 		var proposal: Dictionary = _team_planner.propose(snapshot_value)
 		planning_count += 1
+		_coordination_diagnostics[team_id] = {"at": elapsed, "operation": proposal.operation,
+			"reason": proposal.reason, "target_id": source.target_id, "evidence_id": source.evidence_id,
+			"member_count": ids.size(), "assigned_count": proposal.assignments.size(),
+			"offer_counts": snapshot_value.members.map(func(member): return [member.actor_id, member.offers.size()])}
 		_coordination_counters[team_id] = proposal.get("counters", {}).duplicate(true)
-		if proposal.operation == &"recommend":
-			_drop_coordination_plan(team_id, &"advisory_mode")
-			_install_recommendations(team_id, source, proposal)
-		else: _install_coordination_proposal(team_id, source, proposal)
+		_install_coordination_proposal(team_id, source, proposal)
+		_coordination_diagnostics[team_id].assigned_count = _coordination_plans.get(team_id, {}).get("assignments", []).size()
 
-func _recommendation_valid(context, entry: Dictionary) -> bool:
-	if entry.is_empty() or not _reservation_member_valid(context) or context.cooperation_level() != 1 or not context.cooperation_enabled(): return false
-	if entry.expires_at <= elapsed or (not entry.accepted and entry.accept_until <= elapsed): return false
-	var identity := coordination_identity(context)
-	for key in [&"generation", &"member_generation", &"team_id", &"config_revision", &"team_config_revision", &"environment_revision", &"navigation_revision", &"relation_revision"]:
-		if entry.get(key) != identity.get(key): return false
-	var source := _active_coordination_source(_coordination_key(entry.team_id, entry.target_id))
-	return not source.is_empty() and source.evidence_id == entry.evidence_id and entry.target_id == context.cooperation_target_id()
-
-func recommendation(context) -> Dictionary:
-	var entry: Dictionary = _recommendations.get(context.actor.get_instance_id(), {})
-	return entry.duplicate(true) if _recommendation_valid(context, entry) else {}
-
-func recommendation_available(context, identity: Dictionary, offer_key: String) -> bool:
-	var entry: Dictionary = _recommendations.get(context.actor.get_instance_id(), {})
-	if not _recommendation_valid(context, entry) or entry.recommendation_id != identity.get("recommendation_id") or not entry.allowed_offer_keys.has(offer_key): return false
-	if entry.accepted: return true
+func _advisory_slot_available(context, entry: Dictionary) -> bool:
+	if entry.get("constraint_mode") != &"advisory" or entry.accepted: return true
 	var summary: Dictionary = entry.reserved_offers[0].path_summary
 	var anchor: Vector3 = summary.tactical_anchor
 	var axis: Vector3 = summary.tactical_axis
@@ -1795,46 +1863,9 @@ func recommendation_available(context, identity: Dictionary, offer_key: String) 
 		var other = _context(id)
 		if not other.cooperation_enabled(): continue
 		eligible += 1
-		if (other.actor.global_position - anchor).dot(axis) < -FLANK_SIDE_MARGIN or _recommendations.get(id, {}).get("accepted", false): owners[id] = true
+		if (other.actor.global_position - anchor).dot(axis) < -FLANK_SIDE_MARGIN or _assignment_for_owner(id).get("accepted", false): owners[id] = true
 		elif id != context.actor.get_instance_id() and (other.actor.global_position - anchor).dot(axis) > FLANK_SIDE_MARGIN: front = true
 	return front and owners.size() <= floori(float(eligible) / 2.0)
-
-func prepare_recommendation(context, advice: Dictionary, key: String, offer: Dictionary, duration: float) -> Dictionary:
-	if not recommendation_available(context, advice, key): return {}
-	var token := prepare_reservation(context, offer, duration)
-	if token.is_empty(): return {}
-	return environment.attach_recommendation(context, int(token.reservation_id), int(advice.recommendation_id), float(_recommendations[context.actor.get_instance_id()].expires_at))
-
-func accept_recommendation(context, advice: Dictionary, token: Dictionary) -> bool:
-	var entry: Dictionary = _recommendations.get(context.actor.get_instance_id(), {})
-	if not _recommendation_valid(context, entry) or entry.recommendation_id != advice.get("recommendation_id") or token.get("recommendation_id") != entry.recommendation_id: return false
-	# Preparing only reserves space. Another recommendation may acquire the
-	# last flank slot before this transaction commits its selected action.
-	if not recommendation_available(context, advice, entry.allowed_offer_keys[0]): return false
-	if not commit_reservation(context, token): return false
-	entry.accepted = true
-	return true
-
-func _maintain_recommendations() -> void:
-	for id: int in _recommendations.keys():
-		var entry: Dictionary = _recommendations[id]
-		if _recommendation_valid(_context(id), entry): continue
-		_recommendation_cooldowns[id] = elapsed + COORDINATION_PERIOD
-		_recommendations.erase(id)
-	for id in _recommendation_cooldowns.keys():
-		if not _members.has(id) or _recommendation_cooldowns[id] <= elapsed: _recommendation_cooldowns.erase(id)
-
-func _install_recommendations(team_id: int, source: Dictionary, proposal: Dictionary) -> void:
-	for item: Dictionary in proposal.get("recommendations", []):
-		var context = _context(item.actor_id)
-		if _recommendations.has(item.actor_id) or _recommendation_cooldowns.has(item.actor_id) or not _reservation_member_valid(context): continue
-		var entry := item.duplicate(true)
-		entry.merge(coordination_identity(context))
-		_serial += 1
-		entry.merge({"recommendation_id": _serial, "team_id": team_id, "target_id": source.target_id, "evidence_id": source.evidence_id,
-			"created_at": elapsed, "accept_until": elapsed + COORDINATION_ACCEPT_SECONDS,
-			"expires_at": minf(source.valid_until, elapsed + maxf(4.0, float(context.setting(&"cooperation", &"flank_plan_seconds", 14.0)))), "accepted": false})
-		_recommendations[item.actor_id] = entry
 
 func _context(id: int):
 	return _members[id].context.get_ref() if _members.has(id) else null
@@ -1920,8 +1951,8 @@ func rollback_reservation(context, token: Dictionary) -> void:
 func team_configuration_revision(context) -> int:
 	return environment.team_configuration_revision(context)
 
-func team_level(context, legacy_level: int = 0) -> int:
-	return environment.team_level(context, legacy_level)
+func team_level(context) -> int:
+	return environment.team_level(context)
 
 func validate_reservation(context, token: Dictionary) -> bool:
 	return environment.validate_reservation(context, token)

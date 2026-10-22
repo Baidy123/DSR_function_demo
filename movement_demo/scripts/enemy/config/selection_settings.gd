@@ -47,8 +47,8 @@ func _init() -> void:
 	set(value):
 		debug_cover_selection = value
 		mark_override(&"debug_cover_selection")
-## Debug运行时显示攻击区域：绿=可用，橙=未通过，暗红=内圈禁用；只用目击记忆。
-@export var debug_attack_points: bool = true:
+## 高开销旧区域预览，仅专项诊断手动启用；Debug 总开关不自动开启。
+@export var debug_attack_points: bool = false:
 	set(value):
 		debug_attack_points = value
 		mark_override(&"debug_attack_points")

@@ -107,21 +107,23 @@ func _recommendation_commit_quota() -> void:
 		var offer := _tactical_offer(contexts[index], &"flank", _point(index * 3, 4), key, source)
 		# Two successive suggestion batches may coexist before either receiver
 		# selects one. Suggestions themselves intentionally own no reservation.
-		coordinator._install_recommendations(source.team_id, source, {"recommendations": [{"actor_id": actors[index].get_instance_id(), "owner_action": &"cooperate", "role": &"flank", "allowed_offer_keys": [key], "reserved_offers": [offer]}]})
-	var first: Dictionary = board.recommendation(contexts[1])
-	var second: Dictionary = board.recommendation(contexts[2])
+		check(board.submit_offers(contexts[index], [offer]), "Quota transaction uses a validated current capability")
+		coordinator._install_coordination_proposal(source.team_id, source, {"operation": &"recommend", "recommendations": [{"actor_id": actors[index].get_instance_id(), "owner_action": &"cooperate", "role": &"flank", "allowed_offer_keys": [key], "reserved_offers": [offer]}]})
+	var first: Dictionary = board.assignment(contexts[1])
+	var second: Dictionary = board.assignment(contexts[2])
 	check(not first.is_empty() and not second.is_empty() and board.reservation_snapshot(contexts[0]).is_empty(), "Successive unselected recommendations create no executable flank reservation")
 	if first.is_empty() or second.is_empty(): return
-	var first_token: Dictionary = board.prepare_recommendation(contexts[1], first, first.allowed_offer_keys[0], _offer(contexts[1], _point(3, 4), "quota-a"), 4.0)
-	var second_token: Dictionary = board.prepare_recommendation(contexts[2], second, second.allowed_offer_keys[0], _offer(contexts[2], _point(6, 4), "quota-b"), 4.0)
+	var first_token: Dictionary = board.prepare_assignment(contexts[1], first, first.allowed_offer_keys[0])
+	var second_token: Dictionary = board.prepare_assignment(contexts[2], second, second.allowed_offer_keys[0])
 	check(not first_token.is_empty() and not second_token.is_empty(), "Both nonconflicting transactions can prepare before either owns the one available flank slot")
 	if first_token.is_empty() or second_token.is_empty(): return
-	check(board.accept_recommendation(contexts[1], first, first_token), "The first actual recommendation commit acquires the available flank slot")
-	check(not board.accept_recommendation(contexts[2], second, second_token), "Commit rechecks the current physical and accepted quota after another transaction wins the last slot")
-	board.rollback_reservation(contexts[2], second_token)
-	check(board.recommendation(contexts[1]).expires_at == first.expires_at and not board.recommendation(contexts[2]).accepted, "Quota rejection neither accepts the losing suggestion nor renews the winner's deadline")
+	check(board.commit_assignment(contexts[1], first, first_token), "The first actual recommendation commit acquires the available flank slot")
+	check(not board.commit_assignment(contexts[2], second, second_token), "Commit rechecks the current physical and accepted quota after another transaction wins the last slot")
+	board.rollback_assignment(contexts[2], second, second_token)
+	check(board.assignment(contexts[1]).expires_at == first.expires_at and board.assignment(contexts[2]).is_empty(), "Quota rejection rolls back the losing task without renewing the winner's deadline")
 
 func _tactical_setup() -> void:
+	Fixture.bind_team(arena, 2, &"tactical_test")
 	for index in actors.size():
 		var ai = actors[index].get_node("AI")
 		Fixture.set_training_action(ai, &"cooperate", true)
@@ -256,7 +258,8 @@ func _snapshot_isolation() -> void:
 	job.reserved_offers[0].path_summary.blocked_position_sets.append("caller_mutation")
 	job.reserved_offers[0].position = _point(30)
 	check(board.coordination_debug_snapshot(&"_coordination_plans")[stored.team_id] == stored, "Mutating nested public assignment values cannot alter the board's accepted plan")
-	var snapshot_value: Dictionary = board._coordination_snapshot(stored.team_id, source, board._coordination_team_members(stored.team_id))
+	var coordinator = board.coordinator_for(contexts[0])
+	var snapshot_value: Dictionary = coordinator._coordination_snapshot(stored.team_id, source, coordinator._coordination_team_members(stored.team_id))
 	check(board.coordination_debug_snapshot(&"_coordination_plans")[stored.team_id] == stored and board.coordination_debug_snapshot(&"_coordination_offers") == offers, "Projecting execution validity and current geometry does not modify the stored plan or previews")
 	check(snapshot_value.current_plan.assignments.all(func(entry): return not entry.has("raw_offers")), "Planner snapshots omit internal previews for every assignment")
 	snapshot_value.current_plan.assignments[0].reserved_offers[0].path_summary.blocked_position_sets.append("planner_mutation")
@@ -370,6 +373,9 @@ func _flank_facts() -> void:
 	var accepted_flank := _accept(1)
 	check(not accepted_front.is_empty() and not accepted_flank.is_empty(), "Front and flank accept their actual production assignment transactions")
 	if not accepted_front.is_empty() and not accepted_flank.is_empty():
+		var coordinator = contexts[0]._coordinator()
+		var snapshot: Dictionary = coordinator._coordination_snapshot(source.team_id, source, actors.map(func(actor): return actor.get_instance_id()))
+		check(snapshot.flank_owner_ids == [actors[1].get_instance_id()] and snapshot.members.all(func(member): return not member.advisory_active), "An accepted strong front post consumes no flank quota and no advisory ownership")
 		_advance(0.01)
 		# Accepting clears the old execution's fire status. Publish the current
 		# accepted front's measured readiness before requesting phase release.
@@ -456,7 +462,7 @@ func _lifecycle_and_repair() -> void:
 
 
 func _geometry_contract() -> void:
-	var planner = board._legacy_coordinator._team_planner
+	var planner = board.coordinator_for(contexts[0])._team_planner
 	var first: Dictionary = board._reservation_footprint(contexts[0], _point(0))
 	var second: Dictionary = board._reservation_footprint(contexts[1], _point(1.0))
 	first.path_summary = {}
@@ -506,14 +512,16 @@ func _geometry_contract() -> void:
 	var original_shape: Shape3D = collider.shape
 	collider.shape = original_shape.duplicate()
 	collider.shape.radius = 0.5
-	var training = actors[0].get_node("AI").training.profile
+	var profile = arena.team_cooperation_bindings[-1].profile
 	var original_margin: float = contexts[0].setting(&"cooperation", &"spacing_margin", 0.45)
-	training.set_setting(&"cooperation", &"spacing_margin", 0.6)
+	profile.spacing_margin = 0.6
+	arena.enemy_environment()
 	var live_summary: Dictionary = board._coordination_physical_summary(contexts[0], {}, contexts[0].cooperation_target_id())
 	var live_footprint: Dictionary = board._reservation_footprint(contexts[0], actors[0].global_position)
 	check(live_summary.body_radius == live_footprint.radius and live_summary.body_height == live_footprint.height and live_summary.spacing_margin == live_footprint.margin and is_equal_approx(live_summary.body_radius, 0.5) and is_equal_approx(live_summary.spacing_margin, 0.6), "Planner input follows the actual changed collision shape and this actor's spacing setting")
 	collider.shape = original_shape
-	training.set_setting(&"cooperation", &"spacing_margin", original_margin)
+	profile.spacing_margin = original_margin
+	arena.enemy_environment()
 	var exhausted := {"conflict_limit": 2048, "counters": {"conflict_checks": 2048, "conflict_limit_reached": false}}
 	check(planner._conflict(exhausted, {"position": _point(-4)}, {"position": _point(4)}) and exhausted.counters.conflict_checks == 2048, "Optional full geometry remains inside the original shared conflict budget")
 

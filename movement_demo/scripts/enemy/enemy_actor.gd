@@ -155,7 +155,7 @@ func _physics_process(delta: float) -> void:
 
 
 ## 执行方向与速度；调用者负责决定目的地。
-func move_character(direction: Vector3, delta: float, speed_multiplier: float = 1.0, stop_position: Vector3 = Vector3.INF) -> void:
+func move_character(direction: Vector3, delta: float, speed_multiplier: float = 1.0, stop_position: Vector3 = Vector3.INF, scheduled_members: Array = []) -> void:
 	_local_movement_velocity = Vector3.ZERO
 	if get_tree().paused: return
 	if body_motion.active():
@@ -167,7 +167,7 @@ func move_character(direction: Vector3, delta: float, speed_multiplier: float = 
 	# 自主移动与受击外力分开：任何行为都不能绕过前摇限制。
 	if not can_move(): direction = Vector3.ZERO
 	speed_multiplier = get_effective_movement_multiplier(speed_multiplier)
-	_local_movement_velocity = local_motion.resolve(Vector3(direction.x, 0.0, direction.z) * move_speed * speed_multiplier, delta, move_speed * speed_multiplier, stop_position)
+	_local_movement_velocity = local_motion.resolve(Vector3(direction.x, 0.0, direction.z) * move_speed * speed_multiplier, delta, move_speed * speed_multiplier, stop_position, scheduled_members)
 	velocity.x = _local_movement_velocity.x
 	velocity.z = _local_movement_velocity.z
 	velocity += _advance_hit_push(delta)

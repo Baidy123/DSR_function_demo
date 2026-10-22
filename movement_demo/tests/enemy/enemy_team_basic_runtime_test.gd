@@ -44,8 +44,9 @@ func _run() -> void:
 	quit(1 if failures else 0)
 
 func _fixture(count: int, advanced: bool) -> Dictionary:
-	var scene = preload("res://tests/enemy/enemy_fire_fixture.gd").legacy_scene()
+	var scene = preload("res://tests/enemy/enemy_fire_fixture.gd").unbound_scene()
 	var arena = scene.get_node("Arena")
+	preload("res://tests/enemy/enemy_fire_fixture.gd").bind_team(arena, 2 if advanced else 0)
 	for child in arena.get_children():
 		if child.has_node("AI"): child.free()
 	var region: NavigationRegion3D = arena.get_node("NavigationRegion3D")

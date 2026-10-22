@@ -9,7 +9,7 @@ func _initialize() -> void:
 
 
 func _run() -> void:
-	var scene = preload("res://tests/enemy/enemy_fire_fixture.gd").legacy_scene()
+	var scene = Fixture.single_member_scene()
 	root.add_child(scene)
 	current_scene = scene
 	# 固定射击节奏测试使用无遮挡环境；地图射界另有专项回归。
@@ -124,9 +124,14 @@ func _run() -> void:
 
 func _check_real_frames() -> void:
 	current_scene.free()
-	var scene = preload("res://tests/enemy/enemy_fire_fixture.gd").legacy_scene()
+	var scene = Fixture.single_member_scene()
 	root.add_child(scene)
 	current_scene = scene
+	# Match the unobstructed timing fixture above. Saved squad members and
+	# saved cover geometry must not silently turn this into a line-of-fire test.
+	for region in get_nodes_in_group("cover_region"):
+		region.collision_layer = 0
+		region.remove_from_group("cover_region")
 	var e = preload("res://tests/enemy/enemy_fire_fixture.gd").primary_enemy(scene)
 	var ai = e.get_node("AI")
 	Fixture.configure_timing(e)

@@ -62,7 +62,7 @@ func _run() -> void:
 	var reloaded = ResourceLoader.load(saved, "", ResourceLoader.CACHE_MODE_IGNORE)
 	check(reloaded.selected_tactics == training.selected_tactics and reloaded.setting(&"tactics", &"ranged_min_distance") == 3.0, "保存重载保留选择与显式参数")
 	check(reloaded.setting(&"tactics", &"ranged_max_distance", 0.0, {&"ranged_max_distance": 12.0}) == 12.0, "保存不能把未设置的默认数值变成显式覆盖")
-	var scene = preload("res://tests/enemy/enemy_fire_fixture.gd").legacy_scene()
+	var scene = preload("res://tests/enemy/enemy_fire_fixture.gd").unbound_scene()
 	root.add_child(scene)
 	current_scene = scene
 	var enemy = preload("res://tests/enemy/enemy_fire_fixture.gd").primary_enemy(scene)
@@ -119,6 +119,15 @@ func _run() -> void:
 	for id in [&"suppression", &"exit_suppression", &"attack_position", &"covering_retreat"]:
 		check(not controller.contains('&"' + String(id) + '"') and not selector.contains('&"' + String(id) + '"'), "协调器和评分器无具体战术分支：" + String(id))
 	check(not context.contains("var actions") and not context.contains("var controller"), "共享上下文不暴露动作注册表")
+	var area_source := FileAccess.get_file_as_string("res://scripts/enemy/services/enemy_cooperation.gd")
+	var squad_source := FileAccess.get_file_as_string("res://scripts/enemy/services/squad_coordination.gd")
+	var search_source := FileAccess.get_file_as_string("res://scripts/enemy/actions/enemy_search.gd")
+	var cooperation_source := FileAccess.get_file_as_string("res://scripts/enemy/actions/enemy_cooperation_action.gd")
+	check(not area_source.contains("_legacy_coordinator") and not context.contains('2 if can_use_action(&"cooperate")'), "个人训练不能隐式创建或升级小队协调器")
+	for removed in ["func claim(", "func update_claim(", "func release(", "_flank_rounds", "var _recommendations"]:
+		check(not area_source.contains(removed) and not squad_source.contains(removed), "删除旧团队控制入口：" + removed)
+	check(not search_source.contains("_search_claim") and not context.contains("cooperation_claim_search"), "普通搜索只使用公共空间预约，不重复申请强配合许可")
+	check(not cooperation_source.contains("var _claim") and not cooperation_source.contains("_overwatch_candidate") and not cooperation_source.contains("_begin_recommended"), "协作模块只保留统一团队任务执行")
 	scene.queue_free()
 	await process_frame
 	print("MODULAR CONTRACT: %d/%d passed" % [checks - failed, checks])

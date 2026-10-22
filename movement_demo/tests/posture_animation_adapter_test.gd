@@ -145,7 +145,7 @@ func _build_fixture() -> void:
 	scene = Node3D.new()
 	scene.name = "PostureAnimationFixture"
 	if player_case:
-		var donor = preload("res://tests/enemy/enemy_fire_fixture.gd").legacy_scene()
+		var donor = preload("res://tests/enemy/enemy_fire_fixture.gd").unbound_scene()
 		actor = donor.get_node("Player")
 		donor.remove_child(actor)
 		donor.free()

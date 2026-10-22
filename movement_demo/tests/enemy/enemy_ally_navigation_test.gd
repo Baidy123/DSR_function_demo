@@ -13,7 +13,7 @@ func _initialize() -> void:
 	_run.call_deferred()
 
 func _setup() -> void:
-	scene = preload("res://tests/enemy/enemy_fire_fixture.gd").legacy_scene()
+	scene = preload("res://tests/enemy/enemy_fire_fixture.gd").unbound_scene()
 	arena = scene.get_node("Arena")
 	var navigation: NavigationRegion3D = arena.get_node("NavigationRegion3D")
 	var mesh := NavigationMesh.new()

@@ -10,7 +10,7 @@ func _initialize() -> void:
 
 
 func _run() -> void:
-	var scene: Node = preload("res://tests/enemy/enemy_fire_fixture.gd").legacy_scene()
+	var scene: Node = preload("res://tests/enemy/enemy_fire_fixture.gd").unbound_scene()
 	root.add_child(scene)
 	player = scene.get_node("Player")
 	visual = player.get("visual")

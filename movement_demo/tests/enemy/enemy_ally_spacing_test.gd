@@ -106,6 +106,31 @@ func _run() -> void:
 
 	await _reset(Vector3(-0.4, 0, 0), Vector3(0.4, 0, 0))
 	_set_spacing(true)
+	for actor in actors: actor.move_character(Vector3.ZERO, STEP)
+	var scheduled_pending := actors.any(func(actor): return actor.local_motion._point.is_finite())
+	var scheduled_members: Array = actors.map(func(actor): return actor.get_instance_id())
+	original = _positions()
+	for frame in 45:
+		await physics_frame
+		for actor in actors: actor.move_character(Vector3.ZERO, STEP, 1.0, actor.global_position, scheduled_members)
+	check(scheduled_pending and _distance_moved(original) < 0.001, "A shared movement schedule cancels an old same-party spacing correction and holds actual positions")
+	for frame in 90:
+		await physics_frame
+		for actor in actors: actor.move_character(Vector3.ZERO, STEP, 1.0, actor.global_position, [actor.get_instance_id()])
+	check(actors[0].global_position.distance_to(actors[1].global_position) >= 1.08, "Scheduled membership does not suppress spacing against a nonparticipant")
+
+	await _reset(Vector3(-2, 0, 0), Vector3.ZERO)
+	_set_spacing(true)
+	var scheduled_safe := true
+	for frame in 120:
+		await physics_frame
+		actors[0].move_character(Vector3.RIGHT, STEP, 1.0, arena.to_global(Vector3(2, 0, 0)), scheduled_members)
+		actors[1].move_character(Vector3.ZERO, STEP, 1.0, actors[1].global_position, scheduled_members)
+		scheduled_safe = scheduled_safe and actors[0].global_position.distance_to(actors[1].global_position) >= 0.69
+	check(scheduled_safe and actors[0].global_position.x < actors[1].global_position.x and absf(actors[0].global_position.z - arena.global_position.z) < 0.01, "A scheduled move still stops at an occupied body and cannot invent a personal detour")
+
+	await _reset(Vector3(-0.4, 0, 0), Vector3(0.4, 0, 0))
+	_set_spacing(true)
 	var immobile = actors[1 - low]
 	check(immobile.begin_melee(0.5), "Spacing interruption control enters a real melee windup")
 	var fixed_position: Vector3 = immobile.global_position

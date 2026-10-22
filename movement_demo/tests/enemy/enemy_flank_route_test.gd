@@ -80,8 +80,9 @@ func _proposal_contract() -> void:
 
 func _fixture(distance: float, anchor_z: float = 0.0) -> Dictionary:
 	seed(9137)
-	var scene = preload("res://tests/enemy/enemy_fire_fixture.gd").legacy_scene()
+	var scene = preload("res://tests/enemy/enemy_fire_fixture.gd").unbound_scene()
 	var arena = scene.get_node("Arena")
+	preload("res://tests/enemy/enemy_fire_fixture.gd").bind_team(arena, 2)
 	var flanker = preload("res://tests/enemy/enemy_fire_fixture.gd").primary_enemy(arena)
 	for child in arena.get_children():
 		if child != flanker and child.has_node("AI"): child.free()

@@ -45,6 +45,7 @@ func _ready() -> void:
 	$Debug.visible = OS.is_debug_build()
 	invincible_toggle.toggled.connect(_set_debug_invincible)
 	$Debug/Controls/NoiseRanges.toggled.connect($NoiseRanges.set_enabled)
+	$NoiseRanges.set_enabled($Debug/Controls/NoiseRanges.button_pressed)
 	debug_settings.changed.connect(_apply_debug_mode)
 	debug_settings.set_enabled(debug_mode)
 	_apply_debug_mode(debug_settings.enabled)

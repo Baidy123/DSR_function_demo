@@ -2,8 +2,8 @@ extends "res://scripts/enemy/actions/enemy_action.gd"
 
 const FlankRoute = preload("res://scripts/enemy/services/enemy_flank_route.gd")
 
-## A bounded personal move with an exclusive destination and a public support request.
-## Shared services never execute this route or claim that a promise is real protection.
+## Prepared navigation/fire capabilities and execution of one coordinator task.
+## The coordinator owns roles; Utility chooses whether to accept advisory work.
 enum Phase { NONE, WAIT_SUPPORT, MOVE, HOLD }
 var phase: Phase = Phase.NONE
 var destination := Vector3.INF
@@ -11,8 +11,6 @@ var _known := Vector3.INF
 var _target_id := 0
 var _remaining := 0.0
 var _waiting := 0.0
-var _hold_remaining := 0.0
-var _claim: Dictionary = {}
 var _had_support := false
 var _waypoint := Vector3.INF
 var _best_distance := INF
@@ -21,7 +19,6 @@ var _recheck := 0.0
 var _failed_until := 0.0
 var _failed_generation := -1
 var _route_distance := 0.0
-var _route_position := Vector3.INF
 var _checkpoints := PackedVector3Array()
 var _segment := 0
 var _segment_committed := false
@@ -29,7 +26,6 @@ var _direct_final := false
 var _support_grace := 0.0
 var _checkpoint_wait := 0.0
 var _coordination_assignment: Dictionary = {}
-var _recommendation: Dictionary = {}
 var _coordination_offers: Array[Dictionary] = []
 var _coordination_local_candidates: Dictionary = {}
 var _coordination_complete := false
@@ -41,16 +37,10 @@ var _front_contact_until := -INF
 
 func evaluation_revision() -> int:
 	if context == null or context.cooperation == null or context.cooperation_member_count() < 2: return 0
-	if _unified_coordinator():
-		var source: Dictionary = context.coordination_source(context.cooperation_target_id())
-		return hash([source.get("evidence_id", 0), source.get("position", Vector3.INF), source.get("front_axis", Vector3.ZERO), _running])
-	return hash([context.cooperation.flank_geometry_revision(context), _running])
-
-func _unified_coordinator() -> bool:
-	return context != null and context.cooperation != null and context.has_method("coordination_source") and context.cooperation.has_method("assignment")
+	var source: Dictionary = context.coordination_source(context.cooperation_target_id())
+	return hash([source.get("evidence_id", 0), source.get("position", Vector3.INF), source.get("front_axis", Vector3.ZERO), _running])
 
 func _flank_opportunity() -> Dictionary:
-	if not _unified_coordinator(): return context.cooperation.flank_opportunity(context)
 	var source: Dictionary = context.coordination_source(context.cooperation_target_id())
 	if source.is_empty() or not source.get("flank_clustered", false): return {}
 	# This is a geometry frame only. The planner alone determines quotas and owners.
@@ -60,8 +50,8 @@ func _flank_opportunity() -> Dictionary:
 func _move_target() -> Vector3:
 	return _checkpoints[_segment] if _segment < _checkpoints.size() else destination
 
-func _personal_advance_allowed(point: Vector3) -> bool:
-	if not _unified_coordinator() or not actor.can_use_firearms(): return true
+func _front_geometry_allowed(point: Vector3) -> bool:
+	if not actor.can_use_firearms(): return true
 	var source: Dictionary = context.coordination_source(context.cooperation_target_id())
 	if source.is_empty(): return true
 	# Crossing the frozen front belongs to an assigned flank route. Recheck this
@@ -72,8 +62,6 @@ func _support_cycle() -> bool:
 	if not _coordination_assignment.is_empty():
 		var assigned: Dictionary = context.coordination_support_state()
 		if assigned.get("linked", false): return assigned.get("cycle_valid", false) and float(assigned.get("resume_seconds", INF)) <= float(_setting(&"support_recovery_seconds", 2.0))
-	for member: Dictionary in _allies():
-		if member.get("support_cycle_valid", false) and not member.get("moving", false) and float(member.get("support_resume_seconds", INF)) <= float(_setting(&"support_recovery_seconds", 2.0)): return true
 	return false
 
 func _support_continues() -> bool:
@@ -100,8 +88,6 @@ func _support_ready(segment_seconds: float = -1.0) -> bool:
 	if not _coordination_assignment.is_empty():
 		var assigned: Dictionary = context.coordination_support_state()
 		if assigned.get("linked", false): return assigned.get("ready", false) and float(assigned.get("support_seconds", 0.0)) >= required
-	for member: Dictionary in _allies():
-		if member.get("ready", false) and not member.get("moving", false) and float(member.get("support_seconds", 0.0)) >= required: return true
 	return false
 
 func _fresh_allowed() -> bool:
@@ -131,7 +117,9 @@ func _deployment_points(known: Vector3) -> Array:
 	return points
 
 func evaluation_points() -> Array:
-	if _running: return []
+	# Holding an assigned post must not stop the bounded navigation service
+	# preparing alternatives for the coordinator's next decision boundary.
+	if _running and not (_deployment_enabled() and phase == Phase.HOLD): return []
 	if not is_enabled() or not context.cooperation_enabled() or actor.move_speed <= 0.0 or _allies().is_empty(): return []
 	var evidence := _evidence()
 	if not _live_evidence(evidence): return []
@@ -147,6 +135,9 @@ func evaluation_points() -> Array:
 	var side := forward.cross(Vector3.UP)
 	var step: float = maxf(0.5, float(_setting(&"flank_distance", 3.0)))
 	var points: Array = []
+	var melee_approach: Array = []
+	if not actor.can_use_firearms():
+		melee_approach.append({"position": actor.global_position + forward * minf(step, maxf(0.0, radial.length() - 1.0)), "team_posture": &"concentrate"})
 	# These are finite local proposals, not a synchronous map search.
 	for sign_value in [-1.0, 1.0]:
 		var lateral: Vector3 = actor.global_position + side * step * sign_value
@@ -155,8 +146,6 @@ func evaluation_points() -> Array:
 		var angle: float = deg_to_rad(clampf(float(_setting(&"flank_angle_degrees", 60.0)), 0.0, 90.0)) * sign_value
 		var offset: Vector3 = radial.rotated(Vector3.UP, angle) - radial
 		points.append({"position": actor.global_position + offset.limit_length(step)})
-	if not actor.can_use_firearms():
-		points.append({"position": actor.global_position + forward * minf(step, maxf(0.0, radial.length() - 1.0))})
 	# Existing cover samples keep their ownership and clearance checks.
 	var nearby: Array = context.spatial.regions()
 	nearby.sort_custom(func(a, b): return actor.global_position.distance_squared_to(a.global_position) < actor.global_position.distance_squared_to(b.global_position))
@@ -167,12 +156,12 @@ func evaluation_points() -> Array:
 		points = points.filter(func(point): return (point.position - opportunity.anchor).dot(opportunity.front_axis) >= -0.5)
 	# Enumeration is synchronous and read-only. Resolve the same planning source
 	# once for the whole list, rather than rebuilding it for every cover cell.
-	if _unified_coordinator() and actor.can_use_firearms():
+	if actor.can_use_firearms():
 		var source: Dictionary = context.coordination_source(context.cooperation_target_id())
 		if not source.is_empty():
 			points = points.filter(func(point): return (point.position - source.position).dot(source.front_axis) >= 0.5)
 	var deployment := _deployment_points(known)
-	return arcs.slice(0, 2) + deployment.slice(0, 2) + arcs.slice(2) + deployment.slice(2) + points
+	return melee_approach + arcs.slice(0, 2) + deployment.slice(0, 2) + arcs.slice(2) + deployment.slice(2) + points
 
 func evaluation_weight() -> int:
 	return 2
@@ -206,12 +195,12 @@ func evaluate_point(point: Variant) -> Dictionary:
 	if point.has("checkpoints"): return _assess_flank(point)
 	var known: Vector3 = evidence.position
 	var position: Vector3 = point.get("position", Vector3.INF)
-	if not _personal_advance_allowed(position): return {}
+	if not _front_geometry_allowed(position): return {}
 	if not position.is_finite() or actor.global_position.distance_to(position) < 0.5 or not context.is_position_free(position): return {}
 	if context.is_utility_destination_blocked(position): return {}
 	var path: PackedVector3Array = selection._path_to(actor.global_position, position)
 	if path.is_empty(): return {}
-	if point.has("team_posture") and not FlankRoute.safe_path(path, known): return {}
+	if actor.can_use_firearms() and point.has("team_posture") and not FlankRoute.safe_path(path, known): return {}
 	var quality := _angle_gain(position, known)
 	if point.get("team_posture") == &"concentrate":
 		for ally: Dictionary in _allies():
@@ -369,19 +358,6 @@ func _candidate(assessment: Dictionary) -> Dictionary:
 		candidate.segment_index = _segment if _running else 0
 	return candidate
 
-func _slot_available(task: Dictionary) -> bool:
-	if _unified_coordinator(): return true
-	if task.get("kind", &"") == &"flank":
-		if _running and not _claim.is_empty(): return true
-		var opportunity: Dictionary = context.cooperation.flank_opportunity(context)
-		if int(opportunity.get("remaining_slots", 0)) <= 0 or opportunity.anchor.distance_to(task.get("flank_anchor", Vector3.INF)) > 0.1 or opportunity.front_axis.distance_to(task.get("flank_axis", Vector3.ZERO)) > 0.01: return false
-		for claim: Dictionary in context.cooperation_snapshot().get("claims", []):
-			if claim.kind == &"flank" and claim.owner_id != actor.get_instance_id() and claim.flank_destination.distance_to(task.flank_destination) < 1.2: return false
-		return true
-	for claim: Dictionary in context.cooperation_snapshot(task.get("target_id", 0)).get("claims", []):
-		if claim.get("owner_id", 0) != actor.get_instance_id() and claim.get("kind", &"") == &"advance" and String(claim.get("lane_id", "")) == String(task.get("lane_id", "")): return false
-	return true
-
 func expand_route_candidates(candidates: Array[Dictionary]) -> Array[Dictionary]:
 	# This action measures strict walking routes. A vault needs its own timing and
 	# support gate; the shared route expander must not copy walking credit to it.
@@ -390,122 +366,49 @@ func expand_route_candidates(candidates: Array[Dictionary]) -> Array[Dictionary]
 		if candidate.get("route", {}).is_empty(): result.append(candidate)
 	return result
 
-func collect_candidates(_visible: bool) -> Array[Dictionary]:
+func collect_candidates(visible: bool) -> Array[Dictionary]:
 	_coordination_offers.clear()
 	var result: Array[Dictionary] = []
 	if not is_enabled() or not context.cooperation_enabled() or actor.move_speed <= 0.0: return result
 	if actor.can_use_firearms() and actor.ammo.magazine_rounds <= 0 and not actor.ammo.is_reloading: return result
-	if not _recommendation.is_empty():
-		if _recommended_valid(): result.append(_coordinated_candidate())
-		return result
 	if not _coordination_assignment.is_empty():
-		if _coordinated_valid(_visible): result.append(_coordinated_candidate())
-		return result
-	if _unified_coordinator():
+		if not _coordinated_valid(visible): return result
+		result.append(_coordinated_candidate())
+		if phase != Phase.HOLD or not _deployment_enabled(): return result
+	else:
 		var assigned: Dictionary = context.coordination_assignment()
-		if context.cooperation_level() == 1: assigned = context.coordination_recommendation()
 		if assigned.get("owner_action", &"") == action_id:
 			for key in assigned.get("allowed_offer_keys", []):
 				if _coordination_local_candidates.has(key): result.append(_coordination_local_candidates[key].duplicate(true))
 			return result
-	if _running:
-		if valid(context.sees_player):
-			if phase == Phase.HOLD and _unified_coordinator():
-				# A personal hold is already a usable firing position. Keep offering
-				# that future role so teammates do not wait for this hold to expire.
-				# Only a later accepted assignment can replace the current contract.
-				var source: Dictionary = context.coordination_source(context.cooperation_target_id())
-				if not source.is_empty():
-					var held_front := _front_candidate(source)
-					# Publication accepts only normally scored candidates. A raw offer
-					# alone would be discarded at that boundary.
-					if not held_front.is_empty(): result.append(held_front)
-			if not _checkpoints.is_empty() and phase != Phase.HOLD:
-				var current_destination: Dictionary = plan.destination.duplicate(true)
-				current_destination.path = selection._path_to(actor.global_position, _move_target())
-				if not FlankRoute.safe_path(current_destination.path, _known): return result
-				var current_assessment := _assess_flank(current_destination, true)
-				if not current_assessment.is_empty(): result.append(_candidate(current_assessment))
-				return result
-			var continuing := plan.duplicate(true)
-			var moving_seconds: float = maxf(_route_distance, context._horizontal_distance(destination)) / maxf(0.1, actor.move_speed) if phase != Phase.HOLD else 0.0
-			var wait: float = _waiting if phase == Phase.WAIT_SUPPORT else 0.0
-			continuing.cooperation.movement_start_seconds = wait
-			continuing.cooperation.movement_seconds = minf(moving_seconds, maxf(0.0, _remaining - wait))
-			continuing.cooperation.estimated_start_seconds = wait + moving_seconds
-			continuing.cooperation.support_seconds = minf(float(continuing.cooperation.get("support_seconds", 0.0)), _remaining)
-			# Costs already paid while reaching this point must not be paid again.
-			var unavailable: float = minf(context.utility_horizon_seconds, moving_seconds + wait)
-			continuing.outcome.unavailable_seconds = unavailable
-			continuing.outcome.exposed_seconds = context._reload_exposure(actor.global_position, _known) * context.utility_horizon_seconds
-			continuing.outcome.information_loss = 0.0 if context.sees_player else minf(context.utility_horizon_seconds, moving_seconds + wait)
-			if phase == Phase.HOLD:
-				var prediction := _hold_support_prediction(minf(_remaining, _hold_remaining))
-				continuing.cooperation.estimated_start_seconds = prediction.estimated_start_seconds
-				continuing.cooperation.support_seconds = prediction.support_seconds
-				continuing.outcome.unavailable_seconds = minf(context.utility_horizon_seconds, prediction.estimated_start_seconds)
-			elif actor.can_use_firearms():
-				continuing.outcome.unavailable_seconds = maxf(float(continuing.outcome.unavailable_seconds), context.spatial._ammo_wait(context))
-				continuing.cooperation.support_seconds = minf(float(continuing.cooperation.support_seconds), maxf(0.0, context.utility_horizon_seconds - context.spatial._ammo_wait(context)))
-			result.append(continuing)
-		return result
+	var source: Dictionary = context.coordination_source(context.cooperation_target_id())
+	if source.is_empty(): return result
+	var post := _front_candidate(source)
+	if post.is_empty(): post = _watch_candidate(source)
+	if not post.is_empty() and (not _running or post.coordination_offer_key != plan.get("coordination_offer_key", "")): result.append(post)
 	if not _fresh_allowed() or not _live_evidence(_evidence()) or _allies().is_empty(): return result
-	var covering := _overwatch_candidate()
-	if not covering.is_empty(): result.append(covering)
-	var source: Dictionary = context.coordination_source(context.cooperation_target_id()) if _unified_coordinator() else {}
-	if not source.is_empty():
-		var front := _front_candidate(source)
-		if not front.is_empty(): result.append(front)
-	var flanks: Array[Dictionary] = []
-	var advances: Array[Dictionary] = []
 	for assessment: Dictionary in context.spatial.assessments(self):
-		if assessment.is_empty() or not _slot_available(assessment.cooperation): continue
+		if assessment.is_empty(): continue
 		var candidate := _fresh_flank_candidate(assessment)
 		if assessment.cooperation.kind == &"flank":
-			if not _unified_coordinator() or _attach_tactical_offer(candidate, source, &"flank"): flanks.append(candidate)
+			if _attach_tactical_offer(candidate, source, &"flank"): result.append(candidate)
 		elif candidate.destination.has("team_posture") and _deployment_enabled():
-			if not candidate.destination.get("support_only", false) and _attach_tactical_offer(candidate, source, &"team_position"): result.append(candidate)
-			if actor.can_use_firearms() and not actor.ammo.is_reloading and actor.ammo.magazine_rounds > 0:
-				var support_position := candidate.duplicate(true)
-				if _attach_tactical_offer(support_position, source, &"front_support"): result.append(support_position)
-		else:
-			# A personal advance cannot manufacture a covering shooter by waiting.
-			# Keep prepared geometry, but publish movement only with actual fire or
-			# its measured bounded recovery. Otherwise personal search can proceed.
-			if context.cooperation_level() != 1 and _personal_advance_allowed(candidate.destination.position) and (_support_ready(0.1) or _support_cycle()): advances.append(candidate)
-	# Local movement remains a personal option even while tactical offers exist.
-	result.append_array(flanks)
-	result.append_array(advances)
+			_append_deployment_candidates(result, candidate, source)
+		elif _deployment_enabled() and not actor.can_use_firearms() and assessment.cooperation.get("movement_qualified", false):
+			# The existing melee geometry still proposes a supported approach.
+			# Only the coordinator may assign it; there is no personal advance path.
+			candidate.destination.team_posture = &"concentrate"
+			candidate.destination.route_seconds = float(assessment.cooperation.movement_seconds)
+			candidate.destination.checkpoints = FlankRoute._short_checkpoints(candidate.destination.path)
+			_append_deployment_candidates(result, candidate, source)
 	return result
 
-func _overwatch_candidate() -> Dictionary:
-	if not context.coordinated_cooperation_enabled(): return {}
-	if not context.sees_player or not actor.can_use_firearms() or actor.ammo.is_reloading or actor.ammo.magazine_rounds <= 0: return {}
-	var requests: Array = context.cooperation_snapshot().get("requests", [])
-	if requests.is_empty(): return {}
-	var duration := maxf(float(_setting(&"lane_hold_seconds", 1.2)), context.fire.support_burst_duration())
-	if _running and phase == Phase.HOLD:
-		duration = minf(_remaining, _hold_remaining)
-	var prediction := _hold_support_prediction(duration)
-	if prediction.support_seconds <= 0.0: return {}
-	for request: Dictionary in requests:
-		if request.beneficiary_id == actor.get_instance_id() or request.get("lane_id", &"target") != &"target": continue
-		var wait: float = prediction.estimated_start_seconds
-		var support: float = minf(prediction.support_seconds, maxf(0.0, float(request.get("remaining", 0.0)) - wait))
-		if support <= 0.0: continue
-		var candidate := option({}, wait, context._reload_exposure(actor.global_position, context.last_known_position) * context.utility_horizon_seconds, 0.0, &"overwatch")
-		candidate.target_id = context.cooperation_target_id()
-		candidate.known_position = _evidence().position
-		candidate.hold_seconds = minf(duration, float(request.get("remaining", 0.0)))
-		candidate.cooperation = {"kind": &"support", "target_id": candidate.target_id, "position": actor.global_position,
-			"lane_id": &"target", "request_id": request.request_id, "beneficiary_id": request.beneficiary_id,
-			"support_seconds": support, "estimated_start_seconds": wait, "quality": 1.0,
-			"movement_start_seconds": 0.0, "movement_seconds": 0.0, "movement_qualified": false}
-		return candidate
-	return {}
+func _append_deployment_candidates(result: Array[Dictionary], candidate: Dictionary, source: Dictionary) -> void:
+	if not candidate.destination.get("support_only", false) and _attach_tactical_offer(candidate, source, &"team_position"): result.append(candidate)
+	if actor.can_use_firearms() and not actor.ammo.is_reloading and actor.ammo.magazine_rounds > 0:
+		var support_position := candidate.duplicate(true)
+		if _attach_tactical_offer(support_position, source, &"front_support"): result.append(support_position)
 
-## A hold promises only its own remaining life. Re-evaluation cannot borrow a
-## later action's shots or claim that an unaligned/blocked gun is already useful.
 func _hold_support_prediction(duration: float) -> Dictionary:
 	var horizon: float = context.utility_horizon_seconds
 	var result := {"estimated_start_seconds": horizon, "support_seconds": 0.0}
@@ -529,64 +432,13 @@ func _hold_support_prediction(duration: float) -> Dictionary:
 	return result
 
 func validate(candidate: Dictionary, visible: bool) -> bool:
-	if candidate.has("coordination_recommendation"): return _validate_recommended(candidate)
-	if candidate.has("coordination_role"): return _validate_coordinated(candidate, visible)
-	if _unified_coordinator() and candidate.get("cooperation", {}).get("kind") == &"flank": return false
-	if not candidate.get("route", {}).is_empty(): return false
-	if not is_enabled() or not context.cooperation_enabled() or candidate.get("target_id", 0) != context.cooperation_target_id(): return false
-	if not _live_evidence(_evidence()): return false
-	if candidate.get("plan", &"") == &"overwatch": return not _overwatch_candidate().is_empty()
-	if not candidate.get("destination", {}).has("checkpoints") and not _personal_advance_allowed(candidate.get("destination", {}).get("position", Vector3.INF)): return false
-	if not candidate.get("destination", {}).has("checkpoints") and not super.validate(candidate, visible): return false
-	if not _slot_available(candidate.get("cooperation", {})): return false
-	if _running and candidate.get("destination", {}).get("position", Vector3.INF).is_equal_approx(destination): return true
-	return not evaluate_point(candidate.destination).is_empty()
+	return candidate.has("coordination_assignment") and _validate_coordinated(candidate, visible)
 
 func begin(candidate: Dictionary, visible: bool) -> bool:
-	if candidate.has("coordination_recommendation"): return _begin_recommended(candidate, visible)
-	if candidate.has("coordination_role"): return _begin_coordinated(candidate, visible)
-	if not validate(candidate, visible): return false
-	var task: Dictionary = candidate.cooperation.duplicate(true)
-	task.owner_action = action_id
-	task.duration = maxf(0.1, float(_setting(&"plan_seconds", 4.0))) + maxf(0.0, float(_setting(&"wait_seconds", 1.2)))
-	if task.kind == &"flank": task.duration = maxf(4.0, float(_setting(&"flank_plan_seconds", 14.0)))
-	var claimed: Dictionary = context.cooperation_claim(task)
-	if claimed.is_empty(): return false
-	reset()
-	_claim = claimed
-	super.begin(candidate, visible)
-	if candidate.get("plan", &"") == &"overwatch":
-		destination = actor.global_position
-		_known = candidate.known_position
-		_target_id = candidate.target_id
-		_remaining = task.duration
-		_hold_remaining = minf(task.duration, maxf(0.0, float(candidate.get("hold_seconds", _setting(&"lane_hold_seconds", 1.2)))))
-		phase = Phase.HOLD
-		actor.agent.target_position = actor.global_position
-		return true
-	destination = candidate.destination.position
-	_checkpoints = candidate.destination.get("checkpoints", PackedVector3Array())
-	_segment_committed = true
-	_route_distance = selection._path_length_from_path(candidate.destination.path)
-	_route_position = actor.global_position
-	_known = candidate.known_position
-	_target_id = candidate.target_id
-	_remaining = minf(task.duration, float(claimed.expires_at) - context.cooperation.elapsed)
-	_waiting = maxf(0.0, float(_setting(&"wait_seconds", 1.2)))
-	_had_support = _support_ready()
-	_support_grace = float(_setting(&"support_recovery_seconds", 2.0)) if _had_support else 0.0
-	phase = Phase.MOVE if _had_support else Phase.WAIT_SUPPORT
-	actor.agent.target_position = _move_target() if phase == Phase.MOVE else actor.global_position
-	return true
+	return _begin_coordinated(candidate, visible)
 
-func valid(_visible: bool) -> bool:
-	if not _recommendation.is_empty(): return _recommended_valid()
-	if not _coordination_assignment.is_empty(): return _coordinated_valid(_visible)
-	if not _running or phase == Phase.NONE or not is_enabled() or not context.cooperation_enabled(): return false
-	if _checkpoints.is_empty() and plan.get("plan", &"") != &"overwatch" and not _personal_advance_allowed(destination): return false
-	if actor.can_use_firearms() and actor.ammo.magazine_rounds <= 0 and not actor.ammo.is_reloading: return false
-	var evidence := _evidence()
-	return _remaining > 0.0 and _target_id == context.cooperation_target_id() and _live_evidence(evidence) and evidence.position.distance_to(_known) <= 2.0
+func valid(visible: bool) -> bool:
+	return _coordinated_valid(visible)
 
 func _fire(visible: bool) -> Dictionary:
 	return {"owner": action_id, "mode": &"visible", "support_intent": phase == Phase.HOLD and context.coordinated_cooperation_enabled()} if visible and actor.can_use_firearms() else {}
@@ -595,99 +447,13 @@ func can_interrupt(next: Dictionary, _visible: bool) -> bool:
 	# Accepted work yields only after the candidate's owner has verified a real
 	# defensive need and executable geometry. Damage alone does not cancel it.
 	if not _coordination_assignment.is_empty() and next.get("assignment_escape_verified", false): return true
+	if _coordination_assignment.is_empty() and next.has("coordination_role") and _deployment_enabled() and not actor.is_vaulting() and not actor.melee_active: return true
 	# A short leg is atomic; Utility is consulted again at every checkpoint.
-	if _recommendation.is_empty() and not _checkpoints.is_empty() and not _segment_committed and not _support_continues() and _checkpoint_wait > 0.0 and valid(_visible): return false
+	if not _advisory() and not _checkpoints.is_empty() and not _segment_committed and not _support_continues() and _checkpoint_wait > 0.0 and valid(_visible): return false
 	return _checkpoints.is_empty() or not _segment_committed or phase == Phase.HOLD or not valid(_visible)
 
 func tick(delta: float, visible: bool) -> Dictionary:
-	if not _coordination_assignment.is_empty(): return _tick_coordinated(delta, visible)
-	_remaining = maxf(0.0, _remaining - maxf(0.0, delta))
-	_support_grace = float(_setting(&"support_recovery_seconds", 2.0)) if _support_ready() else maxf(0.0, _support_grace - delta)
-	if not valid(visible) or (_recommendation.is_empty() and not context.cooperation_update(_claim, {"phase": phase, "position": actor.global_position})):
-		_finish(false)
-		return motion(Vector3.ZERO)
-	if phase == Phase.WAIT_SUPPORT:
-		_waiting = maxf(0.0, _waiting - delta)
-		if _support_ready():
-			_had_support = true
-			phase = Phase.MOVE
-			actor.agent.target_position = _move_target()
-		elif _waiting <= 0.0:
-			_finish(true)
-		context.state = context.State.HOLD_POSITION
-		return motion(Vector3.ZERO, 1.0, _known - actor.global_position, _fire(visible) if _running else {})
-	if phase == Phase.HOLD:
-		_hold_remaining = maxf(0.0, _hold_remaining - delta)
-		if _hold_remaining <= 0.0 or not visible: _finish(false)
-		context.state = context.State.HOLD_POSITION
-		return motion(Vector3.ZERO, 1.0, _known - actor.global_position, _fire(visible) if _running else {})
-	var target := _move_target()
-	var distance: float = context._horizontal_distance(target)
-	if not _checkpoints.is_empty() and not _segment_committed:
-		_checkpoint_wait = maxf(0.0, _checkpoint_wait - delta)
-		if (_recommendation.is_empty() and not _support_continues()) or int(plan.get("segment_index", -1)) != _segment:
-			if _checkpoint_wait <= 0.0: _finish(false)
-			return motion(Vector3.ZERO, 1.0, _known - actor.global_position, _fire(visible))
-		_segment_committed = true
-	if _route_position.is_finite():
-		var travelled: Vector3 = actor.global_position - _route_position
-		_route_distance = maxf(0.0, _route_distance - Vector2(travelled.x, travelled.z).length())
-	_route_position = actor.global_position
-	# Losing support far from the destination returns the current position to Utility.
-	# A nearly completed segment can still reach its previously checked safe point.
-	if _recommendation.is_empty() and _had_support and _support_grace <= 0.0 and not _support_cycle() and distance > 1.5:
-		_finish(false)
-		return motion(Vector3.ZERO)
-	_recheck -= delta
-	if _recheck <= 0.0:
-		_recheck = 0.25
-		var path: PackedVector3Array = selection._path_to(actor.global_position, target)
-		if not context.is_position_free(target) or path.is_empty() or (not _checkpoints.is_empty() and not FlankRoute.safe_path(path, _known)):
-			_finish(true)
-			return motion(Vector3.ZERO)
-		_route_distance = selection._path_length_from_path(path)
-		_direct_final = _route_distance <= actor.global_position.distance_to(target) + 0.08
-	if distance <= 0.15:
-		if _segment + 1 < _checkpoints.size():
-			_segment += 1
-			_segment_committed = false
-			_checkpoint_wait = float(_setting(&"support_recovery_seconds", 2.0))
-			_recheck = 0.0
-			_stuck = 0.0
-			actor.agent.target_position = actor.global_position
-			context.invalidate_utility()
-			return motion(Vector3.ZERO, 1.0, _known - actor.global_position, _fire(visible))
-		if not visible or not actor.can_use_firearms():
-			_finish(false)
-			return motion(Vector3.ZERO)
-		phase = Phase.HOLD
-		_hold_remaining = maxf(0.1, float(_setting(&"lane_hold_seconds", 1.2)))
-		actor.agent.target_position = actor.global_position
-		return motion(Vector3.ZERO, 1.0, _known - actor.global_position, _fire(visible))
-	actor.agent.target_position = target
-	var next: Vector3 = actor.agent.get_next_path_position()
-	if distance <= 0.7 and _direct_final: next = target
-	if actor.agent.is_navigation_finished() and distance > 0.7:
-		_finish(true)
-		return motion(Vector3.ZERO)
-	var waypoint_distance: float = context._horizontal_distance(next)
-	if not _waypoint.is_finite() or _waypoint.distance_to(next) > 0.25:
-		_waypoint = next
-		_best_distance = INF
-	if actor.local_motion.has_temporary_correction():
-		_best_distance = waypoint_distance
-		_stuck = 0.0
-	elif waypoint_distance < _best_distance - 0.04:
-		_best_distance = waypoint_distance
-		_stuck = 0.0
-	else: _stuck += delta
-	if _stuck >= 1.5:
-		_finish(true)
-		return motion(Vector3.ZERO)
-	var direction: Vector3 = next - actor.global_position
-	direction.y = 0.0
-	context.state = context.State.REPOSITION
-	return motion(direction.normalized() * minf(1.0, distance / maxf(0.001, actor.move_speed * delta)), 1.0, _known - actor.global_position, _fire(visible))
+	return _tick_coordinated(delta, visible)
 
 func route_tick(_delta: float, _visible: bool) -> Dictionary:
 	# Fail closed if an obsolete/external route bypassed the walking-only entry.
@@ -702,21 +468,17 @@ func _finish(failed: bool) -> void:
 	_running = false
 
 func reset() -> void:
-	if not _claim.is_empty() and context != null: context.cooperation_release(_claim)
-	_claim = {}
 	phase = Phase.NONE
 	destination = Vector3.INF
 	_known = Vector3.INF
 	_remaining = 0.0
 	_waiting = 0.0
-	_hold_remaining = 0.0
 	_had_support = false
 	_waypoint = Vector3.INF
 	_best_distance = INF
 	_stuck = 0.0
 	_recheck = 0.0
 	_route_distance = 0.0
-	_route_position = Vector3.INF
 	_checkpoints.clear()
 	_segment = 0
 	_segment_committed = false
@@ -724,7 +486,6 @@ func reset() -> void:
 	_support_grace = 0.0
 	_checkpoint_wait = 0.0
 	_coordination_assignment = {}
-	_recommendation = {}
 	_coordination_complete = false
 	_coordination_route_valid = false
 	_coordination_ally_blocked = false
@@ -736,19 +497,19 @@ func on_event(event: StringName, _data: Dictionary) -> void:
 	if event == &"damage" and _running and _coordination_assignment.is_empty(): _finish(false)
 
 func state_label() -> String:
+	if _running and plan.get("destination", {}).get("observation_post", false): return "目视跟踪目标"
 	if _running and plan.get("coordination_role") == &"team_position": return "集中支援" if plan.destination.get("team_posture") == &"concentrate" else "展开射界"
 	if _running and plan.get("coordination_role") == &"front_support" and phase == Phase.MOVE: return "接近支援位置"
 	if _running and plan.get("coordination_role") == &"front_support": return "正面掩护"
-	if _running and plan.get("plan", &"") == &"overwatch": return "掩护队友"
 	if _running and not _checkpoints.is_empty():
 		if phase == Phase.HOLD: return "保持侧后射界"
-		if _recommendation.is_empty() and (phase == Phase.WAIT_SUPPORT or not _segment_committed): return "包抄途中等待掩护"
+		if not _advisory() and (phase == Phase.WAIT_SUPPORT or not _segment_committed): return "包抄途中等待掩护"
 		return "绕行包抄 %d/%d" % [_segment + 1, _checkpoints.size()]
 	return ["", "等待友军掩护", "协同侧向推进", "保持交叉火力"][phase]
 
 
 func coordination_offers(_visible: bool) -> Array[Dictionary]:
-	return _coordination_offers.duplicate(true) if _unified_coordinator() and context.cooperation_enabled() and context.cooperation_member_count() > 1 else []
+	return _coordination_offers.duplicate(true) if context.cooperation_enabled() and context.cooperation_member_count() > 1 else []
 
 func _own_actual_support() -> Dictionary:
 	for member: Dictionary in context.cooperation_snapshot().get("members", []):
@@ -776,6 +537,24 @@ func _front_candidate(source: Dictionary) -> Dictionary:
 		"quality": 1.0, "movement_start_seconds": 0.0, "movement_seconds": 0.0, "movement_qualified": false}
 	return candidate if _attach_tactical_offer(candidate, source, &"front_support") else {}
 
+## An observation post needs this member's own sight of the target. Shared
+## contact alone is a reason to prepare an approach, not to reserve a blind hold.
+## Observation still grants no predicted fire/support credit.
+func _watch_candidate(source: Dictionary) -> Dictionary:
+	if not _deployment_enabled() or not actor.can_use_firearms() or not context.sees_player or actor.is_vaulting() or actor.melee_active or not actor.can_move(): return {}
+	var point: Vector3 = actor.global_position
+	if not context.is_position_free(point): return {}
+	var destination := {"position": point, "path": PackedVector3Array([point]),
+		"checkpoints": PackedVector3Array([point]), "team_posture": &"hold", "observation_post": true}
+	var candidate := option(destination, context.utility_horizon_seconds,
+		context._reload_exposure(point, source.position) * context.utility_horizon_seconds,
+		0.0 if context.sees_player else context.utility_horizon_seconds, &"watch")
+	candidate.target_id = source.target_id
+	candidate.cooperation = {"kind": &"advance", "target_id": source.target_id, "position": point,
+		"lane_id": &"target", "quality": 0.0, "support_seconds": 0.0,
+		"movement_start_seconds": 0.0, "movement_seconds": 0.0, "movement_qualified": false}
+	return candidate if _attach_tactical_offer(candidate, source, &"team_position") else {}
+
 func _attach_tactical_offer(candidate: Dictionary, source: Dictionary, role: StringName) -> bool:
 	if source.is_empty() or not context.cooperation_enabled() or _allies().is_empty(): return false
 	# Geometry preparation and publication can straddle another body's movement.
@@ -802,16 +581,20 @@ func _attach_tactical_offer(candidate: Dictionary, source: Dictionary, role: Str
 	# A validated firing approach to fresh shared contact can replace an earlier
 	# investigation through the existing Search contract, just like shared_contact.
 	# It still needs central selection, route validation and real fire on arrival.
-	if role == &"front_support" and _deployment_enabled() and not context.fresh_shared_contact().is_empty():
+	if role in [&"front_support", &"team_position"] and _deployment_enabled() and not context.fresh_shared_contact().is_empty():
 		candidate.combat_contact = true
 	var actual := _own_actual_support() if role == &"front_support" else {"ready": false, "seconds": 0.0}
 	var seconds: float = float(candidate.destination.get("route_seconds", 0.0))
 	var offer: Dictionary = identity.duplicate()
+	var planned_path: Array = Array(candidate.destination.get("path", PackedVector3Array()))
+	if planned_path.size() > 64: planned_path.clear()
 	offer.merge({"scope": &"tactical", "owner_action": action_id, "offer_key": offer_key, "role": role,
 		"position_set_key": position_key, "position": point, "target_id": source.target_id, "evidence_id": source.evidence_id,
 		"path_summary": {"tactical_key": tactical_key, "tactical_anchor": source.position, "tactical_axis": source.front_axis,
+			"planned_path": planned_path,
 			"side": 1 if side > 0.5 else (-1 if side < -0.5 else 0), "holds_front": role == &"front_support",
 			"posture": candidate.destination.get("team_posture", &"disperse" if role == &"flank" else &"hold"),
+			"holds_position": candidate.destination.get("observation_post", false),
 			"expected_fire_seconds": float(candidate.cooperation.get("support_seconds", 0.0)) if actor.can_use_firearms() else 0.0,
 			"staging_position": candidate.coordination_staging_position, "staging_seconds": seconds if role in [&"front_support", &"team_position"] else 0.0},
 		"travel_seconds": seconds, "unavailable_seconds": candidate.outcome.unavailable_seconds,
@@ -829,7 +612,8 @@ func _attach_tactical_offer(candidate: Dictionary, source: Dictionary, role: Str
 	return true
 
 func _validate_coordinated(candidate: Dictionary, visible: bool) -> bool:
-	if not _unified_coordinator() or not is_enabled() or not context.cooperation_enabled() or actor.is_vaulting() or actor.melee_active: return false
+	if not candidate.get("route", {}).is_empty(): return false
+	if not is_enabled() or not context.cooperation_enabled() or actor.is_vaulting() or actor.melee_active: return false
 	var assignment: Dictionary = context.coordination_assignment()
 	if assignment.is_empty() or assignment.get("owner_action") != action_id or assignment.get("role") != candidate.get("coordination_role") or not assignment.get("allowed_offer_keys", []).has(candidate.get("coordination_offer_key", "")): return false
 	if assignment.get("role") == &"front_support":
@@ -847,6 +631,9 @@ func _position_route_valid(candidate: Dictionary) -> bool:
 	if not actor.can_move() or not candidate.get("destination", {}).has("checkpoints"): return false
 	var point: Vector3 = candidate.destination.position
 	if not context.is_position_free(point): return false
+	# Cached offers must satisfy the same observation requirement at acceptance.
+	if candidate.destination.get("observation_post", false):
+		return context.sees_player and actor.global_position.distance_to(point) <= 0.35
 	var path: PackedVector3Array = selection._path_to(actor.global_position, point)
 	if path.is_empty(): return false
 	if actor.can_use_firearms():
@@ -854,37 +641,6 @@ func _position_route_valid(candidate: Dictionary) -> bool:
 		var origin: Vector3 = actor.get_posture_muzzle_position(false, point)
 		return target.is_finite() and origin.distance_to(target) <= actor.weapon.fire_range and context.fire.has_clear_firing_lane(origin, target - origin, origin.distance_to(target))
 	return true
-
-func _validate_recommended(candidate: Dictionary) -> bool:
-	if not is_enabled() or context.cooperation_level() != 1 or not actor.can_move() or actor.is_vaulting() or actor.melee_active: return false
-	var advice: Dictionary = candidate.get("coordination_recommendation", {})
-	if not context.cooperation.recommendation_available(context, advice, candidate.get("coordination_offer_key", "")): return false
-	if not _recommendation.is_empty(): return _recommended_valid()
-	var route: Dictionary = FlankRoute.assess(context, candidate.destination)
-	return not route.is_empty() and float(route.route_seconds) < float(advice.expires_at) - context.coordination_now()
-
-func _begin_recommended(candidate: Dictionary, visible: bool) -> bool:
-	if not _validate_recommended(candidate): return false
-	reset()
-	_recommendation = candidate.coordination_recommendation.duplicate(true)
-	destination = candidate.destination.position
-	_known = candidate.known_position
-	_target_id = candidate.target_id
-	_remaining = maxf(0.0, float(_recommendation.expires_at) - context.coordination_now())
-	_checkpoints = candidate.destination.get("checkpoints", PackedVector3Array())
-	_segment = int(candidate.get("segment_index", 0))
-	_segment_committed = true
-	_route_position = actor.global_position
-	phase = Phase.MOVE
-	actor.agent.target_position = _move_target()
-	return super.begin(candidate, visible)
-
-func _recommended_valid() -> bool:
-	if not _running or not is_enabled() or context.cooperation_level() != 1 or _remaining <= 0.0: return false
-	var advice: Dictionary = context.coordination_recommendation()
-	if advice.is_empty() or advice.recommendation_id != _recommendation.get("recommendation_id") or not advice.accepted: return false
-	if actor.can_use_firearms() and actor.ammo.magazine_rounds <= 0 and not actor.ammo.is_reloading: return false
-	return _target_id == context.cooperation_target_id() and not _checkpoints.is_empty()
 
 func _begin_coordinated(candidate: Dictionary, visible: bool) -> bool:
 	if not _validate_coordinated(candidate, visible): return false
@@ -899,17 +655,15 @@ func _begin_coordinated(candidate: Dictionary, visible: bool) -> bool:
 	_target_id = candidate.target_id
 	_remaining = maxf(0.0, float(assignment.expires_at) - context.coordination_now())
 	_waiting = maxf(0.1, float(_setting(&"wait_seconds", 1.2)))
-	_hold_remaining = _remaining
 	_checkpoints = candidate.destination.get("checkpoints", PackedVector3Array())
 	_segment = 0
-	var supported_move: bool = assignment.role == &"flank" or (assignment.role == &"team_position" and not assignment.get("support_links", []).is_empty())
+	var supported_move: bool = not _advisory() and (assignment.role == &"flank" or (assignment.role == &"team_position" and not assignment.get("support_links", []).is_empty()))
 	_segment_committed = not supported_move
 	phase = Phase.WAIT_SUPPORT if supported_move else (Phase.HOLD if _checkpoints.is_empty() else Phase.MOVE)
 	if assignment.role == &"front_support":
 		_front_contact_until = context.coordination_now() + maxf(0.0, float(_setting(&"support_recovery_seconds", 2.0)))
-	_route_position = actor.global_position
 	actor.agent.target_position = actor.global_position
-	# No old flank claim: the caller commits its prepared assignment after begin.
+	# The caller commits the prepared task only after begin succeeds.
 	return super.begin(candidate, visible)
 
 func _coordinated_valid(visible: bool) -> bool:
@@ -918,6 +672,10 @@ func _coordinated_valid(visible: bool) -> bool:
 	if assignment.is_empty() or not assignment.get("accepted", false) or float(assignment.expires_at) <= context.coordination_now(): return false
 	for key in [&"generation", &"team_id", &"plan_id", &"assignment_id", &"assignment_revision"]:
 		if assignment.get(key) != _coordination_assignment.get(key): return false
+	# An accepted observation post cannot keep a blind member bound until expiry.
+	# Report invalid through the existing contract so normal task repair can run.
+	if plan.get("destination", {}).get("observation_post", false):
+		return visible and _coordination_route_valid and not _checkpoints.is_empty()
 	if assignment.role == &"front_support":
 		# A passing ally may briefly occlude the held firing position. Preserve its
 		# bounded commitment, while Fire and published support remain unavailable.
@@ -983,12 +741,12 @@ func _tick_coordinated(delta: float, visible: bool) -> Dictionary:
 	if not _coordinated_valid(visible):
 		_finish(false)
 		return motion(Vector3.ZERO)
-	if assignment.role == &"flank" and assignment.phase != &"executing" and not _coordination_complete:
+	if not _advisory() and assignment.role == &"flank" and assignment.phase != &"executing" and not _coordination_complete:
 		# A repaired peer starts a new joint phase, not a new route or lease.
 		# Pause at the coordinator's new physical entry and retain our segment.
 		phase = Phase.WAIT_SUPPORT
 		_segment_committed = false
-	if (assignment.role == &"front_support" and _front_position_reached(visible)) or _coordination_complete:
+	if (assignment.role == &"front_support" and _front_position_reached(visible)) or _coordination_complete or (plan.destination.get("observation_post", false) and context._horizontal_distance(destination) <= 0.15):
 		phase = Phase.HOLD
 		if assignment.role == &"front_support" and visible:
 			_front_contact_until = context.coordination_now() + maxf(0.0, float(_setting(&"support_recovery_seconds", 2.0)))
@@ -1063,12 +821,12 @@ func _tick_coordinated(delta: float, visible: bool) -> Dictionary:
 		_had_support = true
 	if not _segment_committed and not preparing:
 		_checkpoint_wait = maxf(0.0, _checkpoint_wait - delta)
-		if assignment.role in [&"flank", &"team_position"] and not _support_continues():
+		if not _advisory() and assignment.role in [&"flank", &"team_position"] and not _support_continues():
 			if _checkpoint_wait <= 0.0: _finish(false)
 			return motion(Vector3.ZERO, 1.0, _known - actor.global_position, _fire(visible) if _running else {})
 		_segment_committed = true
 	var distance: float = context._horizontal_distance(target)
-	if assignment.role in [&"flank", &"team_position"] and _had_support and not _support_continues() and distance > 1.5:
+	if not _advisory() and assignment.role in [&"flank", &"team_position"] and _had_support and not _support_continues() and distance > 1.5:
 		_finish(false)
 		return motion(Vector3.ZERO)
 	var arrival_distance := 0.01 if assignment.role == &"front_support" and _segment + 1 >= _checkpoints.size() else 0.15
@@ -1084,7 +842,7 @@ func _tick_coordinated(delta: float, visible: bool) -> Dictionary:
 			actor.agent.target_position = actor.global_position
 			context.invalidate_utility()
 		else:
-			_coordination_complete = assignment.role != &"front_support"
+			_coordination_complete = assignment.role != &"front_support" and not plan.destination.get("observation_post", false)
 			phase = Phase.HOLD
 			actor.agent.target_position = actor.global_position
 		return motion(Vector3.ZERO, 1.0, _known - actor.global_position, _fire(visible))
@@ -1113,3 +871,6 @@ func _tick_coordinated(delta: float, visible: bool) -> Dictionary:
 	context.state = context.State.REPOSITION
 	if not preparing and assignment.role != &"front_support" and not direction.is_zero_approx() and actor.can_move(): plan.support_request = {"kind": &"advance", "duration": minf(context.utility_horizon_seconds, _remaining), "lane_id": &"target"}
 	return motion(direction.normalized() * minf(1.0, distance / maxf(0.001, actor.move_speed * delta)), 1.0, _known - actor.global_position, _fire(visible))
+
+func _advisory() -> bool:
+	return _coordination_assignment.get("constraint_mode", &"coordinated") == &"advisory"

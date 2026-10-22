@@ -17,7 +17,7 @@ func _run() -> void:
 	quit(1 if failures else 0)
 
 func _case(cooperation: bool) -> void:
-	var scene = preload("res://tests/enemy/enemy_fire_fixture.gd").legacy_scene()
+	var scene = preload("res://tests/enemy/enemy_fire_fixture.gd").unbound_scene()
 	var arena = scene.get_node("Arena")
 	for child in arena.get_children():
 		if child != preload("res://tests/enemy/enemy_fire_fixture.gd").primary_enemy(arena) and child.has_method("move_character"): child.free()

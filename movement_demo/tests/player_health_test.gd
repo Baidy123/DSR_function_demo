@@ -9,7 +9,7 @@ func _initialize() -> void:
 
 
 func _run() -> void:
-	var scene = preload("res://tests/enemy/enemy_fire_fixture.gd").legacy_scene()
+	var scene = preload("res://tests/enemy/enemy_fire_fixture.gd").unbound_scene()
 	# 固定本测试实例的伤害边界，不能假定用户场景一直保留100点生命。
 	scene.get_node("Player/Health").max_health = 100.0
 	root.add_child(scene)

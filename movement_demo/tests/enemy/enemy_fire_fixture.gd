@@ -1,14 +1,14 @@
 extends RefCounted
 
-## Old action fixtures explicitly exercise the personal Training compatibility path.
-## The saved arena's shared default is covered by the team scene integration test.
-static func legacy_scene() -> Node:
+## Personal-action fixtures have no implicit team authority. Team tests explicitly
+## attach a Squad or bind configuration; saved-scene integration loads Main directly.
+static func unbound_scene() -> Node:
 	var scene = load("res://scenes/main.tscn").instantiate()
 	var arena: Node = scene.get_node("Arena")
-	# Also usable with the pre-migration runtime in paired baseline comparisons.
+	# Remove team configuration only from this instantiated fixture.
 	if arena.get("team_cooperation_bindings") is Array:
 		arena.team_cooperation_bindings.clear()
-	# Legacy behavior tests explicitly use the old membership/configuration path.
+	# These fixtures explicitly exercise unbound personal behavior.
 	# Unwrap only the test instance; saved scene integration loads Main directly.
 	for member in members(arena):
 		if member.get_parent() == arena: continue
@@ -28,7 +28,7 @@ static func legacy_scene() -> Node:
 ## Preserve the primary actor's complete behavior; remove unmeasured saved peers
 ## before they enter the tree so the declared population is the real population.
 static func single_member_scene() -> Node:
-	var scene := legacy_scene()
+	var scene := unbound_scene()
 	var arena := scene.get_node("Arena")
 	var primary := primary_enemy(scene)
 	for child in arena.get_children():
@@ -61,6 +61,45 @@ static func attach_squad(area: Node, actors: Array, level: int) -> Node3D:
 	area.add_child(squad)
 	for actor in actors: actor.reparent(squad)
 	return squad
+
+## Explicit conversion input for tests that must retain direct-child node paths.
+## It exercises the same coordinator protocol as a scene Squad.
+static func bind_team(area: Node, level: int, group: StringName = &"") -> void:
+	var binding := EnemyTeamCooperationBinding.new()
+	binding.communication_group = group
+	binding.profile.level = level
+	area.team_cooperation_bindings.append(binding)
+	if area.is_inside_tree(): area.enemy_environment()
+
+static func reserve_position(context, point: Vector3, duration: float = 1.0, owner: StringName = &"search") -> Dictionary:
+	context.prepare_coordination_evaluation()
+	var offer: Dictionary = context._basic_coordination_offer({"id": owner, "destination": {"position": point}})
+	var token: Dictionary = context.cooperation.prepare_reservation(context, offer, duration)
+	if not token.is_empty() and context.cooperation.commit_reservation(context, token): return token
+	context.cooperation.rollback_reservation(context, token)
+	return {}
+
+## Boundary fixture only: issue an already assessed real action capability,
+## then use the normal AI validate/prepare/begin/commit transaction.
+static func accept_prepared_task(ai, candidate: Dictionary, source: Dictionary) -> bool:
+	var context = ai.context
+	var action = ai.actions[candidate.id]
+	candidate.cost = 0.0
+	var candidates: Array[Dictionary] = [candidate]
+	context.publish_coordination_offers(candidates, action.coordination_offers(context.sees_player))
+	var coordinator = context._coordinator()
+	var key: String = candidate.coordination_offer_key
+	var offers: Array = coordinator._coordination_offers.get(ai.actor.get_instance_id(), []).filter(func(offer): return offer.offer_key == key)
+	if offers.is_empty(): return false
+	var offer: Dictionary = offers[0]
+	coordinator._install_coordination_proposal(source.team_id, source, {"operation": &"new", "reason": &"execution_contract", "tactic": &"support",
+		"required_participants": [], "assignments": [{"actor_id": ai.actor.get_instance_id(), "owner_action": candidate.id, "role": offer.role,
+		"allowed_offer_keys": [key], "reserved_position_sets": [offer.position_set_key], "reserved_offers": [offer], "partner_ids": [], "beneficiary_id": 0}]})
+	var task: Dictionary = context.coordination_assignment()
+	if task.is_empty(): return false
+	candidate.coordination_assignment = task
+	ai._start_utility_option(candidate, context.sees_player)
+	return ai.current_action == action and context.coordination_assignment().get("accepted", false)
 
 static func advance_evaluation(ai, visible: bool) -> void:
 	ai.context.sees_player = visible

@@ -38,11 +38,24 @@ func _run() -> void:
 	search.tracking_cheat_enabled = true
 	search.lost_target_hint_chance = 1.0
 	search.search_hint_chance = 1.0
-	var cover = scene.get_node("Arena/NavigationRegion3D/Environment/LowCover")
+	var environment = scene.get_node("Arena/NavigationRegion3D/Environment")
+	var cover = environment.get_node_or_null("LowCover")
+	if cover == null:
+		for candidate in environment.get_children():
+			if candidate.scene_file_path == "res://scenes/world/low_cover.tscn":
+				cover = candidate
+				break
+	check(cover != null, "saved arena contains a real low-cover instance")
+	if cover == null:
+		scene.queue_free()
+		quit(1)
+		return
 	var center: Vector3 = cover.global_position
 	center.y = 0.0
-	var start: Vector3 = center + Vector3.BACK * 2.0
-	var known: Vector3 = center + Vector3.FORWARD * 0.66
+	var front: Vector3 = cover.global_basis.z.normalized()
+	var along: Vector3 = cover.global_basis.x.normalized()
+	var start: Vector3 = center + front * 2.0
+	var known: Vector3 = center - front * 0.66
 	enemy.global_position = start
 	player.global_position = known
 	enemy.look_at(known)
@@ -66,7 +79,7 @@ func _run() -> void:
 	ai.context.update_evidence(0.1, ai.perception.can_see_player())
 	check(not ai.context.sees_player and search._has_low_cover_focus(), "crouching behind the witnessed wall retains cover contact without sight")
 	var captured: float = ai.context.suppression_evidence.captured_at
-	player.global_position.x += 0.3
+	player.global_position += along * 0.3
 	await settle()
 	search.begin({"destination": {}}, false)
 	var maintained := true
@@ -84,8 +97,8 @@ func _run() -> void:
 	search.on_event(&"damage", {"amount": 1.0})
 	check(search._has_low_cover_focus() and search.track_timer == timer, "damage permits self preservation without renewing or forgetting the cover")
 	# A real clear view of the now-empty remembered position releases the focus.
-	player.global_position = known + Vector3.FORWARD * 6.0
-	enemy.global_position = known + Vector3.FORWARD * 2.0
+	player.global_position = known - front * 6.0
+	enemy.global_position = known - front * 2.0
 	enemy.look_at(known)
 	await settle()
 	ai.context.update_evidence(0.1, ai.perception.can_see_player())

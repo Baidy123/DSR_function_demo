@@ -15,7 +15,7 @@ func _initialize() -> void:
 	_run.call_deferred()
 
 func _run() -> void:
-	scene = preload("res://tests/enemy/enemy_fire_fixture.gd").legacy_scene()
+	scene = preload("res://tests/enemy/enemy_fire_fixture.gd").unbound_scene()
 	arena = scene.get_node("Arena")
 	root.add_child(scene)
 	current_scene = scene
@@ -112,7 +112,7 @@ func _run() -> void:
 	check(_matches(origin, endpoint) and board.line_safe(observer, origin, endpoint), "撤销同盟立即清除本查询的友军资格")
 	board.set_relation(first.faction_id, second.faction_id, &"allied")
 
-	var task: Dictionary = board.claim(partner, {"kind": &"search", "position": second.global_position, "duration": 4.0, "owner_action": &"cooperate"})
+	var task: Dictionary = Fixture.reserve_position(partner, second.global_position + Vector3(0, 0, 3), 4.0)
 	var before: Dictionary = board.snapshot(observer, observer.cooperation_target_id())
 	for repeat in 10: board.line_safe(observer, origin, endpoint)
 	var after: Dictionary = board.snapshot(observer, observer.cooperation_target_id())

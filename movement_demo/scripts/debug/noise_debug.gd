@@ -9,7 +9,7 @@ const ENEMY_COLOR := Color(1.0, 0.5, 0.15)
 const LIFETIME := 0.4
 const SEGMENTS := 96
 var enabled: bool = false
-var _requested: bool = true
+var _requested: bool = false
 
 
 func _ready() -> void:

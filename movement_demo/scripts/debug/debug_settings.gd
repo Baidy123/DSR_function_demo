@@ -20,6 +20,10 @@ func _ready() -> void:
 	# 保留编辑器“可见导航”的选择，但总开关关闭时也必须隐藏。
 	_navigation_requested = get_tree().debug_navigation_hint
 	get_tree().debug_navigation_hint = enabled and _navigation_requested
+	if OS.is_debug_build():
+		var paths := preload("res://scripts/debug/coordinator_paths.gd").new()
+		paths.name = "CoordinatorPaths"
+		add_child(paths)
 
 
 func set_enabled(value: bool) -> void:

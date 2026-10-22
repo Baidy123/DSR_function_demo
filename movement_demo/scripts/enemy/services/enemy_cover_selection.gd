@@ -18,10 +18,13 @@ var minimum_cover_quality: float:
 var debug_cover_selection: bool:
 	get: return _training_setting(&"debug_cover_selection", true)
 	set(value): _set_training_setting(&"debug_cover_selection", value)
-## Debug运行时显示攻击区域：绿=可用，橙=未通过，暗红=内圈禁用；只用目击记忆。
+## 高开销区域预览默认停用，保留专项诊断接口。
 var debug_attack_points: bool:
-	get: return _training_setting(&"debug_attack_points", true)
-	set(value): _set_training_setting(&"debug_attack_points", value)
+	get: return _training_setting(&"debug_attack_points", false)
+	set(value):
+		_set_training_setting(&"debug_attack_points", value)
+		var preview := get_node_or_null("AttackPreview")
+		if preview != null: preview._apply_debug_mode(preview.debug_settings.enabled)
 
 var ai:
 	get: return get_parent().context

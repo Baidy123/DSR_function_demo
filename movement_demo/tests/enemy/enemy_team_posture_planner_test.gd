@@ -10,7 +10,7 @@ func _run() -> void:
 	check(result.tactic == &"disperse" and result.posture == &"disperse", "Complementary lateral offers choose dispersion")
 	for member: Dictionary in snapshot.members: member.personal_baseline.cost = 0.1
 	result = planner.propose(snapshot)
-	check(result.assignments.is_empty() and result.get("posture") == &"hold" and result.reason == &"personal_deployment_better", "A safer cheaper current deployment remains a real competing option")
+	check(result.assignments.size() == 2 and result.tactic == &"disperse", "Cheap personal scores cannot silently discard the only validated complementary team positions")
 	snapshot = _deployment(&"concentrate")
 	snapshot.members[0].personal_baseline.horizon = 8.0
 	result = planner.propose(snapshot)
@@ -29,7 +29,8 @@ func _run() -> void:
 	check(planner.propose(snapshot).assignments.is_empty(), "Concentration still rejects overlapping physical positions")
 	snapshot = _deployment(&"concentrate")
 	snapshot.members[2].personal_baseline.valid_until = 0.5
-	check(planner.propose(snapshot).reason == &"personal_baseline_pending", "Missing fresh personal alternatives cannot make a team plan look artificially cheap")
+	result = planner.propose(snapshot)
+	check(result.assignments.size() == 2 and not result.decision.baseline_ready and not result.decision.has("baseline_cost"), "Missing personal alternatives neither block legal team posts nor fabricate a baseline comparison")
 	snapshot = _deployment(&"concentrate")
 	var frozen := snapshot.duplicate(true)
 	result = planner.propose(snapshot)

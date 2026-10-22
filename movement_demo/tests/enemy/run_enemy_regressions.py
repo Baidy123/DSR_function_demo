@@ -14,6 +14,7 @@ TESTS = [
     "enemy_team_posture_runtime_test",
     "enemy_team_posture_planner_test",
     "enemy_team_awareness_levels_runtime_test",
+    "enemy_personal_search_runtime_test",
     "enemy_team_training_binding_test",
     "enemy_route_evaluation_batch_test",
     "enemy_ally_spacing_test",
@@ -38,6 +39,11 @@ TESTS = [
     "enemy_team_inspection_runtime_test",
     "enemy_team_reacquisition_test",
     "enemy_search_formation_test",
+    "enemy_search_formation_fallback_test",
+    "enemy_search_traffic_test",
+    "enemy_coordination_debug_test",
+    "enemy_team_continuity_test",
+    "enemy_team_continuity_runtime_test",
     "enemy_inspection_observation_test",
     "enemy_team_flank_runtime_test",
     "enemy_cooperation_yield_runtime_test",
@@ -135,7 +141,8 @@ def main():
                       {"enemy_squad_runtime_test": 180, "enemy_cooperation_flank_runtime_test": 300, "enemy_team_flank_runtime_test": 120, "cooperation_runtime_test": 180,
                        "enemy_team_awareness_levels_runtime_test": 240,
                        "enemy_team_support_execution_test": 240, "enemy_team_search_runtime_test": 180,
-                       "enemy_search_formation_test": 150})
+                       "enemy_search_formation_test": 150, "enemy_search_formation_fallback_test": 150,
+                       "enemy_search_traffic_test": 180})
 
 if __name__ == "__main__":
     raise SystemExit(main())

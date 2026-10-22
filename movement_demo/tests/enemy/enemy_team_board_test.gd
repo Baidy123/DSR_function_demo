@@ -35,7 +35,7 @@ func _run() -> void:
 	quit(1 if failures else 0)
 
 func _setup() -> void:
-	scene = preload("res://tests/enemy/enemy_fire_fixture.gd").legacy_scene()
+	scene = preload("res://tests/enemy/enemy_fire_fixture.gd").unbound_scene()
 	arena = scene.get_node("Arena")
 	var first = preload("res://tests/enemy/enemy_fire_fixture.gd").primary_enemy(arena)
 	for child in arena.get_children():
@@ -98,7 +98,7 @@ func _basic_transaction() -> void:
 	var a = contexts[0]
 	var b = contexts[1]
 	check(contexts.all(func(context): return not context.cooperation_enabled()), "Fixture keeps all advanced cooperation OFF")
-	check(board.claim(a, {"kind": &"search", "owner_action": &"search", "position": _point(-2)}).is_empty(), "Basic reservations do not weaken the existing advanced tactical claim gate")
+	check(board.prepare_assignment(a, {"owner_action": &"search"}, "unassigned").is_empty(), "Basic reservations cannot authorize an unassigned team task")
 	check(board.prepare_reservation(a, _offer(a, _point(-2))).is_empty(), "An unpublished version cannot silently authorize a zero-version reservation")
 	for context in contexts: _versions(context)
 	var identity: Dictionary = board.coordination_identity(a)
@@ -265,9 +265,11 @@ func _pairwise_teams() -> void:
 	board.reset()
 
 func _reload_lifecycle() -> void:
+	Fixture.bind_team(arena, 2)
 	var a = contexts[0]
 	var b = contexts[1]
 	for index in 2:
+		actors[index].global_position = _point(-5 if index == 0 else 5, -5)
 		var ai = actors[index].get_node("AI")
 		Fixture.set_training_action(ai, &"cooperate", true)
 		ai.set_physics_process(false)
@@ -276,14 +278,16 @@ func _reload_lifecycle() -> void:
 	check(actors[1].request_reload(), "Lifecycle contract starts a real body reload")
 	b.cooperation_publish_execution({})
 	var id: int = board._members[actors[1].get_instance_id()].status.get("reload_request_id", 0)
-	var support: Dictionary = board.claim(a, {"kind": &"support", "owner_action": &"cooperate", "target_id": a.cooperation_target_id(), "beneficiary_id": actors[1].get_instance_id(), "duration": 2.0})
-	var pending: Dictionary = board.prepare_reservation(b, _offer(b, _point(-2)))
+	var support: Dictionary = board.prepare_reservation(a, _offer(a, _point(2)), 2.0)
+	check(not support.is_empty() and board.commit_reservation(a, support), "A separate real position remains independently owned during a teammate's reload")
+	var pending: Dictionary = board.prepare_reservation(b, _offer(b, _point(-2), "reload-position"))
 	board.clear_execution(actors[1].get_instance_id())
 	b.cooperation_publish_execution({})
-	check(not support.is_empty() and board.coordination_debug_snapshot(&"_claims").has(support.id) and actors[1].ammo.is_reloading, "Ordinary action cleanup preserves a teammate's support lease and the real reload")
+	check(board.validate_reservation(a, support) and actors[1].ammo.is_reloading, "Ordinary action cleanup preserves another member's position and the real reload")
 	check(id > 0 and board._members[actors[1].get_instance_id()].status.get("reload_request_id", 0) == id and board.validate_reservation(b, pending), "Preparing a new position preserves both pending ownership and continuous reload request identity")
 	board.release_member(actors[1].get_instance_id())
-	check(not board.coordination_debug_snapshot(&"_claims").has(support.id) and not board.validate_reservation(b, pending), "True member release clears pending positions and dependent support claims")
+	check(board.validate_reservation(a, support) and not board.validate_reservation(b, pending), "True member release clears its pending position without clearing another member's independent position")
+	board.release_reservation(a, support)
 	actors[1].cancel_reload()
 
 func _solo() -> void:

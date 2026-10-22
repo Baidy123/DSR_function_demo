@@ -139,8 +139,7 @@ text = "测试受伤 -25"
 [node name="NoiseRanges" type="CheckBox" parent="Debug/Controls"]
 layout_mode = 2
 focus_mode = 0
-button_pressed = true
-tooltip_text = "实际发声时短暂显示：玩家蓝色、敌人橙色。外圈为无遮挡半径，内虚线圈为隔墙半径；不代表按墙裁切的精确形状。"
+tooltip_text = "默认关闭，仅影响声音范围显示。手动开启后，玩家蓝色、敌人橙色；不改变实际声音和 AI 听觉。"
 text = "声音范围"
 
 [node name="DeathScreen" type="ColorRect" parent="."]

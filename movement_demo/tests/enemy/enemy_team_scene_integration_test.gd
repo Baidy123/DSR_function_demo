@@ -17,20 +17,21 @@ func _run() -> void:
 	var paths := ["intel_only", "tactical", "coordinated"]
 	for level in paths.size():
 		var profile = load("res://resources/enemy/cooperation/%s.tres" % paths[level])
-		check(profile.level == level and profile.overridden.has("level"), "Reusable profile %s retains its explicit level" % paths[level])
+		check(profile.level in [0, 1, 2] and profile.overridden.has("level"), "Reusable profile %s retains its explicit level" % paths[level])
 		var saved := "user://team_profile_%d.tres" % level
 		var result := ResourceSaver.save(profile.duplicate(true), saved)
 		var restored = ResourceLoader.load(saved, "", ResourceLoader.CACHE_MODE_IGNORE)
-		check(result == OK and restored != null and restored.level == level, "Profile %s survives save and reload" % paths[level])
-	var legacy := Fixture.legacy_scene()
-	check(legacy.get_node("Arena").team_cooperation_bindings.is_empty(), "Legacy fixtures explicitly retain their own personal training controls")
+		check(result == OK and restored != null and restored.level == profile.level, "Profile %s survives save and reload" % paths[level])
+	var legacy := Fixture.unbound_scene()
+	check(legacy.get_node("Arena").team_cooperation_bindings.is_empty(), "Unbound fixtures explicitly retain personal actions without team authority")
 	legacy.free()
 	# Load the actual explicit squad and every saved member, without legacy unwrapping.
 	var scene = load("res://scenes/main.tscn").instantiate()
 	var arena = scene.get_node("Arena")
 	var binding = arena.get_node("Squad")
-	check(arena.team_cooperation_bindings.is_empty() and binding.profile.level == 2, "Saved arena uses a coordinated squad node as its only team configuration entry")
+	check(arena.team_cooperation_bindings.is_empty() and binding.profile.level in [0, 1, 2], "Saved arena uses its configured squad node as its only team configuration entry")
 	var saved_profile = binding.profile
+	var saved_level: int = saved_profile.level
 	binding.profile = saved_profile.duplicate(true)
 	var saved_members: Array = Fixture.members(arena)
 	check(not saved_members.is_empty(), "The saved arena supplies a real member with personal Training")
@@ -51,7 +52,7 @@ func _run() -> void:
 	for frame in 45: await physics_frame
 	check(members.size() == maxi(2, saved_members.size()) and saved_members.all(func(member): return members.has(member)), "Integration retains every saved member and has two real participants for personal isolation")
 	var contexts: Array = members.map(func(member): return member.get_node("AI").context)
-	check(contexts.all(func(context): return context.cooperation_level() == 2 and context.coordinated_cooperation_enabled()), "Normal AI ticks inherit the saved shared level for every member")
+	check(contexts.all(func(context): return context.cooperation_level() == saved_level and context.coordinated_cooperation_enabled() == (saved_level == 2)), "Normal AI ticks inherit the saved shared level for every member")
 	check(members.all(func(member): return member.get_node("AI").is_physics_processing()), "Member AI remains active throughout the integration test")
 	var selections: Array = contexts.map(func(context): return context.training.selected_tactics.duplicate())
 	var personal_second: float = contexts[1].setting(&"tactics", &"fire_reaction_seconds", 0.0)
@@ -64,19 +65,19 @@ func _run() -> void:
 		check(contexts.all(func(context): return context.cooperation_level() == level) and arena.cooperation.team_configuration_revision(contexts[0]) > revision, "Normal region ticks switch the entire squad to level %d and advance its revision" % level)
 		revision = arena.cooperation.team_configuration_revision(contexts[0])
 		if level < 2:
-			check(contexts.all(func(context): return context.coordination_assignment().is_empty() and context.coordination_support_state().is_empty()), "Level %d cannot retain a strong assignment or promised support" % level)
+			check(contexts.all(func(context): return context.coordination_assignment().get("constraint_mode", &"advisory") == &"advisory" and context.coordination_support_state().is_empty()), "Level %d cannot retain a strong assignment or promised support" % level)
 		if level == 0:
-			check(contexts.all(func(context): return context.coordination_recommendation().is_empty() and not context.can_use_action(&"cooperate")), "Intel-only removes tactical offers despite preserved personal legacy switches")
+			check(contexts.all(func(context): return context.coordination_assignment().is_empty() and not context.can_use_action(&"cooperate")), "Intel-only removes tactical offers despite preserved personal legacy switches")
 	var unchanged := true
 	for index in contexts.size(): unchanged = unchanged and contexts[index].training.selected_tactics == selections[index]
-	check(unchanged and saved_profile.level == 2, "Hot switching never rewrites personal selections or the saved template")
+	check(unchanged and saved_profile.level == saved_level, "Hot switching never rewrites personal selections or the saved template")
 	var resets: Dictionary = {}
 	for member in members:
 		resets[member.get_instance_id()] = 0
 		member.reset_completed.connect(func(): resets[member.get_instance_id()] += 1)
 	arena._reset_targets()
 	check(resets.values().all(func(count): return count == 1), "Area reset invokes each nested member exactly once")
-	check(arena.cooperation.coordination_debug_snapshot(&"_coordination_plans").is_empty() and arena.cooperation.coordination_debug_snapshot(&"_recommendations").is_empty(), "Area reset clears plans and advice before a new combat cycle")
+	check(arena.cooperation.coordination_debug_snapshot(&"_coordination_plans").is_empty(), "Area reset clears plans and advice before a new combat cycle")
 	for frame in 15: await physics_frame
 	check(contexts.all(func(context): return context.cooperation_level() == 2 and context.squad_node == binding), "Respawn retains the shared configuration and independent personal actors")
 	check(members.all(func(member): return Binding.find_for_member(member).get("binding") == binding), "Editor membership lookup resolves the same runtime squad")

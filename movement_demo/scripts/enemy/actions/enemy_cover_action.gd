@@ -69,9 +69,11 @@ func collect_candidates(visible: bool) -> Array[Dictionary]:
 	var defensive_melee: bool = context.combat_type == context.CombatType.MELEE
 	if defensive_melee and context.melee.can_request(visible): return options
 	var under_pressure: bool = context.recent_damage_pressure > 0.0 or context.nearby_shot_pressure > 0.0
+	var investigate_loss := _yield_to_investigation(visible)
 	var horizon: float = context.utility_horizon_seconds
 	var information: float = 0.0 if visible else horizon
 	for destination in transfer_candidates():
+		if investigate_loss: continue
 		# 近战的基础躲藏用于缓解新压力；低血量本身不能使其永久躲藏。
 		# 压力途中消退仍完成当前转移，到位后保留探出／搜索／接敌的共同选择。
 		var continuing: bool = _running and transfer.phase == transfer.Phase.RUN_TO_COVER and destination.body == transfer.active_cover_body and destination.hide.is_equal_approx(transfer.hide_position)
@@ -148,6 +150,7 @@ func _assess_peek(threat: Vector3, information: float, visible: bool, options: A
 		options.append(candidate)
 
 func validate(candidate: Dictionary, visible: bool) -> bool:
+	if _yield_to_investigation(visible) and candidate.get("mode", &"") != &"peek": return false
 	return super.validate(candidate, visible) and (candidate.get("mode") == &"peek" or _valid_cover(candidate.destination))
 
 func begin(candidate: Dictionary, visible: bool) -> bool:
@@ -164,10 +167,15 @@ func begin(candidate: Dictionary, visible: bool) -> bool:
 	return true
 
 func valid(_visible: bool) -> bool:
+	if transfer.phase == transfer.Phase.RUN_TO_COVER and _yield_to_investigation(_visible): return false
 	return _running and is_enabled() and transfer.is_active() and (not low_cycle.active() or actor.can_use_firearms())
 
 func tick(delta: float, visible: bool) -> Dictionary:
 	_transfer_reconsider = false
+	if transfer.phase == transfer.Phase.RUN_TO_COVER and _yield_to_investigation(visible):
+		_running = false
+		context.invalidate_utility()
+		return motion(Vector3.ZERO)
 	if low_cycle.active() and low_cycle.phase != low_cycle.Phase.APPROACH:
 		low_cycle.tick(delta, true, visible, transfer.watch_seconds)
 		_running = low_cycle.active()
@@ -195,7 +203,19 @@ func reset() -> void:
 	low_cycle.reset()
 	_transfer_reconsider = false
 
+func _yield_to_investigation(visible: bool) -> bool:
+	# Losing the target changes the purpose of movement at every team level.
+	# Real incoming danger still permits personal cover; old exposure scores do not.
+	if visible or actor.is_vaulting() or actor.melee_active: return false
+	if context.recent_damage_pressure > 0.0 or context.nearby_shot_pressure > 0.0: return false
+	if not context.has_combat_contact() and context.cover_inspection_evidence().is_empty(): return false
+	return context.cooperation == null or not context.cooperation.has_visual_contact(context, context.cooperation_target_id())
+
 func can_interrupt(next: Dictionary, _visible: bool) -> bool:
+	if _yield_to_investigation(_visible): return true
+	# Publication and acceptance share the same handoff rule. An ordinary cover
+	# transfer cannot hide legal team offers until after its unrelated walk ends.
+	if next.has("coordination_role") and _team_orders_enabled() and not actor.is_vaulting() and not actor.melee_active and not assignment_escape(plan, _visible): return true
 	# 有效转移执行到底，避免邻近样本轮换不断清空卡住计时和绕行次数。
 	var unavailable: bool = low_cycle.active() and (not actor.can_use_firearms() or actor.ammo.is_reloading or actor.ammo.magazine_rounds <= 0)
 	return next.get("urgent", false) or _transfer_reconsider or unavailable or (not low_cycle.committed() and transfer.phase != transfer.Phase.RUN_TO_COVER)

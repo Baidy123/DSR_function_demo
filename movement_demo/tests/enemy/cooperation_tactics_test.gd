@@ -20,12 +20,13 @@ func check(ok: bool, label: String) -> void:
 	print(("PASS " if ok else "FAIL ") + label)
 
 func _run() -> void:
-	scene = preload("res://tests/enemy/enemy_fire_fixture.gd").legacy_scene()
+	scene = preload("res://tests/enemy/enemy_fire_fixture.gd").single_member_scene()
 	arena = scene.get_node("Arena")
+	preload("res://tests/enemy/enemy_fire_fixture.gd").bind_team(arena, 2)
 	first = preload("res://tests/enemy/enemy_fire_fixture.gd").primary_enemy(arena)
 	first_ai = first.get_node("AI")
 	first_ai.set_physics_process(false)
-	first.position = Vector3(5, 0, -0.9)
+	first.position = Vector3(7.5, 0, -0.9)
 	first.get_node("UnitType").profile = preload("res://resources/enemy/units/ranged.tres").duplicate(true)
 	first.weapon = WeaponData.new()
 	player = scene.get_node("Player")
@@ -47,7 +48,7 @@ func _run() -> void:
 	player.get_node("Health").debug_invincible = true
 	second = load("res://scenes/enemy/enemy.tscn").instantiate()
 	second.name = "CooperationPartner"
-	second.position = Vector3(5, 0, 0.9)
+	second.position = Vector3(7.5, 0, 0.9)
 	second.weapon = WeaponData.new()
 	second.get_node("AI").set_physics_process(false)
 	arena.add_child(second)
@@ -76,7 +77,7 @@ func _run() -> void:
 			if ai.utility_current.get("id", &"") == &"cooperate":
 				saw_advance = true
 				var action = ai.actions[&"cooperate"]
-				if not checked_walk_contract:
+				if not checked_walk_contract and ai.utility_current.get("destination", {}).has("path"):
 					_check_walk_contract(ai, action)
 					checked_walk_contract = true
 				var step: Vector3 = ai.actor.global_position - before[0 if ai == first_ai else 1]
@@ -88,9 +89,9 @@ func _run() -> void:
 	check(maximum_displacement > 0.5, "协作方案产生真实碰撞移动")
 	print("COOPERATION MOVEMENT maximum=%.3f final_first=%.3f final_second=%.3f" % [maximum_displacement, first.global_position.distance_to(initial_first), second.global_position.distance_to(initial_second)])
 	check(checked_walk_contract, "自主协作执行经过严格步行路线边界检查")
-	var before_claims: int = first_ai.context.cooperation_snapshot().claims.size()
+	var before_claims: int = first_ai.context.cooperation.reservation_snapshot(first_ai.context).size()
 	for count in 8: first_ai.action_selector.assess_options(first_ai, first_ai.context.sees_player)
-	check(first_ai.context.cooperation_snapshot().claims.size() == before_claims, "候选反复收集不认领新任务")
+	check(first_ai.context.cooperation.reservation_snapshot(first_ai.context).size() == before_claims, "候选反复收集不认领新任务")
 	await _visible_support()
 	await _blocked_shared_region()
 	await _expired_evidence()
@@ -181,15 +182,15 @@ func _check_prediction_windows(action, mode: StringName) -> void:
 	var saved_recovery: float = fire.fire_decision.last_recovery_rate
 	var saved_reaction: float = fire.fire_reaction_elapsed
 	var saved_aim: Vector3 = actor.aim_direction
-	var execution := [action.remaining, action.aim_point, action._shots_remaining, fire.fire_burst_shots, action._evidence.duplicate(true), action._claim.duplicate(true), action.plan.duplicate(true)]
+	var execution := [action.remaining, action.aim_point, action._shots_remaining, fire.fire_burst_shots, action._evidence.duplicate(true), action.plan.get("coordination_assignment", {}).duplicate(true), action.plan.duplicate(true)]
 	var horizon: float = context.utility_horizon_seconds
 	fire.fire_pause_remaining = horizon + 1.0
 	var paused: Dictionary = action.preview_candidate(mode)
-	check(not paused.is_empty() and paused.get("cooperation", {}).get("support_seconds", -1.0) == 0.0 and context.cooperation_candidate_seconds(paused) == 0.0, "%s 当前连射停顿覆盖计划窗口时不得领取支援收益" % mode)
+	check(not paused.is_empty() and _prediction(action, mode, paused, -1.0).get("support_seconds", -1.0) == 0.0 and context.cooperation_candidate_seconds(paused) == 0.0, "%s 当前连射停顿覆盖计划窗口时不得领取支援收益" % mode)
 	fire.fire_pause_remaining = 0.0
 	actor.shot_cooldown = horizon + 1.0
 	var cooling: Dictionary = action.preview_candidate(mode)
-	check(not cooling.is_empty() and cooling.get("cooperation", {}).get("support_seconds", -1.0) == 0.0 and context.cooperation_candidate_seconds(cooling) == 0.0, "%s 实际枪械冷却覆盖计划窗口时不得领取支援收益" % mode)
+	check(not cooling.is_empty() and _prediction(action, mode, cooling, -1.0).get("support_seconds", -1.0) == 0.0 and context.cooperation_candidate_seconds(cooling) == 0.0, "%s 实际枪械冷却覆盖计划窗口时不得领取支援收益" % mode)
 	actor.shot_cooldown = 0.0
 	if mode == &"visible":
 		actor.weapon_stability = 0.0
@@ -198,18 +199,18 @@ func _check_prediction_windows(action, mode: StringName) -> void:
 		fire.fire_reaction_elapsed = fire.fire_reaction_seconds
 		var steady: float = fire.estimated_steady_wait(true)
 		var waiting: Dictionary = action.preview_candidate(mode, {}, maxf(0.001, steady * 0.5))
-		check(steady > 0.0 and waiting.get("cooperation", {}).get("estimated_start_seconds", 0.0) >= steady and waiting.get("cooperation", {}).get("support_seconds", -1.0) == 0.0 and context.cooperation_candidate_seconds(waiting) == 0.0, "稳枪尚未结束的短计划不得领取可见掩护收益")
+		check(steady > 0.0 and _prediction(action, mode, waiting, maxf(0.001, steady * 0.5)).get("estimated_start_seconds", 0.0) >= steady and _prediction(action, mode, waiting, maxf(0.001, steady * 0.5)).get("support_seconds", -1.0) == 0.0 and context.cooperation_candidate_seconds(waiting) == 0.0, "稳枪尚未结束的短计划不得领取可见掩护收益")
 		actor.weapon_stability = saved_stability
 		fire.fire_decision.wait_seconds = saved_wait
 		fire.fire_decision.last_recovery_rate = saved_recovery
 		fire.fire_reaction_elapsed = 0.0
 		var reacting: Dictionary = action.preview_candidate(mode, {}, 0.01)
-		check(reacting.get("cooperation", {}).get("estimated_start_seconds", 0.0) >= fire.fire_reaction_seconds and reacting.get("cooperation", {}).get("support_seconds", -1.0) == 0.0 and context.cooperation_candidate_seconds(reacting) == 0.0, "反应尚未完成的短计划不得领取可见掩护收益")
+		check(_prediction(action, mode, reacting, 0.01).get("estimated_start_seconds", 0.0) >= fire.fire_reaction_seconds and _prediction(action, mode, reacting, 0.01).get("support_seconds", -1.0) == 0.0 and context.cooperation_candidate_seconds(reacting) == 0.0, "反应尚未完成的短计划不得领取可见掩护收益")
 		fire.fire_reaction_elapsed = fire.fire_reaction_seconds
 		var target: Vector3 = context.perception.visible_aim_position(true)
 		actor.aim_direction = -(target - actor.get_shot_origin()).normalized()
 		var turning: Dictionary = action.preview_candidate(mode, {}, 0.1)
-		check(turning.get("cooperation", {}).get("estimated_start_seconds", 0.0) > 0.1 and turning.get("cooperation", {}).get("support_seconds", -1.0) == 0.0 and context.cooperation_candidate_seconds(turning) == 0.0, "尚未转向目标的短计划不得领取可见掩护收益")
+		check(_prediction(action, mode, turning, 0.1).get("estimated_start_seconds", 0.0) > 0.1 and _prediction(action, mode, turning, 0.1).get("support_seconds", -1.0) == 0.0 and context.cooperation_candidate_seconds(turning) == 0.0, "尚未转向目标的短计划不得领取可见掩护收益")
 	fire.fire_pause_remaining = saved_pause
 	actor.shot_cooldown = saved_cooldown
 	actor.weapon_stability = saved_stability
@@ -217,7 +218,14 @@ func _check_prediction_windows(action, mode: StringName) -> void:
 	fire.fire_decision.last_recovery_rate = saved_recovery
 	fire.fire_reaction_elapsed = saved_reaction
 	actor.aim_direction = saved_aim
-	check(execution == [action.remaining, action.aim_point, action._shots_remaining, fire.fire_burst_shots, action._evidence, action._claim, action.plan], "%s 刷新预测不更改执行瞄准、证据、租约、时长或连射计数" % mode)
+	check(execution == [action.remaining, action.aim_point, action._shots_remaining, fire.fire_burst_shots, action._evidence, action.plan.get("coordination_assignment", {}), action.plan], "%s 刷新预测不更改执行瞄准、证据、租约、时长或连射计数" % mode)
+
+func _prediction(action, mode: StringName, candidate: Dictionary, duration: float) -> Dictionary:
+	if candidate.is_empty(): return {}
+	if duration < 0.0: duration = action.remaining if action.active else maxf(0.1, action.duration_min)
+	var basis: Dictionary = candidate.suppression_evidence
+	duration = minf(duration, maxf(0.0, float(basis.valid_until) - action.context.evidence_elapsed_seconds))
+	return action._support_prediction(mode, action._preview(mode, basis), duration, candidate.get("suppression_reason") == &"team_support")
 
 func _blocked_shared_region() -> void:
 	_reset_open()
@@ -252,7 +260,7 @@ func _blocked_shared_region() -> void:
 	var old_remaining: float = action.remaining
 	for count in 5: action.collect_candidates(false)
 	check(action.aim_point == old_aim and is_equal_approx(action.remaining, old_remaining), "压制预评估不改变真实瞄准和有限时长")
-	check(first_ai.context.cooperation_snapshot().claims.filter(func(claim): return claim.get("coverage_kind", &"") == &"exit").is_empty(), "已移除的出口不创建协作岗位或覆盖信用")
+	check(first_ai.context.coordination_assignment().get("owner_action") != &"exit_suppression", "已移除的出口不创建协作岗位或覆盖信用")
 	cover.collision_layer = 0
 	cover.queue_free()
 	await _settle(3)

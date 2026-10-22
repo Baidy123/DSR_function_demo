@@ -14,7 +14,8 @@ func _run() -> void:
 	quit(1 if failures else 0)
 
 func _check_solo(enabled: bool) -> void:
-	var scene = preload("res://tests/enemy/enemy_fire_fixture.gd").legacy_scene()
+	var scene = preload("res://tests/enemy/enemy_fire_fixture.gd").single_member_scene()
+	Fixture.bind_team(scene.get_node("Arena"), 2 if enabled else 0)
 	root.add_child(scene)
 	current_scene = scene
 	var actor = preload("res://tests/enemy/enemy_fire_fixture.gd").primary_enemy(scene)

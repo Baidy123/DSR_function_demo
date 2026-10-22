@@ -16,7 +16,7 @@ func _run() -> void:
 	quit(1 if failures else 0)
 
 func _check_loadout(invalid_melee: bool) -> void:
-	var scene = preload("res://tests/enemy/enemy_fire_fixture.gd").legacy_scene()
+	var scene = preload("res://tests/enemy/enemy_fire_fixture.gd").unbound_scene()
 	var enemy = preload("res://tests/enemy/enemy_fire_fixture.gd").primary_enemy(scene)
 	var ai = enemy.get_node("AI")
 	var player = scene.get_node("Player")

@@ -60,7 +60,7 @@ func _run() -> void:
 	_reset_tactical()
 	_snapshot_scopes()
 	_planning_source_scopes()
-	_claim_pressure()
+	_execution_pressure()
 	_plan_pressure()
 	await _single_role_equivalence()
 	print("COOPERATION QUERY: %d/%d passed" % [checks - failures, checks])
@@ -175,15 +175,15 @@ func _planning_source_scopes() -> void:
 	caller.end_cooperation_preview()
 	_reset_tactical()
 
-func _claim_pressure() -> void:
+func _execution_pressure() -> void:
 	var caller = contexts[0]
-	var token: Dictionary = board.claim(contexts[1], {"kind": &"advance", "owner_action": &"cooperate", "duration": 2.0})
-	check(not token.is_empty() and is_equal_approx(caller.cooperation_support_pressure(), 0.5) and is_equal_approx(caller.cooperation_support_pressure(), _snapshot_pressure(caller)), "A live advance claim contributes its remaining stationary-support demand")
-	board.release(contexts[1], token)
-	check(caller.cooperation_support_pressure() == 0.0, "Releasing a claim removes its demand in the same frame")
-	board.claim(contexts[1], {"kind": &"advance", "owner_action": &"cooperate", "duration": 0.1})
-	_advance(0.11)
-	check(caller.cooperation_support_pressure() == 0.0 and _snapshot_pressure(caller) == 0.0, "An expired claim cannot leave support pressure behind")
+	_publish_need(2.0, &"advance")
+	check(is_equal_approx(caller.cooperation_support_pressure(), 0.5) and is_equal_approx(caller.cooperation_support_pressure(), _snapshot_pressure(caller)), "Real movement execution contributes its finite stationary-support demand")
+	board.clear_execution(actors[1].get_instance_id())
+	check(caller.cooperation_support_pressure() == 0.0, "Ending execution removes its demand in the same frame")
+	_publish_need(0.1, &"advance")
+	_advance(0.36)
+	check(caller.cooperation_support_pressure() == 0.0 and _snapshot_pressure(caller) == 0.0, "Expired actual execution cannot leave support pressure behind")
 	_reset_tactical()
 
 func _plan_pressure() -> void:

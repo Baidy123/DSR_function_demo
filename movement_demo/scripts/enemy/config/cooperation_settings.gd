@@ -3,7 +3,7 @@ extends "res://scripts/enemy/config/module_settings.gd"
 
 enum Level { INTEL_ONLY, TACTICAL, COORDINATED }
 
-## Shared squad permission; an unbound legacy Training keeps its old switch.
+## Shared squad permission. Personal Training never creates a team binding.
 @export_enum("仅视野共享", "战术配合", "强配合") var level: int = Level.INTEL_ONLY:
 	set(value):
 		level = clampi(value, Level.INTEL_ONLY, Level.COORDINATED)
@@ -25,10 +25,6 @@ func _init() -> void:
 	set(value):
 		plan_seconds = value
 		mark_override(&"plan_seconds")
-@export_range(0.1, 5.0, 0.1) var lane_hold_seconds := 1.2:
-	set(value):
-		lane_hold_seconds = value
-		mark_override(&"lane_hold_seconds")
 ## A whole flank has a fixed deadline; individual walking legs are re-scored.
 @export_range(4.0, 20.0, 0.5) var flank_plan_seconds := 14.0:
 	set(value):
@@ -66,10 +62,6 @@ func _init() -> void:
 	set(value):
 		search_claim_radius = value
 		mark_override(&"search_claim_radius")
-@export_range(1.0, 20.0, 0.5) var search_claim_seconds := 6.0:
-	set(value):
-		search_claim_seconds = value
-		mark_override(&"search_claim_seconds")
 
 @export_range(1.0, 40.0, 0.5) var cover_inspection_seconds := 20.0:
 	set(value):
@@ -80,11 +72,6 @@ func _init() -> void:
 	set(value):
 		cover_inspection_plan_seconds = value
 		mark_override(&"cover_inspection_plan_seconds")
-
-@export_range(0.0, 5.0, 0.1) var cover_inspection_wait_seconds := 2.0:
-	set(value):
-		cover_inspection_wait_seconds = value
-		mark_override(&"cover_inspection_wait_seconds")
 
 @export_range(0.1, 3.0, 0.1) var cover_inspection_observe_seconds := 0.5:
 	set(value):

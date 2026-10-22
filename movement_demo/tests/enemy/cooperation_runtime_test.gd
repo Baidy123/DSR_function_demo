@@ -17,6 +17,7 @@ func _measure(count: int) -> void:
 	root.add_child(scene)
 	current_scene = scene
 	var arena = scene.get_node("Arena")
+	preload("res://tests/enemy/enemy_fire_fixture.gd").bind_team(arena, 2)
 	var player = scene.get_node("Player")
 	player.set_physics_process(false)
 	player.combat.set_physics_process(false)

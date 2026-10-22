@@ -207,8 +207,9 @@ func _support_case(kind: StringName) -> Dictionary:
 					var actual: Dictionary = provider.squad_coordinator._coordination_actual(provider, shared.target_id)
 					result.premature_handoff = result.premature_handoff or not actual.fire_ready
 				providers[key] = link.provider_id
-				if kind in [&"handoff", &"handoff_unavailable"] and not lowered and shared.phase == &"executing" and (kind == &"handoff_unavailable" or (shared.tactic == &"flank" and shared.assignments.size() < f.actors.size() and shared.expires_at - f.arena.cooperation.elapsed > 3.0)):
+				if kind in [&"handoff", &"handoff_unavailable"] and not lowered and shared.phase == &"executing" and (kind == &"handoff_unavailable" or (shared.tactic == &"flank" and shared.expires_at - f.arena.cooperation.elapsed > 3.0)):
 					# Change ammunition, not the selected action or any readiness fact.
+					# Full-team duties include the spare; it need not be unassigned.
 					# A continuing flank still needs fire; a short completed deployment
 					# is correctly allowed to end before an unnecessary handoff finishes.
 					var provider = f.arena.cooperation._context(link.provider_id).actor
@@ -223,6 +224,8 @@ func _support_case(kind: StringName) -> Dictionary:
 			for actor in f.actors:
 				var ai = actor.get_node("AI")
 				row.append({"action": ai.utility_current.get("id"), "role": ai.context.coordination_assignment().get("role"), "rounds": actor.ammo.magazine_rounds, "reload": actor.ammo.is_reloading, "support": ai.context.coordination_support_state(),
+					"offers": ai.context.squad_coordinator._coordination_offers.get(actor.get_instance_id(), []).map(func(offer): return {"role": offer.role, "cost": offer.cost, "fire": offer.path_summary.get("expected_fire_seconds", 0.0)}),
+					"decision": ai.context.squad_coordinator._coordination_plans.get(ai.context.squad_coordinator._coordination_team(ai.context), {}).get("decision", {}),
 					"retreat_options": ai.utility_options.filter(func(choice): return choice.id == &"covering_retreat").map(func(choice): return {"role": choice.get("coordination_role"), "cost": choice.cost, "position": choice.destination.hide}), "baseline": ai.context.squad_coordinator._coordination_baselines.get(actor.get_instance_id(), {})})
 			result.trace.append(row)
 	print("SUPPORT_SAMPLE ", JSON.stringify(result))

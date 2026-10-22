@@ -29,7 +29,7 @@ func _initialize() -> void:
 
 func _run() -> void:
 	# Retain the real player subtree, including ammo/slots/HUD, in a controlled physical room.
-	var original: Node = preload("res://tests/enemy/enemy_fire_fixture.gd").legacy_scene()
+	var original: Node = preload("res://tests/enemy/enemy_fire_fixture.gd").unbound_scene()
 	player = original.get_node("Player")
 	original.remove_child(player)
 	original.free()

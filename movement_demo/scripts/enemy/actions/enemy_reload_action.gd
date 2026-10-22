@@ -1,7 +1,6 @@
 extends "res://scripts/enemy/actions/enemy_action.gd"
 
 var transfer = preload("res://scripts/enemy/actions/enemy_cover_motion.gd").new()
-var _reload_claim: Dictionary = {}
 var _reload_started := false
 var _rounds_at_start := 0
 
@@ -22,6 +21,8 @@ func assignment_escape(candidate: Dictionary, visible: bool) -> bool:
 	return validate(candidate, visible)
 
 func _proactive_opportunity() -> Dictionary:
+	# Strong support-dependent reloads require an assigned support link.
+	if _team_orders_enabled(): return {}
 	if not context.cooperation_enabled() or not actor.can_use_firearms(): return {}
 	if actor.ammo.magazine_rounds <= 0 or actor.ammo.magazine_rounds >= actor.weapon.magazine_capacity: return {}
 	var ratio: float = float(actor.ammo.magazine_rounds) / maxf(1.0, actor.weapon.magazine_capacity)
@@ -46,10 +47,6 @@ func _reload_completed() -> bool:
 
 func _mode(candidate: Dictionary) -> StringName:
 	return candidate.get("reload_mode", candidate.get("plan", &""))
-
-func _release_reload_claim() -> void:
-	if context != null and not _reload_claim.is_empty(): context.cooperation_release(_reload_claim)
-	_reload_claim = {}
 
 func setup(shared_context, section: StringName = &"") -> void:
 	super.setup(shared_context, section)
@@ -220,10 +217,7 @@ func validate(candidate: Dictionary, visible: bool) -> bool:
 
 func begin(candidate: Dictionary, visible: bool) -> bool:
 	if candidate.has("coordination_role") and not validate(candidate, visible): return false
-	_release_reload_claim()
-	if candidate.get("proactive_reload", false) and not candidate.has("coordination_role") and not actor.ammo.is_reloading:
-		_reload_claim = context.cooperation_claim_reload(maxf(_reload_seconds(), float(candidate.outcome.unavailable_seconds)) + 3.0)
-		if _reload_claim.is_empty(): return false
+	if candidate.get("proactive_reload", false) and not candidate.has("coordination_role") and not actor.ammo.is_reloading and not _proactive_opportunity().get("allowed", false): return false
 	_rounds_at_start = actor.ammo.magazine_rounds
 	_reload_started = actor.ammo.is_reloading
 	candidate.conceals = candidate.get("conceals", false) or not candidate.destination.is_empty()
@@ -256,7 +250,6 @@ func tick(delta: float, visible: bool) -> Dictionary:
 	if arrived and not actor.ammo.is_reloading and completed:
 		if plan.has("coordination_role"): return motion(Vector3.ZERO)
 		_running = false
-		_release_reload_claim()
 		context.avoid_position = Vector3.INF
 		return motion(Vector3.ZERO)
 	var direction := Vector3.ZERO
@@ -277,15 +270,21 @@ func tick(delta: float, visible: bool) -> Dictionary:
 	return output
 
 func execution_contract(visible: bool) -> Dictionary:
-	if not plan.has("coordination_role"): return super.execution_contract(visible)
+	if not plan.has("coordination_role"):
+		var result := super.execution_contract(visible)
+		result.segment_boundary = not actor.ammo.is_reloading
+		result.remaining_seconds = _reload_seconds() if actor.ammo.is_reloading else 0.0
+		result.available_after_seconds = result.remaining_seconds
+		result.availability_reason = &"reloading"
+		return result
 	var assignment: Dictionary = context.coordination_assignment()
 	var arrived: bool = plan.destination.is_empty() or transfer.phase == transfer.Phase.HIDE
 	return {"valid": valid(visible), "segment_boundary": not actor.ammo.is_reloading,
 		"ready_for_phase": not _reload_started, "remaining_seconds": maxf(0.0, float(assignment.get("expires_at", 0.0)) - context.coordination_now()),
+		"available_after_seconds": _reload_seconds() if actor.ammo.is_reloading else 0.0, "availability_reason": &"reloading",
 		"progress": actor.ammo.reload_progress, "complete": _reload_started and _reload_completed() and arrived and not actor.ammo.is_reloading}
 
 func reset() -> void:
-	_release_reload_claim()
 	_reload_started = false
 	transfer.reset()
 

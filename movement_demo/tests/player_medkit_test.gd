@@ -18,7 +18,7 @@ func _initialize() -> void:
 	_run.call_deferred()
 
 func _run() -> void:
-	var original: Node = preload("res://tests/enemy/enemy_fire_fixture.gd").legacy_scene()
+	var original: Node = preload("res://tests/enemy/enemy_fire_fixture.gd").unbound_scene()
 	player = original.get_node("Player")
 	original.remove_child(player)
 	original.free()

@@ -37,16 +37,17 @@ func _awareness_run(count: int, level: int) -> Dictionary:
 		for actor in fixture.actors:
 			var ai = actor.get_node("AI")
 			ai._physics_process(STEP)
-			var advice: Dictionary = ai.context.coordination_recommendation()
+			var task: Dictionary = ai.context.coordination_assignment()
+			var advice: Dictionary = task if task.get("constraint_mode") == &"advisory" else {}
 			if not advice.is_empty():
 				result.advice += 1
-				if deadlines.has(advice.recommendation_id): result.fixed_deadlines = result.fixed_deadlines and deadlines[advice.recommendation_id] == advice.expires_at
-				else: deadlines[advice.recommendation_id] = advice.expires_at
+				if deadlines.has(advice.assignment_id): result.fixed_deadlines = result.fixed_deadlines and deadlines[advice.assignment_id] == advice.expires_at
+				else: deadlines[advice.assignment_id] = advice.expires_at
 				if not advice.accepted:
-					result.no_preview_reservation = result.no_preview_reservation and not fixture.arena.cooperation._reservations.values().any(func(e): return e.get("recommendation_id") == advice.recommendation_id)
+					result.no_preview_reservation = result.no_preview_reservation and not fixture.arena.cooperation._reservations.values().any(func(e): return e.get("assignment_id") == advice.assignment_id)
 				var choices: Array = ai.context.coordination_choices(ai.utility_options)
 				result.personal_choices = result.personal_choices or choices.any(func(c): return not c.has("coordination_role"))
-			if not ai.context.coordination_assignment().is_empty(): result.assigned += 1
+			if not task.is_empty() and task.get("constraint_mode") != &"advisory": result.assigned += 1
 			if ai.utility_current.get("id") == &"cooperate":
 				result.cooperate_frames += 1
 				result.moving += actor.global_position.distance_to(before[actor.get_instance_id()])

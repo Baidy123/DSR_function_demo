@@ -35,8 +35,9 @@ func _navigation_mesh(half_width: float = 8.0) -> NavigationMesh:
 
 func _fixture(count: int, enabled: bool, narrow: bool = false) -> Dictionary:
 	seed(8423)
-	var scene = preload("res://tests/enemy/enemy_fire_fixture.gd").legacy_scene()
+	var scene = preload("res://tests/enemy/enemy_fire_fixture.gd").unbound_scene()
 	var arena = scene.get_node("Arena")
+	preload("res://tests/enemy/enemy_fire_fixture.gd").bind_team(arena, 2 if enabled else 0)
 	var first = preload("res://tests/enemy/enemy_fire_fixture.gd").primary_enemy(arena)
 	# Keep the declared population independent of unsaved/local arena duplicates.
 	for child in arena.get_children():
@@ -94,6 +95,9 @@ func _fixture(count: int, enabled: bool, narrow: bool = false) -> Dictionary:
 		weapon.reload_seconds = 3.5
 		weapon.shot_interval = 0.2
 		actor.equip_weapon(weapon)
+		# Every scenario owns its training data. A prior case may change support
+		# thresholds and must not leak those settings into the next instantiated AI.
+		ai.training.profile = ai.training.profile.duplicate(true)
 		ai.training.profile.selected_tactics.assign([&"cover", &"covering_retreat", &"attack_position", &"suppression"])
 		if enabled: ai.training.profile.selected_tactics.append(&"cooperate")
 		ai.training.profile.set_setting(&"tactics", &"burst_shot_count", 10)
@@ -122,12 +126,9 @@ func _fixture(count: int, enabled: bool, narrow: bool = false) -> Dictionary:
 func _flanking(ai) -> bool:
 	return ai.utility_current.get("id", &"") == &"cooperate" and ai.utility_current.get("plan", &"") == &"opposite_flank"
 
-func _flank_owners(actors: Array, snapshot: Dictionary) -> Dictionary:
+func _flank_owners(actors: Array, _snapshot: Dictionary) -> Dictionary:
 	# The central assignment already reserves a departure before begin().
-	# Count actor identities once while legacy claims remain compatible.
 	var owners: Dictionary = {}
-	for claim: Dictionary in snapshot.get("claims", []):
-		if claim.get("kind", &"") == &"flank": owners[int(claim.owner_id)] = true
 	for actor in actors:
 		var assignment: Dictionary = actor.get_node("AI").context.coordination_assignment()
 		if assignment.get("role", &"") == &"flank": owners[actor.get_instance_id()] = true

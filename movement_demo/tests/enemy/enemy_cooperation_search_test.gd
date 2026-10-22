@@ -15,6 +15,7 @@ func _run() -> void:
 	root.add_child(scene)
 	current_scene = scene
 	var arena = scene.get_node("Arena")
+	preload("res://tests/enemy/enemy_fire_fixture.gd").bind_team(arena, 2)
 	var first = preload("res://tests/enemy/enemy_fire_fixture.gd").primary_enemy(arena)
 	var second = load("res://scenes/enemy/enemy.tscn").instantiate()
 	second.position = arena.to_local(Vector3(18, 0, 2))
@@ -85,12 +86,12 @@ func _run() -> void:
 			print("COOP SEARCH frame=", frame, " first=", first.global_position, " task=", first_execution,
 				" second=", second.global_position, " task=", second_execution)
 		if frame == 60:
-			last_claim_count = second_ai.context.cooperation_snapshot().claims.size()
+			last_claim_count = second_ai.context.cooperation.reservation_snapshot(second_ai.context).size()
 			var target: Vector3 = second_search.utility_destination()
 			var remaining: float = second_search.track_timer
 			second_search.collect_candidates(false)
 			second_search.collect_candidates(false)
-			immutable = last_claim_count == second_ai.context.cooperation_snapshot().claims.size() and target == second_search.utility_destination() and remaining == second_search.track_timer
+			immutable = last_claim_count == second_ai.context.cooperation.reservation_snapshot(second_ai.context).size() and target == second_search.utility_destination() and remaining == second_search.track_timer
 	check(separate, "正常 Utility 执行期间两人认领不同调查位置，没有挤向同一个线索点")
 	check(first.global_position.distance_to(first_start) > 0.4 and second.global_position.distance_to(second_start) > 0.4, "两名敌人实际移动执行分工搜索")
 	check(stayed_alert and second_ai.context.has_combat_contact() and not second_ai.has_visual_memory, "仅团队目击的敌人超过普通调查时限仍持续搜索，个人目击保持独立")
@@ -105,11 +106,14 @@ func _run() -> void:
 	var remaining_samples: Array = first_search.coverage.uncovered.duplicate()
 	var sample_count: int = first_search.coverage.sample_count
 	first_ai._cancel_utility_execution(&"switch")
-	check(first_search._search_claim.is_empty() and first_ai.context._coordination_execution.is_empty()
+	check(first_ai.context._coordination_execution.is_empty()
 		and first_ai.context._coordination_reservation.is_empty() and not first_search._running
 		and first_search.coverage.uncovered == remaining_samples and first_search.coverage.sample_count == sample_count,
 		"暂时切换动作释放搜索岗位，保留个人调查进度")
-	check(not token.is_empty() and second_ai.context.cooperation_search_available(token.position, 0.1), "同伴取消后原调查位置可以重新认领")
+	# Cancellation releases ownership, but cannot remove the actor's physical body.
+	first.global_position = Vector3(18, 0, -4)
+	first.velocity = Vector3.ZERO
+	check(not token.is_empty() and second_ai.context.cooperation_search_available(token.position, 0.1), "同伴取消并腾出身体后原调查位置可以重新预约")
 	barrier.queue_free()
 	print("ENEMY COOPERATION SEARCH: %d/%d passed" % [checks - failures, checks])
 	quit(1 if failures else 0)
@@ -119,11 +123,11 @@ func _executing_search(ai, search) -> Dictionary:
 	if ai.current_action != search or ai.utility_current.get("id") != &"search" or not search._running: return {}
 	var position: Vector3 = search.utility_destination()
 	if not position.is_finite(): return {}
-	if not search._search_claim.is_empty(): return {"position": position, "role": &"personal", "assignment_id": 0}
+	if not ai.context._coordination_reservation.is_empty(): return {"position": position, "role": &"personal", "assignment_id": 0}
 	var begun: Dictionary = {}
 	match search.plan.get("plan", &""):
 		&"search_sector": begun = search._sector_assignment
-		&"inspect_end": begun = search._inspection_claim
+		&"inspect_end": begun = search._inspection_assignment
 	if begun.is_empty(): return {}
 	var assignment: Dictionary = ai.context.coordination_assignment()
 	var committed: Dictionary = ai.context._coordination_execution
@@ -161,6 +165,10 @@ func _check_negative_evidence(scene, first, second, player) -> void:
 	received.sample_count = 1
 	check(received.take_next(near).is_empty() and received.pending.has(near) and received.fraction() == 0.0, "暂时跳过友军刚检查的同一采样点，不虚增个人覆盖率或永久删除")
 	a.cooperation.advance(3.1)
+	# Expired observation does not make an occupied capsule a free destination.
+	check(not b.cooperation_search_available(near), "负证据到期也不能占用同伴实际身体位置")
+	first.global_position = Vector3(18, 0, -2)
+	for frame in 2: await physics_frame
 	var next: Dictionary = received.take_next(near)
 	check(not next.is_empty() and next.position.is_equal_approx(near) and received.fraction() == 0.0, "负证据到期后同一地面恢复可调查，选中仍不等于实际观察")
 	wall.queue_free()

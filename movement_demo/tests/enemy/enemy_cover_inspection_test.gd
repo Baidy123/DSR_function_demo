@@ -97,7 +97,7 @@ func _visual_loss_case(full_training: bool) -> void:
 			if not token.is_empty():
 				var assignment: Dictionary = ai.context.coordination_assignment()
 				check(not assignment.is_empty() and assignment.get("accepted", false)
-					and assignment.get("assignment_id") == search._inspection_claim.get("assignment_id"), "实际端点执行由已接受的中央指派授权") if assigned[index] == 0 else null
+					and assignment.get("assignment_id") == search._inspection_assignment.get("assignment_id"), "实际端点执行由已接受的中央指派授权") if assigned[index] == 0 else null
 				assigned[index] = int(token.end)
 				entries[index] = entries[index] or actor.global_position.distance_to(token.entry) <= 0.3
 				inspected[index] = inspected[index] or (actor.global_position.distance_to(token.peek) <= 0.3 and ai.context.perception.can_observe_position(known))
@@ -121,8 +121,9 @@ func _visual_loss_case(full_training: bool) -> void:
 	await physics_frame
 
 func _setup(full_training: bool = false) -> void:
-	scene = preload("res://tests/enemy/enemy_fire_fixture.gd").legacy_scene()
+	scene = preload("res://tests/enemy/enemy_fire_fixture.gd").unbound_scene()
 	arena = scene.get_node("Arena")
+	preload("res://tests/enemy/enemy_fire_fixture.gd").bind_team(arena, 2)
 	for child in arena.get_children():
 		if child != preload("res://tests/enemy/enemy_fire_fixture.gd").primary_enemy(arena) and child.has_method("move_character"): child.free()
 	var navigation: NavigationRegion3D = arena.get_node("NavigationRegion3D")
@@ -215,7 +216,7 @@ func _protocol(contexts: Array, evidence: Dictionary) -> void:
 		cover.add_child(replacement)
 		var search = actors[0].get_node("AI").actions[&"search"]
 		search.reset()
-		check(not Geometry.valid(contexts[0], active_token.geometry) and search._inspection_candidate().is_empty(), "替换同名碰撞子节点时预览和原合同均安全失效")
+		check(not Geometry.valid(contexts[0], active_token.geometry) and search._inspection_candidates().is_empty(), "替换同名碰撞子节点时预览和原合同均安全失效")
 		replacement.free()
 		cover.add_child(collision)
 	for actor in actors: actor.get_node("AI").reset_actions()
@@ -281,8 +282,11 @@ func _mixed_eligibility_case(immobile: bool) -> void:
 	await _setup(false)
 	var first_ai = actors[0].get_node("AI")
 	var other_ai = actors[1].get_node("AI")
-	var label := "不可移动队友" if immobile else "高级OFF队友"
+	var label := "不可移动队友" if immobile else "未装配协作模块的队友"
 	if not immobile:
+		var unit = actors[1].get_node("UnitType")
+		unit.profile = unit.profile.duplicate(true)
+		unit.profile.tactical_actions = unit.profile.tactical_actions.filter(func(definition): return definition.action_id != &"cooperate")
 		other_ai.training.profile.selected_tactics.clear()
 		other_ai.refresh_configuration(true)
 		other_ai.set_physics_process(false)
@@ -305,9 +309,9 @@ func _mixed_eligibility_case(immobile: bool) -> void:
 	var context = first_ai.context
 	var clue: Dictionary = context.cover_inspection_evidence()
 	if not immobile:
-		check(context.cooperation_enabled() and not other_ai.context.cooperation_enabled(), label + "保持同组但没有高级训练授权")
+		check(context.cooperation_enabled() and not other_ai.context.cooperation_enabled(), label + "保持同组但没有协作执行模块")
 	check(not clue.is_empty() and not Geometry.describe(context, clue).is_empty(), label + "反例仍有合法失视线索及真实可通行双端")
-	check(first_ai.actions[&"search"]._inspection_candidate().is_empty(), label + "不被误计为第二调查员或产生空等候选")
+	check(first_ai.actions[&"search"]._inspection_candidates().is_empty(), label + "不被误计为第二调查员或产生空等候选")
 	player.global_position = arena.to_global(Vector3(6, 0, -4))
 	var start: Vector3 = actors[0].global_position
 	var maximum := 0.0
