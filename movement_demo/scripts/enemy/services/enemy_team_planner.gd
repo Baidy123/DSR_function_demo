@@ -5,6 +5,7 @@ extends RefCounted
 const Contract = preload("res://scripts/enemy/services/squad_contract.gd")
 const Traffic = preload("res://scripts/enemy/services/squad_traffic.gd")
 const Combat = preload("res://scripts/enemy/services/squad_combat_tactics.gd")
+const Support = preload("res://scripts/enemy/services/squad_support.gd")
 const MAX_COMBINATIONS := 256
 
 func propose(snapshot: Dictionary) -> Dictionary:
@@ -40,6 +41,7 @@ func advance(work: Dictionary, deadline: int) -> Dictionary:
 			var traffic = Traffic.plan(node.selected, snapshot.members, snapshot.get("synchronize_search", false))
 			if work.attempted.is_empty(): work.attempted = node.selected.duplicate(true)
 			if not traffic.valid: continue
+			if not Support.acyclic(node.selected, traffic): continue
 			work.best = node.selected.duplicate(true)
 			work.cost = cost
 			work.traffic = traffic
@@ -62,6 +64,7 @@ func _team_cost(snapshot: Dictionary, tasks: Dictionary) -> float:
 		var watchers := {}
 		for task in tasks.values():
 			if task.has("overwatch_for"):
+				if not tasks.values().any(func(peer): return peer.role == &"search" and Support.covers(task, peer)): return INF
 				watchers[task.overwatch_for] = int(watchers.get(task.overwatch_for, 0)) + 1
 			var key: String = task.get("sync_key", "")
 			if key.is_empty(): continue

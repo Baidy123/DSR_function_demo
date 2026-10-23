@@ -249,6 +249,9 @@ func execute_command(delta: float, visible: bool) -> Dictionary:
 	while _command_index < path.size() and context._horizontal_distance(path[_command_index]) < 0.06: _command_index += 1
 	if not visible: output.facing = command_look_position() - actor.global_position
 	var arrived: bool = context._horizontal_distance(command.position) <= 0.08
+	# A replacement inspection may end beside the body while requiring a
+	# different preparation post first. Proximity cannot skip that route leg.
+	if command.role == &"search" and _command_index <= _command_approach_index: arrived = false
 	if arrived and visible and not actor.can_use_firearms() and command.role in [&"engage", &"flank"]:
 		# Test geometry facing the visible target, independently of actual
 		# turning, cooldown and recovery. Those are valid reasons to hold.

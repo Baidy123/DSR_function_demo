@@ -11,6 +11,16 @@
 
 ## 本次协调器定向入口
 
+2026-10-24 远近协同新增已登记 `squad_mixed_cooperation_test.gd`。默认明确配置独立实例的实际枪械/近战模式，验证地面、导航、装配、目击和任务前提，再核对同期后侧射击、真实近战命中及玩家0.7米后退后的再次命中。这是代表性混编夹具，不规定游戏里的兵种比例。所有资源改动仅在实例中，不保存回场景或资源。
+
+```powershell
+& E:/Godot/Godot_v4.7.2-stable_win64_console.exe --headless --fixed-fps 60 --path movement_demo --script res://tests/enemy/squad_mixed_cooperation_test.gd -- --level=2 --search
+```
+
+`--level=1/2` 检查两档；`--ranged` 检查实际交叉射击及机动期间队友火力；`--search` 检查真实遮挡后的关联掩护、入口等待、真实换弹、短段独立恢复、隐藏位移隔离和支援者死亡后近战实际命中；再加 `--pressure` 用真实受伤替换换弹触发。图形实例去掉 `--headless` 并加 `--capture`，保存 `logs/ranged_melee_support_20261024.png`，异步抓帧不跳过逐物理帧采样。
+
+`--ranged --legacy-search --handoff --no-hints` 复用原搜索函数及全部断言，核对持续遮挡下的强档同步与转角朝向。`--saved-runtime --level=1/2 --search` 在原保存出生点运行原完整脚本，只在节点入树前纠正实例的枪械装备，含换弹、减员、单人及重载生命周期。当前提前重新目击场景的旧强档用例有3项未观测到同步放行的断言失败；不能把它记为全部通过，也不延迟真实接敌来凑放行。具体通过范围与保留失败见 [敌人测试](enemy-tests.md)。
+
 ```powershell
 & E:/Godot/Godot_v4.7.2-stable_win64_console.exe --headless --fixed-fps 60 --path movement_demo --script res://tests/enemy/squad_command_runtime_test.gd -- --level=1 --search
 ```

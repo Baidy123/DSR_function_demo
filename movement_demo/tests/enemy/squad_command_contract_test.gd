@@ -67,6 +67,7 @@ func _initialize() -> void:
 	check(Traffic.cohesion(1, column, column_bodies).speed_scale == 1.0, "Reloading members do not acquire an unrelated movement barrier")
 	_search_roles(planner, bodies)
 	_combat_roles(planner)
+	_support_contract()
 	print("SQUAD COMMAND CONTRACT: %d/%d passed" % [checks - failures, checks])
 	quit(1 if failures else 0)
 
@@ -138,3 +139,34 @@ func _combat_roles(planner) -> void:
 	candidates[2] = [exposed, rear]
 	result = planner.propose(snapshot)
 	check(result.complete and result.tasks[2].position == rear.position, "Mixed plan prefers the rear-side gun position relative to the real melee approach")
+
+func _support_contract() -> void:
+	var Support = preload("res://scripts/enemy/services/squad_support.gd")
+	var tasks := {}
+	var profiles := {1: {"firearms": false}, 2: {"firearms": true, "actions": {&"support": {"roles": [&"support"]}}}}
+	for id in [1, 2]:
+		var proposal := {"role": &"search" if id == 1 else &"support", "position": Vector3(id, 0, 0), "look_position": Vector3.ZERO,
+			"route": PackedVector3Array([Vector3(id, 0, -3), Vector3(id, 0, 0)]), "objective_id": 1, "site_key": str(id), "sync_key": "group" if id == 1 else ""}
+		if id == 2: proposal.overwatch_for = "group"
+		tasks[id] = Contract.task({"generation": 1, "task_id": id, "version": 1, "member_id": id, "profile_id": str(id)}, proposal, 0.0)
+	check(not Support.acyclic(tasks, {"dependencies": {2: [1]}}), "A support provider cannot depend on the inspector waiting for that provider")
+	check(Support.acyclic(tasks, {"dependencies": {1: [2]}}), "A valid provider-first crossing remains a complete support plan")
+	check(not Support.acyclic(tasks, {"dependencies": {}, "preparation_dependencies": {2: [1]}}), "A preparation-phase traffic cycle cannot hide behind a legal departure order")
+	tasks[2].supported_sites = ["opposite_region"]
+	check(not Support.covers(tasks[2], tasks[1]), "A shared cover group does not grant support to an unseen responsibility region")
+	tasks[2].supported_sites = [tasks[1].site_key]
+	var support = Support.new()
+	support.install(tasks, profiles, 0.0)
+	check(support.links.has(1) and support.beneficiaries(2, tasks) == [1], "Support links bind concrete current task identities in both directions")
+	var copy: Dictionary = support.snapshot(1)
+	copy.providers.clear()
+	check(support.links[1].providers.has(2), "Diagnostic callers cannot erase the live support relationship")
+	tasks[1].version += 1
+	check(support.beneficiaries(2, tasks).is_empty() and support.permission(1, tasks[1], Vector3.ZERO).is_empty(), "Replaced task identities cannot reuse stale support or waiting permission")
+	support.install(tasks, profiles, 1.0)
+	support.release(2)
+	check(support.beneficiaries(2, tasks).is_empty() and support.links[1].providers.is_empty(), "Member departure removes both provider and beneficiary dependencies")
+	support.recovery[1] = {"task": tasks[1].duplicate(true), "until": 4.0}
+	var start := Vector3(1, 0, -3)
+	var step: Dictionary = support.recovery_site(1, {"position": start}, {"objective_id": 1}, 1.0)
+	check(step.sync_key == tasks[1].sync_key and step.via == start and step.look_position == tasks[1].look_position and start.distance_to(step.position) <= 1.401 and not Support.covers(tasks[2], step), "Independent recovery retains the strong rendezvous and observation target while removing failed support")

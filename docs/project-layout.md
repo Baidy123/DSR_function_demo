@@ -71,6 +71,7 @@ movement_demo/
 | 文件 | 当前职责 |
 | --- | --- |
 | `enemy/services/squad_combat_tactics.gd` | 按冻结武器与合法目标生成近战攻击点、远程交叉/后侧射位，评价整队射界及近战路线冲突，检查停点有效性；无任务所有权或身体控制。 |
+| `enemy/services/squad_support.gd` | 协调器持有的任务身份关联、实际掩护观察核对、累计等待期限和短段独立恢复建议；清理完成/替换/减员关系，无独立循环或任务提交权。 |
 | `world/squad_controller.gd` | Squad 配置、区域注册、单次区域时钟推进、销毁；不增加独立 AI 循环。 |
 | `enemy/services/squad_coordination.gd` | 本场能力档案、默认模板、持续目标、全员任务表、反馈、逐轮同步与共同续接、原子提交与生命周期。 |
 | `enemy/services/squad_contract.gd` | 纯值任务身份、状态、能力角色、观察步骤字段及整队默认模板。 |
