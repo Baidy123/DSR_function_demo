@@ -887,6 +887,9 @@ func coordination_debug_snapshot() -> Dictionary:
 			result.route.append_array(path.slice(index))
 	return result
 
+func observation_debug_snapshot() -> Dictionary:
+	return _coordinator().coverage_debug_snapshot() if _coordinator() != null else {}
+
 ## Public physical facts for squad planning. No action instance or private
 ## state machine is exposed; capability changes are read on every query.
 func coordination_motion_state() -> Dictionary:
@@ -1084,6 +1087,7 @@ func command_melee_enabled() -> bool:
 func member_runtime_snapshot() -> Dictionary:
 	var result := coordination_motion_state()
 	result.merge({"visible": sees_player, "health": actor.health,
+		"fire_lane_valid": sees_player and last_seen_aim_position.is_finite(),
 		"pressure": recent_damage_pressure + nearby_shot_pressure,
 		"rounds": actor.ammo.magazine_rounds, "can_reload": actor.can_use_firearms() and actor.ammo.can_reload(),
 		"reloading": actor.ammo.is_reloading, "reload_remaining": actor.weapon.reload_seconds * (1.0 - actor.ammo.reload_progress) if actor.weapon != null and actor.ammo.is_reloading else 0.0,
@@ -1102,14 +1106,12 @@ func validate_command_post(task: Dictionary, profile: Dictionary) -> bool:
 	return not path.is_empty() and _horizontal_distance_between(path[-1], task.position) <= 0.1
 
 func command_observation_valid(task: Dictionary) -> bool:
-	if _horizontal_distance(task.get("position", Vector3.INF)) > 0.18: return false
+	if task.get("observation_mode") != &"sweep" and _horizontal_distance(task.get("position", Vector3.INF)) > 0.18: return false
 	var point: Vector3 = task.get("look_position", Vector3.INF)
-	if not point.is_finite(): return false
-	var direction := point - actor.global_position
-	direction.y = 0.0
-	if direction.length() > perception.sight_distance: return false
-	if direction.length() > 0.2 and -actor.global_basis.z.dot(direction.normalized()) < 0.5: return false
-	return cover_selection.has_clear_line(actor.get_posture_eye_position(false), point + Vector3.UP * 0.7)
+	return preload("res://scripts/enemy/services/enemy_visual_observation.gd").visible(self, point)
+
+func command_observation_progress(task: Dictionary) -> Dictionary:
+	return _coordinator().observation_progress(self, task) if commanded() else {}
 
 func accept_command(task: Dictionary) -> bool:
 	return commanded() and _coordinator().accept(self, task)

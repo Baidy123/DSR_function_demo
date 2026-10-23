@@ -12,6 +12,7 @@ var _paths: MeshInstance3D
 var _material := StandardMaterial3D.new()
 var _member_colors: Dictionary = {}
 var _next_color := 0
+var coverage_snapshots: Dictionary = {}
 
 func _ready() -> void:
 	_material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
@@ -34,12 +35,14 @@ func _apply_debug_mode(enabled: bool) -> void:
 	if not enabled:
 		snapshots.clear()
 		_mesh.clear_surfaces()
+		coverage_snapshots.clear()
 
 func _process(delta: float) -> void:
 	_elapsed -= delta
 	if _elapsed > 0.0: return
 	_elapsed = REFRESH_SECONDS
 	snapshots.clear()
+	coverage_snapshots.clear()
 	for actor in get_tree().get_nodes_in_group("combat_target"):
 		var ai := actor.get_node_or_null("AI")
 		if ai == null or not ai.get("context") is RefCounted: continue
@@ -47,6 +50,10 @@ func _process(delta: float) -> void:
 		if value.is_empty(): continue
 		value.member_path = str(actor.get_path())
 		snapshots.append(value)
+		var map_id: String = value.get("search", {}).get("map_id", "")
+		var owner_id: int = value.get("coverage_owner", 0)
+		if not map_id.is_empty() and not coverage_snapshots.has(owner_id):
+			coverage_snapshots[owner_id] = ai.context.observation_debug_snapshot()
 	snapshots.sort_custom(func(a, b): return a.member_path < b.member_path)
 	if snapshots.is_empty():
 		_member_colors.clear()
@@ -58,6 +65,7 @@ func _rebuild_routes() -> void:
 	_mesh.clear_surfaces()
 	if snapshots.is_empty(): return
 	_mesh.surface_begin(Mesh.PRIMITIVE_TRIANGLES, _material)
+	for coverage in coverage_snapshots.values(): _coverage(coverage)
 	for index in snapshots.size():
 		var value := snapshots[index]
 		var key: String = value.member_path
@@ -69,12 +77,28 @@ func _rebuild_routes() -> void:
 		_route(value.get("route", PackedVector3Array()), height, color, false)
 		_route(value.get("next_route", PackedVector3Array()), height, Color(color, 0.5), true)
 		_ring(value.position, height, 0.42, color)
+		_route(PackedVector3Array([value.position, value.position + value.get("observation_direction", Vector3.ZERO) * 1.2]), height + 0.02, Color.WHITE, false)
 		_ring(value.get("staging_position", Vector3.INF), height, 0.3, Color(color, 0.6))
 		_ring(value.get("target_position", Vector3.INF), height, 0.45, color)
 		var goal: Vector3 = value.get("goal", value.get("personal_goal", Vector3.INF))
 		if goal.is_finite() and goal != value.get("staging_position") and goal != value.get("target_position"):
 			_ring(goal, height, 0.3, color)
 	_mesh.surface_end()
+
+func _coverage(value: Dictionary) -> void:
+	var palette := {&"unknown": Color(0.8, 0.35, 0.2, 0.28), &"partial": Color(1.0, 0.8, 0.2, 0.4),
+		&"recent": Color(0.2, 0.85, 0.5, 0.28), &"revisit": Color(0.6, 0.45, 0.95, 0.35)}
+	var half := float(value.get("cell_size", 1.5)) * 0.46
+	for cell in value.get("display", []):
+		var p: Vector3 = cell.position
+		p.y += 0.035
+		var color: Color = palette.get(cell.state, Color.GRAY)
+		if not cell.reachable and not cell.observable: color = Color(0.5, 0.5, 0.5, 0.35)
+		_strip(p + Vector3(-half, 0, -half), p + Vector3(half, 0, -half), 0.035, color)
+		_strip(p + Vector3(half, 0, -half), p + Vector3(half, 0, half), 0.035, color)
+		_strip(p + Vector3(half, 0, half), p + Vector3(-half, 0, half), 0.035, color)
+		_strip(p + Vector3(-half, 0, half), p + Vector3(-half, 0, -half), 0.035, color)
+		if cell.responsibility != 0: _ring(p, p.y + 0.01, 0.18, Color(0.4, 0.7, 1.0, 0.5))
 
 func _route(points: PackedVector3Array, height: float, color: Color, dashed: bool) -> void:
 	for index in range(1, points.size()):

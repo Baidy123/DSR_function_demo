@@ -8,10 +8,12 @@ const Geometry = preload("res://scripts/systems/character_geometry.gd")
 var requests: Dictionary = {}
 var _cooldown: Dictionary = {}
 var _serial := 0
+var _preparing: Dictionary = {}
 
 func release(id: int) -> void:
 	requests.erase(id)
 	_cooldown.erase(id)
+	_preparing.erase(id)
 
 func role(id: int) -> StringName:
 	return requests.get(id, {}).get("phase", &"")
@@ -29,6 +31,15 @@ func advance(bodies: Dictionary, profiles: Dictionary, tasks: Dictionary, object
 			changed = true
 			continue
 		var request: Dictionary = requests[id]
+		if request.get("proactive", false) and body.pressure > maxf(0.01, threshold):
+			request.proactive = false
+			_preparing.erase(id)
+			changed = true
+		if request.get("proactive", false) and objective.get("phase") != &"contact" and body.pressure <= maxf(0.01, threshold):
+			requests.erase(id)
+			_cooldown[id] = now + 1.0
+			changed = true
+			continue
 		if request.post.is_empty() and now - float(request.started_at) > 2.0:
 			# No feasible cover must not turn a short danger request into a
 			# permanent hold. Continue ordinary commanded combat and retry later.
@@ -69,23 +80,30 @@ func advance(bodies: Dictionary, profiles: Dictionary, tasks: Dictionary, object
 	return changed
 
 func accept(id: int, task: Dictionary) -> void:
+	if task.get("defense_proactive", false) and not requests.has(id):
+		requests[id] = {"phase": task.role, "post": {}, "returning": false, "id": task.defense_id,
+			"started_at": task.issued_at, "phase_started_at": task.issued_at, "proactive": true}
 	if requests.has(id) and task.get("defense_id") == requests[id].id:
 		requests[id].post = task.defense_post.duplicate(true)
 
-func candidates(ctx, profile: Dictionary, body: Dictionary, objective: Dictionary) -> Array[Dictionary]:
+func prepare_candidates(ctx, profile: Dictionary, body: Dictionary, objective: Dictionary, proactive: bool, deadline: int) -> Dictionary:
 	var id: int = ctx.actor.get_instance_id()
-	if not requests.has(id): return []
-	var request: Dictionary = requests[id]
+	if proactive and (requests.has(id) or float(_cooldown.get(id, 0.0)) > ctx.coordination_now() or not body.firearms or not body.visible or Contract.executor(profile, &"cover_peek").is_empty()): return {"ready": true, "candidates": []}
+	if not proactive and not requests.has(id): return {"ready": true, "candidates": []}
+	var request: Dictionary = {"phase": &"shelter", "post": {}, "id": -id, "proactive": true} if proactive else requests[id]
+	var signature := [objective.objective_id, request.phase, request.id, proactive]
+	if _preparing.has(id) and _preparing[id].signature == signature:
+		return _continue_candidates(ctx, profile, body, objective, request, _preparing[id], deadline)
 	var posts: Array[Dictionary] = []
 	if not request.post.is_empty():
 		posts.append(request.post)
 	else:
 		var covers: Array = ctx.actor.get_tree().get_nodes_in_group("cover_region").filter(func(cover): return ctx.navigation_region.is_ancestor_of(cover))
 		covers.sort_custom(func(a, b): return body.position.distance_squared_to(a.global_position) < body.position.distance_squared_to(b.global_position))
-		for cover in covers.slice(0, 4):
+		for cover in covers.slice(0, 2 if proactive else 4):
 			var points: Array = cover.get_candidates(objective.position + Vector3.UP, body.position)
 			points.sort_custom(func(a, b): return body.position.distance_squared_to(a.hide) < body.position.distance_squared_to(b.hide))
-			for point in points.slice(0, 8):
+			for point in points.slice(0, 4 if proactive else 8):
 				var hide: Vector3 = point.hide
 				hide.y = body.position.y
 				if Contract.horizontal(hide, body.position) > 10.0: continue
@@ -95,6 +113,7 @@ func candidates(ctx, profile: Dictionary, body: Dictionary, objective: Dictionar
 				peeks.sort_custom(func(a, b): return hide.distance_squared_to(a) < hide.distance_squared_to(b))
 				for peek: Vector3 in peeks:
 					peek.y = body.position.y
+					if proactive and Contract.horizontal(peek, objective.position) < 3.0: continue
 					var origin: Vector3 = ctx.actor.get_posture_muzzle_position(false, peek)
 					var aim: Vector3 = objective.get("aim_position", Vector3.INF)
 					if not aim.is_finite(): aim = objective.position + Vector3.UP
@@ -103,9 +122,17 @@ func candidates(ctx, profile: Dictionary, body: Dictionary, objective: Dictionar
 					if origin.distance_to(aim) > float(profile.weapon.get("fire_range", 0.0)): continue
 					post.peek = peek
 					break
-				posts.append(post)
-	var result: Array[Dictionary] = []
-	for post in posts:
+				if not proactive or post.peek.is_finite(): posts.append(post)
+	var work := {"signature": signature, "posts": posts, "cursor": 0, "candidates": []}
+	_preparing[id] = work
+	return _continue_candidates(ctx, profile, body, objective, request, work, deadline)
+
+func _continue_candidates(ctx, profile: Dictionary, body: Dictionary, objective: Dictionary, request: Dictionary, work: Dictionary, deadline: int) -> Dictionary:
+	var result: Array = work.candidates
+	while work.cursor < work.posts.size() and result.size() < (2 if request.get("proactive", false) else 6):
+		if Time.get_ticks_usec() >= deadline: return {"ready": false, "candidates": []}
+		var post: Dictionary = work.posts[work.cursor]
+		work.cursor += 1
 		if not protected(ctx, post, objective.position): continue
 		var destination: Vector3 = post.peek if request.phase == &"cover_peek" else post.hide
 		if not destination.is_finite(): continue
@@ -121,9 +148,11 @@ func candidates(ctx, profile: Dictionary, body: Dictionary, objective: Dictionar
 		result.append({"action": action, "role": request.phase, "position": destination, "route": path, "look_position": objective.position,
 			"site_key": "defense:%s:%s:%s" % [post.cover_id, request.phase, destination], "objective_id": objective.objective_id,
 			"defense_id": request.id, "defense_post": post.duplicate(true), "stress_tolerance": profile.get("stress_tolerance", 0.4),
-			"speed_multiplier": speed, "travel_seconds": seconds, "estimate": seconds + (0.0 if post.peek.is_finite() else 2.0)})
-		if result.size() >= 6: break
-	return result
+			"speed_multiplier": speed, "travel_seconds": seconds, "estimate": seconds + (1.0 if request.get("proactive", false) else 0.0) + (0.0 if post.peek.is_finite() else 2.0),
+			"defense_proactive": request.get("proactive", false),
+			"tactical": {"protected": true, "sustainable_fire": request.phase == &"cover_peek" and body.rounds > 0, "travel": seconds, "pressure": body.pressure}})
+	_preparing.erase(ctx.actor.get_instance_id())
+	return {"ready": true, "candidates": result}
 
 static func protected(ctx, post: Dictionary, threat: Vector3) -> bool:
 	var cover = instance_from_id(post.get("cover_id", 0))

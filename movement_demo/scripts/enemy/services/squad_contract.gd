@@ -5,6 +5,8 @@ extends RefCounted
 const PERIOD := 0.2
 const TASK_SECONDS := 16.0
 const STATES := [&"pending", &"executing", &"waiting", &"blocked", &"occupied", &"complete", &"replaced"]
+const OBSERVATION_MODES := [&"sweep", &"inspect"]
+const SEARCH_STEP_FIELDS := ["coverage_key", "coverage_version", "geometry_version", "observation_samples", "observation_mode", "expected_area"]
 
 static func same_task(a: Dictionary, b: Dictionary) -> bool:
 	return not a.is_empty() and not b.is_empty() and [a.get("generation"), a.get("task_id"), a.get("version"), a.get("member_id"), a.get("profile_id")] == [b.get("generation"), b.get("task_id"), b.get("version"), b.get("member_id"), b.get("profile_id")]
@@ -17,6 +19,11 @@ static func task(identity: Dictionary, proposal: Dictionary, now: float) -> Dict
 		"waiting_for": [], "reason": &"", "progress": 0.0,
 		"completion": &"observed" if value.get("role") == &"search" else &"arrived",
 		"failure_exit": &"coordinator_replan", "attack": &"personal_sight"}, true)
+	if value.get("role") == &"search":
+		value.observation_mode = value.get("observation_mode", &"inspect")
+		value.observation_samples = value.get("observation_samples", PackedVector3Array([value.look_position]))
+		value.future_steps = value.get("future_steps", [])
+		value.resume = &"coordinator_revalidate"
 	return value
 
 static func template(profiles: Dictionary, identity: int) -> Dictionary:

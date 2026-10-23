@@ -143,6 +143,11 @@ func revision() -> int:
 	return _revision
 
 
+## Pure local stamp for observation records; no preparation or physics work.
+func observation_revision(position: Vector3) -> int:
+	var cell := _cell(position)
+	return hash([_navigation_revision, _chunk_revisions.get(cell, 0), _chunk_dirty(cell)])
+
 func statistics() -> Dictionary:
 	var value := _stats.duplicate()
 	value.merge({"templates": _templates.size(), "sources": _sources.size(),

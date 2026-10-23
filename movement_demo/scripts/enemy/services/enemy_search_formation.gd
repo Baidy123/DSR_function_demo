@@ -60,7 +60,7 @@ static func sites(context, objective: Dictionary, count: int, attempt: int) -> A
 			"site_key": "%s:%s:%s" % [phase, 0 if phase == &"patrol" else attempt / 3, i]})
 	return result
 
-static func route(context, destination: Vector3, via: Vector3 = Vector3.INF) -> PackedVector3Array:
+static func route(context, destination: Vector3, via: Vector3 = Vector3.INF, detour_variant: int = -1) -> PackedVector3Array:
 	var path = PackedVector3Array([context.actor.global_position])
 	var from: Vector3 = context.actor.global_position
 	for point: Vector3 in ([via, destination] if via.is_finite() else [destination]):
@@ -73,12 +73,12 @@ static func route(context, destination: Vector3, via: Vector3 = Vector3.INF) -> 
 	var radius: float = context.coordination_motion_state().radius
 	if not CoverGeometry._walkable_path(context, path, radius):
 		if via.is_finite(): return PackedVector3Array()
-		path = _obstacle_detour(context, path, radius)
+		path = _obstacle_detour(context, path, radius, detour_variant)
 		if path.is_empty(): return path
 	if not BodyGeometry.can_occupy(context.actor, destination, context.actor.get_body_height(), radius, true): return PackedVector3Array()
 	return path
 
-static func _obstacle_detour(context, blocked: PackedVector3Array, radius: float) -> PackedVector3Array:
+static func _obstacle_detour(context, blocked: PackedVector3Array, radius: float, variant: int = -1) -> PackedVector3Array:
 	# A newly placed wall need not be in the baked navigation mesh. Test four
 	# bounded routes around its real box, with the same capsule/nav validation.
 	var obstacle = null
@@ -106,6 +106,7 @@ static func _obstacle_detour(context, blocked: PackedVector3Array, radius: float
 	var best = PackedVector3Array()
 	var best_length = INF
 	for index in 4:
+		if variant >= 0 and index != variant: continue
 		var a = corners[index]
 		var b = corners[(index + 1) % 4]
 		if Contract.horizontal(blocked[0], b) < Contract.horizontal(blocked[0], a):
@@ -129,6 +130,14 @@ static func _obstacle_detour(context, blocked: PackedVector3Array, radius: float
 	return best
 
 static func candidate(context, profile: Dictionary, body: Dictionary, site: Dictionary, objective: Dictionary, previous: Dictionary) -> Dictionary:
+	context.cover_selection.begin_geometry_evaluation()
+	context.fire.begin_geometry_evaluation()
+	var result := _candidate(context, profile, body, site, objective, previous)
+	context.fire.end_geometry_evaluation()
+	context.cover_selection.end_geometry_evaluation()
+	return result
+
+static func _candidate(context, profile: Dictionary, body: Dictionary, site: Dictionary, objective: Dictionary, previous: Dictionary) -> Dictionary:
 	var phase: StringName = objective.get("phase", &"patrol")
 	var role: StringName = &"search" if phase == &"search" else (&"engage" if phase == &"contact" else &"patrol")
 	role = site.get("role", role)
@@ -139,12 +148,27 @@ static func candidate(context, profile: Dictionary, body: Dictionary, site: Dict
 		action = Contract.executor(profile, role)
 	if action.is_empty(): return {}
 	var point: Vector3 = site.position
+	if role == &"search" and site.has("coverage_key"):
+		# Inspect from an offset post when it can see the whole target patch;
+		# sampling cells are observation responsibilities, not mandatory footsteps.
+		var away: Vector3 = body.position - site.look_position
+		away.y = 0.0
+		if not away.is_zero_approx():
+			var raw: Vector3 = site.position + away.normalized() * 1.25
+			var projected := NavigationServer3D.region_get_closest_point(context.navigation_region.get_rid(), raw)
+			projected.y = body.position.y
+			if Contract.horizontal(raw, projected) < 0.4 and BodyGeometry.can_occupy(context.actor, projected, context.actor.get_body_height(), body.radius, true):
+				var clear := true
+				for sample: Vector3 in site.observation_samples:
+					if not preload("res://scripts/enemy/services/enemy_visual_observation.gd").clear_from(context, projected + Vector3.UP * context.actor.get_body_height() * 0.85, sample): clear = false
+				if clear: point = projected
 	if role == &"search":
 		var eye = point + Vector3.UP * context.actor.get_body_height() * 0.85
 		if not context.cover_selection.has_clear_line(eye, site.look_position + Vector3.UP * 0.7): return {}
 	if role == &"patrol" and Contract.horizontal(point, body.position) < 0.75: return {}
 	if phase == &"contact" and role in [&"engage", &"support", &"flank"]:
 		if profile.firearms:
+			if body.visible and not body.get("fire_lane_valid", true) and Contract.horizontal(body.position, point) < 0.2: return {}
 			var origin: Vector3 = context.actor.get_posture_muzzle_position(false, point)
 			var aim: Vector3 = objective.get("aim_position", objective.position + Vector3.UP)
 			# Seeing a target does not imply the observer's current muzzle has a
@@ -157,8 +181,10 @@ static func candidate(context, profile: Dictionary, body: Dictionary, site: Dict
 			# known target, never a ranged support label.
 			var away: Vector3 = (point - objective.position).normalized()
 			point = objective.position + away * maxf(0.5, float(profile.weapon.get("melee_range", 1.3)) * 0.8)
-	var path = route(context, point, site.get("via", Vector3.INF))
-	if path.is_empty(): return {}
+	var detour_variant: int = site.get("detour_variant", -1)
+	var path = route(context, point, site.get("via", Vector3.INF), detour_variant)
+	if path.is_empty():
+		return {"retry_detour": true} if detour_variant >= 0 and detour_variant < 3 and not site.get("via", Vector3.INF).is_finite() else {}
 	if role == &"flank" and profile.firearms and Traffic.distance_to_path(objective.position, path) < 1.5:
 		var approach: Vector3 = body.position - objective.position
 		approach.y = 0.0
@@ -175,17 +201,45 @@ static func candidate(context, profile: Dictionary, body: Dictionary, site: Dict
 	var seconds: float = context.cover_selection._path_length_from_path(path) / maxf(0.1, body.move_speed * speed)
 	var estimate: float = seconds + (0.0 if previous.get("position", Vector3.INF).distance_to(point) < 0.2 else 0.6)
 	if role == &"guard" and phase != &"patrol": estimate += 8.0
+	if role == &"search" and site.has("coverage_key"):
+		estimate += 2.0 + float(site.get("clue_distance", 0.0)) * 0.7 + (12.0 if site.get("revisit", false) else 0.0)
+		estimate += maxf(0.0, 2.25 - float(site.get("expected_area", 0.0)))
 	if role in [&"engage", &"support", &"flank"] and body.visible and Contract.horizontal(point, body.position) < 0.2: estimate = 0.0
 	if role == &"flank" and not body.visible:
 		var approach = (body.position - objective.position).normalized()
 		var flank = (point - objective.position).normalized()
 		estimate += maxf(0.0, approach.dot(flank)) * 4.0
-	return {"action": action, "role": role, "position": point, "route": path,
+	var tactical := {}
+	if phase == &"contact" and role in [&"engage", &"support", &"flank"]:
+		var threat: Vector3 = objective.position + Vector3.UP
+		var exposure := 0.0
+		for fraction in [0.0, 0.5, 1.0]:
+			var sample: Vector3 = path[mini(path.size() - 1, roundi((path.size() - 1) * fraction))]
+			if context.cover_selection.has_clear_line(threat, sample + Vector3.UP): exposure += 1.0 / 3.0
+		var protected_low: bool = not context.cover_selection.has_clear_line(threat, point + Vector3.UP * 0.45)
+		var ammunition := float(body.rounds) / maxf(1.0, float(profile.weapon.get("magazine_capacity", 1)))
+		var sustained: bool = body.can_attack and not body.reloading and body.rounds > 0
+		tactical = {"exposure": exposure, "protected": protected_low, "sustainable_fire": sustained,
+			"travel": seconds, "reload": body.get("reload_remaining", 0.0), "pressure": body.pressure,
+			"ammunition": ammunition, "advance": maxf(0.0, Contract.horizontal(body.position, objective.position) - Contract.horizontal(point, objective.position))}
+		estimate += float(site.get("role_cost", 0.0)) + exposure * (2.0 + minf(seconds, 3.0)) + body.pressure * exposure
+		if not protected_low: estimate += 1.0
+		if not sustained: estimate += 2.0
+		if role == &"support" and not body.visible: estimate += 3.0
+	var result := {"action": action, "role": role, "position": point, "route": path,
 		"look_position": site.get("look_position", objective.get("position", point)),
 		"staging_position": site.get("via", point if role == &"search" else Vector3.INF), "site_key": site.get("site_key", str(point)),
-		"estimate": estimate, "travel_seconds": seconds, "speed_multiplier": speed, "objective_id": objective.get("objective_id", 0),
+		"estimate": estimate, "tactical": tactical, "travel_seconds": seconds, "speed_multiplier": speed, "objective_id": objective.get("objective_id", 0),
 		"evidence_id": objective.get("id", 0), "target_id": objective.get("target_id", 0), "side": site.get("side", 0),
 		"sync_key": site.get("sync_key", ""), "search_revision": objective.get("search_revision", 0)}
+	for key in Contract.SEARCH_STEP_FIELDS:
+		if site.has(key): result[key] = site[key]
+	if role == &"search" and objective.get("source") in [&"visual", &"shared_visual"]:
+		# Reuse the frozen, time-limited pursuit setting on long approach legs.
+		# Hints and arrival cannot renew the original visual evidence timestamp.
+		result.pursuit_until = float(objective.get("captured_at", -INF)) + float(parameters.get("combat_pursuit_seconds", 0.0))
+		result.pursuit_multiplier = float(parameters.get("combat_pursuit_speed_multiplier", speed))
+	return result
 
 static func yield_sites(context, body: Dictionary) -> Array[Dictionary]:
 	var result: Array[Dictionary] = []

@@ -153,3 +153,27 @@ static func blockers(id: int, tasks: Dictionary, bodies: Dictionary) -> Array:
 			if path.size() > 1 and Contract.horizontal(path[-1], bodies[other].position) > Contract.horizontal(path[0], bodies[other].position) + 0.01: continue
 			blocked.append(other)
 	return blocked
+
+## Ordinary sweeping has no rendezvous barrier. A leader only slows when its
+## next motion would increase a real gap to a travelling search participant.
+static func cohesion(id: int, tasks: Dictionary, bodies: Dictionary) -> Dictionary:
+	var task: Dictionary = tasks.get(id, {})
+	if task.get("role") != &"search" or not task.get("sync_key", "").is_empty(): return {"speed_scale": 1.0}
+	var path := remaining(bodies[id].position, task.route)
+	if path.size() < 2: return {"speed_scale": 1.0}
+	var direction: Vector3 = (path[1] - path[0]).normalized()
+	var scale := 1.0
+	var waiting: Array = []
+	for other in tasks:
+		if other == id or not bodies.has(other): continue
+		if tasks[other].role != &"search" or bodies[other].get("occupied", false): continue
+		if not tasks[other].get("sync_key", "").is_empty(): continue
+		var gap: Vector3 = bodies[id].position - bodies[other].position
+		if absf(gap.y) > 1.0 or gap.length() < 4.0 or direction.dot(gap.normalized()) < 0.5: continue
+		# A follower is actually heading towards this member's corridor. Search
+		# groups examining opposite exits do not lock one another across walls.
+		var following := remaining(bodies[other].position, tasks[other].route)
+		if following.size() < 2 or (following[1] - following[0]).normalized().dot(gap.normalized()) < 0.25: continue
+		scale = minf(scale, clampf((7.0 - gap.length()) / 3.0, 0.0, 1.0))
+		waiting.append(other)
+	return {"speed_scale": scale, "waiting_for": waiting}

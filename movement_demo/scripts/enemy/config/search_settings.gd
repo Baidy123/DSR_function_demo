@@ -157,11 +157,12 @@ func _init() -> void:
 		search_seconds = value
 		mark_override(&"search_seconds")
 ## 以玩家最后目击位置为圆心的搜索半径；未目击过才采用来弹推测。
+## 普通/强配合中表示初始重点调查范围，之后扩展到本战斗区地图；个人搜索仍以此为范围边界。
 @export_range(1.0, 20.0, 0.5) var search_radius: float = 5.0:
 	set(value):
 		search_radius = value
 		mark_override(&"search_radius")
-## 每到一个搜索点后停留观察多久。
+## 有效观察时长；团队任务可以边走边累计，关键检查点仍须真实就位。
 @export_range(0.0, 5.0, 0.1) var search_pause_seconds: float = 0.5:
 	set(value):
 		search_pause_seconds = value

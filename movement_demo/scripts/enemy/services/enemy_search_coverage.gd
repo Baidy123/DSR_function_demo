@@ -176,7 +176,7 @@ func mark(point: Vector3) -> void:
 	for index in range(uncovered.size() - 1, -1, -1):
 		var sample: Vector3 = uncovered[index]
 		if context._horizontal_distance_between(point, sample) <= search_coverage_radius \
-			and context.perception.can_observe_position(sample):
+			and preload("res://scripts/enemy/services/enemy_visual_observation.gd").visible(context, sample):
 			covered[sample] = true
 			uncovered.remove_at(index)
 	for index in range(pending.size() - 1, -1, -1):

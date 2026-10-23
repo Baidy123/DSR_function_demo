@@ -30,6 +30,8 @@ func _initialize() -> void:
 	var result = planner.propose(snapshot)
 	check(result.complete and result.tasks.size() == 3 and result.traffic.order.size() == 3, "Global alternatives resolve the entire team instead of accepting one greedy departure")
 	check(result.cost > 3.0 and result.trials <= Planner.MAX_COMBINATIONS, "The cheapest blocked layout is rejected within the finite search budget")
+	var pending := planner.begin(snapshot)
+	check(not planner.advance(pending, 0).ready and planner.advance(pending, 9223372036854775807).tasks == result.tasks, "An exhausted budget preserves the exact pending whole-team search")
 	var isolated = result.duplicate(true)
 	isolated.tasks.clear()
 	check(planner.propose(snapshot).tasks.size() == 3, "Proposal consumers cannot mutate planner inputs or later outputs")
@@ -54,6 +56,15 @@ func _initialize() -> void:
 	check(Traffic.plan(staged, pair, true).get("synchronized_members", []).is_empty(), "Independent area routes do not acquire an unrelated cover barrier")
 	var bent = Traffic.prefix(PackedVector3Array([Vector3.ZERO, Vector3(0.2, 0, 0), Vector3(0.2, 0, 5)]), 1.4)
 	check(bent.size() == 3 and absf(bent[-1].z - 1.2) < 0.001, "Local traffic horizon follows bends without reserving the full long route")
+	var column_bodies := {1: {"position": Vector3(6, 0, 0)}, 2: {"position": Vector3.ZERO}}
+	var column := {1: {"role": &"search", "route": PackedVector3Array([Vector3(6, 0, 0), Vector3(10, 0, 0)])},
+		2: {"role": &"search", "route": PackedVector3Array([Vector3.ZERO, Vector3(8, 0, 0)])}}
+	check(Traffic.cohesion(1, column, column_bodies).speed_scale < 1.0 and Traffic.cohesion(2, column, column_bodies).speed_scale == 1.0, "Continuous column slows its leader while the following member catches up")
+	column_bodies[2].position = Vector3(3, 0, 0)
+	check(Traffic.cohesion(1, column, column_bodies).speed_scale == 1.0, "A closed formation gap releases the leader without a point barrier")
+	column[2].role = &"reload"
+	column_bodies[2].position = Vector3(-3, 0, 0)
+	check(Traffic.cohesion(1, column, column_bodies).speed_scale == 1.0, "Reloading members do not acquire an unrelated movement barrier")
 	print("SQUAD COMMAND CONTRACT: %d/%d passed" % [checks - failures, checks])
 	quit(1 if failures else 0)
 

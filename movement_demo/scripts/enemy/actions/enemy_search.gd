@@ -1438,15 +1438,17 @@ func begin_command(task: Dictionary) -> bool:
 
 func command_work(delta: float, _visible: bool, arrived: bool) -> Dictionary:
 	if command.role != &"search": return {}
-	if arrived and context.command_observation_valid(command):
-		_command_observe += delta
+	var evidence: Dictionary = context.command_observation_progress(command)
+	var focus: Vector3 = evidence.get("look_position", command.look_position)
+	var viewing := command.duplicate()
+	viewing.look_position = focus
+	if context.command_observation_valid(viewing):
 		_command_obstructed = 0.0
 	else:
-		_command_observe = 0.0
 		if arrived: _command_obstructed += delta
 	if _command_obstructed >= 0.75:
 		context.report_command(command, &"blocked", {"reason": &"observation_obstructed"})
 		return {}
-	var pause = maxf(0.25, float(_setting(&"search_pause_seconds", 0.5)))
-	context.report_command(command, &"complete" if _command_observe >= pause else &"executing", {"observed": _command_observe >= pause, "progress": _command_observe / pause})
-	return {}
+	var complete: bool = evidence.get("complete", false)
+	context.report_command(command, &"complete" if complete else &"executing", {"progress": evidence.get("progress", 0.0)})
+	return {"facing": focus - actor.global_position} if not _visible else {}

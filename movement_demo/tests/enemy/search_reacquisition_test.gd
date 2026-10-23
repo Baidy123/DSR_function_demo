@@ -52,6 +52,8 @@ func _check_wall_coverage(scene, enemy, ai, player) -> void:
 	for frame in range(3): await physics_frame
 	var near := Vector3(19.2, 0, 0.5)
 	var hidden := Vector3(20.8, 0, 0)
+	# Inspection requires actual facing, including inside near-awareness range.
+	enemy.look_at(enemy.global_position + Vector3(1, 0, 1))
 	var coverage := Coverage.new()
 	coverage.context = ai.context
 	coverage.search_coverage_radius = 2.0

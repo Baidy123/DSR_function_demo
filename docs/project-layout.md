@@ -66,18 +66,21 @@ movement_demo/
 
 阶段、任务与 NPC 状态规则集中在 `scripts/systems/stage/`：阶段判定、任务状态与状态解析各一个控制器，配置表资源脚本与 `resources/stages/` 下的 `.tres` 配套维护。控制器挂在 `main.tscn`、按 group 互相查找，不新增全局单例；NPC 只按 `npc_id` 与接收接口被驱动，不反向依赖控制器。见 [阶段与任务](gameplay/STAGE_STATE.md)。
 
-`scripts/debug/coordinator_paths.gd` 保留 DebugSettings 入口，使用世界空间 Mesh 绘制 RTS 路线、箭头和站位。每秒最多十次读取公开副本，不调用导航或规划；成员颜色在死亡减员后保持稳定。主场景不含任务面板和五个交互演示物，组件由 `tests/interaction_fixture.gd` 独立装配验证。
+`scripts/debug/coordinator_paths.gd` 保留 DebugSettings 入口，使用世界空间 Mesh 绘制 RTS 路线、箭头和站位，以及面积观察状态、责任预约和未来路线。每秒最多十次读取公开副本，不调用导航、规划或补写观察；成员颜色在死亡减员后保持稳定。主场景不含任务面板和五个交互演示物，组件由 `tests/interaction_fixture.gd` 独立装配验证。
 
 | 文件 | 当前职责 |
 | --- | --- |
 | `world/squad_controller.gd` | Squad 配置、区域注册、单次区域时钟推进、销毁；不增加独立 AI 循环。 |
 | `enemy/services/squad_coordination.gd` | 本场能力档案、默认模板、持续目标、全员任务表、反馈、逐轮同步与共同续接、原子提交与生命周期。 |
-| `enemy/services/squad_contract.gd` | 纯值任务身份、状态、能力角色及整队默认模板。 |
+| `enemy/services/squad_contract.gd` | 纯值任务身份、状态、能力角色、观察步骤字段及整队默认模板。 |
 | `enemy/services/enemy_team_planner.gd` | 全成员岗位组合搜索，按模板能力与几何排除不完整方案。 |
 | `enemy/services/enemy_search_formation.gd` | 根据共同目标生成有限站位及完整路线，调用原导航和身体查询。 |
 | `enemy/services/squad_traffic.gd` | 全队通行顺序、准备点占位与离开顺序、观察线互挡、当前阻挡者与剩余路线计算。 |
-| `enemy/services/squad_search.gd` | 协调器持有的区域搜索进度、真实观察覆盖及受训练参数约束的不确定 hint；不读个人 Utility，不授权开火。 |
-| `enemy/services/squad_defense.gd` | 协调器持有的受压请求、有限掩体步骤与掩护几何；从冻结训练资格和实际压力生成任务，不接管身体或调用个人选优。 |
+| `enemy/services/squad_search.gd` | 编排合法线索、地图覆盖和多段路线；hint 改变优先级，不清空观察历史。 |
+| `enemy/services/squad_map_coverage.gd` | 各小队独立的地图/楼层面积样本、观察时长与来源、当前监视、复查及局部几何失效；不控制身体或下达任务。 |
+| `enemy/services/squad_search_route.gd` | 从未查/待复查面积准备有限观察路线与未来步骤，导航和预计收益不算实际覆盖。 |
+| `enemy/services/enemy_visual_observation.gd` | 各档共用的严格视角、真实眼高与站/蹲藏身空间检查；不使用近距全向警觉替代视觉观察。 |
+| `enemy/services/squad_defense.gd` | 正常交战掩体候选、受压升级、有限躲藏/探出/撤回步骤及预算内几何准备；从冻结训练资格生成任务，不接管身体或调用个人选优。 |
 | `enemy/services/enemy_cooperation.gd` | 区域关系、合法情报存储、公共物理预约；只通过协调器收发团队情报。 |
 | `enemy/services/enemy_context.gd` | 能力/身体值接口、情报适配、任务接受/反馈与只读诊断。 |
 | `enemy/enemy_ai.gd` | 按等级分流个人 Utility 与命令执行；负责原动作/身体/火控交接。 |
@@ -89,7 +92,7 @@ movement_demo/
 
 基础公共预约继续由区域服务提供，个人分支仅做物理排重；团队全员目的地经新事务一次提交。`enemy_tactical_map.gd` 仍为区域唯一静态地图索引。原 `enemy_cover_inspection_geometry.gd` 只提供合法线索的静态几何，不拥有任务；旧 `enemy_flank_route.gd` 已无调用并移除，新侧翼路线在新几何模块中验证。
 
-新测试只有保存地图实战 `squad_command_runtime_test.gd` 和最小组合边界 `squad_command_contract_test.gd` 两个入口；旧协调器测试的明确替换清单与保留专项见 [敌人测试](enemy-tests.md)。原个人行为夹具 `enemy_fire_fixture.gd` 保留，旧任务注入 helper 删除。
+团队验证入口为保存地图实战 `squad_command_runtime_test.gd`、最小组合边界 `squad_command_contract_test.gd` 及实体遮挡/面积记录 `squad_map_observation_test.gd`；旧协调器测试的明确替换清单与保留专项见 [敌人测试](enemy-tests.md)。原个人行为夹具 `enemy_fire_fixture.gd` 保留，旧任务注入 helper 删除。
 
 `enemy/services/enemy_fire_controller.gd` 统一维护普通短点射、真实队友需求下的掩护长点射、轮间停顿及 AI 扳机间隔，参数在 `config/tactics_settings.gd`。当前默认普通3发、支援6发、停顿1.8秒、AI 间隔倍率1.5；竞技场训练保存的普通枪数／停顿同步为3／1.8。动作、空间预测和协作窗口消费 Fire 的统一时序查询，切换意图不重置已消耗的枪数与间隔；长点射不越过请求和枪线条件。`WeaponData`、身体机械最大射速及玩家开火保持独立，不因 AI 节奏调整而修改。
 

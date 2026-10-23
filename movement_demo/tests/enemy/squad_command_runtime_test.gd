@@ -43,6 +43,11 @@ func _run() -> void:
 		for actor in actors:
 			actor.get_node("Training").profile = actor.get_node("Training").profile.duplicate(true)
 			actor.get_node("Training").profile.search.tracking_cheat_enabled = false
+	if OS.get_cmdline_user_args().has("--handoff"):
+		# Unequal frozen inspection durations exercise a real early completion,
+		# even when equal-speed members leave the preparation barrier together.
+		actors[0].get_node("Training").profile = actors[0].get_node("Training").profile.duplicate(true)
+		actors[0].get_node("Training").profile.search.search_pause_seconds = 0.9
 	if mixed:
 		actors[2].get_node("UnitType").profile = load("res://resources/enemy/units/melee.tres")
 		actors[2].get_node("Training").profile = load("res://resources/enemy/training/melee_assault.tres").duplicate(true)
@@ -57,6 +62,13 @@ func _run() -> void:
 	player.get("combat").set_physics_process(false)
 	player.get("health").debug_invincible = true
 	player.global_position = arena.to_global(Vector3.ZERO)
+	if OS.get_cmdline_user_args().has("--normal-cover"):
+		await _normal_cover_case()
+		scene.queue_free()
+		await physics_frame
+		print("SQUAD NORMAL COVER: %d/%d passed" % [checks - failures, checks])
+		quit(1 if failures else 0)
+		return
 	if OS.get_cmdline_user_args().has("--defense"):
 		await _defense_case()
 		scene.queue_free()
@@ -326,12 +338,16 @@ func _search_case() -> void:
 	var false_completion_rejected := false
 	var waits := {}
 	var search_costs: Array[int] = []
+	var peak_cost := 0
 	for frame in 900:
 		await physics_frame
 		var total: int = arena.get("cooperation").last_advance_usec
 		for actor in actors:
 			for cost in actor.get_node("AI").frame_costs.values(): total += int(cost)
 		search_costs.append(total)
+		if total > maxi(peak_cost, 16000):
+			peak_cost = total
+			print("SEARCH COST ", total, " squad=", arena.get_node("Squad").coordinator.frame_costs, " members=", actors.map(func(actor): return actor.get_node("AI").frame_costs))
 		for index in actors.size():
 			var actor = actors[index]
 			var ai = actor.get_node("AI")
@@ -365,9 +381,11 @@ func _search_case() -> void:
 			for redraw in 3: await process_frame
 			await RenderingServer.frame_post_draw
 			var picture := root.get_texture().get_image()
-			var capture_directory = "res://logs/strong_handoff_20261023" if level == 2 else "res://logs/coordinator_rewrite_20261023"
+			var overlay = root.get_node("DebugSettings/CoordinatorPaths")
+			check(not overlay.coverage_snapshots.is_empty() and overlay.get_node("GroundRoutes").mesh.get_surface_count() > 0, "Map observation snapshots produce actual ground geometry")
+			var capture_directory = "res://logs/tactical_search_20261023"
 			DirAccess.make_dir_recursive_absolute(capture_directory)
-			check(not picture.is_empty() and picture.save_png(capture_directory.path_join("new_command_routes.png")) == OK, "Rendered world-space command routes are captured")
+			check(not picture.is_empty() and picture.save_png(capture_directory.path_join("map_observation_routes.png")) == OK, "Rendered world-space command routes are captured")
 	check(owned, "Loss, congestion and replanning never return tactical authority to personal Utility")
 	check(search_members.size() == actors.size(), "All members actually execute search commands")
 	check(stable, "The search objective survives layout changes until a real new contact")
@@ -435,7 +453,8 @@ func _audit_search_step() -> void:
 	_search_audit_previous = {"objective": objective.objective_id, "tasks": task_table.duplicate(true)}
 
 func _defense_case() -> void:
-	for frame in 60: await physics_frame
+	for actor in actors: actor.get_node("AI").set_physics_process(false)
+	for frame in 12: await physics_frame
 	var tall = OS.get_cmdline_user_args().has("--tall")
 	var positions: Array[Vector3] = [Vector3(8.7, 0, -1.0), Vector3(8.7, 0, 1.8), Vector3(5, 0, -3)]
 	if tall:
@@ -449,7 +468,10 @@ func _defense_case() -> void:
 		actors[index].global_position = point
 		actors[index].velocity = Vector3.ZERO
 		actors[index].look_at(player.global_position)
-	for frame in 120: await physics_frame
+	for actor in actors: actor.get_node("AI").set_physics_process(true)
+	# Damage starts this defense case before ordinary contact has already
+	# completed a proactive peek. Perception and all tasks still run normally.
+	for frame in 3: await physics_frame
 	var start: Vector3 = actors[0].global_position
 	var training = actors[0].get_node("Training").profile
 	training.tactics.stress_tolerance = 4.0
@@ -483,7 +505,7 @@ func _defense_case() -> void:
 			var task: Dictionary = ai.context.coordination_assignment()
 			for cost in ai.frame_costs.values(): total += int(cost)
 			owned = owned and not task.is_empty() and ai.utility_decision_count == 0
-			if index == 1: high = high or task.get("role") in [&"shelter", &"cover_peek"]
+			if index == 1: high = high or task.get("role") in [&"shelter", &"cover_peek"] and not task.get("defense_proactive", false)
 			if index == 2: untrained = untrained or task.get("role") in [&"shelter", &"cover_peek"]
 			if index > 0 and task.get("role") == &"support" and actors[0].get_node("AI").context.coordination_assignment().get("role") in [&"shelter", &"cover_peek"]:
 				supporting_shot = supporting_shot or actor.shot_count > previous_shots[index] and ai.context.sees_player
@@ -510,7 +532,7 @@ func _defense_case() -> void:
 		costs.append(total)
 		if frame % 180 == 0 or task.get("role") != previous_role: print("DEFENSE TRACE ", frame, " ", JSON.stringify(actors.map(_trace)), " request=", ctx.coordination_debug_snapshot().get("defense"))
 		previous_role = task.get("role", &"")
-	check(low and not high, "Equal actual damage sends low-tolerance member to cover while high tolerance retains its task")
+	check(low and not high, "Equal damage triggers low-tolerance defense, without forcing high-tolerance defense; normal tactical cover stays eligible")
 	check(not untrained, "Pressure cannot unlock an untrained cover action")
 	check(protected_body and hidden_position.is_finite(), "Member actually reaches protection and crouches behind low cover when required")
 	check(peek_shot and returned and resumed, "Cover sequence actually peeks, fires, returns to protection and resumes squad duties")
@@ -520,6 +542,49 @@ func _defense_case() -> void:
 	costs.sort()
 	check(costs[int(costs.size() * 0.99)] < 16000 and costs[-1] < 50000, "Defense keeps original full-frame P99 <16ms / maximum <50ms budget")
 	print("DEFENSE RESULT tall=", tall, " moved=", actors[0].global_position.distance_to(start), " protected=", protected_body, " peek=", peek_shot, " returned=", returned, " resumed=", resumed, " p99=", costs[int(costs.size() * 0.99)], " max=", costs[-1])
+
+func _normal_cover_case() -> void:
+	for actor in actors: actor.get_node("AI").set_physics_process(false)
+	for frame in 12: await physics_frame
+	var positions := [Vector3(8.7, 0, -1.0), Vector3(8.7, 0, 1.8), Vector3(5, 0, -3)]
+	for index in actors.size():
+		var ctx = actors[index].get_node("AI").context
+		var point := NavigationServer3D.region_get_closest_point(ctx.navigation_region.get_rid(), arena.to_global(positions[index]))
+		point.y = 0.0
+		actors[index].global_position = point
+		actors[index].velocity = Vector3.ZERO
+		actors[index].look_at(player.global_position)
+		actors[index].get_node("AI").set_physics_process(true)
+	var hide := {}
+	var fired := {}
+	var returned := {}
+	var owned := true
+	var costs: Array[int] = []
+	var old_shots: Array = actors.map(func(actor): return actor.shot_count)
+	for frame in 1200:
+		await physics_frame
+		var cost: int = arena.get("cooperation").last_advance_usec
+		for index in actors.size():
+			var actor = actors[index]
+			var ctx = actor.get_node("AI").context
+			var task: Dictionary = ctx.coordination_assignment()
+			owned = owned and not task.is_empty() and actor.get_node("AI").utility_decision_count == 0
+			for value in actor.get_node("AI").frame_costs.values(): cost += int(value)
+			if task.get("defense_proactive", false):
+				if task.role == &"shelter" and actor.global_position.distance_to(task.position) <= 0.18:
+					if preload("res://scripts/enemy/services/squad_defense.gd").protected(ctx, task.defense_post, player.global_position):
+						hide[index] = true
+						if fired.has(index): returned[index] = true
+				if task.role == &"cover_peek" and actor.shot_count > old_shots[index] and ctx.sees_player: fired[index] = true
+			old_shots[index] = actor.shot_count
+		costs.append(cost)
+		if frame % 180 == 0: print("NORMAL COVER TRACE ", frame, " ", JSON.stringify(actors.map(_trace)))
+	check(not hide.is_empty(), "Normal contact selects trained cover and physically reaches shelter without a damage trigger")
+	check(not fired.is_empty() and not returned.is_empty(), "Normal cover actually peeks, fires through personal sight, then returns")
+	check(owned, "Normal cover preserves squad ownership and zero personal Utility")
+	costs.sort()
+	check(costs[int(costs.size() * 0.99)] < 16000 and costs[-1] < 50000, "Normal cover keeps the original whole-team frame budget")
+	print("NORMAL COVER RESULT hide=", hide, " fired=", fired, " returned=", returned, " p99=", costs[int(costs.size() * 0.99)], " peak=", costs[-1])
 
 func _area_case() -> void:
 	var wall := StaticBody3D.new()
@@ -531,18 +596,60 @@ func _area_case() -> void:
 	arena.add_child(wall)
 	wall.position = Vector3(-7.0, 1.5, 1.5)
 	player.global_position = arena.to_global(Vector3(-7.6, 0, 1.5))
+	if OS.get_cmdline_user_args().has("--no-hints"):
+		# A single screen can be flanked by the new map-wide route. Keep this
+		# sixty-second observation case genuinely hidden with an opaque enclosure;
+		# saved-wall reacquisition is tested separately. Stay in the active arena.
+		player.global_position = arena.to_global(Vector3(-7.6, 0, 1.5))
+		for side in [-1.0, 1.0]:
+			for axis in [0, 2]:
+				var screen := StaticBody3D.new()
+				var shape_node := CollisionShape3D.new()
+				var shape := BoxShape3D.new()
+				shape.size = Vector3(0.2, 3.0, 1.4) if axis == 0 else Vector3(1.4, 3.0, 0.2)
+				shape_node.shape = shape
+				screen.add_child(shape_node)
+				arena.add_child(screen)
+				var offset := Vector3(-7.6, 1.5, 1.5)
+				offset[axis] += side * 0.6
+				screen.position = offset
 	var squad = arena.get_node("Squad").coordinator
 	var observed := 0
 	var late_motion := 0
 	var idle := 0
 	var max_idle := 0
 	var bounded := true
+	var beyond_initial := false
+	var future_routes := false
+	var moving_observation := false
+	var last_area := 0.0
+	var independent: Array[Vector3] = []
+	var independent_seen := {}
+	var independent_late := false
+	var sample_ctx = actors[0].get_node("AI").context
+	# Independent, denser grid, actual floor and rays; do not use ledger points
+	# or its observed flags as the proof that new map area was inspected.
+	for x in range(-10, 11):
+		for z in range(-7, 8):
+			var point: Vector3 = arena.to_global(Vector3(x * 0.9, 0, z * 0.9))
+			var nav := NavigationServer3D.region_get_closest_point(sample_ctx.navigation_region.get_rid(), point)
+			if Vector2(nav.x - point.x, nav.z - point.z).length() > 0.15: continue
+			if preload("res://scripts/systems/character_geometry.gd").can_occupy(actors[0], point, 0.8, 0.15, true): independent.append(point)
 	var owned := true
 	var frozen := Vector3.INF
 	var reacquired := -1
 	var last_positions: Array = actors.map(func(actor): return actor.global_position)
+	var area_costs: Array[int] = []
+	var area_peak := 16000
 	for frame in 3600:
 		await physics_frame
+		var total: int = arena.get("cooperation").last_advance_usec
+		for actor in actors:
+			for cost in actor.get_node("AI").frame_costs.values(): total += int(cost)
+		area_costs.append(total)
+		if total > area_peak:
+			area_peak = total
+			print("AREA PEAK ", frame, " total=", total, " squad=", squad.frame_costs, " members=", actors.map(func(actor): return actor.get_node("AI").frame_costs))
 		if squad._objective.get("phase") != &"search":
 			if frozen.is_finite() and reacquired < 0 and actors.any(func(actor): return actor.get_node("AI").context.sees_player): reacquired = frame
 			continue
@@ -556,21 +663,53 @@ func _area_case() -> void:
 			owned = owned and not task.is_empty() and actor.get_node("AI").utility_decision_count == 0
 			if actor.global_position.distance_to(last_positions[index]) > 0.005: moved = true
 			last_positions[index] = actor.global_position
-			if str(task.get("site_key", "")).begins_with("area:"):
-				bounded = bounded and ctx._horizontal_distance_between(task.position, squad._search.center) <= squad._search.settings.get("search_radius", 5.0) + 0.01
+			if task.has("coverage_key"):
+				var nav := NavigationServer3D.region_get_closest_point(ctx.navigation_region.get_rid(), task.position)
+				bounded = bounded and Vector2(nav.x - task.position.x, nav.z - task.position.z).length() < 0.7
+				beyond_initial = beyond_initial or ctx._horizontal_distance_between(actor.global_position, squad._search.origin) > squad._search.settings.get("search_radius", 5.0) + 1.0
+				future_routes = future_routes or not task.get("future_steps", []).is_empty()
 		if frame > 1800 and moved: late_motion += 1
 		idle = 0 if moved else idle + 1
 		max_idle = maxi(idle, max_idle)
+		if idle == 180:
+			print("AREA IDLE ", frame, " ", actors.map(_trace), " observation=", squad._observations)
 		observed = maxi(observed, squad._search.snapshot().observed)
-	check(owned and bounded, "Long hidden search retains ownership, true last sight and configured regional bounds")
+		var area: float = squad._search.snapshot(squad.elapsed).observed_area
+		moving_observation = moving_observation or moved and area > last_area
+		last_area = area
+		if frame % 12 == 0:
+			for index in independent.size():
+				if independent_seen.has(index): continue
+				for actor in actors:
+					var point: Vector3 = independent[index]
+					var offset: Vector3 = point - actor.global_position
+					var perception = actor.get_node("AI").context.perception
+					if offset.length() > perception.sight_distance: continue
+					offset.y = 0.0
+					if not offset.is_zero_approx() and (-actor.global_basis.z).dot(offset.normalized()) < cos(deg_to_rad(perception.sight_angle_degrees * 0.5)): continue
+					var visible := true
+					for height in [0.4, 1.1]:
+						var query := PhysicsRayQueryParameters3D.create(actor.get_eye_position(), point + Vector3.UP * height, 1, [actor.get_rid(), player.get_rid()])
+						if not actor.get_world_3d().direct_space_state.intersect_ray(query).is_empty(): visible = false
+					if visible:
+						independent_seen[index] = frame
+						if frame > 1800: independent_late = true
+						break
+	check(owned and bounded, "Long hidden search retains ownership, true last sight and navigation-region bounds")
 	if OS.get_cmdline_user_args().has("--no-hints"):
 		check(observed >= 10 and late_motion > 120, "Real observation covers the region and search still progresses after thirty seconds")
+		check(beyond_initial and future_routes and moving_observation, "Continuous observation routes extend past the initial search radius while moving")
+		check(independent_seen.size() >= independent.size() * 0.65 and independent_late, "Independent hiding-space rays confirm broad map coverage and new late progress")
 	else:
 		check(reacquired > 0 and reacquired <= 480, "Uncertain squad hints lead to actual reacquisition within eight seconds")
 	check(max_idle < 240, "No all-member observation deadlock lasts four seconds")
+	area_costs.sort()
+	check(area_costs[int(area_costs.size() * 0.99)] < 16000 and area_costs[-1] < 50000, "Full-map observation and continuous planning retain the original 16/50ms frame limits")
 	var hints = squad._search.snapshot()
 	check(hints.hint_checks == 0 if OS.get_cmdline_user_args().has("--no-hints") else hints.hint_checks > 0 and not hints.hint.is_empty(), "Squad hint lifecycle obeys the frozen Training switch")
 	print("AREA RESULT ", hints, " max_idle=", max_idle, " late_motion=", late_motion, " observed_peak=", observed, " members=", actors.map(_trace))
+	print("INDEPENDENT AREA ", independent_seen.size(), "/", independent.size(), " beyond=", beyond_initial, " future=", future_routes, " moving=", moving_observation, " late=", independent_late)
+	print("AREA COST p99=", area_costs[int(area_costs.size() * 0.99)], " peak=", area_costs[-1])
 
 func _trace(actor) -> Dictionary:
 	var ai = actor.get_node("AI")
@@ -591,10 +730,15 @@ func _protocol_and_lifecycle() -> void:
 	var coverage: Dictionary = squad._covered.duplicate(true)
 	check(not ai.context.report_command(stale, &"complete", {"observed": true}) and squad._covered == coverage, "Stale feedback cannot complete a task or mark coverage")
 	var before: Dictionary = squad._tasks.duplicate(true)
+	var area_before: Dictionary = squad._search.coverage.cells.duplicate(true)
+	var queries_before: int = ai.context.cover_selection.environment_ray_queries
 	for repeat in 30:
 		var snapshot: Dictionary = ai.context.coordination_debug_snapshot()
 		snapshot.get("task", {}).clear()
+		var map_snapshot: Dictionary = ai.context.observation_debug_snapshot()
+		map_snapshot.get("display", []).clear()
 	check(before == squad._tasks, "Debug reads and caller edits cannot alter live tasks")
+	check(area_before == squad._search.coverage.cells and queries_before == ai.context.cover_selection.environment_ray_queries, "Coverage debug reads neither mutate observations nor cast new visibility rays")
 	var legal := true
 	for actor in actors:
 		var context = actor.get_node("AI").context
@@ -616,6 +760,8 @@ func _protocol_and_lifecycle() -> void:
 		occupied = occupied or actors[0].ammo.is_reloading and current.get("role") == &"reload"
 		if occupied and not actors[0].ammo.is_reloading and actors[0].ammo.magazine_rounds > 0: reloaded = true
 	check(occupied and reloaded and owned, "Empty magazine triggers an actual reload and keeps commanded ownership")
+	if not occupied or not reloaded:
+		print("RELOAD DIAG ", actors[0].ammo.magazine_rounds, " / ", actors[0].ammo.reload_progress, " ", JSON.stringify(actors.map(_trace)))
 	check(squad._profiles == profiles and squad._template == template, "Runtime training edits and reload do not rebuild this battle's profiles or template")
 	for victim in [actors[2], actors[1]]:
 		var id: int = victim.get_instance_id()
@@ -629,6 +775,11 @@ func _protocol_and_lifecycle() -> void:
 	for frame in 240: await physics_frame
 	check(squad.member_ids().size() == 1 and ai.utility_decision_count == 0 and not ai.context.coordination_assignment().is_empty(), "One survivor remains under squad command")
 	check(actors[0].shot_count > shots or actors[0].global_position.distance_to(start) > 0.5, "The survivor actually continues combat or movement")
+	if actors[0].shot_count == shots and actors[0].global_position.distance_to(start) <= 0.5:
+		print("SURVIVOR FIRE ", ai.context.member_runtime_snapshot(), " aim=", ai.context.last_seen_aim_position,
+			" direction=", actors[0].aim_direction, " muzzle=", actors[0].get_shot_origin(), " ready=", actors[0].can_fire(),
+			" fire=", ai.context.fire.request, " pause=", ai.context.fire.fire_pause_remaining, " interval=", ai.context.fire.fire_interval_remaining,
+			" decision=", ai.context.fire.fire_decision.selected_action, " task=", ai.context.coordination_assignment())
 	print("SURVIVOR RESULT ", JSON.stringify(_trace(actors[0])))
 
 func _reload_scene() -> void:

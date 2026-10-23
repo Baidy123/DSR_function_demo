@@ -249,9 +249,13 @@ func execute_command(delta: float, visible: bool) -> Dictionary:
 				context.report_command(command, &"blocked", {"reason": &"static_obstacle"})
 				return output
 		output.direction = direction.normalized()
-		output.multiplier = minf(float(command.get("speed_multiplier", 1.0)), direction.length() / maxf(0.001, actor.move_speed * delta))
+		var speed := float(command.get("speed_multiplier", 1.0))
+		var approach: Vector3 = command.get("staging_position", command.position)
+		if command.role == &"search" and context.coordination_now() < float(command.get("pursuit_until", -INF)) and context._horizontal_distance(approach) > 1.4:
+			speed = maxf(speed, float(command.get("pursuit_multiplier", speed)))
+		output.multiplier = minf(speed * float(permission.get("speed_scale", 1.0)), direction.length() / maxf(0.001, actor.move_speed * delta))
 		output.stop_position = waypoint
-		if not visible: output.facing = direction
+		if not visible and command.role != &"search": output.facing = direction
 	output.merge(command_work(delta, visible, arrived), true)
 	if command.role in [&"patrol", &"move"] and arrived:
 		_command_observe += delta

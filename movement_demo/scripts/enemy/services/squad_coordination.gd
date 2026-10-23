@@ -28,6 +28,7 @@ var configuration: Dictionary = {}
 var configuration_revision = 0
 var planning_count = 0
 var last_advance_usec = 0
+var frame_costs := {"observation": 0, "planning": 0, "stage": &"idle"}
 var _version = 0
 var _epoch = 0
 var _due = 0.0
@@ -35,6 +36,8 @@ var _attempt = 0
 var _reason: StringName = &"initializing"
 var _last_replan: StringName = &"initializing"
 var _last_map_revision = -1
+var _observations: Dictionary = {}
+var _observation_at := 0.0
 var _barriers: Dictionary = {}
 var barrier_wait_count = 0
 var barrier_release_count = 0
@@ -88,9 +91,13 @@ func reset() -> void:
 	_attempt = 0
 	_due = 0.0
 	_last_map_revision = -1
+	_observations.clear()
+	_observation_at = 0.0
 	if environment != null: environment.release_squad_reservations(self)
 
 func release_member(id: int) -> void:
+	_search.coverage.release(id)
+	_observations.erase(id)
 	_defense.release(id)
 	_tasks.erase(id)
 	_profiles.erase(id)
@@ -148,7 +155,11 @@ func shared_checked(context) -> Array[Dictionary]:
 
 func advance() -> void:
 	var start = Time.get_ticks_usec()
-	if environment == null or int(configuration.get("level", 0)) == 0: return
+	if environment == null: return
+	if int(configuration.get("level", 0)) == 0:
+		_observe_map()
+		last_advance_usec = Time.get_ticks_usec() - start
+		return
 	_bodies.clear()
 	var added = false
 	for id in _members:
@@ -168,6 +179,9 @@ func advance() -> void:
 		_template = Contract.template(_profiles, environment.allocate_coordination_id())
 		_preparation.clear()
 		_due = 0.0
+	var observation_start := Time.get_ticks_usec()
+	_observe_map()
+	frame_costs.observation = Time.get_ticks_usec() - observation_start
 	_update_objective()
 	if _defense.advance(_bodies, _profiles, _tasks, _objective, elapsed):
 		_preparation.clear()
@@ -184,8 +198,65 @@ func advance() -> void:
 	_update_progress()
 	if elapsed >= _due:
 		_due = elapsed + Contract.PERIOD
+		var planning_start := Time.get_ticks_usec()
 		_plan()
+		frame_costs.planning = Time.get_ticks_usec() - planning_start
+	else: frame_costs.planning = 0
 	last_advance_usec = Time.get_ticks_usec() - start
+
+func _observe_map() -> void:
+	var delta := minf(0.1, maxf(0.0, elapsed - _observation_at))
+	_observation_at = elapsed
+	var prepared := false
+	for id in _members:
+		var ctx = _context(id)
+		if ctx == null or not is_instance_valid(ctx.actor) or ctx.actor.is_dead or not ctx.is_arena_active(): continue
+		if not prepared:
+			_search.coverage.advance(ctx, elapsed, Time.get_ticks_usec() + 500)
+			prepared = true
+		var task: Dictionary = _tasks.get(id, {})
+		_search.coverage.observe(ctx, task, elapsed, delta, Time.get_ticks_usec() + 250)
+		if task.get("role") != &"search" or not task.get("accepted", false) or task.get("state") in [&"blocked", &"complete", &"occupied"]: continue
+		if task.get("coverage_version", _search.coverage.map_version) != _search.coverage.map_version: continue
+		# Critical inspections require an actual check at their released post.
+		# Travel still contributes to the map ledger; sweep steps finish in motion.
+		if task.get("observation_mode") != &"sweep" and Contract.horizontal(ctx.actor.global_position, task.position) > 0.18: continue
+		var progress: Dictionary = _observations.get(id, {})
+		if not Contract.same_task(progress.get("token", {}), task) or progress.get("map_revision", -1) != ctx.coordination_search_revision():
+			progress = {"token": task.duplicate(true), "duration": {}, "last_at": -INF, "map_revision": ctx.coordination_search_revision()}
+			_observations[id] = progress
+		if elapsed <= float(progress.last_at): continue
+		progress.last_at = elapsed
+		var samples: PackedVector3Array = task.get("observation_samples", PackedVector3Array([task.look_position]))
+		var observation_deadline := Time.get_ticks_usec() + 650
+		for count in samples.size():
+			if Time.get_ticks_usec() >= observation_deadline: break
+			var index: int = progress.get("cursor", 0) % samples.size()
+			progress.cursor = index + 1
+			if ctx.actor.is_vaulting() or ctx.actor.melee_active: break
+			if not preload("res://scripts/enemy/services/enemy_visual_observation.gd").visible(ctx, samples[index]): continue
+			progress.duration[index] = float(progress.duration.get(index, 0.0)) + delta
+			_search.coverage.credit(task.get("coverage_key", ""), samples[index], id, task.task_id, elapsed, delta, ctx)
+
+func observation_progress(context, token: Dictionary) -> Dictionary:
+	var id: int = context.actor.get_instance_id()
+	var task: Dictionary = _tasks.get(id, {})
+	if not Contract.same_task(token, task): return {}
+	var progress: Dictionary = _observations.get(id, {})
+	if not Contract.same_task(progress.get("token", {}), task): return {}
+	if progress.get("map_revision", -1) != context.coordination_search_revision() or task.get("coverage_version", _search.coverage.map_version) != _search.coverage.map_version: return {}
+	var parameters: Dictionary = _profiles.get(id, {}).get("actions", {}).get(task.action, {}).get("parameters", {})
+	var pause := maxf(0.25, float(parameters.get("search_pause_seconds", 0.5)))
+	var samples: PackedVector3Array = task.get("observation_samples", PackedVector3Array([task.look_position]))
+	var ratio := 1.0
+	var focus: Vector3 = task.look_position
+	for index in samples.size():
+		var part := float(progress.duration.get(index, 0.0)) / pause
+		if part < ratio:
+			ratio = part
+			focus = samples[index]
+	var arrived := Contract.horizontal(context.actor.global_position, task.position) <= 0.18
+	return {"progress": minf(1.0, ratio), "complete": ratio >= 1.0 and (arrived or task.get("observation_mode") == &"sweep"), "look_position": focus}
 
 func _update_objective() -> void:
 	var newest: Dictionary = {}
@@ -252,6 +323,7 @@ func _new_task(id: int, proposal: Dictionary) -> Dictionary:
 		"task_id": environment.allocate_coordination_id(), "profile_id": _profiles.get(id, {}).get("profile_id", "")}, proposal, elapsed)
 
 func _plan() -> void:
+	frame_costs.stage = &"candidates"
 	if _profiles.is_empty():
 		_reason = &"members_not_assembled"
 		return
@@ -267,13 +339,17 @@ func _plan() -> void:
 		must_replan = must_replan or not defense_role.is_empty() and task.role != defense_role
 		must_replan = must_replan or task.role == &"guard" or task.state == &"blocked" or (task.state == &"complete" and not _waiting_for_search_peers(id)) or task.expires_at <= elapsed or task.objective_id != _objective.objective_id
 		must_replan = must_replan or task.has("barrier_id") and not _barriers.has(task.barrier_id)
-		must_replan = must_replan or _objective.phase == &"search" and task.get("search_revision", 0) != _search.revision
+		must_replan = must_replan or task.get("coverage_version", _search.coverage.map_version) != _search.coverage.map_version
 		if _objective.phase == &"contact":
 			must_replan = must_replan or (_bodies[id].visible == false and task.role in [&"engage", &"support", &"flank"] and task.state == &"executing" and Contract.horizontal(_bodies[id].position, task.position) < 0.15)
-			must_replan = must_replan or task.role != &"reload" and task.role != _contact_role(id)
+			must_replan = must_replan or (_bodies[id].firearms and _bodies[id].visible and not _bodies[id].fire_lane_valid and task.role in [&"engage", &"support", &"flank"] and Contract.horizontal(_bodies[id].position, task.position) < 0.15)
+			must_replan = must_replan or not defense_role.is_empty() and task.role != defense_role
 			must_replan = must_replan or _bodies[id].firearms and _bodies[id].visible and Contract.horizontal(_bodies[id].position, _objective.position) < 3.0 and Contract.horizontal(task.position, _objective.position) < 3.0
 		must_replan = must_replan or defense_role.is_empty() and _bodies[id].can_reload and _bodies[id].rounds == 0 and task.role != &"reload"
 	if not must_replan: return
+	if _preparation.has("solution"):
+		_finish_plan(Time.get_ticks_usec() + 2500)
+		return
 	if _preparation.is_empty():
 		var sites = Formation.sites(context, _objective, _bodies.size(), _attempt)
 		if _objective.phase == &"patrol" and not sites.is_empty() and sites.all(func(site): return _patrol_visits.has(site.site_key)):
@@ -284,21 +360,38 @@ func _plan() -> void:
 	if not _bodies.has(id):
 		_preparation.clear()
 		return
-	var deadline = Time.get_ticks_usec() + 4000
+	var deadline = Time.get_ticks_usec() + 2500
 	if not _preparation.has("work"): _preparation.work = _member_work(id)
 	var work: Dictionary = _preparation.work
 	var candidates: Array[Dictionary] = work.candidates
+	if not work.defense_ready:
+		var defense := _defense.prepare_candidates(_context(id), _profiles[id], _bodies[id], _objective, work.proactive, deadline)
+		if not defense.ready:
+			_due = elapsed
+			return
+		candidates.append_array(defense.candidates)
+		work.defense_ready = true
 	while work.cursor < work.sites.size() and candidates.size() < 6:
 		if Time.get_ticks_usec() >= deadline:
 			_due = elapsed
 			return
 		var site: Dictionary = work.sites[work.cursor]
 		work.cursor += 1
-		if _covered.has(site.site_key) or _failed_sites.get([id, site.site_key], -INF) > elapsed: continue
+		if _covered.has(site.site_key) and not site.has("coverage_key") or _failed_sites.get([id, site.site_key], -INF) > elapsed: continue
 		if _objective.phase == &"patrol" and _patrol_visits.has(site.site_key): continue
-		if _objective.phase == &"contact": site.role = _contact_role(id)
+		if _objective.phase == &"contact" and not site.has("role"): site.role = _contact_role(id)
+		# A physical box has four bounded bypass alternatives. Test them on
+		# successive budget slots instead of hiding all four inside one query.
+		if not site.has("detour_variant"): site.detour_variant = 0
 		var candidate = Formation.candidate(_context(id), _profiles.get(id, {}), _bodies[id], site, _objective, _tasks[id])
+		if candidate.get("retry_detour", false):
+			var retry := site.duplicate(true)
+			retry.detour_variant += 1
+			work.sites.append(retry)
+			continue
 		if not candidate.is_empty():
+			if candidate.has("coverage_key"):
+				_search.routes.extend(_context(id), candidate, _search.coverage, work.sites, deadline)
 			candidates.append(candidate)
 	_preparation.erase("work")
 	# Every member can keep a validated holding post while a teammate reloads
@@ -312,12 +405,21 @@ func _plan() -> void:
 	if _preparation.index < _preparation.members.size():
 		_due = elapsed # Continue bounded preparation on the next area tick.
 		return
-	var result = _planner.propose({"members": _bodies, "profiles": _profiles, "template": _template,
+	_preparation.solution = _planner.begin({"members": _bodies, "profiles": _profiles, "template": _template,
 		"objective": _objective, "candidates": _preparation.candidates, "synchronize_search": _synchronize_search()})
+	_finish_plan(deadline)
+
+func _finish_plan(deadline: int) -> void:
+	frame_costs.stage = &"combinations"
+	var result := _planner.advance(_preparation.solution, deadline)
+	if not result.ready:
+		_due = elapsed
+		return
 	planning_count += 1
 	_reason = result.reason
 	_preparation.clear()
 	if result.complete and result.tasks.values().any(func(task): return task.role != &"guard"):
+		frame_costs.stage = &"commit"
 		if not _commit(result.tasks, result.traffic):
 			_last_replan = &"commit_revalidation_failed"
 			_attempt += 1
@@ -330,6 +432,7 @@ func _plan() -> void:
 		# Clearing visits never marks those sites as physically visited.
 		if _objective.phase == &"patrol": _patrol_visits.clear()
 		_last_replan = result.reason
+		frame_costs.stage = &"repair"
 		if not _repair_traffic(result.get("attempted", {})):
 			for task in _tasks.values():
 				task.reason = &"retry_other_posts"
@@ -340,18 +443,39 @@ func _member_work(id: int) -> Dictionary:
 	var body: Dictionary = _bodies[id]
 	var context = _context(id)
 	var sites: Array = _preparation.sites.duplicate(true)
-	if _objective.phase == &"search": sites.append_array(_search.sites(body.position, elapsed))
-	if _objective.phase == &"contact" and body.visible and (not body.firearms or Contract.horizontal(body.position, _objective.position) >= 3.0):
+	if _objective.phase == &"search":
+		# A completed route can continue into its prepared future, after checking
+		# current coverage and revalidating navigation through normal candidates.
+		var future: Array = _tasks[id].get("future_steps", [])
+		for index in range(future.size() - 1, -1, -1):
+			var step: Dictionary = future[index]
+			if step.get("coverage_version") == _search.coverage.map_version and not _search.coverage.unfinished(step.coverage_key, elapsed).is_empty(): sites.push_front(step.duplicate(true))
+		sites.append_array(_search.sites(body.position, elapsed, id))
+	if _objective.phase == &"contact" and body.visible and (not body.firearms or body.fire_lane_valid and Contract.horizontal(body.position, _objective.position) >= 3.0):
 		sites.push_front({"position": body.position, "look_position": _objective.position, "site_key": "contact:%s" % id})
 	var needs_reload: bool = body.reloading or body.rounds == 0 and body.can_reload
 	if needs_reload: sites = [{"position": body.position, "look_position": _objective.position, "site_key": "reload:%s" % id}]
 	var previous: Dictionary = _tasks[id]
 	var defense_role = _defense.role(id)
+	if _objective.phase == &"contact" and defense_role.is_empty() and not needs_reload:
+		# Defaults remain preferences. A qualified visible member can replace a
+		# blind support slot; unseen members continue to a real firing position.
+		var roles: Array[StringName] = [_contact_role(id)]
+		for role: StringName in [&"engage", &"support", &"flank"]:
+			if role == &"support" and (not body.visible or body.rounds <= 0): continue
+			if not roles.has(role) and not Contract.executor(_profiles[id], role).is_empty(): roles.append(role)
+		var expanded: Array = []
+		for site in sites:
+			for role in roles:
+				var variant: Dictionary = site.duplicate(true)
+				variant.role = role
+				variant.role_cost = 0.0 if role == _contact_role(id) else 0.35
+				expanded.append(variant)
+		sites = expanded
 	if not defense_role.is_empty():
-		candidates = _defense.candidates(context, _profiles[id], body, _objective)
 		sites.clear()
 	var holding_peers = previous.state == &"complete" and _waiting_for_search_peers(id)
-	if defense_role.is_empty() and previous.role in [&"patrol", &"search"] and not needs_reload and (not previous.state in [&"blocked", &"complete"] or holding_peers) and previous.expires_at > elapsed and (previous.role != &"search" or previous.get("search_revision", 0) == _search.revision):
+	if defense_role.is_empty() and previous.role in [&"patrol", &"search"] and not needs_reload and (not previous.state in [&"blocked", &"complete"] or holding_peers) and previous.expires_at > elapsed and previous.get("coverage_version", _search.coverage.map_version) == _search.coverage.map_version:
 		# Keep unfinished legs and completed posts still needed by this group.
 		var continuing = previous.duplicate(true)
 		continuing.route = Traffic.remaining(body.position, previous.route)
@@ -366,7 +490,8 @@ func _member_work(id: int) -> Dictionary:
 			resume.route = path
 			resume.estimate = 0.0
 			candidates.append(resume)
-	return {"candidates": candidates, "sites": sites, "cursor": 0}
+	return {"candidates": candidates, "sites": sites, "cursor": 0,
+		"defense_ready": defense_role.is_empty() and (_objective.phase != &"contact" or needs_reload), "proactive": defense_role.is_empty()}
 
 func _contact_role(id: int) -> StringName:
 	if not _defense.role(id).is_empty(): return _defense.role(id)
@@ -424,6 +549,7 @@ func _commit(proposals: Dictionary, _traffic: Dictionary) -> bool:
 				break
 	_version += 1
 	_tasks = table
+	_search.coverage.reserve(table)
 	for id in table: _defense.accept(id, table[id])
 	for participants in traffic.get("synchronized_groups", []): _install_barrier(participants)
 	for id in table:
@@ -459,7 +585,7 @@ func _update_progress() -> void:
 		if Contract.horizontal(old.position, body.position) > 0.08:
 			old = {"position": body.position, "at": elapsed}
 		_progress[id] = old
-		if task.get("reason") in [&"staging_barrier", &"step_replanning"]:
+		if task.get("reason") in [&"staging_barrier", &"step_replanning", &"formation_gap"]:
 			_progress[id].at = elapsed
 			continue
 		if Contract.horizontal(body.position, task.position) <= 0.12 or body.occupied: continue
@@ -532,7 +658,7 @@ func report(context, report: Dictionary) -> bool:
 	if report.state == &"complete" and task.role in [&"patrol", &"move"] and Contract.horizontal(context.actor.global_position, task.position) > 0.18: return false
 	if report.state == &"complete" and task.role in [&"shelter", &"cover_peek"] and Contract.horizontal(context.actor.global_position, task.position) > 0.18: return false
 	if report.state == &"complete" and task.role == &"search":
-		if not report.get("observed", false) or not context.command_observation_valid(task): return false
+		if not observation_progress(context, task).get("complete", false): return false
 	_feedback[id] = report.duplicate(true)
 	task.state = report.state
 	task.reason = report.get("reason", &"")
@@ -540,7 +666,6 @@ func report(context, report: Dictionary) -> bool:
 	if report.state == &"complete":
 		if task.role == &"search":
 			_covered[task.site_key] = {"position": task.look_position, "observed_at": elapsed, "member_id": id}
-			if task.get("search_revision", 0) == _search.revision: _search.mark(context, elapsed)
 			if _waiting_for_search_peers(id): task.reason = &"search_peers"
 		elif task.role == &"patrol":
 			_patrol_visits[task.site_key] = {"position": task.position, "visited_at": elapsed, "member_id": id}
@@ -594,11 +719,18 @@ func motion_permission(context, token: Dictionary) -> Dictionary:
 		var clearance: float = bodies[id].radius + bodies[other].radius + maxf(bodies[id].spacing_margin, bodies[other].spacing_margin)
 		if Traffic.conflicts(path, other_path, clearance) and not waiting.has(other): waiting.append(other)
 	if not waiting.is_empty(): traffic_wait_count += 1
-	return {"allowed": waiting.is_empty(), "waiting_for": waiting, "reason": &"occupied_corridor" if not waiting.is_empty() else &"", "members": bodies.keys()}
+	var cohesion := Traffic.cohesion(id, _tasks, bodies) if _synchronize_search() else {"speed_scale": 1.0}
+	if waiting.is_empty() and float(cohesion.speed_scale) <= 0.01:
+		return {"allowed": false, "waiting_for": cohesion.get("waiting_for", []), "reason": &"formation_gap", "speed_scale": 0.0}
+	return {"allowed": waiting.is_empty(), "waiting_for": waiting, "reason": &"occupied_corridor" if not waiting.is_empty() else &"", "members": bodies.keys(), "speed_scale": cohesion.speed_scale}
 
 func debug_member_snapshot(context) -> Dictionary:
 	var task = assignment(context)
+	var future := PackedVector3Array()
+	for step in task.get("future_steps", []): future.append_array(step.route)
 	return {"source": &"squad" if not task.is_empty() else &"personal", "task": task,
+		"coverage_owner": get_instance_id(),
+		"next_route": future, "observation_direction": -context.actor.global_basis.z,
 		"objective": _objective.duplicate(true), "template": _template.duplicate(true),
 		"profile": _profiles.get(context.actor.get_instance_id(), {}).duplicate(true),
 		"defense": _defense.requests.get(context.actor.get_instance_id(), {}).duplicate(true), "pressure": context.recent_damage_pressure + context.nearby_shot_pressure,
@@ -607,7 +739,10 @@ func debug_member_snapshot(context) -> Dictionary:
 		"waiting_for": _feedback.get(context.actor.get_instance_id(), {}).get("waiting_for", []).duplicate(),
 		"phase": _objective.get("phase", &"patrol"), "state": task.get("state", &"pending"),
 		"reason": task.get("reason", _reason), "planning_reason": _reason, "last_replan": _last_replan,
-		"plan_version": _version, "covered": _covered.duplicate(true), "search": _search.snapshot(), "patrol_visits": _patrol_visits.duplicate(true), "barriers": _barriers.duplicate(true)}
+		"plan_version": _version, "covered": _covered.duplicate(true), "search": _search.snapshot(elapsed), "patrol_visits": _patrol_visits.duplicate(true), "barriers": _barriers.duplicate(true)}
+
+func coverage_debug_snapshot() -> Dictionary:
+	return _search.snapshot(elapsed, true)
 
 func member_ids() -> Array:
 	return _tasks.keys()
