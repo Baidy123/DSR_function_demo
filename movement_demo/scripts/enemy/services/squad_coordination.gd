@@ -8,6 +8,8 @@ const Formation = preload("res://scripts/enemy/services/enemy_search_formation.g
 const Traffic = preload("res://scripts/enemy/services/squad_traffic.gd")
 const Search = preload("res://scripts/enemy/services/squad_search.gd")
 var _search = Search.new()
+const Defense = preload("res://scripts/enemy/services/squad_defense.gd")
+var _defense = Defense.new()
 var _environment: WeakRef
 var _members: Dictionary = {}
 var _profiles: Dictionary = {}
@@ -66,6 +68,7 @@ func registered_member_count() -> int:
 func reset() -> void:
 	_epoch += 1
 	_search = Search.new()
+	_defense = Defense.new()
 	_tasks.clear()
 	_profiles.clear()
 	_template.clear()
@@ -88,6 +91,7 @@ func reset() -> void:
 	if environment != null: environment.release_squad_reservations(self)
 
 func release_member(id: int) -> void:
+	_defense.release(id)
 	_tasks.erase(id)
 	_profiles.erase(id)
 	_feedback.erase(id)
@@ -165,6 +169,9 @@ func advance() -> void:
 		_preparation.clear()
 		_due = 0.0
 	_update_objective()
+	if _defense.advance(_bodies, _profiles, _tasks, _objective, elapsed):
+		_preparation.clear()
+		_due = 0.0
 	if _objective.phase == &"search":
 		var revision: int = _search.revision
 		_search.advance(_bodies.keys().map(func(id): return _context(id)), _profiles, elapsed)
@@ -216,6 +223,7 @@ func _update_objective() -> void:
 	# Explicit supersession keeps every live body owned while a new full
 	# plan is prepared; stale search reports can no longer mark coverage.
 	for id in _tasks:
+		if _tasks[id].role in [&"shelter", &"cover_peek"] and not _defense.role(id).is_empty(): continue
 		# During visible target motion, retain valid combat work while preparing
 		# its replacement. Replanning itself is not a loss of firing permission.
 		if previous.get("phase") == &"contact" and phase == &"contact" and _tasks[id].role in [&"engage", &"support", &"flank", &"reload"]:
@@ -255,6 +263,8 @@ func _plan() -> void:
 	var must_replan = _preparation.size() > 0
 	for id in _tasks:
 		var task: Dictionary = _tasks[id]
+		var defense_role = _defense.role(id)
+		must_replan = must_replan or not defense_role.is_empty() and task.role != defense_role
 		must_replan = must_replan or task.role == &"guard" or task.state == &"blocked" or (task.state == &"complete" and not _waiting_for_search_peers(id)) or task.expires_at <= elapsed or task.objective_id != _objective.objective_id
 		must_replan = must_replan or task.has("barrier_id") and not _barriers.has(task.barrier_id)
 		must_replan = must_replan or _objective.phase == &"search" and task.get("search_revision", 0) != _search.revision
@@ -262,7 +272,7 @@ func _plan() -> void:
 			must_replan = must_replan or (_bodies[id].visible == false and task.role in [&"engage", &"support", &"flank"] and task.state == &"executing" and Contract.horizontal(_bodies[id].position, task.position) < 0.15)
 			must_replan = must_replan or task.role != &"reload" and task.role != _contact_role(id)
 			must_replan = must_replan or _bodies[id].firearms and _bodies[id].visible and Contract.horizontal(_bodies[id].position, _objective.position) < 3.0 and Contract.horizontal(task.position, _objective.position) < 3.0
-		must_replan = must_replan or _bodies[id].can_reload and _bodies[id].rounds == 0 and task.role != &"reload"
+		must_replan = must_replan or defense_role.is_empty() and _bodies[id].can_reload and _bodies[id].rounds == 0 and task.role != &"reload"
 	if not must_replan: return
 	if _preparation.is_empty():
 		var sites = Formation.sites(context, _objective, _bodies.size(), _attempt)
@@ -274,41 +284,23 @@ func _plan() -> void:
 	if not _bodies.has(id):
 		_preparation.clear()
 		return
-	var candidates: Array[Dictionary] = []
-	var body: Dictionary = _bodies[id]
-	var member_context = _context(id)
-	var sites: Array = _preparation.sites.duplicate(true)
-	if _objective.phase == &"search": sites.append_array(_search.sites(body.position, elapsed))
-	if _objective.phase == &"contact" and body.visible and (not body.firearms or Contract.horizontal(body.position, _objective.position) >= 3.0):
-		sites.push_front({"position": body.position, "look_position": _objective.position, "site_key": "contact:%s" % id})
-	var needs_reload: bool = body.reloading or body.rounds == 0 and body.can_reload
-	if needs_reload:
-		sites = [{"position": body.position, "look_position": _objective.position, "site_key": "reload:%s" % id}]
-	var previous: Dictionary = _tasks[id]
-	var holding_peers = previous.state == &"complete" and _waiting_for_search_peers(id)
-	if previous.role in [&"patrol", &"search"] and not needs_reload and (not previous.state in [&"blocked", &"complete"] or holding_peers) and previous.expires_at > elapsed and (previous.role != &"search" or previous.get("search_revision", 0) == _search.revision):
-		# Replanning another member must not redirect an unfinished search leg.
-		var continuing = previous.duplicate(true)
-		continuing.route = Traffic.remaining(body.position, previous.route)
-		if previous.role == &"search" and Traffic.approach(continuing).is_empty(): continuing.staging_position = body.position
-		continuing.estimate = 0.0
-		candidates.append(continuing)
-	if previous.has("resume_task") and previous.state == &"complete" and _passage_cleared(previous):
-		var resume: Dictionary = previous.resume_task
-		var path = Formation.route(member_context, resume.position)
-		if not path.is_empty():
-			resume = resume.duplicate(true)
-			resume.route = path
-			resume.estimate = 0.0
-			candidates.append(resume)
-	for site in sites:
+	var deadline = Time.get_ticks_usec() + 4000
+	if not _preparation.has("work"): _preparation.work = _member_work(id)
+	var work: Dictionary = _preparation.work
+	var candidates: Array[Dictionary] = work.candidates
+	while work.cursor < work.sites.size() and candidates.size() < 6:
+		if Time.get_ticks_usec() >= deadline:
+			_due = elapsed
+			return
+		var site: Dictionary = work.sites[work.cursor]
+		work.cursor += 1
 		if _covered.has(site.site_key) or _failed_sites.get([id, site.site_key], -INF) > elapsed: continue
 		if _objective.phase == &"patrol" and _patrol_visits.has(site.site_key): continue
 		if _objective.phase == &"contact": site.role = _contact_role(id)
-		var candidate = Formation.candidate(member_context, _profiles.get(id, {}), body, site, _objective, _tasks[id])
+		var candidate = Formation.candidate(_context(id), _profiles.get(id, {}), _bodies[id], site, _objective, _tasks[id])
 		if not candidate.is_empty():
 			candidates.append(candidate)
-		if candidates.size() >= 6: break
+	_preparation.erase("work")
 	# Every member can keep a validated holding post while a teammate reloads
 	# or completes the remaining search points; one impossible route must not
 	# prevent all other work from being committed.
@@ -343,12 +335,46 @@ func _plan() -> void:
 				task.reason = &"retry_other_posts"
 				task.check_at = elapsed + Contract.PERIOD
 
+func _member_work(id: int) -> Dictionary:
+	var candidates: Array[Dictionary] = []
+	var body: Dictionary = _bodies[id]
+	var context = _context(id)
+	var sites: Array = _preparation.sites.duplicate(true)
+	if _objective.phase == &"search": sites.append_array(_search.sites(body.position, elapsed))
+	if _objective.phase == &"contact" and body.visible and (not body.firearms or Contract.horizontal(body.position, _objective.position) >= 3.0):
+		sites.push_front({"position": body.position, "look_position": _objective.position, "site_key": "contact:%s" % id})
+	var needs_reload: bool = body.reloading or body.rounds == 0 and body.can_reload
+	if needs_reload: sites = [{"position": body.position, "look_position": _objective.position, "site_key": "reload:%s" % id}]
+	var previous: Dictionary = _tasks[id]
+	var defense_role = _defense.role(id)
+	if not defense_role.is_empty():
+		candidates = _defense.candidates(context, _profiles[id], body, _objective)
+		sites.clear()
+	var holding_peers = previous.state == &"complete" and _waiting_for_search_peers(id)
+	if defense_role.is_empty() and previous.role in [&"patrol", &"search"] and not needs_reload and (not previous.state in [&"blocked", &"complete"] or holding_peers) and previous.expires_at > elapsed and (previous.role != &"search" or previous.get("search_revision", 0) == _search.revision):
+		# Keep unfinished legs and completed posts still needed by this group.
+		var continuing = previous.duplicate(true)
+		continuing.route = Traffic.remaining(body.position, previous.route)
+		if previous.role == &"search" and Traffic.approach(continuing).is_empty(): continuing.staging_position = body.position
+		continuing.estimate = 0.0
+		candidates.append(continuing)
+	if defense_role.is_empty() and previous.has("resume_task") and previous.state == &"complete" and _passage_cleared(previous):
+		var resume: Dictionary = previous.resume_task
+		var path = Formation.route(context, resume.position)
+		if not path.is_empty():
+			resume = resume.duplicate(true)
+			resume.route = path
+			resume.estimate = 0.0
+			candidates.append(resume)
+	return {"candidates": candidates, "sites": sites, "cursor": 0}
+
 func _contact_role(id: int) -> StringName:
+	if not _defense.role(id).is_empty(): return _defense.role(id)
 	var role: StringName = _template.get("contact_roles", {}).get(id, &"engage")
 	if _bodies.size() == 1: role = &"engage"
 	if not Contract.executor(_profiles[id], &"support").is_empty():
 		for other in _bodies:
-			if other != id and (_bodies[other].reloading or _bodies[other].rounds == 0 and _bodies[other].can_reload): return &"support"
+			if other != id and (_bodies[other].reloading or _bodies[other].rounds == 0 and _bodies[other].can_reload or not _defense.role(other).is_empty()): return &"support"
 	return role
 
 func _passage_cleared(task: Dictionary) -> bool:
@@ -398,6 +424,7 @@ func _commit(proposals: Dictionary, _traffic: Dictionary) -> bool:
 				break
 	_version += 1
 	_tasks = table
+	for id in table: _defense.accept(id, table[id])
 	for participants in traffic.get("synchronized_groups", []): _install_barrier(participants)
 	for id in table:
 		_progress[id] = {"position": _bodies[id].position, "at": elapsed}
@@ -503,6 +530,7 @@ func report(context, report: Dictionary) -> bool:
 	if task.state == &"complete" and report.state in [&"executing", &"waiting"]: return true
 	if report.state == &"complete" and not task.accepted: return false
 	if report.state == &"complete" and task.role in [&"patrol", &"move"] and Contract.horizontal(context.actor.global_position, task.position) > 0.18: return false
+	if report.state == &"complete" and task.role in [&"shelter", &"cover_peek"] and Contract.horizontal(context.actor.global_position, task.position) > 0.18: return false
 	if report.state == &"complete" and task.role == &"search":
 		if not report.get("observed", false) or not context.command_observation_valid(task): return false
 	_feedback[id] = report.duplicate(true)
@@ -573,6 +601,7 @@ func debug_member_snapshot(context) -> Dictionary:
 	return {"source": &"squad" if not task.is_empty() else &"personal", "task": task,
 		"objective": _objective.duplicate(true), "template": _template.duplicate(true),
 		"profile": _profiles.get(context.actor.get_instance_id(), {}).duplicate(true),
+		"defense": _defense.requests.get(context.actor.get_instance_id(), {}).duplicate(true), "pressure": context.recent_damage_pressure + context.nearby_shot_pressure,
 		"route": Traffic.remaining(context.actor.global_position, task.get("route", PackedVector3Array())) if not task.is_empty() and task.state != &"complete" else PackedVector3Array(), "target_position": task.get("position", Vector3.INF),
 		"staging_position": task.get("staging_position", Vector3.INF), "goal": task.get("position", Vector3.INF),
 		"waiting_for": _feedback.get(context.actor.get_instance_id(), {}).get("waiting_for", []).duplicate(),
@@ -591,5 +620,7 @@ func support_demand(context) -> float:
 		var peer = _context(id)
 		if peer == null or peer.actor.is_dead: continue
 		if not environment.can_share_intel(id, context.actor.get_instance_id()): continue
-		if peer.actor.ammo.is_reloading: return 1.0
+		if peer.actor.ammo.is_reloading or not _defense.role(id).is_empty(): return 1.0
+		var moving: Dictionary = _tasks[id]
+		if moving.role in [&"engage", &"flank"] and Contract.horizontal(peer.actor.global_position, moving.position) > 0.5: return 1.0
 	return 0.0

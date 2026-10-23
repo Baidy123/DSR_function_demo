@@ -1,5 +1,8 @@
 extends "res://scripts/enemy/actions/enemy_cover_action.gd"
 
+func command_roles() -> Array[StringName]:
+	return [&"shelter"]
+
 func collect_candidates(visible: bool) -> Array[Dictionary]:
 	var result: Array[Dictionary] = []
 	if not visible or not context.fire.fire_while_moving or actor.ammo.magazine_rounds <= 0 or actor.ammo.is_reloading:

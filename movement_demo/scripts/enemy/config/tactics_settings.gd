@@ -4,6 +4,13 @@ extends "res://scripts/enemy/config/module_settings.gd"
 func _init() -> void:
 	section = &"tactics"
 
+## 团队指挥下的抗压阈值；越低越早请求避险。压力来自实际受击与近弹，
+## 默认0.4，单次受击约增加0.5；两类压力每秒各衰减0.5。只使用已训练掩体能力。
+@export_range(0.0, 4.0, 0.05) var stress_tolerance: float = 0.4:
+	set(value):
+		stress_tolerance = clampf(value, 0.0, 4.0)
+		mark_override(&"stress_tolerance")
+
 ## 实际受伤一次减少的中心命中概率；0.15 表示减少15个百分点，0关闭。
 @export_range(0.0, 1.0, 0.01) var damage_accuracy_penalty: float = 0.15:
 	set(value):

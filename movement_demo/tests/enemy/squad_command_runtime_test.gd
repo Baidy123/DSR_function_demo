@@ -31,6 +31,14 @@ func _run() -> void:
 	squad.profile = squad.profile.duplicate(true)
 	squad.profile.level = level
 	actors = scene.get_node("Arena").find_children("*", "CharacterBody3D", true, false).filter(func(actor): return actor.has_node("AI"))
+	if OS.get_cmdline_user_args().has("--defense"):
+		for index in actors.size():
+			var training = actors[index].get_node("Training")
+			training.profile = training.profile.duplicate(true)
+			training.profile.tactics.stress_tolerance = 1.5 if index == 1 else 0.15
+			if index == 2:
+				training.profile.selected_tactics.erase(&"cover")
+				training.profile.selected_tactics.erase(&"covering_retreat")
 	if OS.get_cmdline_user_args().has("--no-hints"):
 		for actor in actors:
 			actor.get_node("Training").profile = actor.get_node("Training").profile.duplicate(true)
@@ -49,6 +57,13 @@ func _run() -> void:
 	player.get("combat").set_physics_process(false)
 	player.get("health").debug_invincible = true
 	player.global_position = arena.to_global(Vector3.ZERO)
+	if OS.get_cmdline_user_args().has("--defense"):
+		await _defense_case()
+		scene.queue_free()
+		await physics_frame
+		print("SQUAD DEFENSE RUNTIME: %d/%d passed" % [checks - failures, checks])
+		quit(1 if failures else 0)
+		return
 	if OS.get_cmdline_user_args().has("--contact-edge"):
 		await _contact_edge_case()
 		scene.queue_free()
@@ -418,6 +433,93 @@ func _audit_search_step() -> void:
 				_search_audit.hold_frames += 1
 				_search_audit.held = _search_audit.held and task_table.has(id) and task_table[id].task_id == previous[id].task_id and instance_from_id(id).global_position.distance_to(previous[id].position) <= 0.18
 	_search_audit_previous = {"objective": objective.objective_id, "tasks": task_table.duplicate(true)}
+
+func _defense_case() -> void:
+	for frame in 60: await physics_frame
+	var tall = OS.get_cmdline_user_args().has("--tall")
+	var positions: Array[Vector3] = [Vector3(8.7, 0, -1.0), Vector3(8.7, 0, 1.8), Vector3(5, 0, -3)]
+	if tall:
+		positions = [Vector3(-1.5, 0, -2.2), Vector3(7, 0, -3.5), Vector3(11, 0, -2.5)]
+		player.global_position = arena.to_global(Vector3(3, 0, 0))
+	for index in actors.size():
+		var desired: Vector3 = arena.to_global(positions[index])
+		var ctx = actors[index].get_node("AI").context
+		var point = NavigationServer3D.region_get_closest_point(ctx.navigation_region.get_rid(), desired)
+		point.y = 0.0
+		actors[index].global_position = point
+		actors[index].velocity = Vector3.ZERO
+		actors[index].look_at(player.global_position)
+	for frame in 120: await physics_frame
+	var start: Vector3 = actors[0].global_position
+	var training = actors[0].get_node("Training").profile
+	training.tactics.stress_tolerance = 4.0
+	var saved = ResourceSaver.save(training, "res://logs/coordinator_repair_20261023/stress_training.tres")
+	var reloaded = ResourceLoader.load("res://logs/coordinator_repair_20261023/stress_training.tres", "", ResourceLoader.CACHE_MODE_IGNORE)
+	check(saved == OK and reloaded.tactics.stress_tolerance == 4.0 and actors[0].get_node("AI").context.member_capability_snapshot().stress_tolerance == 0.15, "Training tolerance persists while an assembled battle retains its original value")
+	for actor in actors: actor.receive_hit(10.0, player.global_position)
+	var low := false
+	var high := false
+	var untrained := false
+	var protected_body := false
+	var peek_shot := false
+	var returned := false
+	var resumed := false
+	var owned := true
+	var hidden_position := Vector3.INF
+	var peak_shots := 0
+	var previous_role: StringName = &""
+	var renewed_hit := -1
+	var return_command := -1
+	var supporting_shot := false
+	var previous_shots: Array = actors.map(func(actor): return actor.shot_count)
+	var minimum := INF
+	var costs: Array[int] = []
+	for frame in 1200:
+		await physics_frame
+		var total: int = arena.get("cooperation").last_advance_usec
+		for index in actors.size():
+			var actor = actors[index]
+			var ai = actor.get_node("AI")
+			var task: Dictionary = ai.context.coordination_assignment()
+			for cost in ai.frame_costs.values(): total += int(cost)
+			owned = owned and not task.is_empty() and ai.utility_decision_count == 0
+			if index == 1: high = high or task.get("role") in [&"shelter", &"cover_peek"]
+			if index == 2: untrained = untrained or task.get("role") in [&"shelter", &"cover_peek"]
+			if index > 0 and task.get("role") == &"support" and actors[0].get_node("AI").context.coordination_assignment().get("role") in [&"shelter", &"cover_peek"]:
+				supporting_shot = supporting_shot or actor.shot_count > previous_shots[index] and ai.context.sees_player
+			previous_shots[index] = actor.shot_count
+			for other in actors.slice(index + 1): minimum = minf(minimum, actor.global_position.distance_to(other.global_position))
+		var ctx = actors[0].get_node("AI").context
+		var task: Dictionary = ctx.coordination_assignment()
+		if task.get("role") == &"shelter":
+			low = true
+			if renewed_hit >= 0 and return_command < 0: return_command = frame
+			if actors[0].global_position.distance_to(task.position) <= 0.18:
+				var post: Dictionary = task.defense_post
+				var hidden: bool = preload("res://scripts/enemy/services/squad_defense.gd").protected(ctx, post, player.global_position)
+				protected_body = protected_body or hidden and (not post.crouch or actors[0].is_crouching())
+				if hidden: hidden_position = actors[0].global_position
+				returned = returned or peek_shot and hidden and (not post.crouch or actors[0].is_crouching())
+		elif task.get("role") == &"cover_peek":
+			if peak_shots == 0: peak_shots = actors[0].shot_count
+			peek_shot = peek_shot or actors[0].shot_count > peak_shots and ctx.sees_player and not actors[0].is_crouching()
+			if tall and peek_shot and renewed_hit < 0:
+				renewed_hit = frame
+				actors[0].receive_hit(10.0, player.global_position)
+		elif returned and task.get("role") in [&"engage", &"support", &"flank", &"search"]: resumed = true
+		costs.append(total)
+		if frame % 180 == 0 or task.get("role") != previous_role: print("DEFENSE TRACE ", frame, " ", JSON.stringify(actors.map(_trace)), " request=", ctx.coordination_debug_snapshot().get("defense"))
+		previous_role = task.get("role", &"")
+	check(low and not high, "Equal actual damage sends low-tolerance member to cover while high tolerance retains its task")
+	check(not untrained, "Pressure cannot unlock an untrained cover action")
+	check(protected_body and hidden_position.is_finite(), "Member actually reaches protection and crouches behind low cover when required")
+	check(peek_shot and returned and resumed, "Cover sequence actually peeks, fires, returns to protection and resumes squad duties")
+	check(owned and minimum >= 0.64, "Defense preserves continuous squad ownership, zero personal Utility and physical separation")
+	check(supporting_shot, "An eligible teammate actually fires with personal sight while the threatened member uses cover")
+	if tall: check(renewed_hit >= 0 and return_command > renewed_hit and return_command - renewed_hit <= 30, "Renewed actual damage during peek promptly restores the assigned shelter step")
+	costs.sort()
+	check(costs[int(costs.size() * 0.99)] < 16000 and costs[-1] < 50000, "Defense keeps original full-frame P99 <16ms / maximum <50ms budget")
+	print("DEFENSE RESULT tall=", tall, " moved=", actors[0].global_position.distance_to(start), " protected=", protected_body, " peek=", peek_shot, " returned=", returned, " resumed=", resumed, " p99=", costs[int(costs.size() * 0.99)], " max=", costs[-1])
 
 func _area_case() -> void:
 	var wall := StaticBody3D.new()

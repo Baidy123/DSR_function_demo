@@ -1084,6 +1084,7 @@ func command_melee_enabled() -> bool:
 func member_runtime_snapshot() -> Dictionary:
 	var result := coordination_motion_state()
 	result.merge({"visible": sees_player, "health": actor.health,
+		"pressure": recent_damage_pressure + nearby_shot_pressure,
 		"rounds": actor.ammo.magazine_rounds, "can_reload": actor.can_use_firearms() and actor.ammo.can_reload(),
 		"reloading": actor.ammo.is_reloading, "reload_remaining": actor.weapon.reload_seconds * (1.0 - actor.ammo.reload_progress) if actor.weapon != null and actor.ammo.is_reloading else 0.0,
 		"occupied": actor.is_vaulting() or actor.melee_active or not actor.can_move(),

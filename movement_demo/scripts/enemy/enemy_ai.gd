@@ -259,6 +259,7 @@ func _capture_battle_capabilities() -> void:
 		"unit_id": context.unit.unit_id if context.unit != null else &"",
 		"capabilities": context.unit.capabilities.duplicate() if context.unit != null else [],
 		"training": context.training.display_name if context.training != null else "",
+		"stress_tolerance": float(context.setting(&"tactics", &"stress_tolerance", 0.4)),
 		"actions": installed, "firearms": actor.can_use_firearms(), "weapon": weapon,
 		"body": context.coordination_motion_state()})
 

@@ -77,10 +77,13 @@ movement_demo/
 | `enemy/services/enemy_search_formation.gd` | 根据共同目标生成有限站位及完整路线，调用原导航和身体查询。 |
 | `enemy/services/squad_traffic.gd` | 全队通行顺序、准备点占位与离开顺序、观察线互挡、当前阻挡者与剩余路线计算。 |
 | `enemy/services/squad_search.gd` | 协调器持有的区域搜索进度、真实观察覆盖及受训练参数约束的不确定 hint；不读个人 Utility，不授权开火。 |
+| `enemy/services/squad_defense.gd` | 协调器持有的受压请求、有限掩体步骤与掩护几何；从冻结训练资格和实际压力生成任务，不接管身体或调用个人选优。 |
 | `enemy/services/enemy_cooperation.gd` | 区域关系、合法情报存储、公共物理预约；只通过协调器收发团队情报。 |
 | `enemy/services/enemy_context.gd` | 能力/身体值接口、情报适配、任务接受/反馈与只读诊断。 |
 | `enemy/enemy_ai.gd` | 按等级分流个人 Utility 与命令执行；负责原动作/身体/火控交接。 |
 | `enemy/actions/enemy_action.gd` | 新命令执行协议；个人模式保留原 begin/tick/cancel。 |
+
+团队避险的执行适配位于原 `enemy_cover_action.gd` / `enemy_covering_retreat_action.gd` 的命令入口，按协调器路线执行躲藏、探出和撤回；原个人 `begin/tick` 保留。抗压值属于 `config/tactics_settings.gd`，通过 Training 保存并由 AI 装配成能力档案；压力事实仍来自原受击/近弹接口，Context 只补充运行快照字段。无新增场景节点或第二套身体/火控。
 
 每个 Squad 持有独立协调器，区域显式绑定也接入同类实例。没有绑定时使用仅情报路由，不创建隐式团队指挥。只有 0 级运行个人 Utility；1/2 级在准备、失败、占用和单人状态也持续归队伍指挥。
 

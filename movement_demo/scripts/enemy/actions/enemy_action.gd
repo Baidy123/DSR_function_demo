@@ -233,8 +233,9 @@ func execute_command(delta: float, visible: bool) -> Dictionary:
 	while _command_index < path.size() and context._horizontal_distance(path[_command_index]) < 0.06: _command_index += 1
 	var arrived: bool = context._horizontal_distance(command.position) <= 0.08
 	if not permission.get("allowed", false):
+		if not command.role in [&"search", &"reload"]:
+			output.merge(command_work(delta, visible, arrived if command.role in [&"shelter", &"cover_peek"] else false), true)
 		context.report_command(command, &"waiting", {"reason": permission.get("reason", &"passage"), "waiting_for": permission.get("waiting_for", [])})
-		if not command.role in [&"search", &"reload"]: output.merge(command_work(delta, visible, false), true)
 		return output
 	if not arrived:
 		var waypoint: Vector3 = path[mini(_command_index, path.size() - 1)]
@@ -255,7 +256,7 @@ func execute_command(delta: float, visible: bool) -> Dictionary:
 	if command.role in [&"patrol", &"move"] and arrived:
 		_command_observe += delta
 		if _command_observe >= (0.5 if command.role == &"patrol" else 0.0): context.report_command(command, &"complete")
-	elif command.role != &"search" and command.role != &"reload":
+	elif not command.role in [&"search", &"reload", &"shelter", &"cover_peek"]:
 		context.report_command(command, &"executing", {"progress": 1.0 if arrived else 0.0})
 	return output
 

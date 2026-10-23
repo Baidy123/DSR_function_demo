@@ -222,3 +222,48 @@ func route_tick(delta: float, _visible: bool) -> Dictionary:
 	transfer.timer = maxf(0.0, transfer.timer - delta)
 	if transfer.timer <= 0.0: _running = false
 	return motion(Vector3.ZERO, route_multiplier())
+
+var _command_cover_time := 0.0
+var _command_cover_shots := 0
+var _command_burst_count := 1
+
+func command_roles() -> Array[StringName]:
+	return [&"shelter", &"cover_peek"]
+
+func begin_command(task: Dictionary) -> bool:
+	_command_cover_time = 0.0
+	_command_cover_shots = actor.shot_count
+	_command_burst_count = maxi(1, context.fire.burst_shots_remaining())
+	return super.begin_command(task)
+
+func command_work(delta: float, visible: bool, arrived: bool) -> Dictionary:
+	var shelter = command.role == &"shelter"
+	var post: Dictionary = command.defense_post
+	var output = {"crouch": shelter and arrived and post.crouch}
+	if not is_instance_valid(instance_from_id(post.cover_id)):
+		context.report_command(command, &"blocked", {"reason": &"cover_removed"})
+		return output
+	if not arrived:
+		if shelter and action_id == &"covering_retreat" and visible and actor.can_use_firearms():
+			output.fire = {"owner": action_id, "mode": &"visible", "support_intent": true, "pressure_reason": &"retreat"}
+		context.report_command(command, &"executing")
+		return output
+	if shelter:
+		if not preload("res://scripts/enemy/services/squad_defense.gd").protected(context, post, command.look_position):
+			context.report_command(command, &"blocked", {"reason": &"cover_exposed"})
+			return output
+		if not post.crouch or actor.is_crouching(): _command_cover_time += delta
+		if actor.can_use_firearms() and actor.ammo.magazine_rounds == 0 and not actor.ammo.is_reloading: actor.request_reload()
+		var calm: bool = context.recent_damage_pressure + context.nearby_shot_pressure <= maxf(0.01, float(command.stress_tolerance) * 0.5)
+		var complete = calm and _command_cover_time >= float(_setting(&"low_cover_hide_seconds", 0.6)) and not actor.ammo.is_reloading
+		context.report_command(command, &"complete" if complete else &"executing", {"reason": &"protected", "progress": 1.0 if complete else 0.5})
+	else:
+		_command_cover_time += delta
+		if visible and actor.can_use_firearms(): output.fire = {"owner": action_id, "mode": &"visible"}
+		var budget: float = float(_setting(&"watch_seconds", 2.0))
+		if visible and actor.can_use_firearms():
+			budget += context.fire.fire_reaction_seconds + context.fire.shot_wait_seconds() + actor.weapon.stabilize_seconds
+			budget += context.fire.shot_interval_seconds() * _command_burst_count
+		var complete = actor.shot_count - _command_cover_shots >= _command_burst_count or _command_cover_time >= budget or actor.ammo.is_reloading or actor.ammo.magazine_rounds == 0
+		context.report_command(command, &"complete" if complete else &"executing", {"reason": &"cover_fire", "progress": 1.0 if complete else 0.5})
+	return output
