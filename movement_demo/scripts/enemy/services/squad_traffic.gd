@@ -32,6 +32,16 @@ static func conflicts(a: PackedVector3Array, b: PackedVector3Array, clearance: f
 			if Contract.horizontal(points[0], points[1]) < clearance: return true
 	return false
 
+static func prefix(path: PackedVector3Array, distance: float) -> PackedVector3Array:
+	if path.is_empty(): return path
+	var result = PackedVector3Array([path[0]])
+	for index in range(1, path.size()):
+		var length = Contract.horizontal(path[index - 1], path[index])
+		result.append(path[index - 1].move_toward(path[index], minf(distance, length)))
+		distance -= length
+		if distance <= 0.0: break
+	return result
+
 static func schedule(tasks: Dictionary, bodies: Dictionary) -> Dictionary:
 	var ids: Array = tasks.keys()
 	ids.sort()
@@ -59,7 +69,18 @@ static func approach(task: Dictionary) -> PackedVector3Array:
 static func plan(tasks: Dictionary, bodies: Dictionary, synchronize_search: bool = false) -> Dictionary:
 	var result = schedule(tasks, bodies)
 	if not result.valid or not synchronize_search: return result
-	var members: Array = tasks.keys().filter(func(id): return tasks[id].role == &"search")
+	var groups = {}
+	for id in tasks:
+		var key = tasks[id].get("sync_key", "")
+		if tasks[id].role != &"search" or key.is_empty(): continue
+		if not groups.has(key): groups[key] = []
+		groups[key].append(id)
+	var members: Array = []
+	var synchronized: Array = []
+	for group in groups.values():
+		if group.size() >= 2:
+			synchronized.append(group)
+			members.append_array(group)
 	if members.size() < 2: return result
 	for id in members:
 		var sightline = PackedVector3Array([tasks[id].position, tasks[id].look_position])
@@ -83,6 +104,7 @@ static func plan(tasks: Dictionary, bodies: Dictionary, synchronize_search: bool
 	result.dependencies = departure.dependencies
 	result.preparation_dependencies = arrival.dependencies
 	result.synchronized_members = members
+	result.synchronized_groups = synchronized
 	return result
 
 static func _order(tasks: Dictionary, bodies: Dictionary, pending: Array, ordered: Array, budget: Dictionary) -> Array:
@@ -122,11 +144,8 @@ static func _leaves_crowding(path: PackedVector3Array, parked: Vector3, clearanc
 static func blockers(id: int, tasks: Dictionary, bodies: Dictionary) -> Array:
 	var blocked: Array = []
 	if not tasks.has(id) or not bodies.has(id): return blocked
-	var path = remaining(bodies[id].position, tasks[id].route)
+	var path = prefix(remaining(bodies[id].position, tasks[id].route), 1.4)
 	# Only the next short corridor is held, not an entire long route.
-	if path.size() > 1:
-		var length: float = minf(1.4, Contract.horizontal(path[0], path[1]))
-		path = PackedVector3Array([path[0], path[0].move_toward(path[1], length)])
 	for other in bodies:
 		if other == id: continue
 		var clearance: float = bodies[id].radius + bodies[other].radius + maxf(bodies[id].spacing_margin, bodies[other].spacing_margin)

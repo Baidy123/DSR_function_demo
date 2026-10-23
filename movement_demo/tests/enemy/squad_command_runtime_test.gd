@@ -31,6 +31,10 @@ func _run() -> void:
 	squad.profile = squad.profile.duplicate(true)
 	squad.profile.level = level
 	actors = scene.get_node("Arena").find_children("*", "CharacterBody3D", true, false).filter(func(actor): return actor.has_node("AI"))
+	if OS.get_cmdline_user_args().has("--no-hints"):
+		for actor in actors:
+			actor.get_node("Training").profile = actor.get_node("Training").profile.duplicate(true)
+			actor.get_node("Training").profile.search.tracking_cheat_enabled = false
 	if mixed:
 		actors[2].get_node("UnitType").profile = load("res://resources/enemy/units/melee.tres")
 		actors[2].get_node("Training").profile = load("res://resources/enemy/training/melee_assault.tres").duplicate(true)
@@ -109,6 +113,7 @@ func _run() -> void:
 		" moved=", actors.map(func(actor): return actor.global_position.distance_to(starts[actors.find(actor)])),
 		" min=", minimum, " p99_usec=", frame_costs[int(frame_costs.size() * 0.99)])
 	if OS.get_cmdline_user_args().has("--search") and level > 0: await _search_case()
+	if OS.get_cmdline_user_args().has("--area") and level > 0: await _area_case()
 	if level > 0: await _protocol_and_lifecycle()
 	scene.queue_free()
 	await physics_frame
@@ -381,12 +386,15 @@ func _audit_search_step() -> void:
 	if objective.get("phase") != &"search":
 		_search_audit_previous.clear()
 		return
-	var searchers: Array = task_table.keys().filter(func(id): return task_table[id].role == &"search")
+	var searchers: Array = task_table.keys().filter(func(id): return task_table[id].role == &"search" and not task_table[id].get("sync_key", "").is_empty())
 	if searchers.size() < 2: return
-	var grouped = false
+	var grouped = true
+	for id in searchers:
+		var peers = searchers.filter(func(other): return task_table[other].get("sync_key") == task_table[id].get("sync_key"))
+		if peers.size() >= 2:
+			grouped = grouped and squad._barriers.values().any(func(barrier): return peers.all(func(peer): return barrier.members.has(peer)))
 	for key in squad._barriers:
 		var barrier: Dictionary = squad._barriers[key]
-		grouped = grouped or searchers.all(func(id): return barrier.members.has(id))
 		if barrier.released and not _search_audit.seen.has(key):
 			_search_audit.seen[key] = true
 			_search_audit.releases += 1
@@ -401,13 +409,66 @@ func _audit_search_step() -> void:
 		var previous: Dictionary = _search_audit_previous.tasks
 		var failed = previous.values().any(func(task): return task.state in [&"blocked", &"occupied"] or task.expires_at <= squad.elapsed)
 		failed = failed or task_table.values().any(func(task): return task.state in [&"blocked", &"occupied"])
-		var unfinished = previous.values().any(func(task): return task.role == &"search" and task.state != &"complete")
-		if unfinished and not failed:
+		if not failed:
 			for id in previous:
 				if previous[id].role != &"search" or previous[id].state != &"complete": continue
+				var key = previous[id].get("sync_key", "")
+				if key.is_empty() or previous[id].get("search_revision") != task_table.get(id, {}).get("search_revision"): continue
+				if not previous.values().any(func(task): return task.role == &"search" and task.get("sync_key") == key and task.state != &"complete"): continue
 				_search_audit.hold_frames += 1
 				_search_audit.held = _search_audit.held and task_table.has(id) and task_table[id].task_id == previous[id].task_id and instance_from_id(id).global_position.distance_to(previous[id].position) <= 0.18
 	_search_audit_previous = {"objective": objective.objective_id, "tasks": task_table.duplicate(true)}
+
+func _area_case() -> void:
+	var wall := StaticBody3D.new()
+	var collision := CollisionShape3D.new()
+	var box := BoxShape3D.new()
+	box.size = Vector3(0.3, 3.0, 8.0)
+	collision.shape = box
+	wall.add_child(collision)
+	arena.add_child(wall)
+	wall.position = Vector3(-7.0, 1.5, 1.5)
+	player.global_position = arena.to_global(Vector3(-7.6, 0, 1.5))
+	var squad = arena.get_node("Squad").coordinator
+	var observed := 0
+	var late_motion := 0
+	var idle := 0
+	var max_idle := 0
+	var bounded := true
+	var owned := true
+	var frozen := Vector3.INF
+	var reacquired := -1
+	var last_positions: Array = actors.map(func(actor): return actor.global_position)
+	for frame in 3600:
+		await physics_frame
+		if squad._objective.get("phase") != &"search":
+			if frozen.is_finite() and reacquired < 0 and actors.any(func(actor): return actor.get_node("AI").context.sees_player): reacquired = frame
+			continue
+		if not frozen.is_finite(): frozen = squad._objective.position
+		owned = owned and squad._objective.position == frozen
+		var moved := false
+		for index in actors.size():
+			var actor = actors[index]
+			var ctx = actor.get_node("AI").context
+			var task: Dictionary = ctx.coordination_assignment()
+			owned = owned and not task.is_empty() and actor.get_node("AI").utility_decision_count == 0
+			if actor.global_position.distance_to(last_positions[index]) > 0.005: moved = true
+			last_positions[index] = actor.global_position
+			if str(task.get("site_key", "")).begins_with("area:"):
+				bounded = bounded and ctx._horizontal_distance_between(task.position, squad._search.center) <= squad._search.settings.get("search_radius", 5.0) + 0.01
+		if frame > 1800 and moved: late_motion += 1
+		idle = 0 if moved else idle + 1
+		max_idle = maxi(idle, max_idle)
+		observed = maxi(observed, squad._search.snapshot().observed)
+	check(owned and bounded, "Long hidden search retains ownership, true last sight and configured regional bounds")
+	if OS.get_cmdline_user_args().has("--no-hints"):
+		check(observed >= 10 and late_motion > 120, "Real observation covers the region and search still progresses after thirty seconds")
+	else:
+		check(reacquired > 0 and reacquired <= 480, "Uncertain squad hints lead to actual reacquisition within eight seconds")
+	check(max_idle < 240, "No all-member observation deadlock lasts four seconds")
+	var hints = squad._search.snapshot()
+	check(hints.hint_checks == 0 if OS.get_cmdline_user_args().has("--no-hints") else hints.hint_checks > 0 and not hints.hint.is_empty(), "Squad hint lifecycle obeys the frozen Training switch")
+	print("AREA RESULT ", hints, " max_idle=", max_idle, " late_motion=", late_motion, " observed_peak=", observed, " members=", actors.map(_trace))
 
 func _trace(actor) -> Dictionary:
 	var ai = actor.get_node("AI")

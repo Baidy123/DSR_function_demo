@@ -43,12 +43,17 @@ func _initialize() -> void:
 	var staged = {
 		1: {"role": &"search", "position": Vector3(3, 0, 3), "staging_position": Vector3(3, 0, 0), "look_position": Vector3(3, 0, 4), "route": PackedVector3Array([Vector3.ZERO, Vector3(3, 0, 0), Vector3(3, 0, 3)])},
 		3: {"role": &"search", "position": Vector3(6, 0, 3), "staging_position": Vector3(3, 0, 0), "look_position": Vector3(6, 0, 4), "route": PackedVector3Array([Vector3(6, 0, 0), Vector3(3, 0, 0), Vector3(6, 0, 3)])}}
+	for task in staged.values(): task.sync_key = "shared_cover"
 	check(Traffic.schedule(staged, pair).valid and not Traffic.plan(staged, pair, true).valid, "Distinct final posts cannot conceal colliding preparation posts")
 	staged[3].staging_position = Vector3(6, 0, 1.5)
 	staged[3].route = PackedVector3Array([Vector3(6, 0, 0), staged[3].staging_position, staged[3].position])
 	check(Traffic.plan(staged, pair, true).valid, "Separate preparation and departure routes allow a real shared rendezvous")
 	staged[1].look_position = staged[3].position
 	check(not Traffic.plan(staged, pair, true).valid, "A parked teammate cannot block a required observation line")
+	for task in staged.values(): task.sync_key = ""
+	check(Traffic.plan(staged, pair, true).get("synchronized_members", []).is_empty(), "Independent area routes do not acquire an unrelated cover barrier")
+	var bent = Traffic.prefix(PackedVector3Array([Vector3.ZERO, Vector3(0.2, 0, 0), Vector3(0.2, 0, 5)]), 1.4)
+	check(bent.size() == 3 and absf(bent[-1].z - 1.2) < 0.001, "Local traffic horizon follows bends without reserving the full long route")
 	print("SQUAD COMMAND CONTRACT: %d/%d passed" % [checks - failures, checks])
 	quit(1 if failures else 0)
 

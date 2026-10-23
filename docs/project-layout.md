@@ -76,6 +76,7 @@ movement_demo/
 | `enemy/services/enemy_team_planner.gd` | 全成员岗位组合搜索，按模板能力与几何排除不完整方案。 |
 | `enemy/services/enemy_search_formation.gd` | 根据共同目标生成有限站位及完整路线，调用原导航和身体查询。 |
 | `enemy/services/squad_traffic.gd` | 全队通行顺序、准备点占位与离开顺序、观察线互挡、当前阻挡者与剩余路线计算。 |
+| `enemy/services/squad_search.gd` | 协调器持有的区域搜索进度、真实观察覆盖及受训练参数约束的不确定 hint；不读个人 Utility，不授权开火。 |
 | `enemy/services/enemy_cooperation.gd` | 区域关系、合法情报存储、公共物理预约；只通过协调器收发团队情报。 |
 | `enemy/services/enemy_context.gd` | 能力/身体值接口、情报适配、任务接受/反馈与只读诊断。 |
 | `enemy/enemy_ai.gd` | 按等级分流个人 Utility 与命令执行；负责原动作/身体/火控交接。 |

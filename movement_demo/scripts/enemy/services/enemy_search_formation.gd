@@ -9,14 +9,24 @@ const Traffic = preload("res://scripts/enemy/services/squad_traffic.gd")
 
 static func sites(context, objective: Dictionary, count: int, attempt: int) -> Array[Dictionary]:
 	var result: Array[Dictionary] = []
-	var center: Vector3 = objective.get("position", context.actor.global_position)
+	var center: Vector3 = objective.get("search_center", objective.get("position", context.actor.global_position))
 	var phase: StringName = objective.get("phase", &"patrol")
 	if phase == &"search":
 		var clue = objective.duplicate(true)
+		clue.position = center
 		clue.id = objective.get("objective_id", 0)
 		if not clue.has("cover"):
 			clue.merge(CoverGeometry.nearby_investigation_cover(context, clue))
 		var geometry = CoverGeometry.describe(context, clue, false)
+		if geometry.is_empty():
+			# Search can remember a point beside a wall without a motion vector
+			# leading into that wall. Inspect nearby static cover as a hypothesis.
+			for cover in context.actor.get_tree().get_nodes_in_group("cover_region"):
+				var nearby = clue.duplicate(true)
+				nearby.cover = weakref(cover)
+				nearby.erase("inference_position")
+				geometry = CoverGeometry.describe(context, nearby, false)
+				if not geometry.is_empty(): break
 		if not geometry.is_empty():
 			for side in geometry.ends:
 				var end: Dictionary = geometry.ends[side]
@@ -30,10 +40,8 @@ static func sites(context, objective: Dictionary, count: int, attempt: int) -> A
 					var lateral: Vector3 = (end.entry - geometry.observer_position).normalized() * float(attempt % 3) * 0.35
 					lateral.y = 0.0
 					result.append({"position": end.peek + offset + lateral, "via": end.entry + offset + lateral,
-						"look_position": end.peek + offset + (axis - outward) * 2.0 + lateral, "site_key": "cover:%s:%s:%s" % [geometry.cover_id, side, rank], "side": side})
-			if attempt < 3: return result
-		# A failed formation keeps the objective and uses other reachable posts.
-		result.append({"position": center, "look_position": center, "site_key": "last_seen"})
+						"look_position": end.peek + offset + axis * 2.0 + lateral, "site_key": "cover:%s:%s:%s" % [geometry.cover_id, side, rank], "sync_key": "cover:%s" % geometry.cover_id, "side": side})
+		return result
 	if phase == &"patrol": center = context._spawn_position
 	var radial: Vector3 = context.actor.global_position - center
 	radial.y = 0.0
@@ -50,11 +58,6 @@ static func sites(context, objective: Dictionary, count: int, attempt: int) -> A
 		projected.y = context.actor.global_position.y
 		result.append({"position": projected, "look_position": center if phase == &"contact" else projected + direction,
 			"site_key": "%s:%s:%s" % [phase, 0 if phase == &"patrol" else attempt / 3, i]})
-	# The shared static index contributes connected search sectors, not targets.
-	if phase == &"search" and context.tactical_map != null:
-		for sector in context.tactical_map.query_sectors(center, 12.0, context.agent.navigation_layers, 6):
-			var point: Vector3 = sector.get("position", sector.get("center", Vector3.INF))
-			if point.is_finite(): result.append({"position": point, "look_position": point, "site_key": str(sector.sector_key)})
 	return result
 
 static func route(context, destination: Vector3, via: Vector3 = Vector3.INF) -> PackedVector3Array:
@@ -68,9 +71,62 @@ static func route(context, destination: Vector3, via: Vector3 = Vector3.INF) -> 
 			if path[-1].distance_to(vertex) > 0.01: path.append(vertex)
 		from = point
 	var radius: float = context.coordination_motion_state().radius
-	if not CoverGeometry._walkable_path(context, path, radius): return PackedVector3Array()
+	if not CoverGeometry._walkable_path(context, path, radius):
+		if via.is_finite(): return PackedVector3Array()
+		path = _obstacle_detour(context, path, radius)
+		if path.is_empty(): return path
 	if not BodyGeometry.can_occupy(context.actor, destination, context.actor.get_body_height(), radius, true): return PackedVector3Array()
 	return path
+
+static func _obstacle_detour(context, blocked: PackedVector3Array, radius: float) -> PackedVector3Array:
+	# A newly placed wall need not be in the baked navigation mesh. Test four
+	# bounded routes around its real box, with the same capsule/nav validation.
+	var obstacle = null
+	for index in range(1, blocked.size()):
+		var hit = context.cover_selection.environment_ray(blocked[index - 1] + Vector3.UP * 0.8, blocked[index] + Vector3.UP * 0.8)
+		if not hit.is_empty():
+			obstacle = hit.collider
+			break
+	if not is_instance_valid(obstacle): return PackedVector3Array()
+	var shape = obstacle.get_node_or_null("CollisionShape3D")
+	if shape == null:
+		for child in obstacle.get_children():
+			if child is CollisionShape3D:
+				shape = child
+				break
+	if shape == null or not shape.shape is BoxShape3D: return PackedVector3Array()
+	var half: Vector3 = shape.shape.size * 0.5
+	var margin_x: float = (radius + 0.25) / shape.global_basis.x.length()
+	var margin_z: float = (radius + 0.25) / shape.global_basis.z.length()
+	var corners: Array[Vector3] = []
+	for sign_pair in [Vector2(-1, -1), Vector2(-1, 1), Vector2(1, 1), Vector2(1, -1)]:
+		var point: Vector3 = shape.to_global(Vector3(sign_pair.x * (half.x + margin_x), 0, sign_pair.y * (half.z + margin_z)))
+		point.y = context.actor.global_position.y
+		corners.append(point)
+	var best = PackedVector3Array()
+	var best_length = INF
+	for index in 4:
+		var a = corners[index]
+		var b = corners[(index + 1) % 4]
+		if Contract.horizontal(blocked[0], b) < Contract.horizontal(blocked[0], a):
+			var swap = a
+			a = b
+			b = swap
+		var path = PackedVector3Array([blocked[0]])
+		for point in [a, b, blocked[-1]]:
+			var leg: PackedVector3Array = context.cover_selection._path_to(path[-1], point)
+			if leg.is_empty():
+				path.clear()
+				break
+			for vertex in leg:
+				vertex.y = context.actor.global_position.y
+				if path[-1].distance_to(vertex) > 0.01: path.append(vertex)
+		if path.is_empty() or not CoverGeometry._walkable_path(context, path, radius): continue
+		var length: float = context.cover_selection._path_length_from_path(path)
+		if length < best_length:
+			best = path
+			best_length = length
+	return best
 
 static func candidate(context, profile: Dictionary, body: Dictionary, site: Dictionary, objective: Dictionary, previous: Dictionary) -> Dictionary:
 	var phase: StringName = objective.get("phase", &"patrol")
@@ -83,6 +139,9 @@ static func candidate(context, profile: Dictionary, body: Dictionary, site: Dict
 		action = Contract.executor(profile, role)
 	if action.is_empty(): return {}
 	var point: Vector3 = site.position
+	if role == &"search":
+		var eye = point + Vector3.UP * context.actor.get_body_height() * 0.85
+		if not context.cover_selection.has_clear_line(eye, site.look_position + Vector3.UP * 0.7): return {}
 	if role == &"patrol" and Contract.horizontal(point, body.position) < 0.75: return {}
 	if phase == &"contact" and role in [&"engage", &"support", &"flank"]:
 		if profile.firearms:
@@ -125,7 +184,8 @@ static func candidate(context, profile: Dictionary, body: Dictionary, site: Dict
 		"look_position": site.get("look_position", objective.get("position", point)),
 		"staging_position": site.get("via", point if role == &"search" else Vector3.INF), "site_key": site.get("site_key", str(point)),
 		"estimate": estimate, "travel_seconds": seconds, "speed_multiplier": speed, "objective_id": objective.get("objective_id", 0),
-		"evidence_id": objective.get("id", 0), "target_id": objective.get("target_id", 0), "side": site.get("side", 0)}
+		"evidence_id": objective.get("id", 0), "target_id": objective.get("target_id", 0), "side": site.get("side", 0),
+		"sync_key": site.get("sync_key", ""), "search_revision": objective.get("search_revision", 0)}
 
 static func yield_sites(context, body: Dictionary) -> Array[Dictionary]:
 	var result: Array[Dictionary] = []

@@ -1430,10 +1430,23 @@ func expand_route_candidates(candidates: Array[Dictionary]) -> Array[Dictionary]
 func command_roles() -> Array[StringName]:
 	return [&"search", &"guard", &"move"]
 
+var _command_obstructed := 0.0
+
+func begin_command(task: Dictionary) -> bool:
+	_command_obstructed = 0.0
+	return super.begin_command(task)
+
 func command_work(delta: float, _visible: bool, arrived: bool) -> Dictionary:
 	if command.role != &"search": return {}
 	if arrived and context.command_observation_valid(command):
 		_command_observe += delta
-	else: _command_observe = 0.0
-	context.report_command(command, &"complete" if _command_observe >= 0.5 else &"executing", {"observed": _command_observe >= 0.5, "progress": _command_observe / 0.5})
+		_command_obstructed = 0.0
+	else:
+		_command_observe = 0.0
+		if arrived: _command_obstructed += delta
+	if _command_obstructed >= 0.75:
+		context.report_command(command, &"blocked", {"reason": &"observation_obstructed"})
+		return {}
+	var pause = maxf(0.25, float(_setting(&"search_pause_seconds", 0.5)))
+	context.report_command(command, &"complete" if _command_observe >= pause else &"executing", {"observed": _command_observe >= pause, "progress": _command_observe / pause})
 	return {}

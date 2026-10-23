@@ -6,6 +6,8 @@ const Contract = preload("res://scripts/enemy/services/squad_contract.gd")
 const Planner = preload("res://scripts/enemy/services/enemy_team_planner.gd")
 const Formation = preload("res://scripts/enemy/services/enemy_search_formation.gd")
 const Traffic = preload("res://scripts/enemy/services/squad_traffic.gd")
+const Search = preload("res://scripts/enemy/services/squad_search.gd")
+var _search = Search.new()
 var _environment: WeakRef
 var _members: Dictionary = {}
 var _profiles: Dictionary = {}
@@ -63,6 +65,7 @@ func registered_member_count() -> int:
 
 func reset() -> void:
 	_epoch += 1
+	_search = Search.new()
 	_tasks.clear()
 	_profiles.clear()
 	_template.clear()
@@ -162,6 +165,15 @@ func advance() -> void:
 		_preparation.clear()
 		_due = 0.0
 	_update_objective()
+	if _objective.phase == &"search":
+		var revision: int = _search.revision
+		_search.advance(_bodies.keys().map(func(id): return _context(id)), _profiles, elapsed)
+		if revision != _search.revision:
+			_preparation.clear()
+			_covered.clear()
+			_due = 0.0
+		_objective.search_center = _search.center
+		_objective.search_revision = _search.revision
 	_update_progress()
 	if elapsed >= _due:
 		_due = elapsed + Contract.PERIOD
@@ -200,6 +212,7 @@ func _update_objective() -> void:
 	_preparation.clear()
 	_due = 0.0
 	_last_replan = &"objective_changed"
+	if phase == &"search": _search.begin(_objective, _profiles, elapsed)
 	# Explicit supersession keeps every live body owned while a new full
 	# plan is prepared; stale search reports can no longer mark coverage.
 	for id in _tasks:
@@ -244,6 +257,7 @@ func _plan() -> void:
 		var task: Dictionary = _tasks[id]
 		must_replan = must_replan or task.role == &"guard" or task.state == &"blocked" or (task.state == &"complete" and not _waiting_for_search_peers(id)) or task.expires_at <= elapsed or task.objective_id != _objective.objective_id
 		must_replan = must_replan or task.has("barrier_id") and not _barriers.has(task.barrier_id)
+		must_replan = must_replan or _objective.phase == &"search" and task.get("search_revision", 0) != _search.revision
 		if _objective.phase == &"contact":
 			must_replan = must_replan or (_bodies[id].visible == false and task.role in [&"engage", &"support", &"flank"] and task.state == &"executing" and Contract.horizontal(_bodies[id].position, task.position) < 0.15)
 			must_replan = must_replan or task.role != &"reload" and task.role != _contact_role(id)
@@ -264,13 +278,15 @@ func _plan() -> void:
 	var body: Dictionary = _bodies[id]
 	var member_context = _context(id)
 	var sites: Array = _preparation.sites.duplicate(true)
+	if _objective.phase == &"search": sites.append_array(_search.sites(body.position, elapsed))
 	if _objective.phase == &"contact" and body.visible and (not body.firearms or Contract.horizontal(body.position, _objective.position) >= 3.0):
 		sites.push_front({"position": body.position, "look_position": _objective.position, "site_key": "contact:%s" % id})
 	var needs_reload: bool = body.reloading or body.rounds == 0 and body.can_reload
 	if needs_reload:
 		sites = [{"position": body.position, "look_position": _objective.position, "site_key": "reload:%s" % id}]
 	var previous: Dictionary = _tasks[id]
-	if previous.role in [&"patrol", &"search"] and not needs_reload and not previous.state in [&"blocked", &"complete"] and previous.expires_at > elapsed:
+	var holding_peers = previous.state == &"complete" and _waiting_for_search_peers(id)
+	if previous.role in [&"patrol", &"search"] and not needs_reload and (not previous.state in [&"blocked", &"complete"] or holding_peers) and previous.expires_at > elapsed and (previous.role != &"search" or previous.get("search_revision", 0) == _search.revision):
 		# Replanning another member must not redirect an unfinished search leg.
 		var continuing = previous.duplicate(true)
 		continuing.route = Traffic.remaining(body.position, previous.route)
@@ -290,12 +306,15 @@ func _plan() -> void:
 		if _objective.phase == &"patrol" and _patrol_visits.has(site.site_key): continue
 		if _objective.phase == &"contact": site.role = _contact_role(id)
 		var candidate = Formation.candidate(member_context, _profiles.get(id, {}), body, site, _objective, _tasks[id])
-		if not candidate.is_empty(): candidates.append(candidate)
+		if not candidate.is_empty():
+			candidates.append(candidate)
 		if candidates.size() >= 6: break
-	if candidates.is_empty():
-		var hold = _holding(id, &"no_reachable_post")
-		hold.estimate = 40.0
-		candidates.append(hold)
+	# Every member can keep a validated holding post while a teammate reloads
+	# or completes the remaining search points; one impossible route must not
+	# prevent all other work from being committed.
+	var hold = _holding(id, &"no_reachable_post")
+	hold.estimate = 40.0
+	candidates.append(hold)
 	_preparation.candidates[id] = candidates
 	_preparation.index += 1
 	if _preparation.index < _preparation.members.size():
@@ -361,7 +380,7 @@ func _commit(proposals: Dictionary, _traffic: Dictionary) -> bool:
 		if not _context(id).validate_command_post(proposal, _profiles[id]): return false
 		var old: Dictionary = _tasks.get(id, {})
 		var same_staging: bool = proposal.role != &"search" or old.get("staging_position", Vector3.INF) == proposal.get("staging_position", Vector3.INF)
-		if same_staging and old.get("objective_id") == proposal.objective_id and old.get("role") == proposal.role and old.get("action") == proposal.action and old.get("position", Vector3.INF).distance_to(proposal.position) < 0.05 and old.expires_at > elapsed and not old.state in [&"blocked", &"complete"]:
+		if same_staging and old.get("search_revision", 0) == proposal.get("search_revision", 0) and old.get("objective_id") == proposal.objective_id and old.get("role") == proposal.role and old.get("action") == proposal.action and old.get("position", Vector3.INF).distance_to(proposal.position) < 0.05 and old.expires_at > elapsed and (not old.state in [&"blocked", &"complete"] or old.state == &"complete" and _waiting_for_search_peers(id)):
 			table[id] = old.duplicate(true)
 		else:
 			table[id] = _new_task(id, proposal)
@@ -379,7 +398,7 @@ func _commit(proposals: Dictionary, _traffic: Dictionary) -> bool:
 				break
 	_version += 1
 	_tasks = table
-	_install_barrier(traffic.get("synchronized_members", []))
+	for participants in traffic.get("synchronized_groups", []): _install_barrier(participants)
 	for id in table:
 		_progress[id] = {"position": _bodies[id].position, "at": elapsed}
 	_last_replan = &"complete_plan"
@@ -493,12 +512,14 @@ func report(context, report: Dictionary) -> bool:
 	if report.state == &"complete":
 		if task.role == &"search":
 			_covered[task.site_key] = {"position": task.look_position, "observed_at": elapsed, "member_id": id}
+			if task.get("search_revision", 0) == _search.revision: _search.mark(context, elapsed)
 			if _waiting_for_search_peers(id): task.reason = &"search_peers"
 		elif task.role == &"patrol":
 			_patrol_visits[task.site_key] = {"position": task.position, "visited_at": elapsed, "member_id": id}
 		_due = 0.0
 	elif report.state == &"blocked":
 		_failed_sites[[id, task.site_key]] = elapsed + 4.0
+		if task.role == &"search": _search.reject(task.site_key, elapsed)
 		_due = 0.0
 	return true
 
@@ -540,9 +561,10 @@ func motion_permission(context, token: Dictionary) -> Dictionary:
 	var waiting: Array = Traffic.blockers(id, motion_tasks, bodies)
 	for other in dependencies:
 		if not _tasks.has(other) or not bodies.has(other): continue
-		var path = Traffic.remaining(bodies[id].position, motion_tasks[id].route)
+		var path = Traffic.prefix(Traffic.remaining(bodies[id].position, motion_tasks[id].route), 1.4)
+		var other_path = Traffic.prefix(Traffic.remaining(bodies[other].position, motion_tasks[other].route), 1.4)
 		var clearance: float = bodies[id].radius + bodies[other].radius + maxf(bodies[id].spacing_margin, bodies[other].spacing_margin)
-		if Traffic.distance_to_path(bodies[other].position, path) < clearance and not waiting.has(other): waiting.append(other)
+		if Traffic.conflicts(path, other_path, clearance) and not waiting.has(other): waiting.append(other)
 	if not waiting.is_empty(): traffic_wait_count += 1
 	return {"allowed": waiting.is_empty(), "waiting_for": waiting, "reason": &"occupied_corridor" if not waiting.is_empty() else &"", "members": bodies.keys()}
 
@@ -556,7 +578,7 @@ func debug_member_snapshot(context) -> Dictionary:
 		"waiting_for": _feedback.get(context.actor.get_instance_id(), {}).get("waiting_for", []).duplicate(),
 		"phase": _objective.get("phase", &"patrol"), "state": task.get("state", &"pending"),
 		"reason": task.get("reason", _reason), "planning_reason": _reason, "last_replan": _last_replan,
-		"plan_version": _version, "covered": _covered.duplicate(true), "patrol_visits": _patrol_visits.duplicate(true), "barriers": _barriers.duplicate(true)}
+		"plan_version": _version, "covered": _covered.duplicate(true), "search": _search.snapshot(), "patrol_visits": _patrol_visits.duplicate(true), "barriers": _barriers.duplicate(true)}
 
 func member_ids() -> Array:
 	return _tasks.keys()
