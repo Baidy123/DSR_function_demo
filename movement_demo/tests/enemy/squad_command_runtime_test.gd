@@ -43,6 +43,15 @@ func _run() -> void:
 	player.get("combat").set_physics_process(false)
 	player.get("health").debug_invincible = true
 	player.global_position = arena.to_global(Vector3.ZERO)
+	if OS.get_cmdline_user_args().has("--patrol"):
+		player.global_position = arena.to_global(Vector3(-4.84, 0, 0.68))
+		for actor in actors: actor.look_at(actor.global_position + Vector3.RIGHT)
+		await _patrol_case()
+		scene.queue_free()
+		await physics_frame
+		print("SQUAD PATROL RUNTIME: %d/%d passed" % [checks - failures, checks])
+		quit(1 if failures else 0)
+		return
 	var starts: Array = actors.map(func(actor): return actor.global_position)
 	for actor in actors: actor.look_at(player.global_position)
 	var owned := true
@@ -256,3 +265,36 @@ func _reload_scene() -> void:
 	check(profile.ready and not profile.actions.has(&"suppression") and not profile.actions.has(&"cooperate") and coordinator._template.members.size() == 3, "Reloading the scene builds fresh profiles and template from the changed training")
 	fresh.queue_free()
 	await physics_frame
+
+func _patrol_case() -> void:
+	var last: Array = actors.map(func(actor): return actor.global_position)
+	var early: Array[float] = [0.0, 0.0, 0.0]
+	var later: Array[float] = [0.0, 0.0, 0.0]
+	var completed_sites: Array[Dictionary] = [{}, {}, {}]
+	var owned := true
+	var peaceful := true
+	var minimum := INF
+	for frame in 1200:
+		await physics_frame
+		for index in actors.size():
+			var actor = actors[index]
+			var ai = actor.get_node("AI")
+			var task: Dictionary = ai.context.coordination_assignment()
+			if task.get("role") == &"patrol" and task.get("state") == &"complete":
+				completed_sites[index][task.site_key] = true
+			if frame > 5:
+				owned = owned and not task.is_empty() and ai.utility_decision_count == 0
+				peaceful = peaceful and not ai.context.sees_player and arena.get_node("Squad").coordinator._objective.get("phase") == &"patrol"
+			var distance: float = actor.global_position.distance_to(last[index])
+			if frame < 600: early[index] += distance
+			else: later[index] += distance
+			last[index] = actor.global_position
+			for other in actors.slice(index + 1): minimum = minf(minimum, actor.global_position.distance_to(other.global_position))
+		if frame % 240 == 0: print("PATROL TRACE ", frame, " ", JSON.stringify(actors.map(_trace)))
+	check(peaceful, "Saved map remains genuinely unalerted throughout the patrol reproduction")
+	check(owned, "Every patrol member remains under continuous squad command")
+	check(early.all(func(distance): return distance > 1.0), "Every member reaches the first patrol leg")
+	check(later.all(func(distance): return distance > 2.0), "After arrival every member continues to distinct patrol destinations")
+	check(completed_sites.all(func(sites): return sites.size() >= 2), "Every member physically completes at least two distinct patrol posts")
+	check(minimum >= 0.64, "Continuing patrol keeps real body separation")
+	print("PATROL RESULT early=", early, " later=", later, " completed=", completed_sites.map(func(sites): return sites.size()), " minimum=", minimum)

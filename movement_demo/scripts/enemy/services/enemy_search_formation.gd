@@ -38,6 +38,7 @@ static func sites(context, objective: Dictionary, count: int, attempt: int) -> A
 	radial.y = 0.0
 	if radial.is_zero_approx(): radial = Vector3.BACK
 	var angle = atan2(radial.z, radial.x)
+	if phase == &"patrol": angle = 0.0
 	var radius = 5.0 if phase == &"contact" else 2.0 + float(attempt / 3) * 1.5
 	if phase == &"patrol": radius = 3.0
 	for i in 12:
@@ -47,7 +48,7 @@ static func sites(context, objective: Dictionary, count: int, attempt: int) -> A
 		if Contract.horizontal(point, projected) > 0.4: continue
 		projected.y = context.actor.global_position.y
 		result.append({"position": projected, "look_position": center if phase == &"contact" else projected + direction,
-			"site_key": "%s:%s:%s" % [phase, attempt / 3, i]})
+			"site_key": "%s:%s:%s" % [phase, 0 if phase == &"patrol" else attempt / 3, i]})
 	# The shared static index contributes connected search sectors, not targets.
 	if phase == &"search" and context.tactical_map != null:
 		for sector in context.tactical_map.query_sectors(center, 12.0, context.agent.navigation_layers, 6):
@@ -81,6 +82,7 @@ static func candidate(context, profile: Dictionary, body: Dictionary, site: Dict
 		action = Contract.executor(profile, role)
 	if action.is_empty(): return {}
 	var point: Vector3 = site.position
+	if role == &"patrol" and Contract.horizontal(point, body.position) < 0.75: return {}
 	if phase == &"contact" and role in [&"engage", &"support", &"flank"]:
 		if profile.firearms:
 			var origin: Vector3 = context.actor.get_posture_muzzle_position(false, point)
@@ -104,7 +106,9 @@ static func candidate(context, profile: Dictionary, body: Dictionary, site: Dict
 				if detour.is_empty() or context.cover_selection._path_length_from_path(alternative) < context.cover_selection._path_length_from_path(detour): detour = alternative
 		if detour.is_empty(): return {}
 		path = detour
-	var seconds: float = context.cover_selection._path_length_from_path(path) / maxf(0.1, body.move_speed)
+	var parameters: Dictionary = profile.actions[action].parameters
+	var speed = maxf(0.1, float(parameters.get("focused_search_speed_multiplier", 1.0))) if role == &"search" else 1.0
+	var seconds: float = context.cover_selection._path_length_from_path(path) / maxf(0.1, body.move_speed * speed)
 	var estimate: float = seconds + (0.0 if previous.get("position", Vector3.INF).distance_to(point) < 0.2 else 0.6)
 	if role == &"guard" and phase != &"patrol": estimate += 8.0
 	if role in [&"engage", &"support", &"flank"] and body.visible and Contract.horizontal(point, body.position) < 0.2: estimate = 0.0
@@ -115,7 +119,7 @@ static func candidate(context, profile: Dictionary, body: Dictionary, site: Dict
 	return {"action": action, "role": role, "position": point, "route": path,
 		"look_position": site.get("look_position", objective.get("position", point)),
 		"staging_position": site.get("via", Vector3.INF), "site_key": site.get("site_key", str(point)),
-		"estimate": estimate, "travel_seconds": seconds, "objective_id": objective.get("objective_id", 0),
+		"estimate": estimate, "travel_seconds": seconds, "speed_multiplier": speed, "objective_id": objective.get("objective_id", 0),
 		"evidence_id": objective.get("id", 0), "target_id": objective.get("target_id", 0), "side": site.get("side", 0)}
 
 static func yield_sites(context, body: Dictionary) -> Array[Dictionary]:

@@ -13,6 +13,7 @@ var _template: Dictionary = {}
 var _tasks: Dictionary = {}
 var _objective: Dictionary = {}
 var _covered: Dictionary = {}
+var _patrol_visits: Dictionary = {}
 var _feedback: Dictionary = {}
 var _bodies: Dictionary = {}
 var _progress: Dictionary = {}
@@ -68,6 +69,7 @@ func reset() -> void:
 	_template.clear()
 	_objective.clear()
 	_covered.clear()
+	_patrol_visits.clear()
 	_feedback.clear()
 	_progress.clear()
 	_preparation.clear()
@@ -189,6 +191,7 @@ func _update_objective() -> void:
 		"position": _objective.get("position", _bodies.values()[0].position),
 		"target_id": _objective.get("target_id", 0), "uncertainty": 0.0}, true)
 	_covered.clear()
+	_patrol_visits.clear()
 	_failed_sites.clear()
 	_barriers.clear()
 	_attempt = 0
@@ -238,6 +241,8 @@ func _plan() -> void:
 	if not must_replan: return
 	if _preparation.is_empty():
 		var sites = Formation.sites(context, _objective, _bodies.size(), _attempt)
+		if _objective.phase == &"patrol" and not sites.is_empty() and sites.all(func(site): return _patrol_visits.has(site.site_key)):
+			_patrol_visits.clear()
 		_preparation = {"members": _bodies.keys(), "index": 0, "candidates": {}, "sites": sites, "map_revision": map_revision,
 			"objective_id": _objective.objective_id, "started_at": elapsed}
 	var id = _preparation.members[_preparation.index]
@@ -250,9 +255,16 @@ func _plan() -> void:
 	var sites: Array = _preparation.sites.duplicate(true)
 	if _objective.phase == &"contact" and body.visible and (not body.firearms or Contract.horizontal(body.position, _objective.position) >= 3.0):
 		sites.push_front({"position": body.position, "look_position": _objective.position, "site_key": "contact:%s" % id})
-	if body.reloading or body.rounds == 0 and body.can_reload:
+	var needs_reload: bool = body.reloading or body.rounds == 0 and body.can_reload
+	if needs_reload:
 		sites = [{"position": body.position, "look_position": _objective.position, "site_key": "reload:%s" % id}]
 	var previous: Dictionary = _tasks[id]
+	if _objective.phase == &"patrol" and not needs_reload and previous.role == &"patrol" and not previous.state in [&"blocked", &"complete"] and previous.expires_at > elapsed:
+		# An early finisher does not reset a teammate's unfinished patrol leg.
+		var continuing = previous.duplicate(true)
+		continuing.route = Traffic.remaining(body.position, previous.route)
+		continuing.estimate = 0.0
+		candidates.append(continuing)
 	if previous.has("resume_task") and previous.state == &"complete" and _passage_cleared(previous):
 		var resume: Dictionary = previous.resume_task
 		var path = Formation.route(member_context, resume.position)
@@ -263,6 +275,7 @@ func _plan() -> void:
 			candidates.append(resume)
 	for site in sites:
 		if _covered.has(site.site_key) or _failed_sites.get([id, site.site_key], -INF) > elapsed: continue
+		if _objective.phase == &"patrol" and _patrol_visits.has(site.site_key): continue
 		if _objective.phase == &"contact": site.role = _contact_role(id)
 		var candidate = Formation.candidate(member_context, _profiles.get(id, {}), body, site, _objective, _tasks[id])
 		if not candidate.is_empty(): candidates.append(candidate)
@@ -287,6 +300,9 @@ func _plan() -> void:
 			_attempt += 1
 	else:
 		_attempt += 1
+		# Unreachable remaining sites do not prevent the next patrol round.
+		# Clearing visits never marks those sites as physically visited.
+		if _objective.phase == &"patrol": _patrol_visits.clear()
 		_last_replan = result.reason
 		if not _repair_traffic(result.get("attempted", {})):
 			for task in _tasks.values():
@@ -439,6 +455,7 @@ func report(context, report: Dictionary) -> bool:
 	if not Contract.STATES.has(report.get("state")): return false
 	var task: Dictionary = _tasks[id]
 	if report.state == &"complete" and not task.accepted: return false
+	if report.state == &"complete" and task.role in [&"patrol", &"move"] and Contract.horizontal(context.actor.global_position, task.position) > 0.18: return false
 	if report.state == &"complete" and task.role == &"search":
 		if not report.get("observed", false) or not context.command_observation_valid(task): return false
 	_feedback[id] = report.duplicate(true)
@@ -448,6 +465,8 @@ func report(context, report: Dictionary) -> bool:
 	if report.state == &"complete":
 		if task.role == &"search":
 			_covered[task.site_key] = {"position": task.look_position, "observed_at": elapsed, "member_id": id}
+		elif task.role == &"patrol":
+			_patrol_visits[task.site_key] = {"position": task.position, "visited_at": elapsed, "member_id": id}
 		_due = 0.0
 	elif report.state == &"blocked":
 		_failed_sites[[id, task.site_key]] = elapsed + 4.0
@@ -497,7 +516,7 @@ func debug_member_snapshot(context) -> Dictionary:
 		"waiting_for": _feedback.get(context.actor.get_instance_id(), {}).get("waiting_for", []).duplicate(),
 		"phase": _objective.get("phase", &"patrol"), "state": task.get("state", &"pending"),
 		"reason": task.get("reason", _reason), "planning_reason": _reason, "last_replan": _last_replan,
-		"plan_version": _version, "covered": _covered.duplicate(true), "barriers": _barriers.duplicate(true)}
+		"plan_version": _version, "covered": _covered.duplicate(true), "patrol_visits": _patrol_visits.duplicate(true), "barriers": _barriers.duplicate(true)}
 
 func member_ids() -> Array:
 	return _tasks.keys()

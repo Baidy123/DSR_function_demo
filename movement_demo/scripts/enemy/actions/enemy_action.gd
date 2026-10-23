@@ -239,7 +239,7 @@ func execute_command(delta: float, visible: bool) -> Dictionary:
 				context.report_command(command, &"blocked", {"reason": &"static_obstacle"})
 				return output
 		output.direction = direction.normalized()
-		output.multiplier = minf(1.0, direction.length() / maxf(0.001, actor.move_speed * delta))
+		output.multiplier = minf(float(command.get("speed_multiplier", 1.0)), direction.length() / maxf(0.001, actor.move_speed * delta))
 		output.stop_position = waypoint
 		if not visible: output.facing = direction
 	output.merge(command_work(delta, visible, arrived), true)
