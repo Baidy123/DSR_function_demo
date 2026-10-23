@@ -155,3 +155,281 @@
 4. 汇总独立实机验证，维护接口说明、测试登记和待办，按已验证阶段提交并正常推送。
 
 当前只交付本设计草案及待办索引。生产代码、保存场景、训练、武器、导航资源均未因本方案修改；此前未完成的诊断不构成上述阶段已经完成。
+
+## 10. 新对话交接（2026-10-24）
+
+### 10.1 接续状态
+
+- 工作目录 `E:\godot`，Godot 工程 `E:\godot\movement_demo`，PowerShell；Godot 程序为 `E:\Godot\Godot_v4.7.2-stable_win64_console.exe`。
+- 分支 `main`，远端 `origin` 为 `https://github.com/Baidy123/DSR_function_demo.git`。设计草案及 TODO 索引已在 `f4e9146` 提交并推送；此前生产修复 `d190256` 是转角前后观察切换，`5af8265` 是搜索分工及机动速度。
+- **本轮远近配合生产实现尚未开始。** 上文两个新模块尚不存在，不能在新对话中当作现有接口调用。用户已经明确的行为方向见第1节；本文其余设计仍待审阅。用户本次要求把代码和状态写入文档以便换对话。
+- 两次后台诊断进程都已结束，不存在需要继续等待的测试进程。没有完成有效的混编专项验收，也没有修正并重跑下方无效夹具。
+- 当前没有正式的 `tests/enemy/squad_mixed_cooperation_test.gd`；诊断初稿已移到 Git 忽略的日志目录。本节末尾保存其完整原文，防止换机器或缺少本地日志时丢失上下文。
+- 文档链接/草案状态、`git diff --check`、`python movement_demo/tests/run_regressions.py --check` 已检查通过。这些仅是文档与登记检查，不是配合行为通过的证据。
+
+先阅读根目录 `AGENTS.md`、`README.md`、`docs/project-layout.md`、`docs/enemy-ai.md`、`docs/enemy-tests.md`。保留用户当前本地工程；不执行 pull，不合并/变基远端，不覆盖已有修改。独立完成并验证的阶段按项目规则提交、普通推送。需要观察用户正在运行的游戏时只读采样；独立测试使用独立实例，不重启或移动用户现场来适配夹具。
+
+### 10.2 必须保留的工作区改动
+
+交接时已有约50项用户或此前任务的未提交修改，不能当成本轮成果一起提交。新对话先重新执行 `git status --short`，以当时实际状态为准。
+
+重点包括 `.gitignore`、`docs/superpowers/specs/2026-10-13-squad-node-coordinator-design.md`、大量 `movement_demo/addons/godot_ai/` 文件、`project.godot`、`scenes/arena.tscn`、`resources/enemy/cooperation/coordinated.tres`、`resources/enemy/training/arena.tres`、`resources/weapons/enemy_test_melee.tres`、导入元数据，以及下列脚本：
+
+- `scripts/enemy/actions/enemy_attack_position_action.gd`
+- `scripts/enemy/actions/enemy_melee_cover_action.gd`
+- `scripts/enemy/actions/enemy_route_motion.gd`
+- `scripts/enemy/services/enemy_perception.gd`
+- 多份 `tests/enemy/` 个人行为和预算测试。
+
+保存场景的兵种和武器也已被用户修改，不能假设仍是三名远程。检查实际 UnitType、Training、Weapon 组合及运行时能力档案；诊断所需调整只作用于独立场景实例，不保存回用户资源。不需要为了本任务建立固定兵种比例矩阵。
+
+### 10.3 相关生产代码入口
+
+下表行号是本次交接快照，仅用于定位；后续以函数名搜索为准。路径相对 `movement_demo/`。
+
+| 文件与入口 | 需要理解的内容 |
+| --- | --- |
+| `scripts/enemy/services/squad_coordination.gd:260` `_update_objective()` | 合法目击、接敌/搜索转换、约1米位置更新阈值；未变化时仅更新瞄准点。 |
+| 同文件 `:324` `_plan()`、`:458` `_member_work()` | 重排条件、预算内逐成员候选准备、任务保留和整队提交。 |
+| 同文件 `:513` `_contact_role()` | 默认岗位及队友换弹/避险时的支援选择。 |
+| 同文件 `:697` `motion_permission()`、`:772` `support_demand()` | 交通、关键入口等待、赶路许可，以及真实队友需求下的支援点射。 |
+| `scripts/enemy/services/enemy_search_formation.gd:10` `sites()`、`:178` `_candidate()` | 搜索入口和远侧掩护、通用接敌环形候选、近战点位收缩、路线/枪线验证。 |
+| `scripts/enemy/services/enemy_team_planner.gd:58` `_team_cost()`、`:92` `_eligible()` | 完整组合代价、能力资格、同入口排重、身体与最终枪线冲突。 |
+| `scripts/enemy/services/squad_contract.gd` | 任务身份、步骤字段、冻结能力默认模板，单人仍归协调器。 |
+| `scripts/enemy/actions/enemy_action.gd:229` `execute_command()` | 共用近战请求、实际路线游标、转角前后关注点、机动奔跑与身体占用。 |
+| `scripts/enemy/actions/enemy_melee_action.gd:45` `command_roles()` | 指挥模式提供 engage/guard/move；个人 `tick()` 不是指挥模式的接近执行入口。 |
+| `scripts/enemy/actions/enemy_cooperation_action.gd` | 训练允许的 flank 执行器；远程提交射击，近战仍走共用近战请求。 |
+| `scripts/enemy/services/enemy_melee_controller.gd:35` `can_request()` | 本人视野、身体能力和真实攻击几何；冷却不能被当作路线失效。 |
+| `scripts/enemy/enemy_actor.gd:590` `melee_target_reachable()` | 距离、高差、角度和真实射线命中；`melee_struck` 的非空目标才能证明命中。 |
+| `scripts/enemy/services/enemy_melee_approach.gd` | 原个人近战的路径、导航边缘停靠与距离估计，可参考几何；不能据此重新启用个人选优。 |
+| `scripts/enemy/services/enemy_context.gd`、`scripts/enemy/enemy_ai.gd` | 能力快照、运行时状态、命令验证/执行分流及实际动作装配。 |
+
+当前关键片段如下，**这是待修改的现状，不能直接当作新设计实现**：
+
+```gdscript
+# squad_coordination.gd::_update_objective()
+if phase == &"contact" and not newest.is_empty():
+	changed = changed or _objective.get("position", Vector3.INF).distance_to(newest.position) > 1.0
+if phase == &"search" and not newest.is_empty():
+	changed = changed or float(newest.captured_at) > float(_objective.get("captured_at", -INF)) + 0.01
+if not changed:
+	if phase == &"contact" and not newest.is_empty():
+		_objective.aim_position = newest.get("aim_position", Vector3.INF)
+	return
+
+# enemy_search_formation.gd::_candidate() 的非枪械接敌分支
+var away: Vector3 = (point - objective.position).normalized()
+point = objective.position + away * maxf(0.5, float(profile.weapon.get("melee_range", 1.3)) * 0.8)
+```
+
+方向上的改进是验证“当前近战岗位是否仍可攻击”，而非直接把全队目击位移阈值调小、每帧重排所有人。双方协同还需联合判断后侧方射界与接近通道，不能只修上面两行就宣称完成远近配合。
+
+### 10.4 日志与运行命令
+
+| 本地路径（相对 `movement_demo/`） | 结果及限制 |
+| --- | --- |
+| `logs/mixed_cooperation_level1_20261024.log` | 原 `squad_command_runtime_test.gd --level=1 --mixed --search`，退出码1、27/29。两个失败是掩体观察断言；当前场景装配影响夹具，不能当作近战停步的独立证明。 |
+| `logs/mixed_cooperation_before_20261024.log` | 新诊断初稿，退出码1、6/11，但成员从错误出生点下落，**整组行为与性能结果无效**。例如120帧时 y 已约-22.8，所谓近战小步后退前距离达到约504米。 |
+| `logs/mixed_cooperation_20261024/squad_mixed_cooperation_probe.gd` | 下方代码的本地副本。仅加过无效诊断说明，错误出生点及后续夹具逻辑尚未修正。 |
+
+原诊断初稿运行时位于 `tests/enemy/squad_mixed_cooperation_test.gd`，此路径现已移除。修正夹具后可从仓库根目录使用下列入口；**移动后的路径尚未重新运行验证，直接运行当前原文仍会复现夹具错误**：
+
+```powershell
+& E:/Godot/Godot_v4.7.2-stable_win64_console.exe --headless --fixed-fps 60 --path movement_demo --script res://logs/mixed_cooperation_20261024/squad_mixed_cooperation_probe.gd -- --level=1 *> movement_demo/logs/mixed_cooperation_probe_next.log
+```
+
+该脚本继承 `res://tests/enemy/squad_command_runtime_test.gd`，依赖其 `SceneTree` 初始化入口、成员变量、`check()` 与 `_trace()`；不能脱离当前工程当作独立 Godot 项目运行。原父脚本及 `squad_command_contract_test.gd` 仍保留在正式测试目录。
+
+PowerShell `*>` 产生的本轮原始日志为 UTF-16；可用 `Get-Content` 读取，Python 读取时先确认编码。日志和初稿均不提交。正式化测试时再移到 `tests/enemy/` 并登记 `run_enemy_regressions.py`，不能留下未登记的正式 `.gd` 文件。
+
+### 10.5 下一步应先处理什么
+
+1. 接受用户在新对话中的最新指示，核对本文设计审阅状态；不要把已写草案或已提交文档当作行为已实现。
+2. 修复诊断起点：从当前场景的真实地面/导航选择站位，并在开始接敌断言前确认角色站稳、没有掉出地板、武器/动作资格正确、成员已接受真实任务。
+3. 小幅后退用例必须先证明同一近战成员已经命中过、站点有效，再让玩家移动小于1米并检查重新命中；若前提失败应明确报夹具/前置失败，不能继续把后续结果当成卡住复现。
+4. 搜索用例须先核实合法最后目击和实际遮挡，再检查掩护到位及观察。减员后的新目标位置也要先验证可达性；记录真实命中，不仅是挥击次数。
+5. 形成有效的失败轨迹后，在用户认可的设计范围内实施，并用实际同期射击、命中、视野、等待与恢复验证。不要先改生产代码来迁就下方失效夹具。
+
+### 10.6 诊断初稿完整代码（已知无效，待修正）
+
+以下代码为本地诊断副本的完整快照，保留错误以便定位原始过程，不属于生产实现或已通过的测试。
+
+```gdscript
+extends "res://tests/enemy/squad_command_runtime_test.gd"
+
+## UNVALIDATED DIAGNOSTIC DRAFT: initial z=-7 starts are outside the saved
+## floor. The 2026-10-24 run is invalid and is not a regression result.
+## Kept only for traceability while the cooperation design is reviewed.
+var melee_members: Array = []
+var shooters: Array = []
+var hits := {}
+var costs: Array[int] = []
+var clearance := INF
+var ownership := true
+
+func _run() -> void:
+	for arg in OS.get_cmdline_user_args():
+		if arg.begins_with("--level="): level = int(arg.trim_prefix("--level="))
+	seed(20261024)
+	await _setup_mixed()
+	await _contact_cooperation()
+	await _small_retreat()
+	await _dispose()
+	await _setup_mixed()
+	await _search_cooperation()
+	check(ownership, "Mixed members retain squad authority and installed weapon-qualified roles")
+	check(clearance >= 0.64, "Cooperating bodies preserve physical collision clearance")
+	costs.sort()
+	check(costs[int(costs.size() * 0.99)] < 16000 and costs[-1] < 50000, "Mixed cooperation preserves full-frame P99 <16ms / maximum <50ms")
+	print("MIXED METRICS clearance=", clearance, " p99_usec=", costs[int(costs.size() * 0.99)], " peak_usec=", costs[-1])
+	await _dispose()
+	print("SQUAD MIXED COOPERATION: %d/%d passed" % [checks - failures, checks])
+	quit(1 if failures else 0)
+
+func _setup_mixed() -> void:
+	scene = load("res://scenes/main.tscn").instantiate()
+	var squad = scene.get_node("Arena/Squad")
+	squad.profile = squad.profile.duplicate(true)
+	squad.profile.level = level
+	actors = scene.get_node("Arena").find_children("*", "CharacterBody3D", true, false).filter(func(actor): return actor.has_node("AI"))
+	melee_members.clear()
+	shooters.clear()
+	hits.clear()
+	for index in actors.size():
+		var actor = actors[index]
+		var close := index > 0
+		actor.get_node("UnitType").profile = load("res://resources/enemy/units/%s.tres" % ("melee" if close else "ranged"))
+		actor.weapon = load("res://resources/weapons/enemy_test_%s.tres" % ("melee" if close else "pistol")).duplicate(true)
+		var training = load("res://resources/enemy/training/arena.tres").duplicate(true)
+		training.selected_tactics.clear()
+		training.selected_tactics.append(&"cooperate" if close else &"suppression")
+		training.search.tracking_cheat_enabled = false
+		actor.get_node("Training").profile = training
+		if close: melee_members.append(actor)
+		else: shooters.append(actor)
+		hits[actor.get_instance_id()] = 0
+		actor.melee_struck.connect(func(target, _settings, _direction):
+			if target == player: hits[actor.get_instance_id()] += 1)
+	root.add_child(scene)
+	current_scene = scene
+	arena = scene.get_node("Arena")
+	player = scene.get_node("Player")
+	player.set_physics_process(false)
+	player.get("combat").set_physics_process(false)
+	player.get("health").debug_invincible = true
+	player.global_position = arena.to_global(Vector3(0, 0, -3))
+	var starts := [Vector3(-1, 0, -7), Vector3(3, 0, -7), Vector3(5, 0, -4)]
+	for index in actors.size():
+		actors[index].global_position = arena.to_global(starts[index])
+		actors[index].look_at(player.global_position)
+	for frame in 10: await physics_frame
+
+func _dispose() -> void:
+	scene.queue_free()
+	await physics_frame
+
+func _sample() -> void:
+	var total: int = arena.cooperation.last_advance_usec
+	for index in actors.size():
+		var actor = actors[index]
+		if actor.is_dead: continue
+		var ai = actor.get_node("AI")
+		var task: Dictionary = ai.context.coordination_assignment()
+		ownership = ownership and not task.is_empty() and ai.utility_decision_count == 0
+		ownership = ownership and ai.actions.has(task.get("action", &""))
+		if not actor.can_use_firearms(): ownership = ownership and not task.get("role") in [&"support", &"reload"]
+		for cost in ai.frame_costs.values(): total += int(cost)
+		for other in actors.slice(index + 1):
+			if not other.is_dead: clearance = minf(clearance, actor.global_position.distance_to(other.global_position))
+	costs.append(total)
+
+func _contact_cooperation() -> void:
+	var concurrent_shots := 0
+	var pressure_shots := 0
+	var previous: int = shooters[0].shot_count
+	for frame in 600:
+		await physics_frame
+		_sample()
+		var approaching: bool = melee_members.any(func(actor): return actor.velocity.length() > 0.2 and actor.global_position.distance_to(player.global_position) > actor.weapon.melee_range)
+		if shooters[0].shot_count > previous and approaching:
+			concurrent_shots += shooters[0].shot_count - previous
+			if shooters[0].get_node("AI").context.command_support_pressure() > 0.0: pressure_shots += 1
+		previous = shooters[0].shot_count
+		if frame % 120 == 0: print("MIXED CONTACT ", frame, " ", JSON.stringify(actors.map(_trace)), " hits=", hits)
+	check(melee_members.all(func(actor): return hits[actor.get_instance_id()] > 0), "Each melee member actually reaches and hits the player")
+	check(concurrent_shots > 0 and pressure_shots > 0, "Ranged fire actually supports a simultaneously advancing melee teammate")
+	print("MIXED FIRE concurrent=", concurrent_shots, " pressure=", pressure_shots, " hits=", hits)
+
+func _small_retreat() -> void:
+	var actor = melee_members[0]
+	var start_hits: int = hits[actor.get_instance_id()]
+	var away: Vector3 = player.global_position - actor.global_position
+	away.y = 0.0
+	var before: Vector3 = player.global_position
+	player.global_position += away.normalized() * 0.7
+	var recovered := -1
+	var initial_distance: float = actor.global_position.distance_to(player.global_position)
+	for frame in 240:
+		await physics_frame
+		_sample()
+		if hits[actor.get_instance_id()] > start_hits and recovered < 0: recovered = frame
+	check(initial_distance > actor.weapon.melee_range and before.distance_to(player.global_position) < 1.0, "A real sub-metre player retreat invalidates the previous melee attack distance")
+	check(recovered >= 0 and recovered <= 180, "The stranded melee member adjusts and actually hits again within three seconds")
+	print("MIXED RETREAT distance=", initial_distance, " recovered=", recovered, " ", JSON.stringify(actors.map(_trace)))
+
+func _search_cooperation() -> void:
+	for frame in 40: await physics_frame
+	check(actors.any(func(actor): return actor.get_node("AI").context.sees_player), "Mixed search starts from real personal contact")
+	var screen := StaticBody3D.new()
+	var collision := CollisionShape3D.new()
+	var shape := BoxShape3D.new()
+	shape.size = Vector3(0.3, 3.0, 8.0)
+	collision.shape = shape
+	screen.add_child(collision)
+	arena.add_child(screen)
+	screen.global_position = arena.to_global(Vector3(-7.0, 1.5, 1.5))
+	# Establish a legal last sight next to the saved tall wall, then hide behind
+	# it and the second screen. No search clue, readiness or task is injected.
+	player.global_position = arena.to_global(Vector3(-2.0, 0, 0.5))
+	for frame in 30: await physics_frame
+	player.global_position = arena.to_global(Vector3(-7.6, 0, 1.5))
+	var paired := 0
+	var watching := 0
+	var waiting := 0
+	var blind_shots := 0
+	var previous: int = shooters[0].shot_count
+	for frame in 720:
+		await physics_frame
+		_sample()
+		var shooter = shooters[0]
+		var ctx = shooter.get_node("AI").context
+		var watch: Dictionary = ctx.coordination_assignment()
+		if not ctx.sees_player and shooter.shot_count > previous: blind_shots += shooter.shot_count - previous
+		previous = shooter.shot_count
+		var inspectors: Array = melee_members.filter(func(actor):
+			var task: Dictionary = actor.get_node("AI").context.coordination_assignment()
+			return task.get("role") == &"search" and task.get("sync_key", "!") == watch.get("overwatch_for", ""))
+		if not inspectors.is_empty():
+			paired += 1
+			if shooter.global_position.distance_to(watch.position) < 0.18 and preload("res://scripts/enemy/services/enemy_visual_observation.gd").visible(ctx, watch.look_position): watching += 1
+		for actor in melee_members:
+			if actor.get_node("AI").context.coordination_assignment().get("reason") == &"support_preparing": waiting += 1
+		if frame % 180 == 0: print("MIXED SEARCH ", frame, " ", JSON.stringify(actors.map(_trace)))
+	check(paired > 0 and watching > 0, "Melee investigation receives ranged overwatch that physically arrives and observes its hiding area")
+	check(blind_shots == 0, "Search support never fires without personal sight")
+	print("MIXED SEARCH PAIR assigned=", paired, " actual_watch=", watching, " waits=", waiting)
+	# The supporting member is lost while the player emerges. Surviving melee
+	# members must abandon orphaned support dependencies and actually engage.
+	shooters[0].receive_hit(shooters[0].health + 1.0)
+	var before_hits := hits.duplicate()
+	player.global_position = arena.to_global(Vector3(-4.8, 0, -3.5))
+	var stale := false
+	for frame in 600:
+		await physics_frame
+		_sample()
+		if frame > 120:
+			for actor in melee_members:
+				var task: Dictionary = actor.get_node("AI").context.coordination_assignment()
+				stale = stale or task.get("waiting_for", []).has(shooters[0].get_instance_id())
+	check(not stale and melee_members.all(func(actor): return hits[actor.get_instance_id()] > before_hits[actor.get_instance_id()]), "Loss of the ranged supporter leaves no stale wait and both melee survivors actually hit")
+```
