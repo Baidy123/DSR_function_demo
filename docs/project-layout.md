@@ -1,5 +1,7 @@
 # 项目目录结构
 
+2026-10-23 主场景已移除任务面板、任务状态调试框和五种交互示例；可复用资源与任务控制器保留，相关组件测试显式装配所需资源。
+
 2026-10-22 支援续接修复没有新增控制层：`enemy_team_planner.gd` 内分开新计划请求关系与追加成员的移动掩护关系，`squad_coordination.gd` 继续持有任务和原请求。Context 的只读调试快照同时提供真实移动／换弹事实及等级；`debug/coordinator_paths.gd` 分开显示实际行动和团队调度，不把未分配岗位等同于停步。
 
 2026-10-22 持续调度仍使用原模块：Context 向协调器提供可直接读取的身体事实，原动作及空间服务持续准备合法能力候选，纯 planner 在原预算内补齐战斗岗位并提出局部 `revise`，协调器持有任务与预约。`enemy_search_formation.gd::entry_travel_seconds` 只返回两端经验证的行程，左右队列分界由协调器选择。新增 `enemy_team_continuity_test.gd` 检查完整方案与续接合同，`enemy_team_continuity_runtime_test.gd` 检查当前保存地图中实际接受、执行覆盖及真实开火；测试不能用岗位标签替代动作执行。
@@ -86,7 +88,7 @@ movement_demo/
 
 阶段、任务与 NPC 状态规则集中在 `scripts/systems/stage/`：阶段判定、任务状态与状态解析各一个控制器，配置表资源脚本与 `resources/stages/` 下的 `.tres` 配套维护。控制器挂在 `main.tscn`、按 group 互相查找，不新增全局单例；NPC 只按 `npc_id` 与接收接口被驱动，不反向依赖控制器。见 [阶段与任务](gameplay/STAGE_STATE.md)。
 
-`scripts/debug/coordinator_paths.gd` 是 DebugSettings 挂载的只读 CanvasLayer，不放入 AI 或小队执行循环。它每秒最多十次读取 Context 的公开快照并绘制，不查询导航或生成候选。`enemy_coordination_debug_test.gd` 复用真实三人搜索过程，检查快照复制隔离、刷新上限、场景清理及不改变实际行动；不替代其他队列场景验收。
+`scripts/debug/coordinator_paths.gd` 保留 DebugSettings 下的入口及脚本 UID，使用子 MeshInstance3D / ImmediateMesh 在世界地面绘制 RTS 式路线、方向箭头和站位圈，不再创建屏幕大面板。它每秒最多十次读取 Context 的公开快照并更新网格，不查询导航或生成候选；相机移动由世界渲染自然跟随。`enemy_coordination_debug_test.gd` 复用真实三人搜索过程，检查快照复制隔离、刷新上限、场景清理及不改变实际行动；不替代其他队列场景验收。
 
 团队意识由 `scenes/world/squad.tscn` 的 `world/squad_controller.gd` 提供入口；节点持有配置和独立的 `services/squad_coordination.gd`。区域按活跃时钟推进，个人仍沿原 Utility、动作、身体及 Fire 执行。`config/team_cooperation_binding.gd` 将显式区域绑定转换为同类协调器；没有 Squad 或显式绑定时，个人训练不创建隐式队伍。普通与强配合共用任务身份、版本、接受事务、执行反馈和期限。`enemy_team_scene_integration_test.gd` 验证保存地图；`unbound_scene()` 创建无团队绑定的实例，需要团队权限的专项必须明确 `bind_team()`。人数明确的专项用 `single_member_scene()` 再添加所需成员。夹具不修改保存场景，不能替代当前地图验收。
 

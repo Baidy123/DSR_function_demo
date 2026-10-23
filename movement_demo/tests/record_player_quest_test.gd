@@ -28,6 +28,8 @@ func check(condition: bool, label_text: String) -> void:
 
 func run_checks() -> void:
 	var scene: Node = load("res://scenes/main.tscn").instantiate()
+	preload("res://tests/interaction_fixture.gd").attach(scene)
+	scene.add_child(load("res://scenes/ui/quest_panel.tscn").instantiate())
 	root.add_child(scene)
 	await process_frame
 	await process_frame

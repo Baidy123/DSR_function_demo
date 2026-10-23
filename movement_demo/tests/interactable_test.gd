@@ -83,6 +83,7 @@ func finish_dialogue(ui) -> void:
 
 func run_checks() -> void:
 	var scene := load("res://scenes/main.tscn").instantiate() as Node3D
+	preload("res://tests/interaction_fixture.gd").attach(scene)
 	root.add_child(scene)
 	var player := scene.get_node("Player") as CharacterBody3D
 	player.set_physics_process(false)

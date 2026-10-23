@@ -22,18 +22,11 @@
 [ext_resource type="Script" uid="uid://k0q37ja4h4tl" path="res://scripts/player/player_presentation.gd" id="player_presentation"]
 [ext_resource type="Script" uid="uid://bxfli5ujmf35g" path="res://scripts/systems/presentation/visual_presentation.gd" id="presentation"]
 
-[ext_resource type="PackedScene" path="res://scenes/ui/game_state_debug.tscn" id="16_state_debug"]
-[ext_resource type="PackedScene" path="res://scenes/world/objects/keycard.tscn" id="17_keycard"]
-[ext_resource type="PackedScene" path="res://scenes/world/objects/wine_glass.tscn" id="18_wine_glass"]
-[ext_resource type="PackedScene" path="res://scenes/world/objects/terminal.tscn" id="19_terminal"]
-[ext_resource type="PackedScene" path="res://scenes/world/objects/record_player.tscn" id="20_record_player"]
-[ext_resource type="PackedScene" path="res://scenes/world/access_gate.tscn" id="21_access_gate"]
 [ext_resource type="Script" uid="uid://cwmqkbg23234v" path="res://scripts/systems/stage/stage_controller.gd" id="22_stage_controller"]
 [ext_resource type="Script" uid="uid://bhipevsgkk0mr" path="res://scripts/systems/stage/quest_controller.gd" id="23_quest_controller"]
 [ext_resource type="Script" uid="uid://mghdwtfibo1" path="res://scripts/systems/stage/stage_state_controller.gd" id="24_stage_state_controller"]
 [ext_resource type="Resource" path="res://resources/stages/stage_table_template.tres" id="25_stage_table"]
 [ext_resource type="Script" uid="uid://by7iy6ibrwkth" path="res://scripts/world/zone_volume.gd" id="26_zone_volume"]
-[ext_resource type="PackedScene" path="res://scenes/ui/quest_panel.tscn" id="27_quest_panel"]
 
 [sub_resource type="Environment" id="Environment"]
 background_mode = 1
@@ -121,8 +114,6 @@ height = 1.75
 [node name="Main" type="Node3D" unique_id=1975287300]
 
 [node name="DialogueUI" parent="." unique_id=36702053 instance=ExtResource("1_7mycd")]
-
-[node name="QuestPanel" parent="." instance=ExtResource("27_quest_panel")]
 
 [node name="WorldEnvironment" type="WorldEnvironment" parent="." unique_id=1879990490]
 environment = SubResource("Environment")
@@ -327,25 +318,6 @@ script = ExtResource("impact_receiver")
 
 [node name="Arena" parent="." unique_id=930605498 instance=ExtResource("11_efxa6")]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 20, 0, 0)
-
-[node name="GameStateDebug" parent="." instance=ExtResource("16_state_debug")]
-
-[node name="Interactables" type="Node3D" parent="."]
-
-[node name="Keycard" parent="Interactables" instance=ExtResource("17_keycard")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -6.0, 0, 1.6)
-
-[node name="WineGlass" parent="Interactables" instance=ExtResource("18_wine_glass")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 3.0, 0, 4.6)
-
-[node name="Terminal" parent="Interactables" instance=ExtResource("19_terminal")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 7.2, 0, 3.2)
-
-[node name="RecordPlayer" parent="Interactables" instance=ExtResource("20_record_player")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 5.4, 0, 4.1)
-
-[node name="AccessGate" parent="Interactables" instance=ExtResource("21_access_gate")]
-transform = Transform3D(0, 0, -1, 0, 1, 0, 1, 0, 0, 9.125, 0, 0)
 
 [node name="ImpactEffects" parent="." unique_id=157028740 instance=ExtResource("impact_effects")]
 

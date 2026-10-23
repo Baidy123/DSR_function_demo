@@ -109,14 +109,15 @@
 
 ## 任务面板
 
-`scenes/ui/quest_panel.tscn` + `scripts/ui/quest_panel.gd` 挂在 `main.tscn` 上，屏幕左上角常驻显示，
+2026-10-23 按用户要求，主场景已移除任务面板及任务状态调试框。
+`scenes/ui/quest_panel.tscn` + `scripts/ui/quest_panel.gd` 保留为可单独装配的组件，仅组件测试显式挂载，
 半透明样式与调试面板一致，鼠标事件忽略、不抢对话与交互按键。面板只读任务控制器：
 
 - 一行一个任务，格式“任务名：状态”，`target_area` 非空时附“（场地 xxx）”；
 - 未解锁显示“未解锁”，配置表为空时显示“暂无任务”；
 - 监听 `quest_changed` 刷新，并在启动时延迟补刷一次，兜住控制器晚接线。
 
-左侧调试面板（`GameStateDebug`）已下移，避免与任务面板重叠。
+当前主场景不再挂载 `GameStateDebug`；任务控制器与配置表接口保持原归属。
 
 ## 记录
 

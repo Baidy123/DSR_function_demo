@@ -22,7 +22,9 @@ scenes/world/objects/                         各个具体交互物场景
 scenes/ui/game_state_debug.tscn               调试面板
 ```
 
-## 现有实例
+## 可复用示例
+
+2026-10-23 按用户要求，主场景已移除门禁卡、酒杯、终端、唱片机及门禁读卡器／屏障。下表记录保留的独立示例资源与原演示位置；组件测试由 `tests/interaction_fixture.gd` 显式装配，不要求主场景摆放任务互动物品。
 
 | 实例 | 位置 | 交互 | 结果 |
 | --- | --- | --- | --- |
@@ -41,7 +43,7 @@ scenes/ui/game_state_debug.tscn               调试面板
 3. 在 `effects` 里加效果资源。常用组合：拾取用 `GiveItemEffect`，信息用 `ShowDialogueEffect`，
    单次写入用 `SetFlagEffect`，开／关切换用 `ToggleFlagEffect`，声音用 `EmitNoiseEffect`。
 4. 需要驱动门、机关或生成器时用 `CallMethodEffect` 指向目标节点与方法，交互物本身不需要认识目标类型。
-5. 把物体场景放进关卡场景，例如 `main.tscn` 的 `Interactables` 下。
+5. 把物体场景放进关卡场景，放入需要交互演示的独立场景。
 
 新增玩法优先新增一个效果子类；只有确实需要交互物感知新概念时才扩展 `Interactable`。
 

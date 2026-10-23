@@ -50,13 +50,14 @@ func _check_empty_placeholder() -> void:
 
 func _check_live_scene() -> void:
 	var scene: Node = load("res://scenes/main.tscn").instantiate()
+	scene.add_child(load("res://scenes/ui/quest_panel.tscn").instantiate())
 	root.add_child(scene)
 	await process_frame
 	await process_frame
 	await process_frame
 
 	var panel: Node = get_first_node_in_group(&"quest_panel")
-	check(panel != null, "主场景挂上了任务面板")
+	check(panel != null, "独立装配的任务面板已接入控制器")
 	if panel == null:
 		scene.queue_free()
 		return

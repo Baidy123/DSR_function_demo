@@ -34,6 +34,7 @@ SPECIAL = {
     "bake_arena.gd": "maintenance command: writes navigation; never a regression",
     "bake_levels.gd": "maintenance command: writes level navigation; never a regression",
     "presentation_fixture.gd": "fixture used by presentation tests",
+    "interaction_fixture.gd": "optional examples explicitly assembled by interaction tests",
     "enemy/enemy_fire_fixture.gd": "fixture used by enemy tests",
     "enemy/modular_probe_action.gd": "action fixture used by modular contracts",
     "aim_mode_test.gd": "run by combat_compatibility_test",
