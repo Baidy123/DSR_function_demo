@@ -39,6 +39,16 @@ func _initialize() -> void:
 	check(not planner.propose(snapshot).complete, "The actual template excludes an untrained role even when its geometry is legal")
 	var crowded = PackedVector3Array([Vector3.ZERO, Vector3(-0.5, 0, 0), Vector3(0, 0, 3)])
 	check(not Traffic._leaves_crowding(crowded, Vector3(-0.7, 0, 0), 1.15), "Escaping initial crowding cannot first cross a neighbour's body")
+	var pair = {1: bodies[1], 3: bodies[3]}
+	var staged = {
+		1: {"role": &"search", "position": Vector3(3, 0, 3), "staging_position": Vector3(3, 0, 0), "look_position": Vector3(3, 0, 4), "route": PackedVector3Array([Vector3.ZERO, Vector3(3, 0, 0), Vector3(3, 0, 3)])},
+		3: {"role": &"search", "position": Vector3(6, 0, 3), "staging_position": Vector3(3, 0, 0), "look_position": Vector3(6, 0, 4), "route": PackedVector3Array([Vector3(6, 0, 0), Vector3(3, 0, 0), Vector3(6, 0, 3)])}}
+	check(Traffic.schedule(staged, pair).valid and not Traffic.plan(staged, pair, true).valid, "Distinct final posts cannot conceal colliding preparation posts")
+	staged[3].staging_position = Vector3(6, 0, 1.5)
+	staged[3].route = PackedVector3Array([Vector3(6, 0, 0), staged[3].staging_position, staged[3].position])
+	check(Traffic.plan(staged, pair, true).valid, "Separate preparation and departure routes allow a real shared rendezvous")
+	staged[1].look_position = staged[3].position
+	check(not Traffic.plan(staged, pair, true).valid, "A parked teammate cannot block a required observation line")
 	print("SQUAD COMMAND CONTRACT: %d/%d passed" % [checks - failures, checks])
 	quit(1 if failures else 0)
 

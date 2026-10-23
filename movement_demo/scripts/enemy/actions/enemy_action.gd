@@ -223,7 +223,7 @@ func execute_command(delta: float, visible: bool) -> Dictionary:
 	var path: PackedVector3Array = command.route
 	while _command_index < path.size() and context._horizontal_distance(path[_command_index]) < 0.06: _command_index += 1
 	var arrived: bool = context._horizontal_distance(command.position) <= 0.08
-	if not arrived and not permission.get("allowed", false):
+	if not permission.get("allowed", false):
 		context.report_command(command, &"waiting", {"reason": permission.get("reason", &"passage"), "waiting_for": permission.get("waiting_for", [])})
 		if not command.role in [&"search", &"reload"]: output.merge(command_work(delta, visible, false), true)
 		return output

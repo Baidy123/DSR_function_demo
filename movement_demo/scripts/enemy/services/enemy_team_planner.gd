@@ -19,7 +19,7 @@ func _assign(snapshot: Dictionary, ids: Array, index: int, selected: Dictionary,
 	if work.trials >= MAX_COMBINATIONS or work.nodes > 2048 or cost >= float(work.cost): return
 	if index == ids.size():
 		work.trials += 1
-		var traffic = Traffic.schedule(selected, snapshot.members)
+		var traffic = Traffic.plan(selected, snapshot.members, snapshot.get("synchronize_search", false))
 		if work.attempted.is_empty(): work.attempted = selected.duplicate(true)
 		if not traffic.valid: return
 		work.best = selected.duplicate(true)

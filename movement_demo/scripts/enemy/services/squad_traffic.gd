@@ -47,6 +47,44 @@ static func schedule(tasks: Dictionary, bodies: Dictionary) -> Dictionary:
 			if conflicts(tasks[id].route, tasks[earlier].route, clearance): dependencies[id].append(earlier)
 	return {"valid": true, "order": order, "dependencies": dependencies, "trials": budget.trials}
 
+static func approach(task: Dictionary) -> PackedVector3Array:
+	var path: PackedVector3Array = task.route
+	var staging: Vector3 = task.get("staging_position", Vector3.INF)
+	for index in path.size():
+		if Contract.horizontal(path[index], staging) <= 0.05: return path.slice(0, index + 1)
+	return PackedVector3Array()
+
+## Strong search must also be feasible while everyone is parked at their
+## preparation posts. Final destinations alone cannot prove that rendezvous.
+static func plan(tasks: Dictionary, bodies: Dictionary, synchronize_search: bool = false) -> Dictionary:
+	var result = schedule(tasks, bodies)
+	if not result.valid or not synchronize_search: return result
+	var members: Array = tasks.keys().filter(func(id): return tasks[id].role == &"search")
+	if members.size() < 2: return result
+	for id in members:
+		var sightline = PackedVector3Array([tasks[id].position, tasks[id].look_position])
+		for other in tasks:
+			if id != other and distance_to_path(tasks[other].position, sightline) < bodies[other].radius + 0.1:
+				return {"valid": false, "reason": &"observation_occupied"}
+	var preparing = tasks.duplicate(true)
+	var departing = tasks.duplicate(true)
+	var staged_bodies = bodies.duplicate(true)
+	for id in members:
+		var path = approach(tasks[id])
+		if path.is_empty(): return {"valid": false, "reason": &"missing_preparation_route"}
+		preparing[id].route = path
+		preparing[id].position = tasks[id].staging_position
+		staged_bodies[id].position = tasks[id].staging_position
+		departing[id].route = tasks[id].route.slice(path.size() - 1)
+	var arrival = schedule(preparing, bodies)
+	if not arrival.valid: return {"valid": false, "reason": &"preparation_occupied"}
+	var departure = schedule(departing, staged_bodies)
+	if not departure.valid: return {"valid": false, "reason": &"departure_occupied"}
+	result.dependencies = departure.dependencies
+	result.preparation_dependencies = arrival.dependencies
+	result.synchronized_members = members
+	return result
+
 static func _order(tasks: Dictionary, bodies: Dictionary, pending: Array, ordered: Array, budget: Dictionary) -> Array:
 	if pending.is_empty(): return ordered
 	for id in pending:

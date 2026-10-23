@@ -10,6 +10,8 @@ var player: Node3D
 var actors: Array = []
 var level := 1
 var mixed := false
+var _search_audit: Dictionary = {}
+var _search_audit_previous: Dictionary = {}
 
 func _initialize() -> void:
 	_run.call_deferred()
@@ -101,6 +103,10 @@ func _run() -> void:
 	quit(1 if failures else 0)
 
 func _search_case() -> void:
+	var handoff = OS.get_cmdline_user_args().has("--handoff")
+	if level == 2:
+		_search_audit = {"grouped": true, "ready": true, "held": true, "wait_frames": 0, "hold_frames": 0, "releases": 0, "seen": {}}
+		physics_frame.connect(_audit_search_step)
 	var initial_waits: int = arena.get_node("Squad").coordinator.traffic_wait_count
 	if OS.get_cmdline_user_args().has("--blocked-exit"):
 		var blocker := StaticBody3D.new()
@@ -122,6 +128,18 @@ func _search_case() -> void:
 			player.global_position = player.global_position.move_toward(arena.to_global(point), 0.08)
 			await physics_frame
 	check(actors.all(func(actor): return not actor.get_node("AI").context.sees_player), "Saved left wall actually occludes all three members")
+	if handoff:
+		# An actual second wall keeps the target hidden beyond the first
+		# inspection step; all readiness and completion still come from AI.
+		var screen := StaticBody3D.new()
+		var collision := CollisionShape3D.new()
+		var shape := BoxShape3D.new()
+		shape.size = Vector3(0.3, 3.0, 8.0)
+		collision.shape = shape
+		screen.add_child(collision)
+		arena.add_child(screen)
+		screen.global_position = arena.to_global(Vector3(-7.0, 1.5, 1.5))
+		player.global_position = arena.to_global(Vector3(-7.6, 0, 1.5))
 	var reacquired := -1
 	var owned := true
 	var search_members := {}
@@ -135,8 +153,13 @@ func _search_case() -> void:
 	var hidden_stable := true
 	var false_completion_rejected := false
 	var waits := {}
+	var search_costs: Array[int] = []
 	for frame in 900:
 		await physics_frame
+		var total: int = arena.get("cooperation").last_advance_usec
+		for actor in actors:
+			for cost in actor.get_node("AI").frame_costs.values(): total += int(cost)
+		search_costs.append(total)
 		for index in actors.size():
 			var actor = actors[index]
 			var ai = actor.get_node("AI")
@@ -170,12 +193,17 @@ func _search_case() -> void:
 			for redraw in 3: await process_frame
 			await RenderingServer.frame_post_draw
 			var picture := root.get_texture().get_image()
-			check(not picture.is_empty() and picture.save_png("res://logs/coordinator_rewrite_20261023/new_command_routes.png") == OK, "Rendered world-space command routes are captured")
+			var capture_directory = "res://logs/strong_handoff_20261023" if level == 2 else "res://logs/coordinator_rewrite_20261023"
+			DirAccess.make_dir_recursive_absolute(capture_directory)
+			check(not picture.is_empty() and picture.save_png(capture_directory.path_join("new_command_routes.png")) == OK, "Rendered world-space command routes are captured")
 	check(owned, "Loss, congestion and replanning never return tactical authority to personal Utility")
 	check(search_members.size() == actors.size(), "All members actually execute search commands")
 	check(stable, "The search objective survives layout changes until a real new contact")
-	check(reacquired >= 0 and reacquired <= 480, "Saved wall search actually reacquires within the existing eight-second boundary")
+	if not handoff:
+		check(reacquired >= 0 and reacquired <= 480, "Saved wall search actually reacquires within the existing eight-second boundary")
 	check(closest >= 0.64, "Search preserves physical body separation")
+	search_costs.sort()
+	check(search_costs[int(search_costs.size() * 0.99)] < 16000 and search_costs[-1] < 50000, "Search preparation and execution keep full-frame P99 <16ms / maximum <50ms")
 	if OS.get_cmdline_user_args().has("--blocked-exit"):
 		check(reacquired >= 0 and stable and search_members.size() == actors.size(), "A physically blocked cover exit still yields a complete alternative search layout")
 	check(hidden_stable and false_completion_rejected, "Hidden movement cannot update the clue; unobserved arrival cannot mark coverage")
@@ -184,7 +212,50 @@ func _search_case() -> void:
 	if level == 2 and not mixed:
 		var squad = arena.get_node("Squad").coordinator
 		check(squad.barrier_wait_count > 0 and squad.barrier_release_count > 0, "Strong coordination actually stages and releases participating observers, including the loss transition")
-	print("SEARCH RESULT reacquired=", reacquired, " min=", closest, " barriers=", barriers_seen.size(), " waits=", barrier_waits, " released=", released, " moved=", actors.map(func(actor): return actor.global_position.distance_to(starts[actors.find(actor)])))
+	if level == 2:
+		physics_frame.disconnect(_audit_search_step)
+		check(_search_audit.grouped, "Every shared search step retains synchronization for all of its searchers")
+		check(_search_audit.ready and _search_audit.releases > 0, "Exposure starts only when all participants are physically at preparation posts")
+		check(_search_audit.held and _search_audit.wait_frames > 0, "Early arrivals hold their assigned posts while later participants are still travelling")
+		if handoff:
+			check(_search_audit.hold_frames > 0 and _search_audit.releases >= 2, "Completed observers wait for their peers and subsequent search steps synchronize again")
+		print("HANDOFF AUDIT ", JSON.stringify(_search_audit))
+	print("SEARCH RESULT reacquired=", reacquired, " min=", closest, " barriers=", barriers_seen.size(), " waits=", barrier_waits, " released=", released, " p99_usec=", search_costs[int(search_costs.size() * 0.99)], " peak_usec=", search_costs[-1], " moved=", actors.map(func(actor): return actor.global_position.distance_to(starts[actors.find(actor)])))
+
+func _audit_search_step() -> void:
+	var squad = arena.get_node("Squad").coordinator
+	var task_table: Dictionary = squad._tasks
+	var objective: Dictionary = squad._objective
+	if objective.get("phase") != &"search":
+		_search_audit_previous.clear()
+		return
+	var searchers: Array = task_table.keys().filter(func(id): return task_table[id].role == &"search")
+	if searchers.size() < 2: return
+	var grouped = false
+	for key in squad._barriers:
+		var barrier: Dictionary = squad._barriers[key]
+		grouped = grouped or searchers.all(func(id): return barrier.members.has(id))
+		if barrier.released and not _search_audit.seen.has(key):
+			_search_audit.seen[key] = true
+			_search_audit.releases += 1
+			for id in barrier.members:
+				var actor = instance_from_id(id)
+				_search_audit.ready = _search_audit.ready and actor.global_position.distance_to(task_table[id].staging_position) <= 0.12 + actor.move_speed / 60.0 + 0.001
+		if not barrier.released:
+			for id in barrier.members:
+				if task_table[id].get("reason") == &"staging_barrier": _search_audit.wait_frames += 1
+	_search_audit.grouped = _search_audit.grouped and grouped
+	if _search_audit_previous.get("objective") == objective.objective_id:
+		var previous: Dictionary = _search_audit_previous.tasks
+		var failed = previous.values().any(func(task): return task.state in [&"blocked", &"occupied"] or task.expires_at <= squad.elapsed)
+		failed = failed or task_table.values().any(func(task): return task.state in [&"blocked", &"occupied"])
+		var unfinished = previous.values().any(func(task): return task.role == &"search" and task.state != &"complete")
+		if unfinished and not failed:
+			for id in previous:
+				if previous[id].role != &"search" or previous[id].state != &"complete": continue
+				_search_audit.hold_frames += 1
+				_search_audit.held = _search_audit.held and task_table.has(id) and task_table[id].task_id == previous[id].task_id and instance_from_id(id).global_position.distance_to(previous[id].position) <= 0.18
+	_search_audit_previous = {"objective": objective.objective_id, "tasks": task_table.duplicate(true)}
 
 func _trace(actor) -> Dictionary:
 	var ai = actor.get_node("AI")

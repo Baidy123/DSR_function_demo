@@ -20,16 +20,17 @@ static func sites(context, objective: Dictionary, count: int, attempt: int) -> A
 		if not geometry.is_empty():
 			for side in geometry.ends:
 				var end: Dictionary = geometry.ends[side]
-				var outward: Vector3 = (end.peek - geometry.observer_position).normalized()
-				outward.y = 0.0
+				var outward: Vector3 = (geometry.cover_transform.basis.x if geometry.along_x else geometry.cover_transform.basis.z).normalized() * float(side)
 				var axis: Vector3 = (end.peek - end.entry).normalized()
 				for rank in maxi(2, count):
-					var offset: Vector3 = -axis * float(rank) * 1.4
+					# Separate observation lanes along the wall end; a rear post
+					# aimed through a parked teammate can never finish observing.
+					var offset: Vector3 = outward * float(rank) * 1.4
 					# Shift the entire lane outward when a previous layout failed.
 					var lateral: Vector3 = (end.entry - geometry.observer_position).normalized() * float(attempt % 3) * 0.35
 					lateral.y = 0.0
 					result.append({"position": end.peek + offset + lateral, "via": end.entry + offset + lateral,
-						"look_position": end.peek + axis * 1.0 + lateral, "site_key": "cover:%s:%s:%s" % [geometry.cover_id, side, rank], "side": side})
+						"look_position": end.peek + offset + (axis - outward) * 2.0 + lateral, "site_key": "cover:%s:%s:%s" % [geometry.cover_id, side, rank], "side": side})
 			if attempt < 3: return result
 		# A failed formation keeps the objective and uses other reachable posts.
 		result.append({"position": center, "look_position": center, "site_key": "last_seen"})
@@ -118,7 +119,7 @@ static func candidate(context, profile: Dictionary, body: Dictionary, site: Dict
 		estimate += maxf(0.0, approach.dot(flank)) * 4.0
 	return {"action": action, "role": role, "position": point, "route": path,
 		"look_position": site.get("look_position", objective.get("position", point)),
-		"staging_position": site.get("via", Vector3.INF), "site_key": site.get("site_key", str(point)),
+		"staging_position": site.get("via", point if role == &"search" else Vector3.INF), "site_key": site.get("site_key", str(point)),
 		"estimate": estimate, "travel_seconds": seconds, "speed_multiplier": speed, "objective_id": objective.get("objective_id", 0),
 		"evidence_id": objective.get("id", 0), "target_id": objective.get("target_id", 0), "side": site.get("side", 0)}
 
