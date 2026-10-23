@@ -98,7 +98,7 @@ Debug 地面显示未查（橙）、部分查（黄）、近期查过（绿）�
 
 ### 个人训练如何参与团队决策
 
-2026-10-24 后续方向：用户要求统一遍历实际装配战术，短程突进和火力压制也使用共同提案/选择流程。当前代码核查、接口建议及全动作迁移范围见[统一战术接入设计提案](superpowers/specs/2026-10-24-unified-command-actions-design.md)。该稿待审阅、尚未实施；下表仍描述当前运行行为。
+2026-10-24 后续方向：用户已确认统一遍历实际装配战术，短程突进和火力压制也使用共同提案、整队评分与阶段执行流程。当前代码核查及全动作迁移范围见[统一战术接入设计](superpowers/specs/2026-10-24-unified-command-actions-design.md)，精简验证与改动步骤见[实施计划](superpowers/plans/2026-10-24-unified-command-actions.md)。尚未修改运行代码；下表仍描述当前运行行为。
 
 当前读取链是 `Enemy/Training.profile → EnemyActionLibrary.resolve() → 成功装配动作 → freeze_command_capability() → install_member_capabilities() → 协调器候选与执行器`。动作的 `roles` 决定它能承担哪些团队任务，`parameters` 保存本场生效参数。协调器不是绕过个人训练统一发放所有战术；已装配动作也不等于其个人行为分支已完整接入团队指挥。
 
