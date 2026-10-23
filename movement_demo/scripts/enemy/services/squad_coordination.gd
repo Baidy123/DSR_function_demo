@@ -290,7 +290,7 @@ func _update_objective() -> void:
 			# Small legal target movement can invalidate one melee post without
 			# replacing the objective or the still useful ranged firing tasks.
 			for id in _tasks:
-				if _profiles.get(id, {}).get("firearms", true) or not _tasks[id].role in [&"engage", &"flank"]: continue
+				if _profiles.get(id, {}).get("firearms", true) or not _tasks[id].role in [&"engage", &"flank"] or not _tasks[id].get("contact_post", true): continue
 				if Combat.melee_post_valid(_context(id), _profiles[id], _tasks[id].position, newest.position, 0.08): continue
 				# Finish the bounded in-flight team plan before taking another
 				# sub-metre sample. Restarting for every walking frame starves it.
@@ -323,6 +323,7 @@ func _update_objective() -> void:
 	# Explicit supersession keeps every live body owned while a new full
 	# plan is prepared; stale search reports can no longer mark coverage.
 	for id in _tasks:
+		if _tasks[id].get("allowed_phases", []).has(phase) and _tasks[id].expires_at > elapsed: continue
 		if _tasks[id].role in [&"shelter", &"cover_peek"] and not _defense.role(id).is_empty(): continue
 		# During visible target motion, retain valid combat work while preparing
 		# its replacement. Replanning itself is not a loss of firing permission.
@@ -623,7 +624,7 @@ func _commit(proposals: Dictionary, _traffic: Dictionary) -> bool:
 		var proposal: Dictionary = routes[id]
 		if not _context(id).validate_command_post(proposal, _profiles[id]): return false
 		var old: Dictionary = _tasks.get(id, {})
-		var same_staging: bool = proposal.role != &"search" or old.get("staging_position", Vector3.INF) == proposal.get("staging_position", Vector3.INF)
+		var same_staging: bool = (proposal.role != &"search" or old.get("staging_position", Vector3.INF) == proposal.get("staging_position", Vector3.INF)) and old.get("stage", &"") == proposal.get("stage", &"") and old.get("plan_key", []) == proposal.get("plan_key", [])
 		if same_staging and old.get("search_revision", 0) == proposal.get("search_revision", 0) and old.get("objective_id") == proposal.objective_id and old.get("role") == proposal.role and old.get("action") == proposal.action and old.get("position", Vector3.INF).distance_to(proposal.position) < 0.05 and old.expires_at > elapsed and (not old.state in [&"blocked", &"complete"] or old.state == &"complete" and _waiting_for_search_peers(id)):
 			table[id] = old.duplicate(true)
 		else:
@@ -777,7 +778,7 @@ func report(context, report: Dictionary) -> bool:
 	elif report.state == &"blocked":
 		# An executor window expiring says nothing about the physical post.
 		# Other trained actions must still be able to use that route immediately.
-		if not task.reason in [&"executor_unavailable", &"accept_failed"]:
+		if report.get("failure_scope", &"geometry") != &"action" and not task.reason in [&"executor_unavailable", &"accept_failed"]:
 			_failed_sites[[id, task.site_key]] = elapsed + 4.0
 		if task.role == &"search": _search.reject(task.site_key, elapsed)
 		_due = 0.0

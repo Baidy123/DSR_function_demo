@@ -241,6 +241,7 @@ func command_site_offer(query: Dictionary, site: Dictionary) -> Dictionary:
 	offer.estimate = seconds + (1.0 if site.get("defense_proactive", false) else 0.0) + (0.0 if site.defense_post.peek.is_finite() else 2.0)
 	offer.tactical = {"protected": true, "sustainable_fire": site.role == &"cover_peek" and query.body.rounds > 0,
 		"travel": seconds, "pressure": query.body.pressure}
+	offer.plan_key = [action_id, site.defense_id, site.role, offer.position]
 	return offer
 
 func validate_command_offer(query: Dictionary, offer: Dictionary) -> Dictionary:

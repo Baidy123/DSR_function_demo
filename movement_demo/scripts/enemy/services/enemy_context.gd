@@ -1147,3 +1147,18 @@ func command_permission(task: Dictionary) -> Dictionary:
 
 func command_support_pressure() -> float:
 	return _coordinator().support_demand(self) if commanded() else 0.0
+
+func command_memory_fire_authorized(intent: Dictionary) -> bool:
+	var task := coordination_assignment()
+	if task.get("action") != intent.get("owner") or not task.get("accepted", false) or task.get("state") in [&"blocked", &"complete"]: return false
+	if task.get("attack") != &"frozen_personal_evidence": return false
+	var ability: Dictionary = _battle_capabilities.get("actions", {}).get(task.action, {})
+	if not ability.get("attack_modes", []).has(&"frozen_personal_evidence"): return false
+	var basis: Dictionary = task.get("fire_evidence", {})
+	var id: int = basis.get("id", 0)
+	if id <= 0 or id != suppression_consumed_id or id != int(suppression_evidence.get("id", 0)) or id != int(intent.get("evidence_id", 0)): return false
+	if basis.get("source") != &"visual_loss" or basis.get("shared", false) or evidence_elapsed_seconds >= float(basis.get("valid_until", -INF)): return false
+	if basis.get("valid_until") != suppression_evidence.get("valid_until") or basis.get("position") != suppression_evidence.get("position"): return false
+	if basis.get("aim_position", Vector3.INF) != suppression_evidence.get("aim_position", Vector3.INF): return false
+	var point: Vector3 = intent.get("point", Vector3.INF)
+	return point.is_finite() and point.distance_to(basis.aim_position) <= maxf(0.0, float(task.get("fire_radius", 0.0))) + 0.01

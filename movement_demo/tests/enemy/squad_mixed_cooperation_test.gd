@@ -8,6 +8,9 @@ var hits := {}
 var costs: Array[int] = []
 var clearance := INF
 var ownership := true
+var trained_tactic: StringName = &""
+var queried_actions := {}
+var adapter_errors: Array = []
 
 func _run() -> void:
 	if OS.get_cmdline_user_args().has("--saved-runtime"):
@@ -18,9 +21,12 @@ func _run() -> void:
 		return
 	for arg in OS.get_cmdline_user_args():
 		if arg.begins_with("--level="): level = int(arg.trim_prefix("--level="))
+		if arg.begins_with("--tactic="): trained_tactic = StringName(arg.trim_prefix("--tactic="))
 	seed(20261024)
 	if await _setup_mixed():
-		if OS.get_cmdline_user_args().has("--pursuit"):
+		if not trained_tactic.is_empty():
+			await _trained_tactic_case()
+		elif OS.get_cmdline_user_args().has("--pursuit"):
 			await _pursuit_case()
 		elif OS.get_cmdline_user_args().has("--support-burst"):
 			await _support_burst_case()
@@ -36,6 +42,8 @@ func _run() -> void:
 		if OS.get_cmdline_user_args().has("--extension"):
 			var probe = shooters[0].get_node("AI").actions.get(&"trained_extension_probe")
 			check(probe != null and probe.ticks > 0 and shooters[0].shot_count > 0, "A newly trained action executes and fires through the unchanged coordinator protocol")
+		if OS.get_cmdline_user_args().has("--all-trained"):
+			check(adapter_errors.is_empty() and actors.all(func(actor): return actor.get_node("AI").actions.keys().all(func(id): return queried_actions.has([actor.get_instance_id(), id]))), "Every installed default, trained and included action participates without an unsupported adapter")
 		check(ownership, "Members keep installed roles and squad authority")
 		check(clearance >= 0.64, "Bodies preserve physical collision clearance")
 		costs.sort()
@@ -60,12 +68,17 @@ func _setup_mixed() -> bool:
 	squad.profile = squad.profile.duplicate(true)
 	squad.profile.level = level
 	actors = scene.get_node("Arena").find_children("*", "CharacterBody3D", true, false).filter(func(actor): return actor.has_node("AI"))
+	if not trained_tactic.is_empty():
+		var count := 2 if trained_tactic == &"attack_position" else 1
+		for actor in actors.slice(count): actor.free()
+		actors.resize(count)
 	melee_members.clear()
 	shooters.clear()
 	hits.clear()
 	for index in actors.size():
 		var actor = actors[index]
 		var close := index > 0 and not OS.get_cmdline_user_args().has("--ranged") and not OS.get_cmdline_user_args().has("--support-burst")
+		if not trained_tactic.is_empty(): close = trained_tactic == &"melee_cover"
 		actor.get_node("UnitType").profile = load("res://resources/enemy/units/%s.tres" % ("melee" if close else "ranged"))
 		actor.weapon = load("res://resources/weapons/enemy_test_%s.tres" % ("melee" if close else "pistol")).duplicate(true)
 		actor.weapon.fire_mode = 2 if close else 0
@@ -73,6 +86,11 @@ func _setup_mixed() -> bool:
 		var training = load("res://resources/enemy/training/arena.tres").duplicate(true)
 		training.selected_tactics.clear()
 		training.selected_tactics.append(&"cooperate" if close else &"suppression")
+		if not trained_tactic.is_empty(): training.selected_tactics.assign([trained_tactic])
+		if trained_tactic == &"covering_retreat": training.tactics.stress_tolerance = 0.15
+		if OS.get_cmdline_user_args().has("--all-trained"):
+			for definition in actor.get_node("UnitType").profile.tactical_actions:
+				if not training.selected_tactics.has(definition.action_id): training.selected_tactics.append(definition.action_id)
 		if close and OS.get_cmdline_user_args().has("--pursuit") and not OS.get_cmdline_user_args().has("--untrained"): training.selected_tactics.append(&"melee_rush")
 		if index == 0 and OS.get_cmdline_user_args().has("--extension"):
 			var unit = actor.get_node("UnitType").profile.duplicate(true)
@@ -95,6 +113,12 @@ func _setup_mixed() -> bool:
 			if target == player: hits[actor.get_instance_id()] += 1)
 	root.add_child(scene)
 	current_scene = scene
+	for actor in actors:
+		actor.get_node("AI").context.command_query_requested.connect(func(request):
+			if request.kind != &"prepare": return
+			for id in request.result.get("reasons", {}):
+				queried_actions[[actor.get_instance_id(), id]] = true
+				if request.result.reasons[id] in [&"command_adapter_missing", &"non_value_offer"]: adapter_errors.append([id, request.result.reasons[id]]))
 	arena = scene.get_node("Arena")
 	player = scene.get_node("Player")
 	player.set_physics_process(false)
@@ -117,6 +141,13 @@ func _setup_mixed() -> bool:
 	if OS.get_cmdline_user_args().has("--ranged"):
 		player.global_position = arena.to_global(Vector3(1, 0, 2))
 		starts = [Vector3(-0.3, 0, -3), Vector3(1, 0, -3), Vector3(2.3, 0, -3)]
+	if not trained_tactic.is_empty():
+		player.global_position = arena.to_global(Vector3(4, 0, -2.5))
+		starts = [Vector3(9, 0, -4), Vector3(-2, 0, -4)] if trained_tactic == &"attack_position" else [Vector3(8, 0, 1)]
+		if trained_tactic == &"covering_retreat": starts = [Vector3(9, 0, -4)]
+		if trained_tactic == &"suppression":
+			player.global_position = arena.to_global(Vector3(6.6, 0, -0.7921))
+			starts = [Vector3(8.9, 0, -0.7921)]
 	for index in actors.size():
 		actors[index].global_position = arena.to_global(starts[index])
 		actors[index].look_at(player.global_position)
@@ -128,8 +159,88 @@ func _setup_mixed() -> bool:
 	check(valid, "Fixture: grounded, navigable, assembled members obtain real sight and accepted tasks")
 	valid = valid and shooters.all(func(actor): return actor.can_use_firearms() and actor.get_node("AI").context.member_capability_snapshot().firearms) and melee_members.all(func(actor): return not actor.can_use_firearms() and actor.get_node("AI").context.command_melee_enabled())
 	check(valid, "Fixture: runtime weapons and frozen capabilities match intended attack methods")
+	if OS.get_cmdline_user_args().has("--all-trained"):
+		var ctx = actors[0].get_node("AI").context
+		var original = actors[0].get_node("Training").profile
+		var frozen: int = ctx.setting(&"tactics", &"burst_shot_count", 3)
+		original.set_setting(&"tactics", &"burst_shot_count", frozen + 1)
+		check(ctx.training != original and ctx.setting(&"tactics", &"burst_shot_count", 3) == frozen, "Shared Fire and geometry settings remain frozen when the source training resource changes")
+		original.set_setting(&"tactics", &"burst_shot_count", frozen)
 	print("MIXED FIXTURE ", JSON.stringify(actors.map(_trace)))
 	return valid
+
+func _trained_tactic_case() -> void:
+	var actor = actors[0]
+	var ai = actor.get_node("AI")
+	var ctx = ai.context
+	var start: Vector3 = actor.global_position
+	var shots: int = actor.shot_count
+	var chosen := false
+	var moved := false
+	var stages := {}
+	var wave_shots := 0
+	var tactic_shots := 0
+	var arrived_attack := false
+	var moving_shots := 0
+	var sheltered := false
+	var wave_ids := {}
+	var checked_permission := false
+	var lost_sight := false
+	var last_shots: int = actor.shot_count
+	var previous := ""
+	if trained_tactic == &"suppression":
+		player.request_crouch(true)
+		player._update_posture(player.posture_transition_seconds)
+	if trained_tactic == &"covering_retreat": actor.receive_hit(10.0, player.global_position)
+	for frame in 720:
+		if trained_tactic == &"suppression": player._update_posture(1.0 / 60.0)
+		await physics_frame
+		_sample()
+		lost_sight = lost_sight or not ctx.sees_player
+		var task: Dictionary = ctx.coordination_assignment()
+		var key := "%s/%s/%s/%s" % [task.get("action"), task.get("stage", ""), task.get("state"), ctx.sees_player]
+		if key != previous:
+			print("TACTIC TRACE ", frame, " ", key, " position=", actor.global_position, " post=", task.get("position"), " reason=", task.get("reason"), " shots=", actor.shot_count)
+			previous = key
+		if task.get("action") == trained_tactic and task.get("accepted", false):
+			chosen = true
+			tactic_shots += actor.shot_count - last_shots
+			if actor.velocity.length() > 0.2: moving_shots += actor.shot_count - last_shots
+			moved = moved or actor.global_position.distance_to(start) > 0.4
+			if trained_tactic == &"attack_position" and actor.global_position.distance_to(task.position) < 0.1:
+				arrived_attack = ai.actions[trained_tactic]._unusable_reason(actor.global_position).is_empty()
+			stages[task.get("stage", &"")] = true
+			if task.get("role") == &"shelter" and actor.global_position.distance_to(task.position) < 0.18:
+				sheltered = sheltered or preload("res://scripts/enemy/services/squad_defense.gd").protected(ctx, task.defense_post, ctx.last_known_position) and (not task.defense_post.crouch or actor.is_crouching())
+			if task.get("attack") == &"frozen_personal_evidence":
+				var id: int = task.fire_evidence.id
+				wave_ids[id] = true
+				wave_shots += actor.shot_count - last_shots
+				if not checked_permission:
+					checked_permission = true
+					var legitimate: bool = ctx.validate_command_offer(task, ctx.member_capability_snapshot())
+					var rejected := true
+					for field in ["shared", "id", "aim_position", "valid_until"]:
+						var forged: Dictionary = task.duplicate(true)
+						if field == "shared": forged.fire_evidence.shared = true
+						elif field == "aim_position": forged.fire_evidence.aim_position += Vector3.RIGHT * 0.1
+						else: forged.fire_evidence[field] += 1
+						rejected = rejected and not ctx.validate_command_offer(forged, ctx.member_capability_snapshot())
+					check(legitimate and rejected, "Commit checks reject shared, substituted and extended memory-fire evidence")
+					check(ctx.command_memory_fire_authorized({"owner": trained_tactic, "evidence_id": id, "point": task.fire_evidence.aim_position}) and not ctx.command_memory_fire_authorized({"owner": trained_tactic, "evidence_id": id + 1, "point": task.fire_evidence.aim_position}), "The original Fire path requires the accepted owner and consumed evidence")
+		last_shots = actor.shot_count
+	check(chosen, "The trained tactic is selected and accepted through ordinary squad planning")
+	if trained_tactic == &"attack_position":
+		check(moved and arrived_attack and tactic_shots > 0, "Attack placement reaches a valid firing region and actually shoots under that executor")
+	elif trained_tactic == &"melee_cover":
+		check(moved and stages.has(&"approach") and stages.has(&"exit") and hits[actor.get_instance_id()] > 0, "Cover approach reaches its exit and continues to real melee hits")
+	elif trained_tactic == &"covering_retreat":
+		check(moved and moving_shots > 0 and sheltered, "Covering retreat really moves, fires and reaches protected posture")
+	elif trained_tactic == &"suppression":
+		check(lost_sight and player.is_crouching(), "Real low-cover posture removes personal sight")
+		check(wave_shots > 0 and wave_shots <= 3 and wave_ids.size() == 1, "Real sight loss allows one finite wave at its original evidence")
+		check(not ai.actions[trained_tactic].active, "The finite wave ends without restarting consumed evidence")
+	print("TACTIC METRICS stages=", stages, " shots=", actor.shot_count - shots, " moving_shots=", moving_shots, " memory_shots=", wave_shots, " waves=", wave_ids.size(), " hits=", hits)
 
 func _pursuit_case() -> void:
 	var burst_frames := {}

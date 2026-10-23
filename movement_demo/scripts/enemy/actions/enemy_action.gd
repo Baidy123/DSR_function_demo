@@ -216,6 +216,7 @@ func command_site_offer(query: Dictionary, site: Dictionary) -> Dictionary:
 func validate_command_offer(query: Dictionary, offer: Dictionary) -> Dictionary:
 	var valid_offer: bool = is_enabled() and offer.get("action") == action_id and command_roles().has(offer.get("role"))
 	valid_offer = valid_offer and query.profile.get("actions", {}).has(action_id)
+	valid_offer = valid_offer and query.profile.get("actions", {}).get(action_id, {}).get("attack_modes", [&"personal_sight"]).has(offer.get("attack", &"personal_sight"))
 	return {"valid": valid_offer, "reason": &"" if valid_offer else &"executor_unavailable"}
 
 func command_default_assignment() -> bool:
@@ -236,7 +237,7 @@ func freeze_command_capability() -> Dictionary:
 		var value = context.setting(config_section, key, null, definition.parameters if definition != null else {})
 		if not value is Object: values[key] = value
 	_battle_settings = values.duplicate(true)
-	return {"roles": command_roles(), "parameters": values, "default_assignment": command_default_assignment(), "implementation": get_script().resource_path,
+	return {"roles": command_roles(), "parameters": values, "attack_modes": [&"personal_sight"], "default_assignment": command_default_assignment(), "implementation": get_script().resource_path,
 		"required_capabilities": definition.required_capabilities.duplicate(),
 		"basis": "installed:%s;unit-capabilities:%s;equipment-validated" % [action_id, definition.required_capabilities]}
 
@@ -265,6 +266,19 @@ func begin_command(task: Dictionary) -> bool:
 	_command_path_check = 0.0
 	_command_attack_blocked = 0.0
 	return true
+
+## Updating the same approved finite step does not restart its action timers.
+func continue_command(task: Dictionary) -> void:
+	var route_changed: bool = command.get("route") != task.get("route")
+	command = task.duplicate(true)
+	plan.destination = {"position": task.position, "path": task.route}
+	if route_changed:
+		_command_index = 1
+		_command_approach_index = -1
+		for index in task.route.size():
+			if context._horizontal_distance_between(task.route[index], task.get("staging_position", Vector3.INF)) <= 0.05:
+				_command_approach_index = index
+				break
 
 func command_look_position(fallback: Vector3 = Vector3.INF) -> Vector3:
 	if not fallback.is_finite(): fallback = command.get("look_position", actor.global_position)
@@ -299,7 +313,7 @@ func execute_command(delta: float, visible: bool) -> Dictionary:
 	# A replacement inspection may end beside the body while requiring a
 	# different preparation post first. Proximity cannot skip that route leg.
 	if command.role == &"search" and _command_index <= _command_approach_index: arrived = false
-	if arrived and visible and not actor.can_use_firearms() and command.role in [&"engage", &"flank"]:
+	if arrived and visible and not actor.can_use_firearms() and command.role in [&"engage", &"flank"] and command.get("contact_post", true):
 		# Test geometry facing the visible target, independently of actual
 		# turning, cooldown and recovery. Those are valid reasons to hold.
 		var toward: Vector3 = context.last_known_position - actor.global_position

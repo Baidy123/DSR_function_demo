@@ -222,7 +222,7 @@ static func _candidate(context, profile: Dictionary, body: Dictionary, site: Dic
 			# actual fire still requires a fresh personal visible aim point.
 			if not aim.is_finite(): aim = objective.position + Vector3.UP
 			if origin.distance_to(aim) > profile.weapon.fire_range or not context.fire.has_clear_firing_lane(origin, aim - origin, origin.distance_to(aim)): return {}
-		else:
+		elif not site.get("approach_only", false):
 			# Melee members receive actual contact-range posts from the same
 			# known target, never a ranged support label.
 			point = Combat.melee_position(context, profile, body, point, objective.position)
@@ -289,7 +289,7 @@ static func _candidate(context, profile: Dictionary, body: Dictionary, site: Dic
 	for key in ["defense_id", "defense_post", "stress_tolerance", "defense_proactive"]:
 		if site.has(key): result[key] = site[key]
 	if site.has("overwatch_for"): result.overwatch_for = site.overwatch_for
-	if phase == &"contact" and not profile.firearms and role in [&"engage", &"flank"]: result.contact_post = true
+	if not profile.firearms and role in [&"engage", &"flank"]: result.contact_post = phase == &"contact" and not site.get("approach_only", false)
 	if role == &"search" and objective.get("source") in [&"visual", &"shared_visual"]:
 		# Reuse the frozen, time-limited pursuit setting on long approach legs.
 		# Hints and arrival cannot renew the original visual evidence timestamp.

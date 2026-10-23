@@ -18,7 +18,7 @@ static func task(identity: Dictionary, proposal: Dictionary, now: float) -> Dict
 		"expires_at": now + TASK_SECONDS, "check_at": now + PERIOD,
 		"waiting_for": [], "reason": &"", "progress": 0.0,
 		"completion": &"observed" if value.get("role") == &"search" else &"arrived",
-		"failure_exit": &"coordinator_replan", "attack": &"personal_sight"}, true)
+		"failure_exit": &"coordinator_replan", "attack": value.get("attack", &"personal_sight")}, true)
 	if value.get("role") == &"search":
 		value.observation_mode = value.get("observation_mode", &"inspect")
 		value.observation_samples = value.get("observation_samples", PackedVector3Array([value.look_position]))

@@ -16,6 +16,96 @@ var _stuck: float = 0.0
 var _cells_signature := -1
 var _cells: Array = []
 
+func command_roles() -> Array[StringName]:
+	return [&"engage"] if actor.can_use_firearms() else []
+
+func command_default_assignment() -> bool:
+	return false
+
+func prepare_command_offers(query: Dictionary, cursor: Dictionary, deadline_usec: int) -> Dictionary:
+	if query.objective.phase != &"contact" or not query.body.visible or query.body.reloading or query.body.rounds <= 0:
+		return {"done": true, "offers": [], "reason": &"no_visible_attack"}
+	var work := cursor.duplicate(true)
+	if work.is_empty():
+		var regions: Array = context.spatial.regions()
+		regions.sort_custom(func(a, b): return query.body.position.distance_squared_to(a.global_position) < query.body.position.distance_squared_to(b.global_position))
+		var ids := PackedInt64Array()
+		for region in regions: ids.append(region.get_instance_id())
+		work = {"regions": ids, "region_index": 0, "positions": PackedVector3Array(), "index": 0, "count": 0, "checked": 0}
+	if work.index >= work.positions.size() and work.region_index < work.regions.size():
+		var region = instance_from_id(work.regions[work.region_index])
+		work.region_index += 1
+		work.index = 0
+		work.positions = PackedVector3Array()
+		if is_instance_valid(region):
+			# Refine a bounded nearby batch, not every cell of every cover in one call.
+			var cells: Array[Dictionary] = region.get_attack_cells().filter(func(cell): return query.body.position.distance_to(cell.position) <= 10.0)
+			cells.sort_custom(func(a, b): return query.body.position.distance_squared_to(a.position) < query.body.position.distance_squared_to(b.position))
+			cells = selection.attack_geometry.refine(context, region, context.known_target_point(query.objective.position), cells.slice(0, 24))
+			cells.sort_custom(func(a, b): return query.body.position.distance_squared_to(a.position) < query.body.position.distance_squared_to(b.position))
+			for cell in cells.slice(0, 32): work.positions.append(cell.position)
+		return {"offers": [], "next_cursor": work, "done": false}
+	var offers: Array[Dictionary] = []
+	if work.index < work.positions.size() and Time.get_ticks_usec() < deadline_usec:
+		var point := {"position": work.positions[work.index], "cover_id": work.regions[work.region_index - 1]}
+		work.index += 1
+		work.checked += 1
+		var cover = instance_from_id(point.cover_id)
+		if is_instance_valid(cover) and context.navigation_region.is_ancestor_of(cover):
+			point.body = cover
+			var assessment := _assess_position(point)
+			if not assessment.is_empty():
+				var site := {"position": point.position, "role": &"engage", "look_position": query.objective.position,
+					"prepared_route": assessment.destination.path, "site_key": "attack:%s:%s" % [point.cover_id, point.position]}
+				var offer := super.command_site_offer(query, site)
+				if not offer.is_empty() and not offer.get("retry_detour", false):
+					offer.attack_cover_id = point.cover_id
+					offer.estimate = maxf(0.0, float(assessment.unavailable)) + maxf(0.0, float(assessment.exposed))
+					offer.tactical.protected = true
+					offers.append(offer)
+					work.count += 1
+	return {"offers": offers, "next_cursor": work, "done": (work.index >= work.positions.size() and work.region_index >= work.regions.size()) or work.count >= 6 or work.checked >= 96}
+
+func validate_command_offer(query: Dictionary, offer: Dictionary) -> Dictionary:
+	var result := super.validate_command_offer(query, offer)
+	var cover = instance_from_id(offer.get("attack_cover_id", 0))
+	result.valid = result.valid and query.body.visible and is_instance_valid(cover) and context.navigation_region.is_ancestor_of(cover)
+	if result.valid:
+		var target: Vector3 = context.known_target_point(context.last_known_position)
+		if cover.is_low_cover(): target = selection.low_cover_attack_target(offer.position, context.known_target_points(context.last_known_position))
+		result.valid = target.is_finite() and selection.assess_attack_point(offer.position, cover, target, target).usable
+	return result
+
+func begin_command(task: Dictionary) -> bool:
+	if not super.begin_command(task): return false
+	active_cover = instance_from_id(task.get("attack_cover_id", 0)) as StaticBody3D
+	destination = task.position
+	_query_target = task.look_position
+	_using_hit_memory = false
+	_remaining = float(task.get("travel_seconds", 0.0)) + 3.0
+	_recheck = 0.0
+	phase = Phase.MOVE
+	return is_instance_valid(active_cover)
+
+func command_work(delta: float, visible: bool, arrived: bool) -> Dictionary:
+	_recheck -= delta
+	if _recheck <= 0.0:
+		_recheck = 0.25
+		if not _unusable_reason(actor.global_position if arrived else command.position).is_empty():
+			context.report_command(command, &"blocked", {"reason": &"attack_position_invalid"})
+			return {}
+	if arrived:
+		phase = Phase.HOLD
+		if not visible:
+			context.report_command(command, &"complete")
+			return {}
+	else:
+		_remaining -= delta
+		if _remaining <= 0.0:
+			context.report_command(command, &"blocked", {"reason": &"attack_position_timeout"})
+			return {}
+	return {"fire": {"owner": action_id, "mode": &"visible"}} if visible else {}
+
 
 
 func is_active() -> bool:

@@ -10,6 +10,137 @@ var _entry_position := Vector3.INF
 var _planned_exit := Vector3.INF
 var _charge_remaining := 0.0
 var _low_hide_remaining := -1.0
+var _command_program: Array = []
+var _command_stage: StringName = &""
+var _command_hide_elapsed := 0.0
+
+func command_roles() -> Array[StringName]:
+	return [&"engage"] if actor.weapon != null and actor.weapon.melee_enabled else []
+
+func command_default_assignment() -> bool:
+	return false
+
+func freeze_command_capability() -> Dictionary:
+	var result := super.freeze_command_capability()
+	for key in {&"run_speed_multiplier": 2.0, &"low_cover_hide_seconds": 0.6, &"watch_seconds": 2.0}:
+		_battle_settings[StringName("cover_" + String(key))] = context.setting(&"cover", key, {&"run_speed_multiplier": 2.0, &"low_cover_hide_seconds": 0.6, &"watch_seconds": 2.0}[key])
+	result.parameters = _battle_settings.duplicate(true)
+	return result
+
+func prepare_command_offers(query: Dictionary, cursor: Dictionary, deadline_usec: int) -> Dictionary:
+	var previous: Dictionary = query.previous
+	if previous.get("action") == action_id and previous.has("execution_data") and previous.get("state") != &"blocked":
+		var stage: StringName = previous.stage
+		if previous.state == &"complete":
+			if stage == &"approach": stage = &"exit"
+			elif stage == &"exit" and query.body.visible: stage = &"contact"
+			else: return {"done": true, "offers": [], "reason": &"advance_finished"}
+		var offer := _command_advance_offer(query, previous.execution_data, stage)
+		return {"done": true, "offers": [offer] if not offer.is_empty() else []}
+	if query.objective.phase != &"contact" or not _has_recent_target() or context.melee.can_request(query.body.visible):
+		return {"done": true, "offers": [], "reason": &"no_approach_window"}
+	var work := cursor.duplicate(true)
+	if work.is_empty():
+		var points: Array = []
+		for region in context.spatial.regions():
+			for point: Dictionary in region.get_candidates(query.objective.position + Vector3.UP * 0.8, query.body.position):
+				if query.body.position.distance_to(point.hide) > 10.0: continue
+				points.append({"cover_id": region.get_instance_id(), "hide": point.hide, "crouch": point.get("crouch", false)})
+		points.sort_custom(func(a, b): return query.body.position.distance_squared_to(a.hide) < query.body.position.distance_squared_to(b.hide))
+		work = {"points": points, "index": 0, "count": 0}
+	var offers: Array[Dictionary] = []
+	if work.index < work.points.size() and Time.get_ticks_usec() < deadline_usec:
+		var data: Dictionary = work.points[work.index].duplicate(true)
+		work.index += 1
+		var cover = instance_from_id(data.cover_id)
+		if is_instance_valid(cover) and not _recently_advanced(cover):
+			var destination := {"body": cover, "hide": data.hide, "crouch": data.crouch}
+			var incoming: PackedVector3Array = selection._path_to(query.body.position, data.hide)
+			var exit := _choose_exit(_exit_options(destination, incoming, query.body.position))
+			if not exit.is_empty():
+				destination.exit = exit.position
+				var candidate := _advance_candidate(destination, false)
+				if not candidate.is_empty():
+					data.exit = exit.position
+					data.target = query.objective.position
+					data.plan_key = [action_id, context.memory_generation, data.cover_id, data.hide, context.evidence_elapsed_seconds]
+					var offer := _command_advance_offer(query, data, &"approach")
+					if not offer.is_empty():
+						offer.estimate = float(candidate.outcome.unavailable_seconds) + float(candidate.outcome.exposed_seconds)
+						offers.append(offer)
+						work.count += 1
+	return {"offers": offers, "next_cursor": work, "done": work.index >= work.points.size() or work.count >= 4}
+
+func _command_advance_offer(query: Dictionary, data: Dictionary, stage: StringName) -> Dictionary:
+	var cover = instance_from_id(data.cover_id)
+	if not is_instance_valid(cover) or not context.navigation_region.is_ancestor_of(cover): return {}
+	if stage == &"approach" and not _has_recent_target(): return {}
+	var point: Vector3 = data.hide if stage == &"approach" else data.exit
+	if stage == &"contact":
+		if not query.body.visible: return {}
+		var contact: PackedVector3Array = Approach.contact_path(context)
+		if contact.is_empty(): return {}
+		point = contact[-1]
+	var site := {"position": point, "role": &"engage", "look_position": context.last_known_position if query.body.visible else data.target,
+		"approach_only": stage != &"contact", "site_key": "advance:%s:%s:%s" % [data.cover_id, stage, point]}
+	var offer := preload("res://scripts/enemy/services/enemy_search_formation.gd").candidate(context, query.profile, query.body, site, query.objective, query.previous, action_id)
+	if offer.is_empty() or offer.get("retry_detour", false): return {}
+	var speed := _entry_speed() if stage == &"approach" else _exit_speed()
+	var seconds: float = selection._path_length_from_path(offer.route) / maxf(0.1, actor.move_speed * speed)
+	offer.speed_multiplier = speed
+	offer.travel_seconds = seconds
+	offer.estimate = seconds + float(offer.tactical.get("exposure", 0.0))
+	offer.stage = stage
+	offer.execution_data = data.duplicate(true)
+	offer.plan_key = data.plan_key.duplicate()
+	offer.allowed_phases = [&"contact"] if stage == &"contact" else [&"contact", &"search"]
+	var duration: float = _charge_seconds() if stage == &"contact" else seconds + float(_battle_settings.get(&"cover_watch_seconds", 2.0)) + 3.0
+	offer.stage_until = context.evidence_elapsed_seconds + duration
+	if query.previous.get("plan_key", []) == offer.plan_key and query.previous.get("stage") == stage:
+		offer.stage_until = query.previous.stage_until
+	if float(offer.stage_until) <= context.evidence_elapsed_seconds: return {}
+	return offer
+
+func validate_command_offer(query: Dictionary, offer: Dictionary) -> Dictionary:
+	var result := super.validate_command_offer(query, offer)
+	var data: Dictionary = offer.get("execution_data", {})
+	var cover = instance_from_id(data.get("cover_id", 0))
+	result.valid = result.valid and is_instance_valid(cover) and context.navigation_region.is_ancestor_of(cover) and float(offer.get("stage_until", -INF)) > context.evidence_elapsed_seconds
+	if result.valid and offer.stage == &"contact": result.valid = query.body.visible
+	return result
+
+func begin_command(task: Dictionary) -> bool:
+	if _command_program != task.get("plan_key", []) or _command_stage != task.get("stage", &""): _command_hide_elapsed = 0.0
+	_command_program = task.get("plan_key", []).duplicate()
+	_command_stage = task.get("stage", &"")
+	return super.begin_command(task)
+
+func command_work(delta: float, visible: bool, arrived: bool) -> Dictionary:
+	var data: Dictionary = command.execution_data
+	var cover = instance_from_id(data.cover_id)
+	if not is_instance_valid(cover) or context.evidence_elapsed_seconds >= float(command.stage_until):
+		context.report_command(command, &"blocked", {"reason": &"advance_expired", "failure_scope": &"action"})
+		return {"direction": Vector3.ZERO}
+	var crouch: bool = command.stage == &"approach" and arrived and data.crouch
+	if not arrived: return {"crouch": false}
+	var complete := false
+	if command.stage == &"approach":
+		if not crouch or actor.is_crouching(): _command_hide_elapsed += delta
+		complete = _command_hide_elapsed >= (_low_hide_seconds() if crouch else 0.0)
+		if complete:
+			_advanced_cover = weakref(cover)
+			_advanced_target = data.target
+			_advance_until = context.evidence_elapsed_seconds + float(_setting(&"cover_memory_seconds", 5.0))
+			_advance_generation = context.memory_generation
+	elif command.stage == &"exit":
+		_command_hide_elapsed += delta
+		complete = actor.body_motion.amount <= 0.0001 and (visible or _command_hide_elapsed >= float(_battle_settings.get(&"cover_watch_seconds", 2.0)))
+	elif command.stage == &"contact": complete = true
+	context.report_command(command, &"complete" if complete else &"executing")
+	return {"crouch": crouch}
+
+func _entry_speed() -> float:
+	return float(_battle_settings.get(&"cover_run_speed_multiplier", 2.0)) if context.commanded() else transfer.run_speed_multiplier
 
 func evaluation_channel() -> StringName:
 	return &"melee_cover_geometry"
@@ -159,6 +290,7 @@ func _is_low_cover(body: Object) -> bool:
 	return is_instance_valid(body) and body.is_low_cover()
 
 func _low_hide_seconds() -> float:
+	if context.commanded(): return maxf(0.0, float(_battle_settings.get(&"cover_low_cover_hide_seconds", 0.6)))
 	return maxf(0.0, float(context.setting(&"cover", &"low_cover_hide_seconds", 0.6)))
 
 func _tick_low_hide(delta: float) -> Dictionary:
@@ -235,7 +367,7 @@ func _exit_assessment(destination: Dictionary, point: Vector3, incoming: PackedV
 	path.append_array(outgoing)
 	path.append_array(contact)
 	var speed: float = maxf(0.01, actor.move_speed)
-	var entering: float = selection._path_length_from_path(incoming) / (speed * maxf(0.1, transfer.run_speed_multiplier))
+	var entering: float = selection._path_length_from_path(incoming) / (speed * maxf(0.1, _entry_speed()))
 	var emerging: float = selection._path_length_from_path(outgoing) / (speed * _exit_speed())
 	var remaining: float = selection._path_length_from_path(contact)
 	var fast_distance := minf(remaining, speed * _exit_speed() * _charge_seconds())
@@ -247,7 +379,7 @@ func _exit_assessment(destination: Dictionary, point: Vector3, incoming: PackedV
 	var posture_exposure := 0.0
 	if low:
 		# 计入真实蹲稳、起身，以及本动作原有的有限奔跑；不预支独立突进。
-		var entry_route: Dictionary = context.spatial.assess_route(context, incoming, context.last_known_position, transfer.run_speed_multiplier, 0.0)
+		var entry_route: Dictionary = context.spatial.assess_route(context, incoming, context.last_known_position, _entry_speed(), 0.0)
 		entering = entry_route.seconds
 		emerging = _low_hide_seconds() + actor.posture_seconds * 2.0
 		var available: float = maxf(0.0, horizon - entering)
@@ -353,6 +485,11 @@ func hold_released() -> bool:
 	return context.observed_reload_window() > 0.0 or context.melee.can_request(context.sees_player)
 
 func state_label() -> String:
+	if context.commanded() and not command.is_empty():
+		if command.get("stage") == &"contact": return "出掩体奔跑接敌"
+		if command.get("stage") == &"exit": return "出掩体观察接敌方向"
+		if actor.is_crouching(): return "半身掩体后蹲藏接敌"
+		return "掩体接近"
 	if _is_low_cover(transfer.active_cover_body):
 		if transfer.phase == transfer.Phase.HIDE: return "半身掩体后蹲藏接敌"
 		if transfer.phase == transfer.Phase.PEEK_OUT: return "半身掩体后起身观察"

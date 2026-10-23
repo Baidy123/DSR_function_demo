@@ -249,6 +249,10 @@ func _start_utility_option(candidate: Dictionary, visible: bool) -> void:
 
 func _capture_battle_capabilities() -> void:
 	_battle_profile_serial += 1
+	# Shared perception, geometry and Fire settings use the same battle copy as
+	# action parameters. Editor changes take effect on the next assembly.
+	if context.commanded() and context.training != null:
+		context.training = context.training.duplicate(true)
 	var installed := {}
 	for id in actions:
 		if actions[id].is_enabled(): installed[id] = actions[id].freeze_command_capability()
@@ -291,6 +295,13 @@ func _update_command_decision() -> void:
 	var next = actions.get(task.get("action"))
 	if next == null or not context.validate_command_post(task, context.member_capability_snapshot()) or not context.validate_command_offer(task, context.member_capability_snapshot()):
 		context.report_command(task, &"blocked", {"reason": &"executor_unavailable"})
+		return
+	if current_action == next and not task.get("plan_key", []).is_empty() and next.command.get("plan_key", []) == task.plan_key and next.command.get("stage", &"") == task.get("stage", &""):
+		if context.accept_command(task):
+			next.continue_command(task)
+			utility_current = next.plan
+			command_decision_count += 1
+		else: context.report_command(task, &"blocked", {"reason": &"accept_failed"})
 		return
 	_cancel_utility_execution(&"command_replaced")
 	var started: bool = next.begin_command(task)

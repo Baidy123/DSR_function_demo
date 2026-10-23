@@ -239,6 +239,9 @@ func reset() -> void:
 
 func finish(visible: bool) -> void:
 	reset()
+	if context.commanded() and not command.is_empty():
+		context.report_command(command, &"complete", {"reason": &"fire_window_finished"})
+		return
 	_running = false
 	context.resume_after_action(visible, context.last_known_position)
 
@@ -247,16 +250,86 @@ func on_event(event: StringName, _data: Dictionary) -> void:
 	if event == &"damage" and _running: finish(context.sees_player)
 
 func _point_preference(basis: Dictionary) -> float:
-	return maxf(0.0, float(context.setting(&"suppression", &"low_cover_point_preference", 1.0))) if basis.get("low_cover_context", false) else 0.0
+	return maxf(0.0, float(_setting(&"low_cover_point_preference", 1.0))) if basis.get("low_cover_context", false) else 0.0
 
 func preference_credit() -> float:
 	return _point_preference(_basis()) if _current_mode() == &"point" else 0.0
 
 func state_label() -> String:
+	if context.commanded() and command.get("fire_mode") == &"support": return "掩护射击"
 	return "近距压制" if _reason == &"close" else "掩护射击" if _reason == &"support" else "消失点短促压制"
 
 func command_roles() -> Array[StringName]:
-	return [&"support"] if actor.can_use_firearms() else []
+	return [&"support", &"engage"] if actor.can_use_firearms() else []
 
-func command_work(_delta: float, visible: bool, _arrived: bool) -> Dictionary:
-	return {"fire": {"owner": action_id, "mode": &"visible", "support_intent": true}} if visible and actor.can_use_firearms() else {}
+func command_runtime_state() -> Dictionary:
+	_sync_generation()
+	return {"active": active, "remaining": remaining, "shots_remaining": _shots_remaining}
+
+func freeze_command_capability() -> Dictionary:
+	var result := super.freeze_command_capability()
+	result.attack_modes.append(&"frozen_personal_evidence")
+	return result
+
+func command_site_offer(query: Dictionary, site: Dictionary) -> Dictionary:
+	if site.role != &"support": return {}
+	var offer := super.command_site_offer(query, site)
+	if not offer.is_empty() and not offer.get("retry_detour", false): offer.fire_mode = &"support"
+	return offer
+
+func prepare_command_offers(query: Dictionary, cursor: Dictionary, deadline_usec: int) -> Dictionary:
+	var batch := super.prepare_command_offers(query, cursor, deadline_usec)
+	var next: Dictionary = batch.get("next_cursor", {}).duplicate(true)
+	if not next.get("personal_checked", false) and Time.get_ticks_usec() < deadline_usec:
+		next.personal_checked = true
+		var mode: StringName = _current_mode() if active else (&"visible" if query.body.visible else &"point")
+		var basis: Dictionary = _evidence if active else (context.cooperation_target_evidence() if query.body.visible else context.suppression_basis())
+		var purpose := _purpose(mode, basis)
+		var preview := _preview(mode, basis) if not purpose.is_empty() else {}
+		if not preview.is_empty() and ((mode == &"visible") == query.body.visible):
+			var duration: float = remaining if active else minf(duration_min, float(basis.valid_until) - context.evidence_elapsed_seconds)
+			var prediction := _support_prediction(mode, preview, duration)
+			if float(prediction.support_seconds) > 0.0:
+				var offer := {"action": action_id, "role": &"engage", "position": query.body.position,
+					"route": PackedVector3Array([query.body.position]), "look_position": basis.position,
+					"site_key": "fire-window:%s:%s" % [basis.get("id", 0), mode], "objective_id": query.objective.objective_id,
+					"target_id": context.cooperation_target_id(), "fire_mode": mode, "fire_evidence": basis.duplicate(true), "fire_reason": purpose.reason,
+					"attack": &"frozen_personal_evidence" if mode == &"point" else &"personal_sight",
+					"fire_radius": target_radius, "plan_key": [action_id, context.memory_generation, basis.get("id", 0), mode],
+					"allowed_phases": [&"contact", &"search"], "travel_seconds": 0.0,
+					"estimate": maxf(0.0, context.utility_horizon_seconds - float(prediction.support_seconds) - (_point_preference(basis) if mode == &"point" else 0.0)),
+					"tactical": {"sustainable_fire": true, "travel": 0.0}}
+				batch.offers.append(offer)
+	batch.next_cursor = next
+	batch.done = batch.done and next.get("personal_checked", false)
+	return batch
+
+func validate_command_offer(query: Dictionary, offer: Dictionary) -> Dictionary:
+	var result := super.validate_command_offer(query, offer)
+	if offer.get("fire_mode", &"support") == &"support": return result
+	var basis: Dictionary = offer.get("fire_evidence", {})
+	var mode: StringName = offer.get("fire_mode", &"")
+	result.valid = result.valid and ((mode == &"visible") == query.body.visible) and not _preview(mode, basis).is_empty()
+	if result.valid:
+		var purpose := _purpose(mode, basis)
+		result.valid = purpose.get("reason", &"") == offer.get("fire_reason") and not purpose.is_empty()
+		if mode == &"point":
+			result.valid = result.valid and int(basis.get("id", 0)) > 0 and basis.get("source") == &"visual_loss" and not basis.get("shared", false)
+			result.valid = result.valid and basis == context.suppression_evidence
+			result.valid = result.valid and (active and _evidence.get("id") == basis.id or context.utility_suppression_pending and context.suppression_available(basis))
+	return result
+
+func begin_command(task: Dictionary) -> bool:
+	if task.get("fire_mode", &"support") != &"support":
+		var candidate := {"plan": task.fire_mode, "target_id": task.target_id,
+			"suppression_evidence": task.fire_evidence, "suppression_reason": task.fire_reason}
+		if not begin(candidate, context.sees_player): return false
+	return super.begin_command(task)
+
+func command_work(delta: float, visible: bool, _arrived: bool) -> Dictionary:
+	if command.get("fire_mode", &"support") == &"support":
+		return {"fire": {"owner": action_id, "mode": &"visible", "support_intent": true}} if visible and actor.can_use_firearms() else {}
+	step(delta, visible)
+	if not active: return {}
+	var fire := {"owner": action_id, "mode": &"visible", "support_intent": true} if mode_visible() else {"owner": action_id, "mode": &"memory", "point": aim_point, "evidence_id": _evidence.id, "support_intent": false}
+	return {"facing": aim_point - actor.global_position, "fire": fire}

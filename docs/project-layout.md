@@ -145,3 +145,5 @@ Spatial 的路线样本层仅在同步候选比较中复用同路径已实际观
 2026-10-07 近战兵接敌扩展继续使用原三层装配：`actions/enemy_melee_cover_action.gd` 和 `enemy_melee_rush_action.gd` 是独立可选战术，定义在 `resources/enemy/actions/`，由近战兵目录提供、Training 解锁。共用只读路径与结果估计放在 `services/enemy_melee_approach.gd`；换弹观察属于原感知／记忆服务。`config/melee_tactics_settings.gd` 经训练的 `action_overrides` 配置，示例为 `resources/enemy/training/melee_assault.tres`。原协调器、选择器、评分公式、场景节点及基础挥击执行职责保持不变；完整规则见 [近战说明](gameplay/MELEE.md)。
 
 `enemy/services/enemy_tactical_map.gd` 由 `shooting_range.gd` 持有并通过环境接口提供给 Context。同区域共用一份静态模板；Spatial 在原预算内推进地图与增量搜索准备，coverage 保存个人覆盖数据。地图模板不替代身体与路线验证；玩家线索与实际观察账本归区域管理，岗位、建议和计划期限归小队协调器管理。
+
+统一提案阶段2继续在原动作内适配专用过程：`enemy_attack_position_action.gd` 按预算批次提供真实攻击区域；`enemy_melee_cover_action.gd` 提供接近/出口/有限接敌步骤；`enemy_suppression_action.gd` 提供支援、近距及本人失视的有限射击。AI 保留同一 `plan_key/stage` 的执行状态，Context 与 Fire 核对冻结本人事件权限。原 Cover 计时、身体、射击与近战执行器保持各自职责。无新增节点或动作专用协调器接口。

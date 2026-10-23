@@ -130,6 +130,9 @@ func _update_suppression_shooting(delta: float, movement_requested: bool) -> voi
 	fire_decision.reset()
 	# 压制不保留旧目击的反应进度；重新看到目标仍需遵守原反应时间。
 	fire_reaction_elapsed = 0.0
+	if context.commanded() and not context.command_memory_fire_authorized(request):
+		actor.update_weapon(delta)
+		return
 	# 仅此动作允许未目击时按记忆开火；不读取墙后玩家的当前坐标。
 	if not actor.can_use_firearms() or not context.is_arena_active() or context.player.is_dead() or context.player.is_in_dialogue:
 		actor.update_weapon(delta)
