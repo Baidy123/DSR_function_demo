@@ -124,7 +124,7 @@ func _autonomous_approach(receiver_z: float, expect_shared: bool) -> void:
 			for candidate: Dictionary in ai.utility_options:
 				if candidate.get("plan", &"") != &"shared_contact": continue
 				saw_shared_candidate = true
-				truthful_estimates = truthful_estimates and is_equal_approx(candidate.outcome.unavailable_seconds, context.utility_horizon_seconds) and is_zero_approx(candidate.breakdown.get("cooperation_seconds", -1.0))
+				truthful_estimates = truthful_estimates and is_equal_approx(candidate.outcome.unavailable_seconds, context.utility_horizon_seconds) and not candidate.breakdown.has("cooperation_seconds")
 				truthful_estimates = truthful_estimates and candidate.destination.position.distance_to(candidate.known_position) >= 3.9
 		if ai.utility_current.get("plan", &"") == &"shared_contact":
 			saw_shared_approach = true
@@ -194,12 +194,14 @@ func _frozen_report_contract() -> void:
 	a.update_evidence(STEP, a.perception.can_see_player())
 	b.update_evidence(STEP, b.perception.can_see_player())
 	check(not a.sees_player and not b.sees_player, "The frozen-report contract has genuine visual loss for both observers")
-	var frozen: Dictionary = b.fresh_shared_contact()
+	# A confirmed occluder can transition live contact into investigation. Read
+	# the frozen evidence itself to test its original event and time identity.
+	var frozen: Dictionary = b.cooperation_target_evidence()
 	# The fixture pauses individual context updates while arena physics advances.
 	# Compare timestamps in their original arena clock, not two remapped clocks.
 	var current_clock_offset: float = b.cooperation.elapsed - b.evidence_elapsed_seconds
 	var same_event: bool = not frozen.is_empty() and frozen.id == report.id and is_equal_approx(frozen.captured_at + current_clock_offset, original_capture) and is_equal_approx(frozen.valid_until + current_clock_offset, original_deadline)
-	check(same_event and frozen.position == report.position and frozen.aim_position == report.aim_position and engage.get_engagement_candidate_points() == points_before, "Hidden target movement changes neither the frozen report nor the shared engagement points")
+	check(same_event and frozen.position == report.position and frozen.aim_position == report.aim_position and (engage.evaluation_points().is_empty() or engage.get_engagement_candidate_points() == points_before), "Hidden movement preserves frozen evidence; investigation may retire the old contact posts")
 	check(not frozen.is_empty() and frozen.valid_until - b.evidence_elapsed_seconds < original_lifetime, "A remapped shared report loses real remaining lifetime instead of renewing its observation")
 	var expiry: float = maxf(0.0, float(report.valid_until) - b.evidence_elapsed_seconds) + 0.1
 	b.cooperation.advance(expiry)

@@ -9,7 +9,7 @@ var route_motion = preload("res://scripts/enemy/actions/enemy_route_motion.gd").
 var plan: Dictionary = {}
 var _running := false
 var _standalone_settings: Dictionary = {}
-var _team_offers: Array[Dictionary] = []
+var _battle_settings: Dictionary = {}
 var actor:
 	get: return context.actor if context != null else null
 var enemy:
@@ -31,6 +31,7 @@ func is_enabled() -> bool:
 	return context != null and context.can_use_action(action_id)
 
 func _setting(key: StringName, fallback: Variant) -> Variant:
+	if context != null and context.commanded() and _battle_settings.has(key): return _battle_settings[key]
 	if context != null and (context.training != null or (config_section == &"cooperation" and context.cooperation != null and context.cooperation.has_team_binding(context))):
 		return context.setting(config_section, key, fallback, definition.parameters if definition != null else {})
 	return _standalone_settings.get(key, definition.parameters.get(key, fallback) if definition != null else fallback)
@@ -43,66 +44,6 @@ func _set_setting(key: StringName, value: Variant) -> void:
 
 func collect_candidates(_visible: bool) -> Array[Dictionary]:
 	return []
-
-## Offers are already prepared pure values, never new geometry work or candidates.
-## Ordinary actions do not acquire a tactical role by implementing this protocol.
-func coordination_offers(_visible: bool) -> Array[Dictionary]:
-	return _team_offers.duplicate(true)
-
-func _team_orders_enabled() -> bool:
-	return context != null and context.cooperation != null and context.cooperation.has_team_binding(context) and context.coordinated_cooperation_enabled()
-
-## Concrete actions supply only candidates they already assessed. This helper
-## serializes the common protocol; it never creates a route or a firing fact.
-func _offer_team_candidate(candidate: Dictionary, role: StringName, summary: Dictionary) -> bool:
-	if not _team_orders_enabled() or not candidate.get("route", {}).is_empty(): return false
-	var source: Dictionary = context.coordination_source(context.cooperation_target_id())
-	var identity: Dictionary = context.coordination_offer_identity()
-	if source.is_empty() or identity.is_empty(): return false
-	var point: Vector3 = candidate.get("destination", {}).get("position", candidate.get("destination", {}).get("hide", actor.global_position))
-	if not point.is_finite(): return false
-	var key := "%s:%s:%s:%s:%s:%s" % [actor.get_instance_id(), action_id, role, candidate.get("plan", &""), point, source.evidence_id]
-	var actual: Dictionary = {}
-	for member: Dictionary in context.cooperation_snapshot().get("members", []):
-		if member.id == actor.get_instance_id(): actual = member
-	var path_summary := summary.duplicate(true)
-	path_summary.staging_position = actor.global_position
-	path_summary.staging_seconds = 0.0
-	var offer := identity.duplicate()
-	offer.merge({"scope": &"tactical", "owner_action": action_id, "offer_key": key, "role": role,
-		"position_set_key": "%s:%s" % [action_id, point], "position": point, "target_id": source.target_id, "evidence_id": source.evidence_id,
-		"path_summary": path_summary, "travel_seconds": float(summary.get("travel_seconds", 0.0)),
-		"unavailable_seconds": float(candidate.outcome.unavailable_seconds), "exposed_seconds": float(candidate.outcome.exposed_seconds),
-		"information_loss": float(candidate.outcome.get("information_loss", 0.0)),
-		"movement_possible": actor.can_move() and not actor.is_vaulting() and not actor.melee_active,
-		"fire_ready": actual.get("ready", false) and not actual.get("moving", false),
-		"measured_support_seconds": float(actual.get("support_seconds", 0.0)) if not actual.get("moving", false) else 0.0,
-		"captured_at": context.evidence_elapsed_seconds,
-		"valid_until": context.evidence_elapsed_seconds + minf(0.75, float(source.valid_until) - context.coordination_now())})
-	candidate.coordination_offer_key = key
-	candidate.coordination_role = role
-	candidate.coordination_staging_position = actor.global_position
-	_team_offers.append(offer)
-	return true
-
-func _team_assignment_valid(candidate: Dictionary) -> bool:
-	if not _team_orders_enabled(): return false
-	var assignment: Dictionary = context.coordination_assignment()
-	return assignment.get("owner_action") == action_id and assignment.get("role") == candidate.get("coordination_role") and assignment.get("allowed_offer_keys", []).has(candidate.get("coordination_offer_key", ""))
-
-func _team_wait_fire(visible: bool) -> Dictionary:
-	var fire := {"owner": action_id, "mode": &"visible"} if visible and actor.can_use_firearms() and not actor.ammo.is_reloading and actor.ammo.magazine_rounds > 0 else {}
-	return motion(Vector3.ZERO, 1.0, context.last_known_position - actor.global_position, fire)
-
-## An override confirms actual self-preservation; caller labels grant no exception.
-func assignment_escape(_candidate: Dictionary, _visible: bool) -> bool:
-	return false
-
-## Default actions promise no tactical phase, remaining window or protected segment.
-## Assigned actions override this with their actual execution progress and deadline.
-func execution_contract(visible: bool) -> Dictionary:
-	return {"valid": _running and valid(visible), "segment_boundary": true,
-		"remaining_seconds": 0.0, "progress": 0.0, "ready_for_phase": false}
 
 func validate(candidate: Dictionary, _visible: bool) -> bool:
 	if not is_enabled():
@@ -230,3 +171,84 @@ func expand_route_candidates(candidates: Array[Dictionary]) -> Array[Dictionary]
 
 func route_tick(_delta: float, _visible: bool) -> Dictionary:
 	return motion(Vector3.ZERO, route_multiplier())
+
+
+## These task kinds are declared by installed executors, never inferred from
+## a unit's display name or silently granted by the team awareness setting.
+func command_roles() -> Array[StringName]:
+	return []
+
+func freeze_command_capability() -> Dictionary:
+	var values = {}
+	var keys: Array = definition.parameters.keys() if definition != null else []
+	var settings = context.training.module(config_section) if context.training != null else null
+	if settings != null:
+		for property in settings.get_property_list():
+			if property.usage & PROPERTY_USAGE_SCRIPT_VARIABLE and not property.name in [&"section", &"overridden"] and not keys.has(property.name): keys.append(property.name)
+	for key in keys:
+		var value = context.setting(config_section, key, null, definition.parameters if definition != null else {})
+		if not value is Object: values[key] = value
+	_battle_settings = values.duplicate(true)
+	return {"roles": command_roles(), "parameters": values, "implementation": get_script().resource_path,
+		"required_capabilities": definition.required_capabilities.duplicate(),
+		"basis": "installed:%s;unit-capabilities:%s;equipment-validated" % [action_id, definition.required_capabilities]}
+
+var command: Dictionary = {}
+var _command_index = 1
+var _command_observe = 0.0
+var _command_started = false
+var _command_path_check = 0.0
+
+func begin_command(task: Dictionary) -> bool:
+	if not is_enabled() or not command_roles().has(task.get("role")): return false
+	command = task.duplicate(true)
+	plan = {"id": action_id, "plan": &"squad_command", "destination": {"position": task.position, "path": task.route}}
+	_running = true
+	_command_index = 1
+	_command_observe = 0.0
+	_command_started = false
+	_command_path_check = 0.0
+	return true
+
+## Shared route following belongs to the action, like existing route_motion.
+## Task work remains in its installed executor. No target/role is chosen here.
+func execute_command(delta: float, visible: bool) -> Dictionary:
+	var output = motion(Vector3.ZERO, 1.0, command.get("look_position", actor.global_position) - actor.global_position)
+	output.scheduled_members = context.coordinated_stationary_members()
+	if command.is_empty(): return output
+	if actor.is_vaulting() or actor.melee_active or not actor.can_move():
+		context.report_command(command, &"occupied", {"reason": &"body_busy"})
+		return output
+	var permission: Dictionary = context.command_permission(command)
+	var path: PackedVector3Array = command.route
+	while _command_index < path.size() and context._horizontal_distance(path[_command_index]) < 0.06: _command_index += 1
+	var arrived: bool = context._horizontal_distance(command.position) <= 0.08
+	if not arrived and not permission.get("allowed", false):
+		context.report_command(command, &"waiting", {"reason": permission.get("reason", &"passage"), "waiting_for": permission.get("waiting_for", [])})
+		if not command.role in [&"search", &"reload"]: output.merge(command_work(delta, visible, false), true)
+		return output
+	if not arrived:
+		var waypoint: Vector3 = path[mini(_command_index, path.size() - 1)]
+		var direction = waypoint - actor.global_position
+		direction.y = 0.0
+		_command_path_check -= delta
+		if _command_path_check <= 0.0:
+			_command_path_check = 0.2
+			var shape: CollisionShape3D = actor.get_node("CollisionShape3D")
+			if not preload("res://scripts/systems/character_geometry.gd").can_sweep(actor, actor.global_position, actor.global_position.move_toward(waypoint, 0.5), actor.get_body_height(), shape.shape.radius, true):
+				context.report_command(command, &"blocked", {"reason": &"static_obstacle"})
+				return output
+		output.direction = direction.normalized()
+		output.multiplier = minf(1.0, direction.length() / maxf(0.001, actor.move_speed * delta))
+		output.stop_position = waypoint
+		if not visible: output.facing = direction
+	output.merge(command_work(delta, visible, arrived), true)
+	if command.role in [&"patrol", &"move"] and arrived:
+		_command_observe += delta
+		if _command_observe >= (0.5 if command.role == &"patrol" else 0.0): context.report_command(command, &"complete")
+	elif command.role != &"search" and command.role != &"reload":
+		context.report_command(command, &"executing", {"progress": 1.0 if arrived else 0.0})
+	return output
+
+func command_work(_delta: float, _visible: bool, _arrived: bool) -> Dictionary:
+	return {}

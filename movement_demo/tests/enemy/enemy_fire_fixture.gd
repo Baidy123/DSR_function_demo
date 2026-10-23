@@ -79,28 +79,6 @@ static func reserve_position(context, point: Vector3, duration: float = 1.0, own
 	context.cooperation.rollback_reservation(context, token)
 	return {}
 
-## Boundary fixture only: issue an already assessed real action capability,
-## then use the normal AI validate/prepare/begin/commit transaction.
-static func accept_prepared_task(ai, candidate: Dictionary, source: Dictionary) -> bool:
-	var context = ai.context
-	var action = ai.actions[candidate.id]
-	candidate.cost = 0.0
-	var candidates: Array[Dictionary] = [candidate]
-	context.publish_coordination_offers(candidates, action.coordination_offers(context.sees_player))
-	var coordinator = context._coordinator()
-	var key: String = candidate.coordination_offer_key
-	var offers: Array = coordinator._coordination_offers.get(ai.actor.get_instance_id(), []).filter(func(offer): return offer.offer_key == key)
-	if offers.is_empty(): return false
-	var offer: Dictionary = offers[0]
-	coordinator._install_coordination_proposal(source.team_id, source, {"operation": &"new", "reason": &"execution_contract", "tactic": &"support",
-		"required_participants": [], "assignments": [{"actor_id": ai.actor.get_instance_id(), "owner_action": candidate.id, "role": offer.role,
-		"allowed_offer_keys": [key], "reserved_position_sets": [offer.position_set_key], "reserved_offers": [offer], "partner_ids": [], "beneficiary_id": 0}]})
-	var task: Dictionary = context.coordination_assignment()
-	if task.is_empty(): return false
-	candidate.coordination_assignment = task
-	ai._start_utility_option(candidate, context.sees_player)
-	return ai.current_action == action and context.coordination_assignment().get("accepted", false)
-
 static func advance_evaluation(ai, visible: bool) -> void:
 	ai.context.sees_player = visible
 	ai.context.spatial.advance_evaluation()

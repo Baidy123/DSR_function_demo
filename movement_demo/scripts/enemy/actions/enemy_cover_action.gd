@@ -47,20 +47,6 @@ func transfer_candidates() -> Array:
 			destinations.append(current)
 	return destinations
 
-func assignment_escape(candidate: Dictionary, visible: bool) -> bool:
-	# Ordinary hide is the defensive choice; peek/burst/advance remain personal
-	# tactical choices even when they carry the same cover body or urgent label.
-	if candidate.get("mode", &"") != &"": return false
-	return _defensive_cover_escape(candidate, visible)
-
-func _defensive_cover_escape(candidate: Dictionary, visible: bool) -> bool:
-	if candidate.get("id") != action_id or candidate.get("plan", &"") != &"" or not is_enabled(): return false
-	if context.recent_damage_pressure <= 0.0 and context.nearby_shot_pressure <= 0.0: return false
-	if not actor.can_move() or actor.move_speed <= 0.0: return false
-	var destination: Dictionary = candidate.get("destination", {})
-	if not destination.get("hide") is Vector3 or not destination.hide.is_finite() or not is_instance_valid(destination.get("body")): return false
-	return validate(candidate, visible)
-
 func collect_candidates(visible: bool) -> Array[Dictionary]:
 	var options: Array[Dictionary] = []
 	var threat: Vector3 = context._known_reload_threat()
@@ -209,13 +195,10 @@ func _yield_to_investigation(visible: bool) -> bool:
 	if visible or actor.is_vaulting() or actor.melee_active: return false
 	if context.recent_damage_pressure > 0.0 or context.nearby_shot_pressure > 0.0: return false
 	if not context.has_combat_contact() and context.cover_inspection_evidence().is_empty(): return false
-	return context.cooperation == null or not context.cooperation.has_visual_contact(context, context.cooperation_target_id())
+	return context.cooperation == null or not context._coordinator().has_visual_contact(context)
 
 func can_interrupt(next: Dictionary, _visible: bool) -> bool:
 	if _yield_to_investigation(_visible): return true
-	# Publication and acceptance share the same handoff rule. An ordinary cover
-	# transfer cannot hide legal team offers until after its unrelated walk ends.
-	if next.has("coordination_role") and _team_orders_enabled() and not actor.is_vaulting() and not actor.melee_active and not assignment_escape(plan, _visible): return true
 	# 有效转移执行到底，避免邻近样本轮换不断清空卡住计时和绕行次数。
 	var unavailable: bool = low_cycle.active() and (not actor.can_use_firearms() or actor.ammo.is_reloading or actor.ammo.magazine_rounds <= 0)
 	return next.get("urgent", false) or _transfer_reconsider or unavailable or (not low_cycle.committed() and transfer.phase != transfer.Phase.RUN_TO_COVER)

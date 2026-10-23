@@ -2,10 +2,6 @@ extends "res://scripts/enemy/actions/enemy_action.gd"
 
 const Approach = preload("res://scripts/enemy/services/enemy_melee_approach.gd")
 
-func assignment_escape(candidate: Dictionary, visible: bool) -> bool:
-	# Approach becomes immediate defense only when its next tick can truly strike.
-	return candidate.get("id") == action_id and is_enabled() and context.melee.can_request(visible) and validate(candidate, visible)
-
 func collect_candidates(visible: bool) -> Array[Dictionary]:
 	if not visible: return []
 	var path: PackedVector3Array = Approach.contact_path(context)
@@ -45,3 +41,9 @@ func tick(_delta: float, visible: bool) -> Dictionary:
 
 func can_interrupt(_next: Dictionary, _visible: bool) -> bool:
 	return not context.melee.is_active_for(action_id)
+
+func command_roles() -> Array[StringName]:
+	return [&"engage", &"guard", &"move"] if actor.weapon != null and actor.weapon.melee_enabled else []
+
+func command_work(_delta: float, visible: bool, _arrived: bool) -> Dictionary:
+	return {"melee": {"owner": action_id}} if visible and context.melee.can_request(visible) else {}

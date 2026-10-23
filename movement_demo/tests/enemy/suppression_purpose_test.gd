@@ -71,7 +71,6 @@ func _run() -> void:
 	await _personal_wave()
 	await _dynamic_block()
 	await _close_pressure()
-	await _purpose_binding()
 	print("SUPPRESSION PURPOSE: %d/%d passed" % [checks - failures, checks])
 	scene.queue_free()
 	await process_frame
@@ -115,7 +114,7 @@ func _shared_blind_fire() -> void:
 	observer.ammo.magazine_rounds = 1
 	check(observer.request_reload(), "观察者通过真实武器接口请求换弹")
 	await _tick()
-	check(not ai.context.cooperation_snapshot().requests.is_empty(), "换弹状态产生真实同目标掩护需求")
+	check(ai.context.cooperation_snapshot().members.any(func(member): return member.id == observer.get_instance_id() and member.get("reloading", false)) and is_zero_approx(ai.context.command_support_pressure()), "真实换弹事实可读取，但个人模式不产生团队指挥或支援加分")
 	shots = shooter.shot_count
 	check(action.collect_candidates(false).is_empty(), "有真实掩护需求仍不能越过完整硬遮挡生成压制")
 	for frame in 30: await _tick()
@@ -207,7 +206,7 @@ func _check_active_prediction(action) -> void:
 	var execution := [action.remaining, action.aim_point, action._shots_remaining, action._evidence.duplicate(true), action.plan.duplicate(true), fire.fire_burst_shots]
 	fire.fire_pause_remaining = ai.context.utility_horizon_seconds + 1.0
 	var candidate: Dictionary = action.preview_candidate(&"point")
-	check(not candidate.is_empty() and is_equal_approx(candidate.outcome.unavailable_seconds, ai.context.utility_horizon_seconds) and is_zero_approx(ai.context.cooperation_candidate_seconds(candidate)), "正在执行的波次若机械停顿覆盖窗口便不虚构火力或支援收益")
+	check(not candidate.is_empty() and is_equal_approx(candidate.outcome.unavailable_seconds, ai.context.utility_horizon_seconds), "正在执行的波次若机械停顿覆盖窗口便不虚构火力或支援收益")
 	check(execution == [action.remaining, action.aim_point, action._shots_remaining, action._evidence, action.plan, fire.fire_burst_shots], "个人压制预测不会续期证据、重装波次或改写执行瞄准")
 	fire.fire_pause_remaining = saved
 
@@ -236,79 +235,3 @@ func _close_pressure() -> void:
 
 ## Commit legal candidates to verify purpose continuity independently of which
 ## equally valid action wins an autonomous decision in this open fixture.
-func _purpose_binding() -> void:
-	Fixture.bind_team(arena, 1)
-	_configure(shooter)
-	ai.context.reset_memory()
-	shooter.global_position = Vector3(25, 0, 0)
-	shooter.velocity = Vector3.ZERO
-	player.global_position = Vector3(23, 0, 0)
-	shooter.look_at(player.global_position)
-	observer = load("res://scenes/enemy/enemy.tscn").instantiate()
-	observer.name = "PurposeObserver"
-	observer.position = Vector3(0, 0, 4)
-	observer.weapon = WeaponData.new()
-	observer.get_node("AI").set_physics_process(false)
-	arena.add_child(observer)
-	observer_ai = observer.get_node("AI")
-	_configure(observer)
-	await _settle(4)
-	for frame in 5: await _tick()
-	observer.ammo.magazine_rounds = 1
-	check(observer.request_reload(), "目的绑定契约由友军真实换弹提供并存的支援理由")
-	await _tick()
-	var action = ai.actions[&"suppression"]
-	var close: Array = action.collect_candidates(true).filter(func(option): return option.get("suppression_reason") == &"close")
-	check(not close.is_empty(), "目的绑定契约提交的是实际近距目击候选")
-	if close.is_empty(): return
-	if not action.active: ai._start_utility_option(close[0], true)
-	check(action.active and action._reason == &"close", "近距波次通过原提交接口锁定目的")
-	player.global_position = Vector3(20, 0, 0)
-	await _settle(3)
-	observer_ai._physics_process(STEP)
-	ai.context.update_evidence(STEP, ai.perception.can_see_player())
-	check(not ai.context.cooperation_snapshot().requests.is_empty() and ai.context.fire.close_suppression_pressure() <= 0.0, "近距理由消失时仍存在真实队友需求")
-	action.step(STEP, ai.context.sees_player)
-	check(not action.active, "近距目的消失立即停止原波次，不能静默改成掩护")
-	ai._cancel_utility_execution()
-	arena.team_cooperation_bindings[-1].profile.level = 2
-	arena.enemy_environment()
-	ai.refresh_configuration()
-	action = ai.actions[&"suppression"]
-	ai.context.prepare_coordination_evaluation()
-	ai.context.update_evidence(STEP, ai.perception.can_see_player())
-	# A configuration switch clears task sources. Let the ordinary 0.2-second
-	# visual publication cadence capture a fresh report in the new clock epoch.
-	for frame in 16:
-		await physics_frame
-		ai.context.update_evidence(STEP, ai.perception.can_see_player())
-	shooter.shot_cooldown = 0.0
-	shooter.weapon_stability = 1.0
-	ai.context.fire.fire_pause_remaining = 0.0
-	ai.context.fire.fire_interval_remaining = 0.0
-	ai.context.fire.fire_reaction_elapsed = ai.context.fire.fire_reaction_seconds
-	var support: Array = action.collect_candidates(true).filter(func(option): return option.get("suppression_reason") == &"team_support")
-	check(not support.is_empty(), "队友需求只产生团队支援能力候选，不授权个人自行组织掩护")
-	if support.is_empty(): return
-	check(not action.validate(support[0], true), "未分配岗位的支援能力不能直接开始执行")
-	var source: Dictionary = ai.context.coordination_source(ai.context.cooperation_target_id())
-	check(Fixture.accept_prepared_task(ai, support[0], source), "支援波次必须接受协调器明确任务后才能开始")
-	var original: Dictionary = ai.context.coordination_assignment()
-	var original_request: int = arena.cooperation._members[observer.get_instance_id()].status.get("reload_request_id", 0)
-	observer.cancel_reload()
-	observer_ai.context.cooperation_publish_execution({})
-	observer.ammo.magazine_rounds = 1
-	check(observer.request_reload(), "第二个支援需求来自新的真实换弹开始")
-	observer_ai.context.cooperation_publish_execution({})
-	var requests: Array = ai.context.cooperation_snapshot().requests
-	check(not requests.is_empty() and requests.all(func(request): return request.get("request_id", request.get("id", 0)) != original_request), "换弹结束再开始生成新请求身份")
-	var failed := original.duplicate(true)
-	failed.merge({"state": &"unavailable", "execution_valid": false, "segment_boundary": true}, true)
-	check(ai.context.cooperation.report_assignment(ai.context, failed), "撤销使用同一任务版本和正常执行反馈协议")
-	action.step(STEP, ai.context.sees_player)
-	check(not action.active, "协调器撤销原任务后，即使有新需求也不能继续旧支援波次")
-	ai._cancel_utility_execution()
-	observer.queue_free()
-	await process_frame
-	observer = null
-	observer_ai = null

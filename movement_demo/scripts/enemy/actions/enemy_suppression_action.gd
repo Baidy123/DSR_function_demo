@@ -59,11 +59,7 @@ func _purpose(mode: StringName, basis: Dictionary) -> Dictionary:
 	if active:
 		if _reason == &"personal_loss": return {"reason": &"personal_loss"} if mode == &"point" else {}
 		if _reason == &"close": return {"reason": &"close"} if mode == &"visible" and context.fire.close_suppression_pressure() > 0.0 else {}
-		if _reason == &"team_support": return {"reason": &"team_support"} if _team_assignment_valid(plan) else {}
 		return {}
-	if _team_orders_enabled():
-		var assignment: Dictionary = context.coordination_assignment()
-		if assignment.get("owner_action") == action_id and assignment.get("role") == &"front_support": return {"reason": &"team_support"}
 	if mode == &"point":
 		if not basis.get("shared", false) and basis.get("source") == &"visual_loss" and context.utility_suppression_pending and context.suppression_available(basis):
 			return {"reason": &"personal_loss"}
@@ -116,28 +112,12 @@ func _support_prediction(mode: StringName, preview: Dictionary, duration: float,
 	return {"support_seconds": minf(window, maxf(0.0, minf(context.utility_horizon_seconds, duration) - delay)), "estimated_start_seconds": delay}
 
 func collect_candidates(visible: bool) -> Array[Dictionary]:
-	_team_offers.clear()
 	var result: Array[Dictionary] = []
 	if not is_enabled() or not actor.can_use_firearms() or context.is_executing_cover_plan(): return result
-	if active and plan.has("coordination_role") and _team_assignment_valid(plan) and valid(visible): return [plan.duplicate(true)]
 	_sync_generation()
 	var mode: StringName = _current_mode() if active else &"visible" if visible else &"point"
 	if (mode == &"visible") != visible: return result
 	var basis: Dictionary = _basis() if active or not visible else context.cooperation_target_evidence()
-	if _team_orders_enabled():
-		var support := preview_candidate(mode, basis)
-		if not support.is_empty():
-			var preview := _preview(mode, basis)
-			var prediction := _support_prediction(mode, preview, maxf(0.1, duration_min), true)
-			if prediction.support_seconds > 0.0:
-				support.suppression_reason = &"team_support"
-				support.erase("cooperation")
-				support.support_intent = true
-				var source: Dictionary = context.coordination_source(context.cooperation_target_id())
-				var side: float = (actor.global_position - source.get("position", actor.global_position)).dot(source.get("front_axis", Vector3.ZERO))
-				if not source.is_empty() and _offer_team_candidate(support, &"front_support", {"holds_front": true, "expected_fire_seconds": prediction.support_seconds,
-					"tactical_key": "flank:%s" % source.evidence_id, "tactical_anchor": source.position, "tactical_axis": source.front_axis,
-					"side": 1 if side > 0.5 else (-1 if side < -0.5 else 0)}): result.append(support)
 	if _purpose(mode, basis).is_empty(): return result
 	var candidate := preview_candidate(mode, basis)
 	if not candidate.is_empty(): result.append(candidate)
@@ -151,7 +131,7 @@ func preview_candidate(mode: StringName, basis: Dictionary = {}, duration: float
 	if duration < 0.0: duration = remaining if active else maxf(0.1, duration_min)
 	duration = minf(duration, maxf(0.0, float(basis.valid_until) - context.evidence_elapsed_seconds))
 	var purpose := _purpose(mode, basis)
-	var prediction := _support_prediction(mode, preview, duration, purpose.get("reason", &"") == &"team_support")
+	var prediction := _support_prediction(mode, preview, duration, false)
 	var horizon: float = context.utility_horizon_seconds
 	var available: float = float(prediction.support_seconds)
 	var candidate := option({}, horizon - available, context.spatial._exposure(context, actor.global_position, context._known_reload_threat()) * horizon, 0.0 if mode == &"visible" else minf(horizon, duration), mode)
@@ -163,7 +143,6 @@ func preview_candidate(mode: StringName, basis: Dictionary = {}, duration: float
 	return candidate
 
 func validate(candidate: Dictionary, visible: bool) -> bool:
-	if candidate.has("coordination_role") and not _team_assignment_valid(candidate): return false
 	if not is_enabled() or candidate.get("target_id", context.cooperation_target_id()) != context.cooperation_target_id(): return false
 	var mode: StringName = candidate.get("plan", default_mode())
 	var basis: Dictionary = candidate.get("suppression_evidence", _basis())
@@ -188,8 +167,7 @@ func begin(candidate: Dictionary, visible: bool) -> bool:
 	if _reason == &"personal_loss": context.consume_suppression(basis)
 	if _reason == &"close": _close_available_at = context.evidence_elapsed_seconds + maxf(duration_min, context.fire.burst_pause_seconds)
 	remaining = minf(randf_range(maxf(0.1, duration_min), maxf(maxf(0.1, duration_min), duration_max)), float(basis.valid_until) - context.evidence_elapsed_seconds)
-	if candidate.has("coordination_role"): remaining = minf(remaining, float(candidate.coordination_assignment.expires_at) - context.coordination_now())
-	_shots_remaining = mini(actor.ammo.magazine_rounds, maxi(1, context.fire.burst_shots_remaining(_reason == &"team_support")))
+	_shots_remaining = mini(actor.ammo.magazine_rounds, maxi(1, context.fire.burst_shots_remaining(false)))
 	target_center = preview.center
 	_clear_targets.assign(preview.targets)
 	active = true
@@ -241,18 +219,8 @@ func tick(delta: float, visible: bool) -> Dictionary:
 	_running = active
 	var fire: Dictionary = {}
 	if active:
-		fire = {"owner": action_id, "mode": &"visible", "support_intent": true} if mode_visible() else {"owner": action_id, "mode": &"memory", "point": aim_point, "support_intent": _reason == &"team_support"}
+		fire = {"owner": action_id, "mode": &"visible", "support_intent": true} if mode_visible() else {"owner": action_id, "mode": &"memory", "point": aim_point, "support_intent": false}
 	return motion(Vector3.ZERO, 1.0, aim_point - actor.global_position, fire)
-
-func execution_contract(visible: bool) -> Dictionary:
-	if not plan.has("coordination_role"): return super.execution_contract(visible)
-	var ready := false
-	for member: Dictionary in context.cooperation_snapshot().get("members", []):
-		if member.id == actor.get_instance_id(): ready = member.get("ready", false) and not member.get("moving", false)
-	# This post is stationary. The squad may arrange relief between shots;
-	# its accepted assignment still excludes unrelated personal actions.
-	return {"valid": valid(visible) and _team_assignment_valid(plan), "segment_boundary": not actor.is_vaulting() and not actor.melee_active,
-		"remaining_seconds": maxf(0.0, remaining), "ready_for_phase": ready, "progress": 0.0}
 
 func on_shot_fired() -> void:
 	if not active: return
@@ -275,10 +243,8 @@ func finish(visible: bool) -> void:
 	context.resume_after_action(visible, context.last_known_position)
 
 func on_event(event: StringName, _data: Dictionary) -> void:
-	# An assigned provider keeps its legal firing window until the normal
-	# decision compares verified self-preservation. Personal suppression retains
-	# its original damage interruption; neither path extends the shot window.
-	if event == &"damage" and _running and plan.get("coordination_assignment", {}).is_empty(): finish(context.sees_player)
+	# Personal suppression keeps its original damage interruption.
+	if event == &"damage" and _running: finish(context.sees_player)
 
 func _point_preference(basis: Dictionary) -> float:
 	return maxf(0.0, float(context.setting(&"suppression", &"low_cover_point_preference", 1.0))) if basis.get("low_cover_context", false) else 0.0
@@ -288,3 +254,9 @@ func preference_credit() -> float:
 
 func state_label() -> String:
 	return "近距压制" if _reason == &"close" else "掩护射击" if _reason == &"support" else "消失点短促压制"
+
+func command_roles() -> Array[StringName]:
+	return [&"support"] if actor.can_use_firearms() else []
+
+func command_work(_delta: float, visible: bool, _arrived: bool) -> Dictionary:
+	return {"fire": {"owner": action_id, "mode": &"visible", "support_intent": true}} if visible and actor.can_use_firearms() else {}

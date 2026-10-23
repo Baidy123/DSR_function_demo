@@ -1,28 +1,6 @@
 # 项目目录结构
 
-2026-10-23 主场景已移除任务面板、任务状态调试框和五种交互示例；可复用资源与任务控制器保留，相关组件测试显式装配所需资源。
-
-2026-10-22 支援续接修复没有新增控制层：`enemy_team_planner.gd` 内分开新计划请求关系与追加成员的移动掩护关系，`squad_coordination.gd` 继续持有任务和原请求。Context 的只读调试快照同时提供真实移动／换弹事实及等级；`debug/coordinator_paths.gd` 分开显示实际行动和团队调度，不把未分配岗位等同于停步。
-
-2026-10-22 持续调度仍使用原模块：Context 向协调器提供可直接读取的身体事实，原动作及空间服务持续准备合法能力候选，纯 planner 在原预算内补齐战斗岗位并提出局部 `revise`，协调器持有任务与预约。`enemy_search_formation.gd::entry_travel_seconds` 只返回两端经验证的行程，左右队列分界由协调器选择。新增 `enemy_team_continuity_test.gd` 检查完整方案与续接合同，`enemy_team_continuity_runtime_test.gd` 检查当前保存地图中实际接受、执行覆盖及真实开火；测试不能用岗位标签替代动作执行。
-
-2026-10-21 搜索交接重整沿用原模块边界，计划见 [搜索调度实施计划](superpowers/plans/2026-10-21-squad-search-handoff.md)。`squad_coordination.gd` 持有整队命令、具体站位、通行与修复状态；`enemy_search_formation.gd` 只做有限的几何／路线候选和行程预览，不执行移动；`EnemyContext` 提供公开状态、路线查询及只读诊断；原 `Search`、Utility、Actor 和火控分别执行各自职责。新 `enemy_search_traffic_test.gd` 登记拥挤、两／三人占位循环、模块撤销和旧反馈拒绝，保存地图反复进入另用 `enemy_search_formation_fallback_test.gd --saved-left-repeat`。
-
-2026-10-21 掩体整队搜查沿用现有分层：`scripts/enemy/services/squad_coordination.gd` 持有队级搜查目标和前后岗位，纯 `enemy_team_planner.gd` 提交完整队伍方案；新增 `services/enemy_search_formation.gd` 只校验两侧队列几何和路径，`actions/enemy_search.gd` 执行集结及按序绕角。移动输出的可选 `stop_position` 经 AI／Actor 交给 `enemy_local_motion.gd`，仅限定友军阻挡的前探距离，不替代实际碰撞。场景节点、旧资源路径及 UID 保持。
-
-整队准备的路线反馈经 `EnemyContext.report_inspection_preparation` 返回协调器；单双侧布局、有限尝试和准备期限由协调器持有，纯 planner 根据 `search_sides` 核对完整成员岗位。几何 helper 支持单侧合法端口及整列观察站位微调，实际移动仍归原搜索动作。`enemy_search_formation_fallback_test.gd` 覆盖高墙失视、单端封闭、前排站位阻塞和无可行布局；保存地图专项使用显式 `--saved-arena` 或 `--saved-left-cover`，不作为可移植夹具运行。
-
-队列和旧双人检查共用几何 helper 的入位路径约束，拒绝经墙背后对端绕行。个人掩体动作在原 `can_interrupt` 中处理失视后向整队搜查交接；近战掩体动作复用此条件，AI 和身体层继续保留翻越／近战锁。队列回归同时覆盖完整训练及全员实际到位前不越过掩体背面。
-
-失视未关联掩体时，Context 的共享线索携带冻结的目击方向和速度；`squad_coordination.gd` 一次选择全队的调查假设，`enemy_cover_inspection_geometry.gd` 只查询已知静态掩体与有限运动投影。没有合适掩体则由 `enemy_search_formation.gd` 生成共同目击点观察队形，仍经原搜索动作、接受事务和共同阶段执行。该假设不改写射击证据。可选 `--saved-left-approach` 从保存的原出生位置验证仅一人目击时的全队参与；默认夹具另覆盖无墙失视。普通等级继续消费同一协调器的包抄建议，无严格集合屏障。
-
-几何推断同时检查运动投影对墙角的接近，避免墙中心取点漏掉斜向绕角。`enemy_search_formation_fallback_test.gd` 默认包含旋转墙体、背离／正面短投影及隐藏位置隔离的边界检查；可选 `--saved-left-diagonal` 在保存地图的真实物理 AI 循环中验证两条斜向入墙路线，要求三人共同任务不在墙前提前结束、实际集合后绕角再接敌。保存地图参数不纳入可移植默认用例。
-
-2026-10-21 入队通路补修：`squad_coordination.gd` 在 `inspection_order` 中提前保存每人的具体站位、冻结接近／绕角路线和通行优先级，并通过 `inspection_motion` 按真实身体占位给出本步通行边界。`enemy_search_formation.gd` 使用成员本地导航／胶囊服务准备这些值，提供无跨帧状态的路线投影与有限通路相交计算；Context 只转发，Search 沿原身体接口执行，不另建小队移动控制器。可选 `--saved-left-contact` 覆盖先真实交战再退回左墙；保存地图用例新增具体位置归属、全程碰撞／临时侧移和间距断言，默认夹具增加通路几何边界。
-
-游戏工程在 `movement_demo/`，说明文档集中在仓库的 `docs/`；仓库根目录仅保留 README 作为入口。脚本、场景与资源已按用途分类，移动时保留脚本 `.gd.uid` 和场景资源内的 UID。
-
-玩家医疗包沿用 `scenes/player/player_health.tscn`：Health/Medkit 挂 `scripts/player/player_medkit.gd`，只管理本实例数量与治疗进度；`scripts/player/medkit_data.gd` 和 `resources/player/default_medkit.tres` 保存静态效果／时长，生命结算仍在 Health。Health/MedkitIndicator 的 `scripts/ui/medkit_indicator.gd` 只做头顶投影和绘制；`scripts/ui/medkit_stock_label.gd` 挂在原武器栏内，只订阅并显示医疗库存。原移动、Combat、武器槽和敌人运行职责不变。配置及输入打断规则见 [生命与医疗包](gameplay/PLAYER_HEALTH.md)。
+协调器现按 [2026-10-23 完整重写计划](superpowers/plans/2026-10-23-squad-coordinator-rewrite.md)维护。旧调度器、个人选优中的团队耦合及其专用检查已退出；路径和被场景引用的 UID 保留。当前接口见 [敌人 AI](enemy-ai.md)。
 
 ## 文档维护约束
 
@@ -88,35 +66,28 @@ movement_demo/
 
 阶段、任务与 NPC 状态规则集中在 `scripts/systems/stage/`：阶段判定、任务状态与状态解析各一个控制器，配置表资源脚本与 `resources/stages/` 下的 `.tres` 配套维护。控制器挂在 `main.tscn`、按 group 互相查找，不新增全局单例；NPC 只按 `npc_id` 与接收接口被驱动，不反向依赖控制器。见 [阶段与任务](gameplay/STAGE_STATE.md)。
 
-`scripts/debug/coordinator_paths.gd` 保留 DebugSettings 下的入口及脚本 UID，使用子 MeshInstance3D / ImmediateMesh 在世界地面绘制 RTS 式路线、方向箭头和站位圈，不再创建屏幕大面板。它每秒最多十次读取 Context 的公开快照并更新网格，不查询导航或生成候选；相机移动由世界渲染自然跟随。`enemy_coordination_debug_test.gd` 复用真实三人搜索过程，检查快照复制隔离、刷新上限、场景清理及不改变实际行动；不替代其他队列场景验收。
+`scripts/debug/coordinator_paths.gd` 保留 DebugSettings 入口，使用世界空间 Mesh 绘制 RTS 路线、箭头和站位。每秒最多十次读取公开副本，不调用导航或规划；成员颜色在死亡减员后保持稳定。主场景不含任务面板和五个交互演示物，组件由 `tests/interaction_fixture.gd` 独立装配验证。
 
-团队意识由 `scenes/world/squad.tscn` 的 `world/squad_controller.gd` 提供入口；节点持有配置和独立的 `services/squad_coordination.gd`。区域按活跃时钟推进，个人仍沿原 Utility、动作、身体及 Fire 执行。`config/team_cooperation_binding.gd` 将显式区域绑定转换为同类协调器；没有 Squad 或显式绑定时，个人训练不创建隐式队伍。普通与强配合共用任务身份、版本、接受事务、执行反馈和期限。`enemy_team_scene_integration_test.gd` 验证保存地图；`unbound_scene()` 创建无团队绑定的实例，需要团队权限的专项必须明确 `bind_team()`。人数明确的专项用 `single_member_scene()` 再添加所需成员。夹具不修改保存场景，不能替代当前地图验收。
+| 文件 | 当前职责 |
+| --- | --- |
+| `world/squad_controller.gd` | Squad 配置、区域注册、单次区域时钟推进、销毁；不增加独立 AI 循环。 |
+| `enemy/services/squad_coordination.gd` | 本场能力档案、默认模板、持续目标、全员任务表、反馈、原子提交与生命周期。 |
+| `enemy/services/squad_contract.gd` | 纯值任务身份、状态、能力角色及整队默认模板。 |
+| `enemy/services/enemy_team_planner.gd` | 全成员岗位组合搜索，按模板能力与几何排除不完整方案。 |
+| `enemy/services/enemy_search_formation.gd` | 根据共同目标生成有限站位及完整路线，调用原导航和身体查询。 |
+| `enemy/services/squad_traffic.gd` | 全队通行顺序、路径冲突、当前阻挡者与剩余路线计算。 |
+| `enemy/services/enemy_cooperation.gd` | 区域关系、合法情报存储、公共物理预约；只通过协调器收发团队情报。 |
+| `enemy/services/enemy_context.gd` | 能力/身体值接口、情报适配、任务接受/反馈与只读诊断。 |
+| `enemy/enemy_ai.gd` | 按等级分流个人 Utility 与命令执行；负责原动作/身体/火控交接。 |
+| `enemy/actions/enemy_action.gd` | 新命令执行协议；个人模式保留原 begin/tick/cancel。 |
 
-区域公共服务由 `world/shooting_range.gd` 持有每战斗区一份 `enemy/services/enemy_cooperation.gd`，负责情报、成员事实与公共空间预约。协调器直接读取 Context 的实际站位、速度及身体占用；`actions/enemy_cooperation_action.gd` 提供经导航和火控验证的候选，并执行授权任务。旧 claim、个人自主团队推进／overwatch、旧包抄轮次、双端抢位及隐式兼容协调器已删除。Search、Reload、身体和 Fire 保留原模块职责；旧出口压制脚本 UID 仅保留资源加载兼容，默认只有一个压制实例。详见 [敌人 AI](enemy-ai.md)。
+每个 Squad 持有独立协调器，区域显式绑定也接入同类实例。没有绑定时使用仅情报路由，不创建隐式团队指挥。只有 0 级运行个人 Utility；1/2 级在准备、失败、占用和单人状态也持续归队伍指挥。
 
-[统一队伍规划器设计](superpowers/specs/2026-10-10-enemy-team-coordinator-design.md)已接入基础预约、高级岗位和共同阶段。个人 Utility、原动作、身体与 Fire 继续负责执行；功能接入不代表性能及所有旧行为验收已完成。阶段结果与未完成项统一见 [敌人测试](enemy-tests.md#当前回归)及 [实施记录](superpowers/plans/2026-10-10-enemy-team-coordinator.md#实施记录)。
+基础公共预约继续由区域服务提供，个人分支仅做物理排重；团队全员目的地经新事务一次提交。`enemy_tactical_map.gd` 仍为区域唯一静态地图索引。原 `enemy_cover_inspection_geometry.gd` 只提供合法线索的静态几何，不拥有任务；旧 `enemy_flank_route.gd` 已无调用并移除，新侧翼路线在新几何模块中验证。
 
-`enemy/services/enemy_team_planner.gd` 是纯值输入输出的有界组合 helper，负责排除冲突并提议互补岗位，不访问场景、找路、控制身体或制造任务期限。各小队的 `squad_coordination.gd` 调用它安排互补检查、侧翼／前线与地图搜索，动作仅执行被选择的合法岗位；纯协议由 `enemy_team_planner_test.gd` 验证。
-
-区域 `enemy_cooperation.gd` 独占公共身份分配、版本更新及已获取观察的身份核验；小队通过 `allocate_coordination_id`、`notify_coordination_changed` 和 `observation_contact_id` 调用，不再代理区域序号、版本和情报字典。预约几何／事务辅助保持原归属，进一步收紧接口仍需逐组维护。该整理未新增节点或脚本文件，详见 [AI 维护设计](superpowers/specs/2026-10-23-ai-maintenance-design.md)。
-
-基础位置预约位于原 `enemy_cooperation.gd`，Context 负责候选值快照和身份版本，AI 使用通用资格集合及准备／提交／回滚接点。小队节点不控制身体；`advanced_enabled` 不限制基础排重，关系接口同时区分物理空间与情报域。`enemy_team_board_test.gd` 检查身份、物理排重、期限与生命周期，`enemy_team_basic_runtime_test.gd` 检查高级OFF真实共享／移动／开火、单人和多转单，以及明确区分的事务与身体保护合同；高级岗位由小队协调器通过区域公共预约与通用执行接口接入，基础预约不依赖高级开关。
-
-公共目的地预约的批量只读筛选仍在 `enemy_cooperation.gd`，由 Context 在原资格过滤阶段调用，不转移到 planner 或小队节点。多候选共享的障碍投影仅存于一次同步调用的局部变量；单候选与准备／提交沿原实时查询。`enemy_reservation_batch_test.gd` 验证新旧查询等价、候选顺序与同帧状态变化，执行和性能结果仍以[敌人测试](enemy-tests.md)为准。
-
-通用岗位和自保协议放在原 `enemy_action.gd`，具体合法自保由原换弹、接敌、近战、掩体和撤退动作实现。Context 只处理值接口，AI 沿原选择器处理资格、连续性和事务，不按战术ID分派执行。`enemy_assignment_execution_test.gd` 的受控合同与 `enemy_action_coordination_protocol_test.gd` 的真实身体／候选条件检查分别验证通用接点和自保；它们不替代生产战术的实景验收。
-
-`enemy/services/enemy_cover_inspection_geometry.gd` 只从冻结的合法线索和直立盒形掩体生成两个可步行检查端点，复用原导航、胶囊扫掠和完整路径校验；不读取隐藏目标身体、不认领、不发射。原 `actions/enemy_search.gd` 消费分侧认领，执行接近、有限等待、绕端检查和真实观察；`enemy_cooperation.gd` 管理线索与真实完成事实，`squad_coordination.gd` 管理本队端点分工与认领。Context 接收的调查线索默认保留20秒，与5秒精确共享目击分离，不延长射击权限。两端任务默认16秒且受线索原期限限制，等候2秒、观察0.5秒均不续期；单人或不足两个合法端点时沿用普通搜索，不恢复出口压制。几何和路径候选有限缓存，提交及执行继续复核真实可行性。
-
-`enemy/services/enemy_flank_route.gd` 是协作动作使用的只读几何辅助：由合法已知锚点生成有限带转向弧线、逐段检查点与严格步行路径，拒绝直穿目标附近；不认领岗位、不执行身体、不决定最终 Utility 分数。`squad_coordination.gd` 持有本队冻结的包抄轮次、人数名额及不可变最终目的地，使用真实友军身体位置计算占侧；动作自己保留短段进度、前线保持和有限支援恢复等待。Context 与 Fire 发布即时火力及正常连射暂停的恢复事实，位置预约与实际火力射界分开，不新增控制整个小队的执行框架。
-
-远处的内收后绕行也属于 `enemy_flank_route.gd`：候选保存少量严格几何转折点，辅助查询实际导航折线，再产出不超过约2米的执行检查点和完整路线时长。近距原四种方向／半径组合保留；不会将场外点吸到导航边缘、改变冻结终点或扩大整轮期限。`tests/enemy/enemy_flank_route_test.gd` 检查纯候选边界、保存地图上的真实通路、有限时间及共享盲态的下一段观察预测；正常 Utility 实际绕行继续由 `enemy_cooperation_flank_runtime_test.gd` 的多人开关对照验证，运行器统一调度。身体减速和支援等候仍由原执行层与固定期限处理。
-
-协作动作按现有武器能力分流几何候选：枪械使用另一侧弧线建立射界，近战保留受掩护接近并核对真实可攻击范围；不新增按兵种名称配对的模块。原地掩护和到位保持的只读预测也在该动作内，以实际剩余保持时间及真实火控等待为限；新原地掩护可容纳一轮长点射，但始终受实际请求剩余时间与任务固定期限裁剪，执行重评不延长保持。当前枪线的执行事实仍由 Context／Fire 发布。普通动作结束调用服务的 `clear_execution()`，仅释放本人认领与执行意图，保留其他成员对本人的有效支援认领和真实换弹请求；完整成员释放仍用于复位、死亡及离场。
+新测试只有保存地图实战 `squad_command_runtime_test.gd` 和最小组合边界 `squad_command_contract_test.gd` 两个入口；旧协调器测试的明确替换清单与保留专项见 [敌人测试](enemy-tests.md)。原个人行为夹具 `enemy_fire_fixture.gd` 保留，旧任务注入 helper 删除。
 
 `enemy/services/enemy_fire_controller.gd` 统一维护普通短点射、真实队友需求下的掩护长点射、轮间停顿及 AI 扳机间隔，参数在 `config/tactics_settings.gd`。当前默认普通3发、支援6发、停顿1.8秒、AI 间隔倍率1.5；竞技场训练保存的普通枪数／停顿同步为3／1.8。动作、空间预测和协作窗口消费 Fire 的统一时序查询，切换意图不重置已消耗的枪数与间隔；长点射不越过请求和枪线条件。`WeaponData`、身体机械最大射速及玩家开火保持独立，不因 AI 节奏调整而修改。
-
-新增验证仍位于 `tests/enemy/`：`enemy_cooperation_flank_service_test.gd` 检查名额、冻结轮次和生命周期协议；`enemy_cooperation_support_test.gd` 检查真实连射、零火力暂停及枪线／身体门槛；`enemy_cooperation_flank_runtime_test.gd` 以原 AI 循环比较多人开关、实际绕到另一侧、正面实弹及不可达路线。这些文件的存在不代表验证已通过，结果以 [敌人测试](enemy-tests.md) 和实施记录为准。
 
 本轮专项沿用同一回归运行器：`enemy_cover_inspection_test.gd` 覆盖两端检查、证据权限与回退；`enemy_firing_cadence_test.gd` 覆盖短长点射、有限窗口、自主实际掩护与单敌人开关对照；`enemy_ally_spacing_test.gd` / `enemy_ally_spacing_runtime_test.gd` 覆盖基础间距及实际多人移动。验收仍以运行结果和结构约束为准。
 
@@ -135,8 +106,6 @@ Spatial 的路线样本层仅在同步候选比较中复用同路径已实际观
 `enemy_ally_route_autonomous_test.gd` 通过真实玩家声音、听觉和完整 AI 更新复现搜索短段反复尝试同一窄口，要求在搜索阶段登记堵点并在队友移开后自主通过；保留原搜索卡住期限，不手动选中动作。身体观察允许有限间隔内累计同一堵点的真实失败，避免每次短段退出都清空证据，等待时间本身不算阻塞。
 
 空间评估的重复物理查询由 Context、Selection、Fire 各自管理同步只读批次缓存：选择器和空间扫描成对开启／结束，嵌套批次共用结果，最外层返回即清除。动作提交、身体移动及实际开火恢复实时查询，不用整帧缓存代替执行检查。团队服务的友军射线检查只读取必要的成员位置，不构建完整任务快照。
-
-支援时序查询由 Context `cooperation_support_snapshot()` 接入区域 `enemy_cooperation.gd` 的精简 `support_snapshot()`；区域与完整快照共用实时资格、新鲜度及火力检查，精简读取不复制无关成员、身体、威胁和声明字段。`squad_coordination.gd` 仍持有任务并补齐有效请求，以静止／可移动两类最长覆盖计算压力。Context 只沿用既有候选预览观察，不新增缓存生命周期或调度节点。`enemy_cooperation_query_test.gd` 对照原完整快照算法，验证状态失效、不同目标、只读投影、声明与接受计划的期限。
 
 `docs/enemy-ai.md` 是敌人结构、维护和使用部署说明；`docs/gameplay/` 保留移动、武器、掩体等专项说明，`docs/TODO.md` 记录后续方向，`docs/superpowers/` 保存仍有价值的设计与验收记录。第三方插件自带文档留在插件目录，以保留其使用说明和许可。
 

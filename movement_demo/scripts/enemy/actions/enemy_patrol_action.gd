@@ -78,3 +78,6 @@ func tick(delta: float, _visible: bool) -> Dictionary:
 	var direction := step(delta)
 	_running = context.state == context.State.PATROL
 	return motion(direction, 1.0, direction)
+
+func command_roles() -> Array[StringName]:
+	return [&"patrol", &"guard", &"move"]

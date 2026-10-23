@@ -177,7 +177,7 @@ func burst_limit(support_intent: bool = false) -> int:
 	var normal := maxi(1, burst_shot_count)
 	# A label alone grants nothing: group/target/freshness and real unmet demand
 	# are checked by the existing cooperation board, including actual reloads.
-	if support_intent and context.cooperation_support_pressure() > 0.0:
+	if support_intent and context.command_support_pressure() > 0.0:
 		return maxi(normal, support_burst_shot_count)
 	return normal
 
@@ -202,10 +202,10 @@ func close_suppression_pressure() -> float:
 ## Intent can express urgency, but only current observations/authorized retreat
 ## or real unmet team demand supply pressure. It never bypasses firing gates.
 func suppression_pressure(intent: Dictionary = {}, moving: bool = false) -> float:
-	var pressure: float = maxf(context.cooperation_support_pressure(), close_suppression_pressure())
+	var pressure: float = maxf(context.command_support_pressure(), close_suppression_pressure())
 	if intent.get("pressure_reason", &"") == &"retreat" and context.sees_player and moving:
 		var current: Dictionary = context.utility_current
-		if intent.get("owner", &"") == current.get("id", &"") and current.get("mode", &"") == &"covering_retreat" and current.get("support_request", {}).get("kind", &"") == &"retreat":
+		if intent.get("owner", &"") == current.get("id", &"") and current.get("mode", &"") == &"covering_retreat":
 			pressure = maxf(pressure, 1.0)
 	return clampf(pressure, 0.0, 1.0)
 

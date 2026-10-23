@@ -21,6 +21,8 @@
 
 10. 共享情报统一经过协调器：个人真实发现后上报，协调器接收并向有共享资格的成员发布；仅视野共享等级也保留情报收发，但不下发团队战术任务。
 
+11. 协调器相关内容重构的时候禁止用之前的代码来改，要完全重写
+
 “仅视野共享”仍不等同于团队指挥。本次统一指挥的硬约束适用于用户明确指出的普通配合、强配合。本文后续涉及的文件拆分、调度频率、算法与实施顺序都是待审阅的技术方案，不写成用户指定参数。
 
 ## 2. 已核实的现状与本次不冒认的结论
@@ -353,81 +355,81 @@
 
 必要日志只记录目标/任务变更、真实受阻和重排结果，放在 Git 忽略目录。自动化检查通过仍不能覆盖用户试玩发现的问题。
 
-## 15. 最终验收底线
+## 15. 实施记录（2026-10-23）
 
-- 不能只证明有任务编号；必须证明职责、目标、路线与真实执行一致。
-- 成员能力档案与默认分工模板必须参与实际规划和任务执行校验，不能仅做后台展示；不得绕过训练、兵种或装备限制，也不得把模板变成永久固定岗位。
-- 不能用每人一个永久等待任务满足“持续规划”。有可行推进方案时必须推进；确实不可行时应有可解释的地图/身体原因及重新规划条件。
-- 不能只修“失视后丢目标”而留下三人拥堵，也不能只修间距而失去共同搜索方向。
-- 不能把改文件名、重新封装旧分支或在旧控制链外再套总控称为重写。
-- 不改用户地图、训练和武器来让验证通过；不把隐藏玩家位置喂给规划器。
-- 每个完成阶段仅暂存核对过的本任务文件；普通 commit/push，不 pull、不强推，不上传本地诊断、缓存和用户无关改动。
+### 阶段 A：本地基线与迁移核对
 
+用户本轮明确要求依本文实施；随后补充：协调器及相关规划、通行、任务交接必须完全新写，不能在旧调度实现上修改。旧代码仅用于核对接口和删除范围，底层个人行为、感知、导航、身体和火控仍依本文边界保留。
 
-## 15. ?????2026-10-23?
+以本地 `576904f` 及当时工作区为基线。主场景/UI/地面路线和对应文档、组件夹具属于阶段 B；旧 Search、Context、队形、协调器补丁由阶段 C 的新协议替代。插件、`.gitignore`、工程设置、导入记录、阶段表、武器、感知及其他测试的既有修改不顺带提交，不拉取远端。初始差异文件副本存于忽略目录 `logs/coordinator_rewrite_20261023/baseline/`。
 
-### ?? A??????????
+能力权威来源：`config/enemy_unit_profile.gd`、`config/enemy_training_profile.gd`、`enemy_action_library.gd`、`enemy_ai.gd::refresh_configuration()` 成功装配的实例，以及 Actor 实际装备/身体数据。战斗场景加载并完成装配后读取，本场复用，不因任务重排重读配置，不写回 `.tres`。保留场景入口与替换文件原 UID。
 
-??? `576904f` ???????????????????/UI/?????????????????? B?? Search?Context???????????? C ??????`.gitignore`????????????????????????????????????????????????????????????? `logs/coordinator_rewrite_20261023/baseline/`?
+旧公共入口及生产调用候选如下（按方法名扫描，具体接收对象须结合代码核对）：
 
-???????`config/enemy_unit_profile.gd` ?????????`config/enemy_training_profile.gd` ???????`enemy_action_library.gd` ????????`enemy_ai.gd::refresh_configuration()` ????????Actor ????????????????????????????????????????? `.tres`??? Squad ?????????????????? `.gd.uid`?
-
-?????????????????????????????????????????????????????????????????????????????????????????????????inspection ???????????????????????????
-
-| ????? | ???????? |
+| 旧公共方法 | 生产调用候选文件 |
 | --- | --- |
-| `bind_environment` | `enemy_cooperation.gd`?`squad_controller.gd` |
+| `bind_environment` | `enemy_cooperation.gd`、`squad_controller.gd` |
 | `configure_profile` | `enemy_cooperation.gd` |
 | `sync_members` | `enemy_cooperation.gd` |
 | `registered_member_count` | `enemy_context.gd` |
 | `reservation_current` | `enemy_cooperation.gd` |
-| `member_faction` | ??????????????????? |
-| `member_group` | ??????????????????? |
-| `advance` | `enemy_actor.gd`?`enemy_cooperation.gd`?`shooting_range.gd`?`squad_controller.gd`?`visual_presentation.gd` |
-| `reset` | `enemy_action.gd`?`enemy_actor.gd`?`enemy_ai.gd`?`enemy_cooperation.gd`?`enemy_cover_action.gd`?`enemy_fire_controller.gd`?`enemy_melee_cover_action.gd`?`enemy_presentation.gd`?`enemy_reload_action.gd`?`enemy_search.gd`?`enemy_spatial_evaluator.gd`?`player_presentation.gd`?`shooting_range.gd` |
-| `release_member` | `enemy_context.gd`?`enemy_cooperation.gd` |
+| `member_faction` | 无直接生产调用 |
+| `member_group` | 无直接生产调用 |
+| `advance` | `enemy_actor.gd`、`enemy_cooperation.gd`、`shooting_range.gd`、`squad_controller.gd`、`visual_presentation.gd` |
+| `reset` | `enemy_action.gd`、`enemy_actor.gd`、`enemy_ai.gd`、`enemy_cooperation.gd`、`enemy_cover_action.gd`、`enemy_fire_controller.gd`、`enemy_melee_cover_action.gd`、`enemy_presentation.gd`、`enemy_reload_action.gd`、`enemy_search.gd`、`enemy_spatial_evaluator.gd`、`player_presentation.gd`、`shooting_range.gd` |
+| `release_member` | `enemy_context.gd`、`enemy_cooperation.gd` |
 | `invalidate_member` | `enemy_cooperation.gd` |
 | `append_snapshot` | `enemy_cooperation.gd` |
 | `inspection_eligible_count` | `enemy_cooperation.gd` |
-| `reload_opportunity` | `enemy_context.gd`?`enemy_cooperation.gd` |
-| `candidate_seconds` | `enemy_context.gd`?`enemy_cooperation.gd` |
-| `support_pressure` | `enemy_context.gd`?`enemy_cooperation.gd` |
-| `publish_noise_source` | `enemy_context.gd`?`enemy_cooperation.gd` |
-| `publish_coordination_source` | `enemy_context.gd`?`enemy_cooperation.gd` |
-| `coordination_source` | `enemy_action.gd`?`enemy_context.gd`?`enemy_cooperation.gd`?`enemy_cooperation_action.gd`?`enemy_search.gd`?`enemy_suppression_action.gd` |
-| `inspection_order` | `enemy_ai.gd`?`enemy_context.gd`?`enemy_search.gd` |
-| `inspection_motion` | `enemy_context.gd`?`enemy_search.gd` |
+| `reload_opportunity` | `enemy_context.gd`、`enemy_cooperation.gd` |
+| `candidate_seconds` | `enemy_context.gd`、`enemy_cooperation.gd` |
+| `support_pressure` | `enemy_context.gd`、`enemy_cooperation.gd` |
+| `publish_noise_source` | `enemy_context.gd`、`enemy_cooperation.gd` |
+| `publish_coordination_source` | `enemy_context.gd`、`enemy_cooperation.gd` |
+| `coordination_source` | `enemy_action.gd`、`enemy_context.gd`、`enemy_cooperation.gd`、`enemy_cooperation_action.gd`、`enemy_search.gd`、`enemy_suppression_action.gd` |
+| `inspection_order` | `enemy_ai.gd`、`enemy_context.gd`、`enemy_search.gd` |
+| `inspection_motion` | `enemy_context.gd`、`enemy_search.gd` |
 | `inspection_status` | `enemy_context.gd` |
 | `debug_member_snapshot` | `enemy_context.gd` |
-| `report_inspection_preparation` | `enemy_context.gd`?`enemy_search.gd` |
+| `report_inspection_preparation` | `enemy_context.gd`、`enemy_search.gd` |
 | `coordination_offer_available` | `enemy_context.gd` |
-| `submit_offers` | `enemy_context.gd`?`enemy_cooperation.gd` |
-| `assignment_decision_revision` | `enemy_context.gd`?`enemy_cooperation.gd` |
-| `assignment` | `enemy_context.gd`?`enemy_cooperation.gd` |
-| `assignment_support` | `enemy_context.gd`?`enemy_cooperation.gd` |
-| `prepare_assignment` | `enemy_context.gd`?`enemy_cooperation.gd` |
-| `commit_assignment` | `enemy_context.gd`?`enemy_cooperation.gd` |
-| `rollback_assignment` | `enemy_context.gd`?`enemy_cooperation.gd` |
-| `report_assignment` | `enemy_context.gd`?`enemy_cooperation.gd` |
-| `coordination_checked_points` | `enemy_context.gd`?`enemy_cooperation.gd`?`enemy_search.gd` |
-| `publish_personal_baseline` | `enemy_context.gd`?`enemy_cooperation.gd` |
-| `can_cooperate` | ??????????????????? |
-| `can_share_intel` | ??????????????????? |
-| `can_share_space` | `enemy_context.gd`?`enemy_local_motion.gd`?`enemy_search.gd` |
+| `submit_offers` | `enemy_context.gd`、`enemy_cooperation.gd` |
+| `assignment_decision_revision` | `enemy_context.gd`、`enemy_cooperation.gd` |
+| `assignment` | `enemy_context.gd`、`enemy_cooperation.gd` |
+| `assignment_support` | `enemy_context.gd`、`enemy_cooperation.gd` |
+| `prepare_assignment` | `enemy_context.gd`、`enemy_cooperation.gd` |
+| `commit_assignment` | `enemy_context.gd`、`enemy_cooperation.gd` |
+| `rollback_assignment` | `enemy_context.gd`、`enemy_cooperation.gd` |
+| `report_assignment` | `enemy_context.gd`、`enemy_cooperation.gd` |
+| `coordination_checked_points` | `enemy_context.gd`、`enemy_cooperation.gd`、`enemy_search.gd` |
+| `publish_personal_baseline` | `enemy_context.gd`、`enemy_cooperation.gd` |
+| `can_cooperate` | 无直接生产调用 |
+| `can_share_intel` | 无直接生产调用 |
+| `can_share_space` | `enemy_context.gd`、`enemy_local_motion.gd`、`enemy_search.gd` |
 | `commit_reservation` | `enemy_context.gd` |
 | `coordination_identity` | `enemy_context.gd` |
-| `has_team_binding` | `enemy_action.gd`?`enemy_context.gd`?`enemy_cooperation_action.gd` |
+| `has_team_binding` | `enemy_action.gd`、`enemy_context.gd`、`enemy_cooperation_action.gd` |
 | `inspection_evidence` | `enemy_context.gd` |
 | `prepare_reservation` | `enemy_context.gd` |
 | `publish_checked` | `enemy_context.gd` |
-| `register` | `enemy_ai.gd`?`enemy_context.gd` |
+| `register` | `enemy_ai.gd`、`enemy_context.gd` |
 | `rollback_reservation` | `enemy_context.gd` |
-| `team_configuration_revision` | ??????????????????? |
+| `team_configuration_revision` | 无直接生产调用 |
 | `team_level` | `enemy_context.gd` |
 | `validate_reservation` | `enemy_context.gd` |
 
-?????planner `_recommend_positions`???? `advisory`?Context `coordination_choices` ??????? `publish_personal_baseline`?AI `_publish_coordination_inputs` ????????????Selector ????????????????????????????????????????????
+删除范围包含旧 planner 建议分支、advisory、个人基准与候选发布、个人评分中的任务接受、旧 inspection/sector 状态机与多套恢复路径。情报和公共占位基础服务保留原职责，以新接口接线。
 
-### ?? B???????
+### 阶段 B：主场景与显示
 
-??????? UI ????? `interaction_fixture.gd`?????????????????????????????? 17/17 ??????????? `docs/enemy-tests.md` ????????????????????????????
+阶段提交 `87d53be` 已正常推送 `origin/main`。交互组件 3/3 套通过；路线专项无头及真实渲染各 17/17，通过快照隔离、刷新上限、真实移动及清理检查，已查看截图。本阶段不代表核心团队行为完成。阶段 C 正在完全重写，尚未验收提交。
+
+
+### 阶段 C：新指挥链与接口替换
+
+已全新编写协调器、纯值任务/模板、全队岗位组合、几何岗位、通行搜索及 Squad 运行接线。AI/Context/动作使用独立的新任务执行协议；0级仍运行个人 Utility，1/2级不调用个人选优。区域只保存合法情报、关系和物理预约。旧团队候选、个人基准、协作加分、任务逃逸与重复恢复路径删除；配置检查器区分指挥权限和个人可选战术。
+
+当前保存地图已完成普通/强协同接敌和墙后搜索、真实准备屏障、封堵入口替代布局、三人拥堵、换弹、3→2→1、混合配置、本场档案冻结和场景重载验证。结果与旧41项专用入口替换清单见 [敌人测试](../../enemy-tests.md#当前回归)。未运行全仓回归，图形路径核对与最终差异收尾列入阶段D。
+
+当前实现参数及接口见 [敌人AI](../../enemy-ai.md)。调度周期、组合预算等是实现默认值，未将它们写成用户指定参数。脚本被场景引用的原路径和UID保留；未改插件、武器、感知、工程设置、导入文件和其他任务的既有修改，不同步远端其他内容。

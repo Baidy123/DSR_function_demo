@@ -63,9 +63,9 @@ func refresh(force: bool = false) -> void:
 		_note("配置兵种与训练资源后显示可选战术。")
 		return
 	if team.is_empty():
-		if inspected is Node: _note("未绑定小队团队意识，沿用个人协作开关（旧配置）。")
+		if inspected is Node: _note("未绑定小队：仅共享合法情报，使用个人 Utility。")
 	else:
-		_note("小队 %s：%s；仅团队意识共享，其他训练独立。" % [team.squad_key, TeamBinding.LEVEL_NAMES[team.level]])
+		_note("小队 %s：%s；普通与强配合由协调器指挥；可选战术仍须个人解锁。" % [team.squad_key, TeamBinding.LEVEL_NAMES[team.level]])
 		if not String(team.diagnostic).is_empty(): _note(team.diagnostic)
 		var button := Button.new()
 		button.text = "编辑整队团队意识配置"
@@ -88,12 +88,8 @@ func refresh(force: bool = false) -> void:
 		var checkbox := CheckBox.new()
 		checkbox.text = definition.display_name
 		checkbox.button_pressed = resolved.definitions.has(id)
-		var inherited: bool = id == &"cooperate" and not team.is_empty()
-		checkbox.disabled = inherited or invalid or not included.is_empty()
-		if inherited:
-			checkbox.text += "（由小队提供）"
-			checkbox.tooltip_text = "通过上方按钮编辑所属小队的团队意识；个人训练选择独立保留。"
-		elif invalid:
+		checkbox.disabled = invalid or not included.is_empty()
+		if invalid:
 			checkbox.tooltip_text = "无法启用：" + "; ".join(eligibility.errors)
 		elif not included.is_empty():
 			var names := PackedStringArray()
@@ -108,7 +104,6 @@ func refresh(force: bool = false) -> void:
 	if seen.is_empty(): _note("此兵种尚未配置战术动作。")
 
 func _toggle(enabled: bool, training: EnemyTrainingProfile, id: StringName) -> void:
-	if id == &"cooperate" and not team_binding().is_empty(): return
 	var before: Array[StringName] = training.selected_tactics.duplicate()
 	var after: Array[StringName] = before.duplicate()
 	after.erase(id)

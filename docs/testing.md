@@ -9,6 +9,16 @@
 - 必要检查通过后结束验证。只有新修改、失败或明确的关联风险才扩大或重复检查；不为提高通过数量运行无关套件，不顺带修理无关旧夹具。
 - 保留原断言、时间与性能门槛，原有失败仍如实记录；未运行项目不计作通过。下文全量与分组命令是可用入口，不是每次任务的必跑清单。
 
+## 本次协调器定向入口
+
+```powershell
+& E:/Godot/Godot_v4.7.2-stable_win64_console.exe --headless --fixed-fps 60 --path movement_demo --script res://tests/enemy/squad_command_runtime_test.gd -- --level=1 --search
+```
+
+将 `--level=1` 改为 `2` 检查强协同实际屏障，`0` 检查个人 Utility；`--crowded` 复现三人墙角入口，`--blocked-exit` 用实例内实体封堵一端，`--mixed` 检查近战/远程及不同训练。运行中不注入任务接受、视野、到位或开火结果。图形模式追加 `--capture-debug` 保存当前路线画面到忽略目录。测试不写回保存场景、训练或武器资源。
+
+纯值组合边界为 `squad_command_contract_test.gd`。旧协调器的候选注入、advisory/个人接管和旧任务表专项已移除，明确清单与承接关系见 [敌人测试](enemy-tests.md#当前回归)。仍适用的共享情报、友军枪线、个人执行及压制检查保留。旧报告中的套数不代表本次全量通过。
+
 ## 查询当前清单
 
 在仓库根目录运行：
@@ -36,7 +46,7 @@ python movement_demo/tests/run_regressions.py --godot E:/Godot/Godot_v4.7.2-stab
 | `combat` | `tests/run_combat_regressions.py` 的原玩家战斗清单 |
 | `enemy` | `tests/enemy/run_enemy_regressions.py` 的原敌人清单 |
 
-默认按系统、玩家、敌人顺序串行运行。统一入口为每次运行创建独立的 `logs/regressions/<时间>/`，分组保留 `results.json`、完整进程输出和 Godot 日志，总报告为 `report.json`。`--output` 可指定一个尚不存在的目录，避免覆盖旧结果。普通脚本超时仍为75秒；原包抄实景／多人协作分别保留300／180秒。
+默认按系统、玩家、敌人顺序串行运行。统一入口为每次运行创建独立的 `logs/regressions/<时间>/`，分组保留 `results.json`、完整进程输出和 Godot 日志，总报告为 `report.json`。`--output` 可指定一个尚不存在的目录，避免覆盖旧结果。普通脚本超时仍为75秒；新的保存地图小队连续实战专项为180秒，旧协调器专项已从清单退出。
 
 原有单组／定向命令仍可使用：
 

@@ -1,5 +1,52 @@
 # 敌人测试与诊断
 
+## 当前回归
+
+### 2026-10-23 协调器完整重写：核心与保存地图
+
+按[用户确认计划](superpowers/plans/2026-10-23-squad-coordinator-rewrite.md)及“协调器相关代码完全重写”要求实施。旧调度器、planner、队形/通行、Squad 接线和任务交接由新实现替换；删除个人 Utility 的协作收益、团队候选、建议模式、空任务和单人接管。底层个人行为、感知、导航、碰撞及原火控保留。旧档案下方的失败与通过记录保留为历史，不作为新协议的验收结果。
+
+本轮使用当前保存 `main.tscn / arena.tscn`，不重烘导航、不改资源或布局。测试只有玩家路线/敌人初始位置、实例内封堵及配置作为输入；感知、命令接受、真实移动、换弹、射击和近战均由正常运行循环产生。普通/强协同的接敌、搜索、换弹与单人阶段，个人 Utility 计数均为零。
+
+| 定向用例 | 结果 | 现场事实 |
+| --- | --- | --- |
+| 普通：接敌→墙后搜索→换弹→3→2→1→重载 | 25/25 | 搜索第160帧重新目击，约2.67秒；最小间距1.368米。 |
+| 强协同：同一路线 | 26/26 | 第214帧，约3.57秒；观察准备屏障实际等待55个成员帧后放行；最小间距1.992米。 |
+| 三人拥挤墙角入口 | 26/26 | 第139帧重新目击；真实等待阻挡者，三人均离开拥堵入口；最小间距1.399米。 |
+| 一个墙端由实例内实体封闭 | 26/26 | 第389帧重新目击，约6.48秒；全员执行替代搜索，目标不因成队失败丢失。 |
+| 混合近战/远程、同兵种不同训练 | 18/18 | 真实近战/开火，岗位只使用实际装配动作；档案与模板在本场保持，重载后按新训练重建。 |
+| 仅共享情报对照 | 6/6 | 三人实际通过个人 Utility 决策并取得真实视野、开火。 |
+| 最小完整组合/能力/初始拥挤边界 | 6/6 | 拒绝循环占位及未训练岗位，替代组合必须覆盖全队。 |
+| 原共享情报 / 友军枪线 / 个人执行 | 37/37、22/22、16/16 | 原时间与过期、隐藏位置、资格、真实枪线及身体互斥继续检查。 |
+| 原个人压制 / 训练检查器 | 29/29、40/40 | 压制不依赖旧请求身份；指挥权限不自动解锁个人战术，撤销及保存重载正常。 |
+
+普通、强协同、拥堵、混合四个当前三人接敌段的整队累计 AI+区域耗时 P99 分别为8.831、6.099、8.651、6.979毫秒，均通过保留的 P99 <16毫秒/峰值<50毫秒断言。仅共享情报此次验证行为入口，三人合计 P99 为34.758毫秒，不把它写成性能优化通过；旧个人评分整体性能不在本次协调器优化结论内。未运行全仓回归。
+
+过程中捕获并修正了支援成员到位失视后不推进、正常排队被当作卡死、等待状态被搜索执行覆盖，以及减员后目标接续的问题。测试记录同时保留旧的失败输出，日志位于 Git 忽略的 `movement_demo/logs/coordinator_rewrite_20261023/`。屏障/拥堵统计覆盖玩家退入掩体的过渡阶段；搜索目标稳定性按一次失视区间核对，真实重新目击后允许建立新的失视目标。
+
+原 `enemy_shared_contact_test` 的团队加分字段检查改为验证该字段不存在；失视关联遮挡后读取冻结证据本身核对原身份与时间，同时允许旧接敌岗位转入调查。原 `suppression_purpose_test` 删除旧团队任务注入段，个人压制保留；真实换弹现在检查身体事实及个人模式零团队压力。上述调整对应明确的新控制边界，没有放宽隐藏信息、射击、身体间距、8秒重新接敌或性能门槛。
+
+### 旧检查的明确替换
+
+以下41个旧协调器入口及其继承专项已退出运行目录和清单。它们依赖旧任务表、候选注入、claim、个人基准/advisory 或旧共同阶段；其接敌、搜索、拥堵、减员、身份、配置与显示验收由新的保存地图运行入口及组合边界承接，不把旧断言数量累计为新验证通过。基础个人行为、地图、身体、射击与公开情报专项仍保留。旧源码由 Git 历史保存；本轮开始时相关未提交内容另保存在本地忽略基线目录。
+
+`cooperation_tactics_test`、`enemy_action_coordination_protocol_test`、`enemy_assignment_execution_test`
+`enemy_cooperation_flank_runtime_test`、`enemy_cooperation_flank_service_test`、`enemy_cooperation_query_test`
+`enemy_cooperation_reload_test`、`enemy_cooperation_search_test`、`enemy_cooperation_service_test`
+`enemy_cooperation_solo_test`、`enemy_cooperation_support_test`、`enemy_cooperation_yield_runtime_test`
+`enemy_coordination_debug_test`、`enemy_cover_inspection_test`、`enemy_flank_route_test`
+`enemy_inspection_observation_test`、`enemy_personal_search_runtime_test`、`enemy_reservation_batch_test`
+`enemy_search_formation_fallback_test`、`enemy_search_formation_test`、`enemy_search_traffic_test`
+`enemy_squad_node_test`、`enemy_squad_runtime_test`、`enemy_team_awareness_levels_runtime_test`
+`enemy_team_basic_runtime_test`、`enemy_team_board_test`、`enemy_team_continuity_runtime_test`
+`enemy_team_continuity_test`、`enemy_team_flank_runtime_test`、`enemy_team_inspection_runtime_test`
+`enemy_team_planner_test`、`enemy_team_posture_planner_test`、`enemy_team_posture_runtime_test`
+`enemy_team_reacquisition_test`、`enemy_team_scene_integration_test`、`enemy_team_search_runtime_test`
+`enemy_team_support_execution_test`、`enemy_team_support_planner_test`、`enemy_team_sync_runtime_test`
+`enemy_team_tactical_board_test`、`enemy_team_training_binding_test`
+
+新登记入口为 `squad_command_runtime_test.gd` 和 `squad_command_contract_test.gd`。`enemy_fire_fixture.gd` 保留个人场景/公共预约辅助，旧 `accept_prepared_task` 删除；无生产引用的旧 `enemy_flank_route.gd` 删除。目录清单与测试脚本引用检查通过。当前图形效果另在阶段 D 收尾记录。
+
 ### 2026-10-23 重写阶段 B：主场景与地面路线
 
 主场景移除任务面板、任务状态框和五种交互演示实例；可复用组件由独立夹具装配。定向 `interactable_test`、`quest_panel_test`、`record_player_quest_test` 三套通过，清单检查通过。原三人路线专项 `enemy_coordination_debug_test` 无头和真实渲染各 17/17，通过快照隔离、刷新上限、真实移动及场景清理检查；截图确认地面路线、箭头及站位圈，无规划大框。颜色按成员路径保存，其他成员离开不重排颜色。夹具仍报告原有的近战装备资格警告，无脚本异常。
@@ -12,7 +59,7 @@
 
 统一入口为 `python movement_demo/tests/run_regressions.py --list`；使用 `--check` 核对全部 GDScript 测试的登记与运行类型。选择 `--suite enemy --godot <Godot控制台程序>` 运行敌人组，原 `tests/enemy/run_enemy_regressions.py` 及定向命令继续可用。当前清单、日志目录、编辑器／图形专项和旧竞技场断言替代关系见 [测试维护](testing.md)。下方历史阶段中的套数和断言数是当时结果，不作为当前登记数量。
 
-## 当前回归
+## 历史回归
 
 ### 2026-10-23 区域与小队共享状态边界
 

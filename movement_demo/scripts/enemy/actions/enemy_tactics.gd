@@ -22,15 +22,6 @@ var _move_best_distance := INF
 var _move_stuck_seconds := 0.0
 var _melee_requested := false
 
-func assignment_escape(candidate: Dictionary, visible: bool) -> bool:
-	# This variant validates actual body cooldown, weapon reach and target access.
-	return candidate.get("id") == action_id and candidate.get("plan") == &"melee" and validate(candidate, visible)
-
-
-
-
-
-
 func get_engagement_candidate_points() -> Array[Vector3]:
 	var points: Array[Vector3] = []
 	if not is_enabled() or context.combat_type != context.CombatType.RANGED or not actor.can_use_firearms():
@@ -426,3 +417,10 @@ func _free_melee_push_distance(threat: Vector3, direction: Vector3, distance: fl
 	query.exclude = [actor.get_rid(), context.player.get_rid()]
 	var fractions: PackedFloat32Array = actor.get_world_3d().direct_space_state.cast_motion(query)
 	return distance * fractions[0] if not fractions.is_empty() else 0.0
+
+func command_roles() -> Array[StringName]:
+	return [&"engage", &"guard", &"move"] if actor.can_use_firearms() else []
+
+func command_work(_delta: float, visible: bool, _arrived: bool) -> Dictionary:
+	if visible and context.melee.can_request(visible): return {"melee": {"owner": action_id}}
+	return {"fire": {"owner": action_id, "mode": &"visible"}} if visible and actor.can_use_firearms() else {}

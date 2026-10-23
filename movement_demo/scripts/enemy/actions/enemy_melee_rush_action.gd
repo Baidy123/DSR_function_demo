@@ -4,10 +4,6 @@ var _burst_remaining := 0.0
 var _ready_at := 0.0
 var _memory_generation := -1
 
-func assignment_escape(_candidate: Dictionary, _visible: bool) -> bool:
-	# This override only advances; it does not inherit Approach's immediate strike.
-	return false
-
 func cooldown_remaining() -> float:
 	if context == null or context.memory_generation != _memory_generation: return 0.0
 	return maxf(0.0, _ready_at - context.evidence_elapsed_seconds)
