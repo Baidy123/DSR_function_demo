@@ -292,10 +292,11 @@ func _update_objective() -> void:
 			for id in _tasks:
 				if _profiles.get(id, {}).get("firearms", true) or not _tasks[id].role in [&"engage", &"flank"]: continue
 				if Combat.melee_post_valid(_context(id), _profiles[id], _tasks[id].position, newest.position, 0.08): continue
-				if _objective.position.distance_to(newest.position) > 0.02:
+				# Finish the bounded in-flight team plan before taking another
+				# sub-metre sample. Restarting for every walking frame starves it.
+				if _preparation.is_empty() and _objective.position.distance_to(newest.position) > 0.02:
 					_objective.position = newest.position
 					_objective.captured_at = newest.captured_at
-					_preparation.clear()
 					_failed_sites.clear()
 				_tasks[id].state = &"blocked"
 				_tasks[id].reason = &"attack_post_invalid"
@@ -375,6 +376,11 @@ func _plan() -> void:
 		must_replan = must_replan or task.has("barrier_id") and not _barriers.has(task.barrier_id)
 		must_replan = must_replan or task.get("coverage_version", _search.coverage.map_version) != _search.coverage.map_version
 		if _objective.phase == &"contact":
+			if not _bodies[id].firearms and not _bodies[id].occupied and task.role in [&"engage", &"flank"]:
+				var remaining := Traffic.remaining(_bodies[id].position, task.route)
+				var length: float = _context(id).cover_selection._path_length_from_path(remaining)
+				var executor := Combat.contact_executor(_profiles[id], _bodies[id], task.role, length, _objective.position)
+				must_replan = must_replan or not executor.is_empty() and executor != task.action
 			must_replan = must_replan or (_bodies[id].visible == false and task.role in [&"engage", &"support", &"flank"] and task.state == &"executing" and Contract.horizontal(_bodies[id].position, task.position) < 0.15)
 			must_replan = must_replan or (_bodies[id].firearms and _bodies[id].visible and not _bodies[id].fire_lane_valid and task.role in [&"engage", &"support", &"flank"] and Contract.horizontal(_bodies[id].position, task.position) < 0.15)
 			must_replan = must_replan or not defense_role.is_empty() and task.role != defense_role
@@ -516,6 +522,9 @@ func _member_work(id: int) -> Dictionary:
 			candidates.append(continuing)
 	if _objective.phase == &"contact" and defense_role.is_empty() and not needs_reload and previous.role in [&"engage", &"support", &"flank"] and previous.state != &"blocked" and previous.expires_at > elapsed:
 		var valid: bool = body.visible and body.fire_lane_valid and Contract.horizontal(body.position, _objective.position) >= 3.0 if body.firearms else Combat.melee_post_valid(context, _profiles[id], previous.position, _objective.position, 0.08)
+		if valid and not body.firearms and not body.occupied:
+			var length: float = context.cover_selection._path_length_from_path(Traffic.remaining(body.position, previous.route))
+			valid = Combat.contact_executor(_profiles[id], body, previous.role, length, _objective.position) == previous.action
 		if valid:
 			var continuing := previous.duplicate(true)
 			continuing.route = Traffic.remaining(body.position, previous.route)

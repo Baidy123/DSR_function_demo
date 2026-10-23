@@ -178,6 +178,10 @@ func route_tick(_delta: float, _visible: bool) -> Dictionary:
 func command_roles() -> Array[StringName]:
 	return []
 
+## Pure execution facts published by AI; the context never owns action objects.
+func command_runtime_state() -> Dictionary:
+	return {}
+
 func freeze_command_capability() -> Dictionary:
 	var values = {}
 	var keys: Array = definition.parameters.keys() if definition != null else []

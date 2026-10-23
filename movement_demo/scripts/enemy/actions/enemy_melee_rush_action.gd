@@ -3,6 +3,47 @@ extends "res://scripts/enemy/actions/enemy_melee_action.gd"
 var _burst_remaining := 0.0
 var _ready_at := 0.0
 var _memory_generation := -1
+var _command_burst_started := false
+
+func command_roles() -> Array[StringName]:
+	return [&"engage", &"flank"] if actor.weapon != null and actor.weapon.melee_enabled else []
+
+func freeze_command_capability() -> Dictionary:
+	var result := super.freeze_command_capability()
+	var defaults := {&"rush_distance": 3.5, &"rush_speed_multiplier": 2.5, &"rush_seconds": 1.0, &"rush_cooldown_seconds": 4.0}
+	for key in defaults:
+		_battle_settings[key] = _setting(key, defaults[key])
+	result.parameters = _battle_settings.duplicate(true)
+	result.contact_motion = {"distance": _battle_settings.rush_distance, "multiplier": _battle_settings.rush_speed_multiplier,
+		"seconds": _battle_settings.rush_seconds, "minimum_distance": Approach.stopping_distance(context) + 0.1}
+	return result
+
+func command_runtime_state() -> Dictionary:
+	return {"ready": cooldown_remaining() <= 0.0, "active": _running and _command_burst_started and _burst_remaining > 0.0,
+		"finished": _command_burst_started and _burst_remaining <= 0.0, "task_id": command.get("task_id", 0)}
+
+func begin_command(task: Dictionary) -> bool:
+	_command_burst_started = false
+	_burst_remaining = 0.0
+	return super.begin_command(task)
+
+func execute_command(delta: float, visible: bool) -> Dictionary:
+	if _command_burst_started: _burst_remaining = maxf(0.0, _burst_remaining - maxf(0.0, delta))
+	var output := super.execute_command(delta, visible)
+	if not output.get("melee", {}).is_empty() or not visible and context.observed_reload_window() <= 0.0:
+		_burst_remaining = 0.0
+		return output
+	if output.direction.is_zero_approx(): return output
+	if not _command_burst_started:
+		_command_burst_started = true
+		if cooldown_remaining() > 0.0: return output
+		_burst_remaining = maxf(0.0, float(_setting(&"rush_seconds", 1.0)))
+		_memory_generation = context.memory_generation
+		_ready_at = context.evidence_elapsed_seconds + _burst_remaining + maxf(0.0, float(_setting(&"rush_cooldown_seconds", 4.0)))
+	if _burst_remaining > 0.0:
+		output.multiplier = maxf(float(output.multiplier), float(_setting(&"rush_speed_multiplier", 2.5)))
+		output.multiplier = minf(output.multiplier, context._horizontal_distance(output.stop_position) / maxf(0.001, actor.move_speed * delta))
+	return output
 
 func cooldown_remaining() -> float:
 	if context == null or context.memory_generation != _memory_generation: return 0.0
@@ -60,6 +101,7 @@ func tick(delta: float, visible: bool) -> Dictionary:
 
 func reset() -> void:
 	_burst_remaining = 0.0
+	_command_burst_started = false
 	# 截止时间属于本动作，取消不返还；区域复位由记忆代际使旧截止时间失效。
 
 func state_label() -> String:

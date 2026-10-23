@@ -82,6 +82,9 @@ func _fixture() -> void:
 func _step(intent: Dictionary = {}, melee: bool = false) -> void:
 	await physics_frame
 	context.update_evidence(STEP, context.perception.can_see_player())
+	if context.commanded():
+		context.advance_coordination_map(4, Time.get_ticks_usec() + 500, Engine.get_physics_frames())
+		ai._update_command_decision()
 	if melee: context.melee.update(STEP, context.sees_player, {"owner": &"engage"})
 	context.fire.update(STEP, context.sees_player, false, intent)
 	actor._physics_process(STEP)
@@ -193,11 +196,17 @@ func _cancelled_reload(empty: bool) -> void:
 
 func _covering_quota_transition() -> void:
 	await _fixture()
+	# Long bursts now require a trained executor and an actual squad duty.
+	# Keep this explicit timing test; the mixed runtime suite separately
+	# exercises autonomous assignment, firing and the melee interruption.
+	ai.training.profile.selected_tactics.assign([&"suppression"])
 	ai.training.profile.set_setting(&"tactics", &"support_burst_shot_count", 8)
 	ai.training.profile.set_setting(&"tactics", &"burst_shot_count", 3)
 	ai.training.profile.set_setting(&"tactics", &"burst_pause_seconds", 1.0)
 	actor.weapon.shot_interval = 0.1
 	var partner = load("res://scenes/enemy/enemy.tscn").instantiate()
+	partner.weapon = WeaponData.new()
+	partner.get_node("UnitType").profile = load("res://resources/enemy/units/ranged.tres").duplicate(true)
 	scene.get_node("Arena").add_child(partner)
 	Fixture.configure_timing(partner)
 	var partner_ai = partner.get_node("AI")
@@ -209,11 +218,27 @@ func _covering_quota_transition() -> void:
 	partner.look_at(player.global_position)
 	partner.weapon.reload_seconds = 5.0
 	partner.ammo.magazine_rounds = 1
+	player.global_position = actor.global_position + Vector3(0, 0, 4)
+	actor.look_at(player.global_position)
+	partner.look_at(player.global_position)
+	Fixture.bind_team(scene.get_node("Arena"), 1)
+	ai.refresh_configuration(true)
+	# Automatic AI ticks are disabled in this clock fixture; run their normal
+	# assembly entry before manually stepping commands and weapon timers.
+	ai._capture_battle_capabilities()
+	partner_ai._capture_battle_capabilities()
 	for frame in 6: await physics_frame
 	var other = partner_ai.context
 	other.update_evidence(0.0, other.perception.can_see_player())
+	partner.ammo.magazine_rounds = 1
 	_check(partner.request_reload(), "Covering transition has an actual teammate reload request")
-	var support := {"owner": &"engage", "mode": &"visible", "support_intent": true}
+	for frame in 60:
+		other.update_evidence(STEP, other.perception.can_see_player())
+		await _step()
+		partner_ai._update_command_decision()
+		if context.coordination_assignment().get("accepted", false) and context.command_support_pressure() > 0.0: break
+	_check(context.commanded() and context.coordination_assignment().get("role") == &"support" and context.command_support_pressure() > 0.0, "Covering timing fixture has an accepted trained support task and a live reload beneficiary")
+	var support := {"owner": &"suppression", "mode": &"visible", "support_intent": true}
 	for frame in 120:
 		other.update_evidence(STEP, other.perception.can_see_player())
 		other.fire.update(STEP, other.sees_player, false, {})
@@ -226,7 +251,10 @@ func _covering_quota_transition() -> void:
 	var predicted: float = fire.pause_after_no_fire_seconds()
 	var facts: Dictionary = ai.actions[&"engage"]._melee_facts()
 	_check(is_equal_approx(predicted, 1.0) and facts.ready >= predicted and before == _timing_snapshot(), "No-fire prediction includes the impending quota downgrade pause without mutating it")
-	context.melee.update(0.0, true, {"owner": &"engage"})
+	player.global_position = actor.global_position - actor.global_basis.z * 1.25
+	await physics_frame
+	context.update_evidence(0.0, context.perception.can_see_player())
+	context.melee.update(0.0, true, {"owner": &"suppression"})
 	fire.update(0.0, true, false, {})
 	_check(actor.melee_active and fire.fire_burst_shots == 0 and is_equal_approx(fire.fire_pause_remaining, predicted), "Actual switch to no-fire melee finishes the long burst and starts its ordinary pause")
 

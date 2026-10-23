@@ -50,6 +50,7 @@ static func template(profiles: Dictionary, identity: int) -> Dictionary:
 		for role in [&"support", &"flank"]:
 			if unassigned.size() <= 1: break
 			for option in roles.get(role, []):
+				if profiles[option.member_id].actions[option.action].has("contact_motion"): continue
 				if unassigned.has(option.member_id):
 					defaults[option.member_id] = role
 					unassigned.erase(option.member_id)
@@ -60,6 +61,7 @@ static func template(profiles: Dictionary, identity: int) -> Dictionary:
 
 static func executor(profile: Dictionary, role: StringName) -> StringName:
 	for id in profile.get("actions", {}):
+		if profile.actions[id].has("contact_motion"): continue
 		if profile.actions[id].roles.has(role): return id
 	return &""
 

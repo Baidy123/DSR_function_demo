@@ -241,12 +241,16 @@ static func _candidate(context, profile: Dictionary, body: Dictionary, site: Dic
 				if detour.is_empty() or context.cover_selection._path_length_from_path(alternative) < context.cover_selection._path_length_from_path(detour): detour = alternative
 		if detour.is_empty(): return {}
 		path = detour
+	var length: float = context.cover_selection._path_length_from_path(path)
+	if phase == &"contact" and not profile.firearms and role in [&"engage", &"flank"]:
+		var contact_action := Combat.contact_executor(profile, body, role, length, objective.position)
+		if not contact_action.is_empty(): action = contact_action
 	var parameters: Dictionary = profile.actions[action].parameters
 	var speed = maxf(0.1, float(parameters.get("focused_search_speed_multiplier", 1.0))) if role == &"search" else 1.0
 	var run_speed: float = profile.get("run_speed_multiplier", 2.0)
 	var travel_speed: float = maxf(speed, run_speed) if role == &"flank" or site.has("overwatch_for") else speed
-	var length: float = context.cover_selection._path_length_from_path(path)
 	var seconds: float = maxf(0.0, length - 1.4) / maxf(0.1, body.move_speed * travel_speed) + minf(1.4, length) / maxf(0.1, body.move_speed * speed)
+	if profile.actions[action].has("contact_motion"): seconds = length / maxf(0.1, body.move_speed * float(profile.actions[action].contact_motion.multiplier))
 	var estimate: float = seconds + (0.0 if previous.get("position", Vector3.INF).distance_to(point) < 0.2 else 0.6)
 	if role == &"guard" and phase != &"patrol": estimate += 8.0
 	if role == &"search" and site.has("coverage_key"):

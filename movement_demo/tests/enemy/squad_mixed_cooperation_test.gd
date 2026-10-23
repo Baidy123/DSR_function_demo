@@ -20,7 +20,11 @@ func _run() -> void:
 		if arg.begins_with("--level="): level = int(arg.trim_prefix("--level="))
 	seed(20261024)
 	if await _setup_mixed():
-		if OS.get_cmdline_user_args().has("--ranged"):
+		if OS.get_cmdline_user_args().has("--pursuit"):
+			await _pursuit_case()
+		elif OS.get_cmdline_user_args().has("--support-burst"):
+			await _support_burst_case()
+		elif OS.get_cmdline_user_args().has("--ranged"):
 			await _crossfire()
 			if OS.get_cmdline_user_args().has("--legacy-search"): await _search_case()
 		else:
@@ -58,13 +62,15 @@ func _setup_mixed() -> bool:
 	hits.clear()
 	for index in actors.size():
 		var actor = actors[index]
-		var close := index > 0 and not OS.get_cmdline_user_args().has("--ranged")
+		var close := index > 0 and not OS.get_cmdline_user_args().has("--ranged") and not OS.get_cmdline_user_args().has("--support-burst")
 		actor.get_node("UnitType").profile = load("res://resources/enemy/units/%s.tres" % ("melee" if close else "ranged"))
 		actor.weapon = load("res://resources/weapons/enemy_test_%s.tres" % ("melee" if close else "pistol")).duplicate(true)
 		actor.weapon.fire_mode = 2 if close else 0
+		if OS.get_cmdline_user_args().has("--support-burst"): actor.weapon.reload_seconds = 5.0
 		var training = load("res://resources/enemy/training/arena.tres").duplicate(true)
 		training.selected_tactics.clear()
 		training.selected_tactics.append(&"cooperate" if close else &"suppression")
+		if close and OS.get_cmdline_user_args().has("--pursuit") and not OS.get_cmdline_user_args().has("--untrained"): training.selected_tactics.append(&"melee_rush")
 		training.search.tracking_cheat_enabled = false
 		actor.get_node("Training").profile = training
 		if close: melee_members.append(actor)
@@ -90,6 +96,9 @@ func _setup_mixed() -> bool:
 		camera.make_current()
 	player.global_position = arena.to_global(Vector3(1, 0, 0))
 	var starts := [Vector3(-2, 0, -3), Vector3(1, 0, -3), Vector3(4, 0, -3)]
+	if OS.get_cmdline_user_args().has("--pursuit"):
+		if OS.get_cmdline_user_args().has("--far"): player.global_position = arena.to_global(Vector3(1, 0, 2))
+		if OS.get_cmdline_user_args().has("--crowded"): starts[2] = Vector3(2, 0, -4.1)
 	if OS.get_cmdline_user_args().has("--ranged"):
 		player.global_position = arena.to_global(Vector3(1, 0, 2))
 		starts = [Vector3(-0.3, 0, -3), Vector3(1, 0, -3), Vector3(2.3, 0, -3)]
@@ -106,6 +115,119 @@ func _setup_mixed() -> bool:
 	check(valid, "Fixture: runtime weapons and frozen capabilities match intended attack methods")
 	print("MIXED FIXTURE ", JSON.stringify(actors.map(_trace)))
 	return valid
+
+func _pursuit_case() -> void:
+	var burst_frames := {}
+	var stalled := {}
+	var maximum := 0
+	var reasons := {}
+	var recovery_stops := 0
+	var saw_hit := false
+	var trained := not OS.get_cmdline_user_args().has("--untrained")
+	var deadlines := {}
+	var per_burst := {}
+	var cooldown_stable := true
+	var pause_checked := false
+	var captured := false
+	for frame in 480:
+		# Slow continuous flight stays in the saved open ground, then reverses.
+		if frame < 120: player.global_position.z += 1.0 / 60.0
+		elif frame >= 180 and frame < 300: player.global_position.z -= 1.0 / 60.0
+		await physics_frame
+		_sample()
+		for actor in melee_members:
+			var ai = actor.get_node("AI")
+			var ctx = ai.context
+			var task: Dictionary = ctx.coordination_assignment()
+			var id: int = actor.get_instance_id()
+			var speed: float = actor.get_local_movement_velocity().length()
+			if trained:
+				var rush = ai.actions[&"melee_rush"]
+				var deadline: float = rush._ready_at
+				if deadlines.has(id) and deadline > float(deadlines[id]) + 0.01: cooldown_stable = cooldown_stable and deadline - float(deadlines[id]) >= 4.99
+				if deadline > 0.0: deadlines[id] = deadline
+				if ai.current_action == rush and speed > actor.move_speed * 1.5:
+					burst_frames[id] = int(burst_frames.get(id, 0)) + 1
+					per_burst[[id, deadline]] = int(per_burst.get([id, deadline], 0)) + 1
+					if not pause_checked:
+						pause_checked = true
+						var before: float = rush.cooldown_remaining()
+						paused = true
+						for tick in 4: await physics_frame
+						check(is_equal_approx(before, rush.cooldown_remaining()), "Pause freezes the commanded burst and cooldown clock")
+						paused = false
+					if not captured and OS.get_cmdline_user_args().has("--capture"):
+						captured = true
+						_capture_pursuit.call_deferred()
+			var chasing: bool = ctx.sees_player and actor.global_position.distance_to(player.global_position) > actor.weapon.melee_range + 0.15 and not actor.melee_active
+			var clear := true
+			for other in actors:
+				if other != actor and actor.global_position.distance_to(other.global_position) < 1.4: clear = false
+			if chasing and clear and speed < 0.1:
+				stalled[id] = int(stalled.get(id, 0)) + 1
+				maximum = maxi(maximum, stalled[id])
+				var key := str(task.get("reason", ""))
+				reasons[key] = int(reasons.get(key, 0)) + 1
+			else: stalled[id] = 0
+			if ctx.melee.phase == ctx.melee.Phase.RECOVERY and speed < 0.1: recovery_stops += 1
+			saw_hit = saw_hit or hits[id] > 0
+		if frame % 120 == 0: print("PURSUIT TRACE ", frame, " ", JSON.stringify(actors.map(_trace)))
+	check(not burst_frames.is_empty() if trained else burst_frames.is_empty(), "Trained command executors actually rush; untrained bodies never gain the burst")
+	check(maximum <= 12, "Visible open-ground pursuit has no unexplained stop longer than 0.2 seconds")
+	check(saw_hit, "Pursuit and burst feed into actual melee hits")
+	if trained: check(cooldown_stable and per_burst.values().all(func(frames): return frames <= 61), "Command changes do not refund the burst cooldown or extend its one-second movement window")
+	print("PURSUIT METRICS burst_frames=", burst_frames, " max_open_stop=", maximum, " reasons=", reasons, " recovery_stop_frames=", recovery_stops)
+
+func _capture_pursuit() -> void:
+	await RenderingServer.frame_post_draw
+	check(root.get_texture().get_image().save_png("res://logs/command_melee_pursuit_20261024.png") == OK, "Independent graphical instance captures actual commanded rush")
+
+func _support_burst_case() -> void:
+	var squad = arena.get_node("Squad").coordinator
+	var supporter
+	for frame in 180:
+		await physics_frame
+		_sample()
+		for actor in actors:
+			if actor.get_node("AI").context.coordination_assignment().get("role") == &"support": supporter = actor
+		if supporter != null and not _reload_partners(supporter).is_empty(): break
+	check(supporter != null and not _reload_partners(supporter).is_empty(), "Coordinator assigns a real trained supporter and a distant teammate actually spends ammunition")
+	if supporter == null: return
+	var partners := _reload_partners(supporter)
+	if partners.is_empty(): return
+	partners.sort_custom(func(a, b): return a.global_position.distance_to(player.global_position) > b.global_position.distance_to(player.global_position))
+	var partner = partners[0]
+	check(partner.request_reload(), "A real teammate reload creates support demand")
+	var ctx = supporter.get_node("AI").context
+	var extended := false
+	var demand := false
+	for frame in 240:
+		await physics_frame
+		_sample()
+		demand = demand or ctx.command_support_pressure() > 0.0
+		if frame % 30 == 0: print("BURST TRACE ", frame, " task=", ctx.coordination_assignment().get("role"), " demand=", ctx.command_support_pressure(), " shots=", supporter.shot_count, " burst=", ctx.fire.fire_burst_shots, " pause=", ctx.fire.fire_pause_remaining, " quota=", ctx.fire.burst_limit(true), " intent=", ctx.fire.request, " partner_reload=", partner.ammo.is_reloading)
+		if ctx.fire.fire_burst_shots > ctx.fire.burst_shot_count and is_zero_approx(ctx.fire.fire_pause_remaining):
+			extended = true
+			break
+	check(demand and extended, "Real coordinated reload support fires beyond the ordinary burst quota")
+	if extended:
+		var predicted: float = ctx.fire.pause_after_no_fire_seconds()
+		var original: int = ctx.fire.fire_burst_shots
+		check(predicted >= ctx.fire.burst_pause_seconds and ctx.fire.fire_burst_shots == original, "The pending downgrade pause is predicted without changing actual burst state")
+		var forward: Vector3 = -supporter.global_basis.z
+		player.global_position = supporter.global_position + forward * 1.1
+		var paused_burst := false
+		for frame in 30:
+			await physics_frame
+			_sample()
+			paused_burst = paused_burst or supporter.melee_active and ctx.fire.fire_burst_shots == 0 and ctx.fire.fire_pause_remaining > 0.0
+		check(paused_burst, "Actual commanded melee ends the long burst and starts the ordinary pause")
+	print("SUPPORT BURST demand=", demand, " extended=", extended, " members=", squad.member_ids().size())
+
+func _reload_partners(supporter) -> Array:
+	# A close defender correctly cancels reload to repel the player. Wait for
+	# actual ammunition use by a distant teammate to exercise sustained cover.
+	return actors.filter(func(actor): return actor != supporter and actor.global_position.distance_to(player.global_position) > 3.0 and actor.ammo.magazine_rounds < actor.weapon.magazine_capacity)
 
 func _sample() -> void:
 	var total: int = arena.cooperation.last_advance_usec

@@ -1070,6 +1070,7 @@ func cooperation_publish_execution(output: Dictionary) -> void:
 
 
 var _battle_capabilities: Dictionary = {}
+var command_action_states: Dictionary = {}
 
 func commanded() -> bool:
 	return cooperation != null and cooperation.has_team_binding(self) and cooperation_level() > 0
@@ -1087,6 +1088,7 @@ func command_melee_enabled() -> bool:
 func member_runtime_snapshot() -> Dictionary:
 	var result := coordination_motion_state()
 	result.merge({"visible": sees_player, "health": actor.health,
+		"action_states": command_action_states.duplicate(true), "observed_reload": observed_reload_window(),
 		"fire_lane_valid": sees_player and last_seen_aim_position.is_finite(),
 		"pressure": recent_damage_pressure + nearby_shot_pressure,
 		"rounds": actor.ammo.magazine_rounds, "can_reload": actor.can_use_firearms() and actor.ammo.can_reload(),

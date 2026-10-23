@@ -150,6 +150,7 @@ func _physics_process(delta: float) -> void:
 	if NavigationServer3D.map_get_iteration_id(agent.get_navigation_map()) == 0: return
 	var visible: bool = perception.can_see_player()
 	context.update_evidence(delta, visible)
+	if context.commanded(): _publish_command_action_states()
 	frame_costs.perception = Time.get_ticks_usec() - stamp
 	stamp = Time.get_ticks_usec()
 	if context.commanded():
@@ -263,6 +264,14 @@ func _capture_battle_capabilities() -> void:
 		"run_speed_multiplier": float(context.setting(&"cooperation", &"run_speed_multiplier", 2.0)),
 		"actions": installed, "firearms": actor.can_use_firearms(), "weapon": weapon,
 		"body": context.coordination_motion_state()})
+	_publish_command_action_states()
+
+func _publish_command_action_states() -> void:
+	var states := {}
+	for id in actions:
+		var state: Dictionary = actions[id].command_runtime_state()
+		if not state.is_empty(): states[id] = state
+	context.command_action_states = states
 
 func _update_command_decision() -> void:
 	assert(context.commanded())
