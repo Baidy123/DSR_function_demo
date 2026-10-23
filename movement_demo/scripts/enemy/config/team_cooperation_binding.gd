@@ -14,7 +14,7 @@ const LEVEL_NAMES := ["仅视野共享", "战术配合", "强配合"]
 	set(value):
 		communication_group = value
 		emit_changed()
-@export var profile: Settings = Settings.new():
+@export var profile: EnemyCooperationSettings = Settings.new():
 	set(value):
 		profile = value
 		emit_changed()

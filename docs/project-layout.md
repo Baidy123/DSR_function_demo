@@ -97,6 +97,8 @@ movement_demo/
 
 团队验证入口为保存地图实战 `squad_command_runtime_test.gd`、最小组合边界 `squad_command_contract_test.gd` 及实体遮挡/面积记录 `squad_map_observation_test.gd`；旧协调器测试的明确替换清单与保留专项见 [敌人测试](enemy-tests.md)。原个人行为夹具 `enemy_fire_fixture.gd` 保留，旧任务注入 helper 删除。
 
+`enemy/config/cooperation_settings.gd` 注册资源类 `EnemyCooperationSettings`，供 Squad 和旧区域绑定的 Profile 明确声明类型。资源创建与预设拖放沿用 Godot 原生检查器；不将 Profile 声明成 GDScript 选择槽，不新增第二份节点等级。原资源路径/UID 和 `cooperation` 参数消费规则保留。`enemy_training_inspector_test.gd` 同时核对原生类型筛选、三个预设、独立资源保存与原有训练面板操作。
+
 `enemy/services/enemy_fire_controller.gd` 统一维护普通短点射、真实队友需求下的掩护长点射、轮间停顿及 AI 扳机间隔，参数在 `config/tactics_settings.gd`。当前默认普通3发、支援6发、停顿1.8秒、AI 间隔倍率1.5；竞技场训练保存的普通枪数／停顿同步为3／1.8。动作、空间预测和协作窗口消费 Fire 的统一时序查询，切换意图不重置已消耗的枪数与间隔；长点射不越过请求和枪线条件。`WeaponData`、身体机械最大射速及玩家开火保持独立，不因 AI 节奏调整而修改。
 
 本轮专项沿用同一回归运行器：`enemy_cover_inspection_test.gd` 覆盖两端检查、证据权限与回退；`enemy_firing_cadence_test.gd` 覆盖短长点射、有限窗口、自主实际掩护与单敌人开关对照；`enemy_ally_spacing_test.gd` / `enemy_ally_spacing_runtime_test.gd` 覆盖基础间距及实际多人移动。验收仍以运行结果和结构约束为准。

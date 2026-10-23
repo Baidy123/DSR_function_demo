@@ -25,6 +25,7 @@ func _run() -> void:
 	await create_timer(1.0).timeout
 	while EditorInterface.get_resource_filesystem().is_scanning():
 		await process_frame
+	_squad_profile_resources()
 	var host := Member.new()
 	var unit = preload("res://scripts/enemy/enemy_unit_type.gd").new()
 	unit.name = "UnitType"
@@ -175,6 +176,33 @@ func _run() -> void:
 
 func _checks(panel) -> Array:
 	return panel.rows.get_children().filter(func(child): return child is CheckBox)
+
+func _squad_profile_resources() -> void:
+	var squad = preload("res://scripts/world/squad_controller.gd").new()
+	var binding = preload("res://scripts/enemy/config/team_cooperation_binding.gd").new()
+	check(ProjectSettings.get_global_class_list().any(func(item): return item["class"] == "EnemyCooperationSettings"), "新建资源菜单可找到配合配置类型")
+	for owner_object in [squad, binding]:
+		var properties: Array = owner_object.get_property_list().filter(func(item): return item.name == "profile")
+		var property: Dictionary = properties[0]
+		check(property.hint == PROPERTY_HINT_RESOURCE_TYPE and property.hint_string == "EnemyCooperationSettings", "节点和旧绑定的 Profile 都是配置资源槽而非 GDScript 槽")
+		var picker := EditorResourcePicker.new()
+		picker.base_type = property.hint_string
+		check(picker.get_allowed_types().has("EnemyCooperationSettings") and not picker.get_allowed_types().has("GDScript"), "原生资源选择器筛选配合配置而非脚本")
+		for name in ["intel_only", "tactical", "coordinated"]:
+			var preset = load("res://resources/enemy/cooperation/%s.tres" % name)
+			picker.edited_resource = preset
+			owner_object.profile = picker.edited_resource
+			check(preset.get_script().get_global_name() == "EnemyCooperationSettings" and owner_object.profile == preset, "三个已有预设兼容原生选择器和 Profile 赋值：" + name)
+		picker.free()
+	var source = load("res://resources/enemy/cooperation/tactical.tres")
+	squad.profile = source.duplicate(true)
+	squad.profile.level = 2
+	check(source.level == 1 and squad.profile != source, "设为独立配置后改等级不会覆盖共享预设")
+	var path := "res://logs/cooperation_profile_roundtrip.tres"
+	check(ResourceSaver.save(squad.profile, path) == OK, "自定义配合配置可保存为新的 tres")
+	var reloaded = ResourceLoader.load(path, "", ResourceLoader.CACHE_MODE_IGNORE)
+	check(reloaded.get_script().get_global_name() == "EnemyCooperationSettings" and reloaded.level == 2, "重载自定义预设保留资源类型和等级")
+	squad.free()
 
 func _find(panel, prefix: String):
 	for box in _checks(panel):

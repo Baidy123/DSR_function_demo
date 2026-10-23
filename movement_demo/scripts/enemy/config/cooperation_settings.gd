@@ -1,5 +1,6 @@
 @tool
 extends "res://scripts/enemy/config/module_settings.gd"
+class_name EnemyCooperationSettings
 
 enum Level { INTEL_ONLY, TACTICAL, COORDINATED }
 

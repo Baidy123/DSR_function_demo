@@ -4,7 +4,9 @@ extends Node3D
 ## Scene lifetime adapter. Area owns the clock; this node owns one coordinator.
 const Settings = preload("res://scripts/enemy/config/cooperation_settings.gd")
 const Coordinator = preload("res://scripts/enemy/services/squad_coordination.gd")
-@export var profile: Settings = Settings.new():
+## 配合配置资源：拖入预设 .tres，或从资源菜单新建 EnemyCooperationSettings。
+## 展开资源后用 Level 选择等级；Script 字段是节点脚本，不是预设入口。
+@export var profile: EnemyCooperationSettings = Settings.new():
 	set(value):
 		profile = value
 		update_configuration_warnings()

@@ -82,11 +82,36 @@ Debug 地面显示未查（橙）、部分查（黄）、近期查过（绿）�
 
 在 `Arena/Squad → Profile → Level` 设置等级，把敌人放在该 Squad 下。节点独占一个协调器，区域统一提供活跃时钟、关系与空间服务；同阵营同通信组的两个 Squad 也有独立任务表。旧显式区域绑定接入同一种协调器，没有绑定时保持个人模式。个人 Training 控制可选动作是否装配；团队指挥权限不自动解锁 `cooperate` 或 `suppression`。检查器允许单独选择可选协作战术。
 
+### 在检查器切换或新建配合配置
+
+选中 **Squad 节点**，将 `resources/enemy/cooperation/` 内的 `intel_only.tres`、`tactical.tres`、`coordinated.tres` 拖到 **Profile** 的资源框，分别为仅视野共享、战术配合、强配合；也可从 Profile 右侧资源菜单选择“加载”。节点底部的 **Script** 是 `squad_controller.gd`，不用于设置预设。
+
+点击 Profile 资源展开后，在 **Level** 下拉框选择等级。要单独调整当前小队，先在资源菜单选择“设为唯一/Make Unique”；直接编辑共享 `.tres` 会影响引用它的其他小队。需要新的可复用预设时，在 Profile 菜单新建 **EnemyCooperationSettings**，设置 Level 与相关参数，再“另存为”一个新的 `.tres`。新增预设是保存一组配置，不会自动新增第四种决策等级。运行中的能力档案按本场装配冻结，改配置后重新运行场景核对。
+
+2026-10-24 检查器修复：原 `@export var profile: Settings` 在本工程编辑器中生成了 `hint_string="GDScript"`，使资源框按脚本筛选，点击进入脚本且拒绝三个 `.tres`。`cooperation_settings.gd` 现注册为 `EnemyCooperationSettings`，Squad 与旧区域绑定的 Profile 明确使用这个资源类型。保留原脚本路径/UID、预设资源及等级语义；不修改用户现有预设参数。
+
 ### 战斗档案与默认分工
 
 成员完成装配后，AI 通过 `install_member_capabilities()` 保存纯值档案：兵种能力、训练标识、成功装配的动作及其生效参数、实际武器资格和身体数据。`member_capability_snapshot()` 返回副本，不暴露 Resource 或动作实例。本场任务重排、换弹、移动与减员不重读训练、不重建默认模板；下一次加载场景按新配置重新装配。运行时新增成员才补充本队模板。主动调用配置刷新属于工具层操作，不是战斗调度路径。
 
 `squad_contract.gd` 从全队实际动作能力建立角色适配及缺岗清单。当前默认优先匹配一个有资格的支援者、一个侧翼者，其余接敌；单人直接接敌，侧翼数量不超过半队。缺少某能力时只使用已装配的替代职责。模板是 planner 的硬约束，角色不是调试标签。即时身体位置、视野、弹药、换弹、移动和近战占用通过 `member_runtime_snapshot()` 更新。
+
+### 个人训练如何参与团队决策
+
+当前读取链是 `Enemy/Training.profile → EnemyActionLibrary.resolve() → 成功装配动作 → freeze_command_capability() → install_member_capabilities() → 协调器候选与执行器`。动作的 `roles` 决定它能承担哪些团队任务，`parameters` 保存本场生效参数。协调器不是绕过个人训练统一发放所有战术；已装配动作也不等于其个人行为分支已完整接入团队指挥。
+
+| 配置/能力 | 当前消费方式与边界 |
+| --- | --- |
+| 个人选择的可选战术、兵种资格与装备 | Library 解析并装配；没有装配或没有对应 `command_roles()` 的动作不能承担该团队岗位。 |
+| `tactics.stress_tolerance` | 冻结进成员档案，`squad_defense.gd` 判断该成员的受压避险。 |
+| 搜索移动速度、观察停留、短时追查 | 从对应成员的搜索动作参数进入站位预计、命令执行与真实观察计时。 |
+| hint 参数 | 按有资格成员的冻结配置进行队级一次采样；搜索公共半径和调度间隔目前取首个可搜索成员的配置，不是每人独立计时。 |
+| 掩体躲藏/探出、掩护撤退参数 | 防御组件和原动作命令入口消费实际装配的参数；资格与身体条件仍需满足。 |
+| 普通/支援点射、射击与近战条件 | 继续由原火控和身体按训练/武器条件执行；团队支援标签不授予越过枪线或攻击范围的权限。 |
+| `cooperation` 参数 | 有 Squad/区域绑定时，以小队 Profile 为准；个人 Training 中同名模块不覆盖整队等级和公共配合参数。 |
+| 个人 Utility 权重与切换策略 | 仅共享情报/无绑定的个人分支使用；普通和强配合不运行个人 Utility，这是既定设计，不应为了使用这些权重重新放权。 |
+
+本次核对仍存在明确接入边界：`enemy_attack_position_action.gd` 没有声明团队执行岗位；`enemy_melee_cover_action.gd` 继承的团队入口是基础 `shelter/cover_peek`，个人掩体接近、出口选择和后续突进流程不能据此认定已被团队完整使用。近战 `melee_rush` 的命令入口、有限加速和状态快照已由另一轮维护在 `6c1d2f4` 提交，验证见本文开头的追加修复及[敌人测试](enemy-tests.md)，不计为本次检查器验证成果。后续接入应逐项核对资格、参数、岗位候选、原动作执行和实战结果；相关审计要求见[设计补充](superpowers/specs/2026-10-24-ranged-melee-cooperation-design.md#11-个人训练能力的接入审计2026-10-24)。
 
 ### 目标、任务与执行
 
