@@ -196,8 +196,11 @@ func _uses_team_grid() -> bool:
 
 
 func _available(point: Vector3, checked: Dictionary) -> bool:
-	if not context.cooperation_enabled(): return true
+	# Basic body/reservation clearance applies even to intel-only members.
+	# Otherwise selection repeatedly returns a point rejected by Search's
+	# execution check, restarting the whole sweep instead of trying a free point.
 	if not context.cooperation_search_available(point, float(context.setting(&"cooperation", &"search_claim_radius", 1.0))): return false
+	if not context.cooperation_enabled(): return true
 	# 只排除同一个量化地面样本；共享负证据不修改个人覆盖率，过期后仍能重新选中。
 	var key := point.snapped(Vector3.ONE * 0.01)
 	return not checked.has(key)
