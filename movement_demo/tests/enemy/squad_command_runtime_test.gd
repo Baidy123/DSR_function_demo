@@ -45,6 +45,13 @@ func _run() -> void:
 	player.get("combat").set_physics_process(false)
 	player.get("health").debug_invincible = true
 	player.global_position = arena.to_global(Vector3.ZERO)
+	if OS.get_cmdline_user_args().has("--melee"):
+		await _melee_case()
+		scene.queue_free()
+		await physics_frame
+		print("SQUAD MELEE RUNTIME: %d/%d passed" % [checks - failures, checks])
+		quit(1 if failures else 0)
+		return
 	if OS.get_cmdline_user_args().has("--patrol"):
 		player.global_position = arena.to_global(Vector3(-4.84, 0, 0.68))
 		for actor in actors: actor.look_at(actor.global_position + Vector3.RIGHT)
@@ -101,6 +108,116 @@ func _run() -> void:
 	if level > 0: await _reload_scene()
 	print("SQUAD COMMAND RUNTIME: %d/%d passed" % [checks - failures, checks])
 	quit(1 if failures else 0)
+
+func _melee_case() -> void:
+	var facts := {"hits": {}, "roles": {}, "finished": {}, "windup_frames": 0, "push": false}
+	var exclusive := true
+	var held := true
+	var resumed := false
+	for actor in actors:
+		actor.look_at(player.global_position)
+		actor.melee_struck.connect(func(target, _settings, _direction):
+			if target != player: return
+			facts.hits[actor.get_instance_id()] = true
+			var task: Dictionary = actor.get_node("AI").current_action.command
+			facts.roles[task.get("role")] = true)
+		actor.melee_finished.connect(func(cancelled):
+			if not cancelled: facts.finished[actor.get_instance_id()] = true)
+	for frame in 600: await physics_frame
+	# Approach each saved ranged member through real player movement. Neither
+	# task choice nor visibility, swing phase, hits or completion is injected.
+	for target in actors:
+		print("MELEE APPROACH ", target.name, " ", JSON.stringify(actors.map(_trace)))
+		player.global_position = target.global_position - target.global_basis.z * 1.2
+		for frame in 240:
+			var before := {}
+			for actor in actors:
+				var ai = actor.get_node("AI")
+				before[actor] = {"phase": ai.context.melee.phase, "shots": actor.shot_count,
+					"position": actor.global_position, "task": ai.current_action.command.duplicate() if ai.current_action != null else {}}
+			_approach_player(target)
+			await physics_frame
+			facts.push = facts.push or player._melee_push_remaining > 0.0
+			for actor in actors:
+				var ai = actor.get_node("AI")
+				var sample: Dictionary = before[actor]
+				if sample.phase == ai.context.melee.Phase.READY: continue
+				exclusive = exclusive and actor.shot_count == sample.shots and not actor.ammo.is_reloading
+				if sample.phase == ai.context.melee.Phase.WINDUP:
+					facts.windup_frames += 1
+					exclusive = exclusive and actor.global_position.distance_to(sample.position) < 0.001
+				if actor.melee_active:
+					held = held and ai.current_action != null and preload("res://scripts/enemy/services/squad_contract.gd").same_task(sample.task, ai.current_action.command)
+	for action in ["move_left", "move_right", "move_up", "move_down"]: Input.action_release(action)
+	var starts: Array = actors.map(func(actor): return actor.global_position)
+	var shots: Array = actors.map(func(actor): return actor.shot_count)
+	player.global_position = arena.to_global(Vector3.ZERO)
+	for frame in 180: await physics_frame
+	for index in actors.size():
+		resumed = resumed or actors[index].shot_count > shots[index] or actors[index].global_position.distance_to(starts[index]) > 0.5
+	check(actors.all(func(actor): return actor.can_use_firearms() and actor.weapon.melee_windup_seconds > 0.0), "Saved ranged weapons retain real nonzero melee windup")
+	check(facts.hits.size() == actors.size() and facts.push, "Every ranged member actually hits and pushes the approaching player")
+	var roles: Array = actors.map(func(actor): return arena.cooperation.coordinator_for(actor.get_node("AI").context)._template.contact_roles.get(actor.get_instance_id()))
+	check(roles.has(&"support") and roles.has(&"flank") and roles.has(&"engage") and facts.hits.size() == actors.size(), "All three team specialties retain melee across real post changes")
+	check(facts.finished.size() == actors.size() and facts.windup_frames >= 18, "Windup survives multiple frames and every member completes recovery")
+	check(exclusive, "No windup movement or simultaneous firearm/reload during melee")
+	check(held and resumed, "Melee retains its executing command and normal duties resume afterwards")
+	check(actors.all(func(actor): return actor.get_node("AI").utility_decision_count == 0), "Close defense never activates personal Utility")
+	print("MELEE RESULT level=", level, " ", facts)
+	await _melee_reload_case()
+	# Change only instance weapon inputs; live equipment must still veto a
+	# frozen battle capability that originally permitted melee.
+	for actor in actors:
+		actor.weapon = actor.weapon.duplicate(true)
+		actor.weapon.melee_enabled = false
+	for frame in 30: await physics_frame
+	var strikes: Array = actors.map(func(actor): return actor.melee_count)
+	var close := {}
+	for target in actors:
+		player.global_position = target.global_position - target.global_basis.z * 1.2
+		for frame in 90:
+			_approach_player(target)
+			await physics_frame
+			var ai = target.get_node("AI")
+			if ai.context.sees_player and target.melee_target_reachable(player, ai.context.melee.weapon_settings(), -target.global_basis.z): close[target] = true
+	for action in ["move_left", "move_right", "move_up", "move_down"]: Input.action_release(action)
+	check(close.size() == actors.size() and strikes == actors.map(func(actor): return actor.melee_count), "Disabled melee weapons never swing despite actual visible front-range approaches")
+
+func _approach_player(target: Node3D) -> void:
+	var direction: Vector3 = (target.global_position - player.global_position).normalized()
+	Input.action_press("move_right", maxf(0.0, direction.x))
+	Input.action_press("move_left", maxf(0.0, -direction.x))
+	Input.action_press("move_down", maxf(0.0, direction.z))
+	Input.action_press("move_up", maxf(0.0, -direction.z))
+	player._physics_process(1.0 / 60.0)
+
+func _melee_reload_case() -> void:
+	var target = actors[0]
+	target.ammo.magazine_rounds = 0
+	var reloading := false
+	for frame in 300:
+		await physics_frame
+		if target.ammo.is_reloading and target.ammo.reload_progress > 0.2:
+			reloading = true
+			break
+	player.global_position = target.global_position - target.global_basis.z * 1.2
+	var interrupted := false
+	for frame in 120:
+		_approach_player(target)
+		await physics_frame
+		if target.melee_active and not target.ammo.is_reloading:
+			interrupted = true
+			break
+	for action in ["move_left", "move_right", "move_up", "move_down"]: Input.action_release(action)
+	player.global_position = arena.to_global(Vector3.ZERO)
+	var refilled := false
+	var premature := false
+	for frame in 360:
+		await physics_frame
+		var task: Dictionary = target.get_node("AI").context.coordination_assignment()
+		premature = premature or task.get("role") == &"reload" and task.get("state") == &"complete" and target.ammo.magazine_rounds == 0
+		refilled = refilled or target.ammo.magazine_rounds > 0
+	check(reloading and interrupted and refilled and not premature, "Melee interrupts an actual reload, then reload resumes and refills before completion")
 
 func _search_case() -> void:
 	var handoff = OS.get_cmdline_user_args().has("--handoff")

@@ -216,6 +216,14 @@ func execute_command(delta: float, visible: bool) -> Dictionary:
 	var output = motion(Vector3.ZERO, 1.0, command.get("look_position", actor.global_position) - actor.global_position)
 	output.scheduled_members = context.coordinated_stationary_members()
 	if command.is_empty(): return output
+	# Close defense is a body ability shared by all installed command executors.
+	# Keep the owner intent alive throughout windup/recovery: body occupancy must
+	# not cancel the very swing that caused it. The task and route stay unchanged.
+	if context.melee.is_active_for(action_id) or (context.command_melee_enabled() and context.melee.can_request(visible)):
+		output.facing = context.player.global_position - actor.global_position if visible else Vector3.ZERO
+		output.melee = {"owner": action_id}
+		context.report_command(command, &"occupied", {"reason": &"melee"})
+		return output
 	if actor.is_vaulting() or actor.melee_active or not actor.can_move():
 		context.report_command(command, &"occupied", {"reason": &"body_busy"})
 		return output

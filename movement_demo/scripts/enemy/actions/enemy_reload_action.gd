@@ -242,7 +242,9 @@ func command_roles() -> Array[StringName]:
 
 func command_work(_delta: float, _visible: bool, arrived: bool) -> Dictionary:
 	if not arrived: return {}
-	if not _command_started: _command_started = actor.ammo.is_reloading or actor.request_reload()
+	# A close-defense swing may have cancelled a partially completed reload.
+	if not _command_started or (not actor.ammo.is_reloading and actor.ammo.can_reload()):
+		_command_started = actor.ammo.is_reloading or actor.request_reload()
 	if _command_started and not actor.ammo.is_reloading:
 		context.report_command(command, &"complete")
 	elif not _command_started:

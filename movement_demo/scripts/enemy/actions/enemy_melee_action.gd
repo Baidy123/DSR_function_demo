@@ -44,6 +44,3 @@ func can_interrupt(_next: Dictionary, _visible: bool) -> bool:
 
 func command_roles() -> Array[StringName]:
 	return [&"engage", &"guard", &"move"] if actor.weapon != null and actor.weapon.melee_enabled else []
-
-func command_work(_delta: float, visible: bool, _arrived: bool) -> Dictionary:
-	return {"melee": {"owner": action_id}} if visible and context.melee.can_request(visible) else {}

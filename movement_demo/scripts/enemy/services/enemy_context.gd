@@ -1078,6 +1078,9 @@ func install_member_capabilities(value: Dictionary) -> void:
 func member_capability_snapshot() -> Dictionary:
 	return _battle_capabilities.duplicate(true)
 
+func command_melee_enabled() -> bool:
+	return bool(_battle_capabilities.get("weapon", {}).get("melee_enabled", false))
+
 func member_runtime_snapshot() -> Dictionary:
 	var result := coordination_motion_state()
 	result.merge({"visible": sees_player, "health": actor.health,
