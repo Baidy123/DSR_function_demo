@@ -199,6 +199,7 @@ var _command_approach_index = -1
 var _command_observe = 0.0
 var _command_started = false
 var _command_path_check = 0.0
+var _command_attack_blocked = 0.0
 
 func begin_command(task: Dictionary) -> bool:
 	if not is_enabled() or not command_roles().has(task.get("role")): return false
@@ -215,6 +216,7 @@ func begin_command(task: Dictionary) -> bool:
 	_command_observe = 0.0
 	_command_started = false
 	_command_path_check = 0.0
+	_command_attack_blocked = 0.0
 	return true
 
 func command_look_position(fallback: Vector3 = Vector3.INF) -> Vector3:
@@ -247,6 +249,19 @@ func execute_command(delta: float, visible: bool) -> Dictionary:
 	while _command_index < path.size() and context._horizontal_distance(path[_command_index]) < 0.06: _command_index += 1
 	if not visible: output.facing = command_look_position() - actor.global_position
 	var arrived: bool = context._horizontal_distance(command.position) <= 0.08
+	if arrived and visible and not actor.can_use_firearms() and command.role in [&"engage", &"flank"]:
+		# Test geometry facing the visible target, independently of actual
+		# turning, cooldown and recovery. Those are valid reasons to hold.
+		var toward: Vector3 = context.last_known_position - actor.global_position
+		toward.y = 0.0
+		if actor.melee_target_reachable(context.player, context.melee.weapon_settings(), toward.normalized()):
+			_command_attack_blocked = 0.0
+		else:
+			_command_attack_blocked += delta
+			if _command_attack_blocked >= 0.5:
+				context.report_command(command, &"blocked", {"reason": &"attack_geometry"})
+				return output
+	else: _command_attack_blocked = 0.0
 	if not permission.get("allowed", false):
 		if not command.role in [&"search", &"reload"]:
 			output.merge(command_work(delta, visible, arrived if command.role in [&"shelter", &"cover_peek"] else false), true)

@@ -6,6 +6,7 @@ const Contract = preload("res://scripts/enemy/services/squad_contract.gd")
 const CoverGeometry = preload("res://scripts/enemy/services/enemy_cover_inspection_geometry.gd")
 const BodyGeometry = preload("res://scripts/systems/character_geometry.gd")
 const Traffic = preload("res://scripts/enemy/services/squad_traffic.gd")
+const Combat = preload("res://scripts/enemy/services/squad_combat_tactics.gd")
 
 static func sites(context, objective: Dictionary, count: int, attempt: int) -> Array[Dictionary]:
 	var result: Array[Dictionary] = []
@@ -223,8 +224,8 @@ static func _candidate(context, profile: Dictionary, body: Dictionary, site: Dic
 		else:
 			# Melee members receive actual contact-range posts from the same
 			# known target, never a ranged support label.
-			var away: Vector3 = (point - objective.position).normalized()
-			point = objective.position + away * maxf(0.5, float(profile.weapon.get("melee_range", 1.3)) * 0.8)
+			point = Combat.melee_position(context, profile, body, point, objective.position)
+			if not point.is_finite(): return {}
 	var detour_variant: int = site.get("detour_variant", -1)
 	var path = route(context, point, site.get("via", Vector3.INF), detour_variant)
 	if path.is_empty():
@@ -267,7 +268,7 @@ static func _candidate(context, profile: Dictionary, body: Dictionary, site: Dic
 			if context.cover_selection.has_clear_line(threat, sample + Vector3.UP): exposure += 1.0 / 3.0
 		var protected_low: bool = not context.cover_selection.has_clear_line(threat, point + Vector3.UP * 0.45)
 		var ammunition := float(body.rounds) / maxf(1.0, float(profile.weapon.get("magazine_capacity", 1)))
-		var sustained: bool = body.can_attack and not body.reloading and body.rounds > 0
+		var sustained: bool = profile.firearms and body.can_attack and not body.reloading and body.rounds > 0
 		tactical = {"exposure": exposure, "protected": protected_low, "sustainable_fire": sustained,
 			"travel": seconds, "reload": body.get("reload_remaining", 0.0), "pressure": body.pressure,
 			"ammunition": ammunition, "advance": maxf(0.0, Contract.horizontal(body.position, objective.position) - Contract.horizontal(point, objective.position))}

@@ -7,6 +7,7 @@ const Planner = preload("res://scripts/enemy/services/enemy_team_planner.gd")
 const Formation = preload("res://scripts/enemy/services/enemy_search_formation.gd")
 const Traffic = preload("res://scripts/enemy/services/squad_traffic.gd")
 const Search = preload("res://scripts/enemy/services/squad_search.gd")
+const Combat = preload("res://scripts/enemy/services/squad_combat_tactics.gd")
 var _search = Search.new()
 const Defense = preload("res://scripts/enemy/services/squad_defense.gd")
 var _defense = Defense.new()
@@ -275,6 +276,19 @@ func _update_objective() -> void:
 		if phase == &"contact" and not newest.is_empty():
 			# A new usable aim point at the same feet must not stay frozen as INF.
 			_objective.aim_position = newest.get("aim_position", Vector3.INF)
+			# Small legal target movement can invalidate one melee post without
+			# replacing the objective or the still useful ranged firing tasks.
+			for id in _tasks:
+				if _profiles.get(id, {}).get("firearms", true) or not _tasks[id].role in [&"engage", &"flank"]: continue
+				if Combat.melee_post_valid(_context(id), _profiles[id], _tasks[id].position, newest.position, 0.08): continue
+				if _objective.position.distance_to(newest.position) > 0.02:
+					_objective.position = newest.position
+					_objective.captured_at = newest.captured_at
+					_preparation.clear()
+					_failed_sites.clear()
+				_tasks[id].state = &"blocked"
+				_tasks[id].reason = &"attack_post_invalid"
+				_due = 0.0
 		return
 	var previous = _objective
 	_objective = newest.duplicate(true) if not newest.is_empty() else previous.duplicate(true)
@@ -474,6 +488,13 @@ func _member_work(id: int) -> Dictionary:
 	if needs_reload: sites = [{"position": body.position, "look_position": _objective.position, "site_key": "reload:%s" % id}]
 	var previous: Dictionary = _tasks[id]
 	var defense_role = _defense.role(id)
+	if _objective.phase == &"contact" and defense_role.is_empty() and not needs_reload and previous.role in [&"engage", &"support", &"flank"] and previous.state != &"blocked" and previous.expires_at > elapsed:
+		var valid: bool = body.visible and body.fire_lane_valid and Contract.horizontal(body.position, _objective.position) >= 3.0 if body.firearms else Combat.melee_post_valid(context, _profiles[id], previous.position, _objective.position, 0.08)
+		if valid:
+			var continuing := previous.duplicate(true)
+			continuing.route = Traffic.remaining(body.position, previous.route)
+			continuing.estimate = 0.0
+			candidates.append(continuing)
 	if _objective.phase == &"contact" and defense_role.is_empty() and not needs_reload:
 		# Defaults remain preferences. A qualified visible member can replace a
 		# blind support slot; unseen members continue to a real firing position.

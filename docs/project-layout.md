@@ -70,6 +70,7 @@ movement_demo/
 
 | 文件 | 当前职责 |
 | --- | --- |
+| `enemy/services/squad_combat_tactics.gd` | 协调器作战几何：按冻结武器与合法目标检查近战停点、到达余量与岗位有效性；无任务所有权或身体控制。 |
 | `world/squad_controller.gd` | Squad 配置、区域注册、单次区域时钟推进、销毁；不增加独立 AI 循环。 |
 | `enemy/services/squad_coordination.gd` | 本场能力档案、默认模板、持续目标、全员任务表、反馈、逐轮同步与共同续接、原子提交与生命周期。 |
 | `enemy/services/squad_contract.gd` | 纯值任务身份、状态、能力角色、观察步骤字段及整队默认模板。 |

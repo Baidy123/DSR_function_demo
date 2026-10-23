@@ -252,7 +252,7 @@ func _capture_battle_capabilities() -> void:
 		if actions[id].is_enabled(): installed[id] = actions[id].freeze_command_capability()
 	var weapon := {}
 	if actor.weapon != null:
-		for key in [&"fire_range", &"magazine_capacity", &"reload_seconds", &"melee_enabled", &"melee_range"]:
+		for key in [&"fire_range", &"magazine_capacity", &"reload_seconds", &"melee_enabled", &"melee_range", &"melee_height_tolerance"]:
 			weapon[key] = actor.weapon.get(key)
 	context.install_member_capabilities({"ready": true, "member_id": actor.get_instance_id(),
 		"profile_id": "%s:%s" % [actor.get_instance_id(), _battle_profile_serial],
