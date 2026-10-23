@@ -88,6 +88,10 @@ static func candidate(context, profile: Dictionary, body: Dictionary, site: Dict
 		if profile.firearms:
 			var origin: Vector3 = context.actor.get_posture_muzzle_position(false, point)
 			var aim: Vector3 = objective.get("aim_position", objective.position + Vector3.UP)
+			# Seeing a target does not imply the observer's current muzzle has a
+			# usable shot. Estimate future posts from known feet in that case;
+			# actual fire still requires a fresh personal visible aim point.
+			if not aim.is_finite(): aim = objective.position + Vector3.UP
 			if origin.distance_to(aim) > profile.weapon.fire_range or not context.fire.has_clear_firing_lane(origin, aim - origin, origin.distance_to(aim)): return {}
 		else:
 			# Melee members receive actual contact-range posts from the same

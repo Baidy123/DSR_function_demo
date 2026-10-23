@@ -214,6 +214,7 @@ func begin_command(task: Dictionary) -> bool:
 ## Task work remains in its installed executor. No target/role is chosen here.
 func execute_command(delta: float, visible: bool) -> Dictionary:
 	var output = motion(Vector3.ZERO, 1.0, command.get("look_position", actor.global_position) - actor.global_position)
+	if visible: output.facing = context.last_known_position - actor.global_position
 	output.scheduled_members = context.coordinated_stationary_members()
 	if command.is_empty(): return output
 	# Close defense is a body ability shared by all installed command executors.

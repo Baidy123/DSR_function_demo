@@ -45,6 +45,13 @@ func _run() -> void:
 	player.get("combat").set_physics_process(false)
 	player.get("health").debug_invincible = true
 	player.global_position = arena.to_global(Vector3.ZERO)
+	if OS.get_cmdline_user_args().has("--contact-edge"):
+		await _contact_edge_case()
+		scene.queue_free()
+		await physics_frame
+		print("SQUAD CONTACT EDGE: %d/%d passed" % [checks - failures, checks])
+		quit(1 if failures else 0)
+		return
 	if OS.get_cmdline_user_args().has("--melee"):
 		await _melee_case()
 		scene.queue_free()
@@ -108,6 +115,34 @@ func _run() -> void:
 	if level > 0: await _reload_scene()
 	print("SQUAD COMMAND RUNTIME: %d/%d passed" % [checks - failures, checks])
 	quit(1 if failures else 0)
+
+func _contact_edge_case() -> void:
+	# The actual user capture: one eye can see around CoverF, but its muzzle
+	# cannot shoot. Never inject the resulting visibility or invalid aim.
+	player.global_position = Vector3(18.0703697, 0.0007463, -0.976615)
+	var positions := [Vector3(25.4848766, 0, 5.6546197), Vector3(28.964489, 0, 4.6225762), Vector3(31.200674, 0, 1.82772)]
+	for index in actors.size():
+		actors[index].global_position = positions[index]
+		actors[index].look_at(player.global_position)
+	var saw_no_aim := false
+	var first_shot := -1
+	var safe := true
+	for frame in 600:
+		var shots: Array = actors.map(func(actor): return actor.shot_count)
+		await physics_frame
+		for index in actors.size():
+			var actor = actors[index]
+			var ai = actor.get_node("AI")
+			if frame < 10 and ai.context.sees_player and not ai.context.last_seen_aim_position.is_finite(): saw_no_aim = true
+			if actor.shot_count > shots[index]:
+				if first_shot < 0: first_shot = frame
+				safe = safe and ai.context.sees_player
+	check(saw_no_aim, "Actual first observer sees the target without a usable muzzle aim")
+	check(first_shot >= 0 and first_shot < 480, "The squad changes posts and actually fires within eight seconds")
+	check(actors.any(func(actor): return actor.global_position.distance_to(positions[actors.find(actor)]) > 1.0), "An unavailable current shot leads to a real reposition")
+	check(safe, "Shared feet never authorize a shot without personal sight")
+	check(actors.all(func(actor): return actor.get_node("AI").utility_decision_count == 0), "Reposition stays under squad command")
+	print("CONTACT EDGE first_shot=", first_shot, " members=", JSON.stringify(actors.map(_trace)))
 
 func _melee_case() -> void:
 	var facts := {"hits": {}, "roles": {}, "finished": {}, "windup_frames": 0, "push": false}

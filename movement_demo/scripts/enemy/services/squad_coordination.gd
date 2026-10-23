@@ -182,7 +182,11 @@ func _update_objective() -> void:
 		changed = changed or _objective.get("position", Vector3.INF).distance_to(newest.position) > 1.0
 	if phase == &"search" and not newest.is_empty():
 		changed = changed or float(newest.captured_at) > float(_objective.get("captured_at", -INF)) + 0.01
-	if not changed: return
+	if not changed:
+		if phase == &"contact" and not newest.is_empty():
+			# A new usable aim point at the same feet must not stay frozen as INF.
+			_objective.aim_position = newest.get("aim_position", Vector3.INF)
+		return
 	var previous = _objective
 	_objective = newest.duplicate(true) if not newest.is_empty() else previous.duplicate(true)
 	_objective.merge({"phase": phase, "objective_id": environment.allocate_coordination_id(),
@@ -198,7 +202,12 @@ func _update_objective() -> void:
 	_last_replan = &"objective_changed"
 	# Explicit supersession keeps every live body owned while a new full
 	# plan is prepared; stale search reports can no longer mark coverage.
-	for id in _tasks: _tasks[id] = _holding(id, &"objective_changed")
+	for id in _tasks:
+		# During visible target motion, retain valid combat work while preparing
+		# its replacement. Replanning itself is not a loss of firing permission.
+		if previous.get("phase") == &"contact" and phase == &"contact" and _tasks[id].role in [&"engage", &"support", &"flank", &"reload"]:
+			continue
+		_tasks[id] = _holding(id, &"objective_changed")
 	environment.release_squad_reservations(self)
 
 func _holding(id: int, reason: StringName) -> Dictionary:
@@ -206,6 +215,9 @@ func _holding(id: int, reason: StringName) -> Dictionary:
 	var body: Dictionary = _bodies.get(id, {})
 	var position: Vector3 = body.get("position", Vector3.ZERO)
 	var action = Contract.executor(profile, &"guard")
+	if _objective.get("phase") == &"contact":
+		var engage = Contract.executor(profile, &"engage")
+		if not engage.is_empty() and profile.actions[engage].roles.has(&"guard"): action = engage
 	var proposal = {"action": action, "role": &"guard", "position": position,
 		"route": PackedVector3Array([position]), "look_position": _objective.get("position", position + Vector3.FORWARD),
 		"objective_id": _objective.get("objective_id", 0), "site_key": "hold:%s" % id}
