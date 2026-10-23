@@ -339,6 +339,8 @@ func _search_case() -> void:
 	var waits := {}
 	var search_costs: Array[int] = []
 	var peak_cost := 0
+	var rear_facing := {"targets": true, "sides": {}, "body_sides": {}, "moving_sides": {}}
+	var capture_rear := OS.get_cmdline_user_args().has("--capture-rear")
 	for frame in 900:
 		await physics_frame
 		var total: int = arena.get("cooperation").last_advance_usec
@@ -352,6 +354,7 @@ func _search_case() -> void:
 			var actor = actors[index]
 			var ai = actor.get_node("AI")
 			var task: Dictionary = ai.context.coordination_assignment()
+			_audit_cover_rear(actor, task, rear_facing)
 			owned = owned and not task.is_empty() and ai.utility_decision_count == 0
 			if task.get("role") == &"search" and task.get("accepted", false): search_members[index] = true
 			if task.get("state") == &"waiting" and task.get("reason") == &"occupied_corridor": waits[index] = true
@@ -376,7 +379,7 @@ func _search_case() -> void:
 			if actors.all(func(actor): return not actor.get_node("AI").context.sees_player): hidden_stable = squad._objective.position == frozen
 		if actors.any(func(actor): return actor.get_node("AI").context.sees_player) and reacquired < 0: reacquired = frame
 		if frame % 120 == 0: print("SEARCH TRACE ", frame, " ", JSON.stringify(actors.map(_trace)))
-		if frame == 80 and OS.get_cmdline_user_args().has("--capture-debug"):
+		if frame == (280 if capture_rear else 80) and (capture_rear or OS.get_cmdline_user_args().has("--capture-debug")):
 			root.get_node("DebugSettings").enabled = true
 			for redraw in 3: await process_frame
 			await RenderingServer.frame_post_draw
@@ -385,9 +388,16 @@ func _search_case() -> void:
 			check(not overlay.coverage_snapshots.is_empty() and overlay.get_node("GroundRoutes").mesh.get_surface_count() > 0, "Map observation snapshots produce actual ground geometry")
 			var capture_directory = "res://logs/tactical_search_20261023"
 			DirAccess.make_dir_recursive_absolute(capture_directory)
-			check(not picture.is_empty() and picture.save_png(capture_directory.path_join("map_observation_routes.png")) == OK, "Rendered world-space command routes are captured")
+			check(not picture.is_empty() and picture.save_png(capture_directory.path_join("cover_rear_facing.png" if capture_rear else "map_observation_routes.png")) == OK, "Rendered world-space command routes are captured")
 	check(owned, "Loss, congestion and replanning never return tactical authority to personal Utility")
 	check(search_members.size() == actors.size(), "All members actually execute search commands")
+	check(rear_facing.targets and not rear_facing.sides.is_empty(), "Cover inspection targets lie inside the hiding space behind the wall")
+	if not OS.get_cmdline_user_args().has("--blocked-exit"):
+		check(rear_facing.sides.size() == 2, "Saved wall search inspects both cover ends")
+	if handoff:
+		check(rear_facing.body_sides.size() == 2, "Bodies at both cover ends actually turn inward and see the rear hiding space")
+		check(rear_facing.moving_sides.size() == 2, "Both sides inspect the rear while advancing around the corner, before arrival")
+	print("COVER REAR AUDIT ", JSON.stringify(rear_facing))
 	check(stable, "The search objective survives layout changes until a real new contact")
 	if not handoff:
 		check(reacquired >= 0 and reacquired <= 480, "Saved wall search actually reacquires within the existing eight-second boundary")
@@ -411,6 +421,34 @@ func _search_case() -> void:
 			check(_search_audit.hold_frames > 0 and _search_audit.releases >= 2, "Completed observers wait for their peers and subsequent search steps synchronize again")
 		print("HANDOFF AUDIT ", JSON.stringify(_search_audit))
 	print("SEARCH RESULT reacquired=", reacquired, " min=", closest, " barriers=", barriers_seen.size(), " waits=", barrier_waits, " released=", released, " p99_usec=", search_costs[int(search_costs.size() * 0.99)], " peak_usec=", search_costs[-1], " moved=", actors.map(func(actor): return actor.global_position.distance_to(starts[actors.find(actor)])))
+
+func _audit_cover_rear(actor, task: Dictionary, audit: Dictionary) -> void:
+	var key: String = task.get("site_key", "")
+	if task.get("role") != &"search" or not key.begins_with("cover:"): return
+	var cover = instance_from_id(int(key.split(":")[1]))
+	if not is_instance_valid(cover): return
+	var box: CollisionShape3D = cover.get_node("CollisionShape3D")
+	var half: Vector3 = box.shape.size * 0.5
+	var post: Vector3 = box.to_local(task.position)
+	var staging: Vector3 = box.to_local(task.staging_position)
+	var look: Vector3 = box.to_local(task.look_position)
+	var along_x := absf(post.z - staging.z) > absf(post.x - staging.x)
+	var across: float = post.z if along_x else post.x
+	var side: int = task.side
+	audit.sides[side] = true
+	audit.targets = audit.targets and absf(look.x if along_x else look.z) < (half.x if along_x else half.z) and (look.z if along_x else look.x) * signf(across) > (half.z if along_x else half.x)
+	if actor.get_node("AI").context.sees_player: return
+	var position: Vector3 = box.to_local(actor.global_position)
+	if (position.z if along_x else position.x) * signf(across) < (half.z if along_x else half.x): return
+	var inward: Vector3 = -(box.global_basis.x if along_x else box.global_basis.z).normalized() * side
+	# Inspect the physical body and an independent near-wall hiding point,
+	# not just whether the executor echoes its assigned look vector.
+	var hidden_local := Vector3(0, -half.y, signf(across) * (half.z + 0.8)) if along_x else Vector3(signf(across) * (half.x + 0.8), -half.y, 0)
+	var hidden: Vector3 = box.to_global(hidden_local)
+	if (-actor.global_basis.z).dot(inward) > 0.5 and preload("res://scripts/enemy/services/enemy_visual_observation.gd").visible(actor.get_node("AI").context, hidden):
+		audit.body_sides[side] = true
+		var advance: Vector3 = (task.position - task.staging_position).normalized()
+		if actor.velocity.dot(advance) > 0.2 and actor.global_position.distance_to(task.position) > 0.1: audit.moving_sides[side] = true
 
 func _audit_search_step() -> void:
 	var squad = arena.get_node("Squad").coordinator

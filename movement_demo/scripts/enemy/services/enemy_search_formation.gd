@@ -32,15 +32,23 @@ static func sites(context, objective: Dictionary, count: int, attempt: int) -> A
 				var end: Dictionary = geometry.ends[side]
 				var outward: Vector3 = (geometry.cover_transform.basis.x if geometry.along_x else geometry.cover_transform.basis.z).normalized() * float(side)
 				var axis: Vector3 = (end.peek - end.entry).normalized()
+				var rear_local: Vector3 = geometry.cover_transform.affine_inverse() * end.peek
+				if geometry.along_x: rear_local.x = 0.0
+				else: rear_local.z = 0.0
+				var rear: Vector3 = geometry.cover_transform * rear_local
+				var half_length: float = geometry.half_along * (geometry.cover_transform.basis.x if geometry.along_x else geometry.cover_transform.basis.z).length()
 				for rank in maxi(2, count):
-					# Separate observation lanes along the wall end; a rear post
-					# aimed through a parked teammate can never finish observing.
+					# Look inward behind the cover, independently of the entry leg.
+					# Outer lanes inspect deeper space so their sightline passes
+					# behind the inner observer instead of through its parked body.
 					var offset: Vector3 = outward * float(rank) * 1.4
+					var focus: Vector3 = rear + axis * (0.6 + float(rank) * 0.6)
+					if rank > 0: focus += outward * maxf(0.0, half_length - 1.0)
 					# Shift the entire lane outward when a previous layout failed.
 					var lateral: Vector3 = (end.entry - geometry.observer_position).normalized() * float(attempt % 3) * 0.35
 					lateral.y = 0.0
 					result.append({"position": end.peek + offset + lateral, "via": end.entry + offset + lateral,
-						"look_position": end.peek + offset + axis * 2.0 + lateral, "site_key": "cover:%s:%s:%s" % [geometry.cover_id, side, rank], "sync_key": "cover:%s" % geometry.cover_id, "side": side})
+						"look_position": focus, "site_key": "cover:%s:%s:%s" % [geometry.cover_id, side, rank], "sync_key": "cover:%s" % geometry.cover_id, "side": side})
 		return result
 	if phase == &"patrol": center = context._spawn_position
 	var radial: Vector3 = context.actor.global_position - center
