@@ -80,6 +80,7 @@ func _ready() -> void:
 	context.melee.setup(context)
 	context.reevaluate.connect(invalidate_utility)
 	context.event_received.connect(_dispatch_event)
+	context.command_query_requested.connect(_command_query)
 	context.fire.shot_fired.connect(_on_shot_fired)
 	perception.noise_heard.connect(_on_noise_heard)
 	actor.hit_received.connect(_on_hit_received)
@@ -273,6 +274,9 @@ func _publish_command_action_states() -> void:
 		if not state.is_empty(): states[id] = state
 	context.command_action_states = states
 
+func _command_query(request: Dictionary) -> void:
+	preload("res://scripts/enemy/services/enemy_command_offers.gd").dispatch(actions, request)
+
 func _update_command_decision() -> void:
 	assert(context.commanded())
 	utility_options.clear()
@@ -285,13 +289,15 @@ func _update_command_decision() -> void:
 		context.report_command(task, &"occupied", {"reason": &"body_busy"})
 		return
 	var next = actions.get(task.get("action"))
-	if next == null or not context.validate_command_post(task, context.member_capability_snapshot()):
+	if next == null or not context.validate_command_post(task, context.member_capability_snapshot()) or not context.validate_command_offer(task, context.member_capability_snapshot()):
 		context.report_command(task, &"blocked", {"reason": &"executor_unavailable"})
 		return
 	_cancel_utility_execution(&"command_replaced")
-	if not next.begin_command(task) or not context.accept_command(task):
+	var started: bool = next.begin_command(task)
+	if not started or not context.accept_command(task):
 		next.cancel(&"accept_failed")
-		context.report_command(task, &"blocked", {"reason": &"accept_failed"})
+		context.report_command(task, &"blocked", {"reason": &"accept_failed", "executor_started": started,
+			"expected_map_revision": task.get("map_revision", -1), "actual_map_revision": context.coordination_search_revision()})
 		return
 	current_action = next
 	utility_current = next.plan

@@ -5,22 +5,20 @@ const Contract = preload("res://scripts/enemy/services/squad_contract.gd")
 const Traffic = preload("res://scripts/enemy/services/squad_traffic.gd")
 const ARRIVAL_MARGIN := 0.16
 
-## Frozen optional movement capabilities compete over the already validated
-## contact route. Runtime facts contain timers, never executor references.
-static func contact_executor(profile: Dictionary, body: Dictionary, role: StringName, length: float, target: Vector3) -> StringName:
-	var ordinary := Contract.executor(profile, role)
-	if profile.get("firearms", true) or not role in [&"engage", &"flank"] or body.get("occupied", false) or length < 0.2: return ordinary
-	if not body.get("visible", false) and body.get("observed_reload", 0.0) <= 0.0: return ordinary
-	for id in profile.get("actions", {}):
-		var ability: Dictionary = profile.actions[id]
-		var motion: Dictionary = ability.get("contact_motion", {})
-		var state: Dictionary = body.get("action_states", {}).get(id, {})
-		if motion.is_empty() or not ability.roles.has(role) or not (state.get("ready", false) or state.get("active", false)): continue
-		var distance := Contract.horizontal(body.position, target)
-		if distance <= float(motion.minimum_distance) or body.get("observed_reload", 0.0) <= 0.0 and distance > float(motion.distance): continue
-		if length > float(body.move_speed) * float(motion.multiplier) * float(motion.seconds): continue
-		return id
-	return ordinary
+## Refresh a short-lived contact endpoint from the latest legal observation
+## at commitment, after budgeted preparation has finished. No action choice.
+static func refresh_contact_post(context, profile: Dictionary, body: Dictionary, task: Dictionary, target: Vector3) -> bool:
+	if not task.get("contact_post", false) or target.distance_to(task.look_position) < 0.02: return true
+	var seed_point: Vector3 = target + (task.position - task.look_position)
+	if melee_post_valid(context, profile, body.position, target, ARRIVAL_MARGIN): seed_point = body.position
+	var point := melee_position(context, profile, body, seed_point, target)
+	if not point.is_finite(): return false
+	var path := preload("res://scripts/enemy/services/enemy_search_formation.gd").route(context, point)
+	if path.is_empty(): return false
+	task.position = point
+	task.route = path
+	task.look_position = target
+	return true
 
 static func sites(context, profile: Dictionary, body: Dictionary, objective: Dictionary, bodies: Dictionary, profiles: Dictionary) -> Array[Dictionary]:
 	var target: Vector3 = objective.position

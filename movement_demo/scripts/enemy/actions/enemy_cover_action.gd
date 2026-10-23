@@ -230,6 +230,25 @@ var _command_burst_count := 1
 func command_roles() -> Array[StringName]:
 	return [&"shelter", &"cover_peek"]
 
+func command_site_offer(query: Dictionary, site: Dictionary) -> Dictionary:
+	if not site.has("defense_post"): return {}
+	var offer := super.command_site_offer(query, site)
+	if offer.is_empty() or offer.get("retry_detour", false): return offer
+	var speed: float = _setting(&"peek_speed_multiplier", 0.5) if site.role == &"cover_peek" else _setting(&"run_speed_multiplier", 2.0)
+	var seconds: float = selection._path_length_from_path(offer.route) / maxf(0.1, query.body.move_speed * speed)
+	offer.speed_multiplier = speed
+	offer.travel_seconds = seconds
+	offer.estimate = seconds + (1.0 if site.get("defense_proactive", false) else 0.0) + (0.0 if site.defense_post.peek.is_finite() else 2.0)
+	offer.tactical = {"protected": true, "sustainable_fire": site.role == &"cover_peek" and query.body.rounds > 0,
+		"travel": seconds, "pressure": query.body.pressure}
+	return offer
+
+func validate_command_offer(query: Dictionary, offer: Dictionary) -> Dictionary:
+	var result := super.validate_command_offer(query, offer)
+	if result.valid and offer.role in [&"shelter", &"cover_peek"]:
+		result.valid = offer.has("defense_post") and preload("res://scripts/enemy/services/squad_defense.gd").protected(context, offer.defense_post, offer.look_position)
+	return result
+
 func begin_command(task: Dictionary) -> bool:
 	_command_cover_time = 0.0
 	_command_cover_shots = actor.shot_count
@@ -244,7 +263,7 @@ func command_work(delta: float, visible: bool, arrived: bool) -> Dictionary:
 		context.report_command(command, &"blocked", {"reason": &"cover_removed"})
 		return output
 	if not arrived:
-		if shelter and action_id == &"covering_retreat" and visible and actor.can_use_firearms():
+		if shelter and command.get("moving_fire", false) and visible and actor.can_use_firearms():
 			output.fire = {"owner": action_id, "mode": &"visible", "support_intent": true, "pressure_reason": &"retreat"}
 		context.report_command(command, &"executing")
 		return output

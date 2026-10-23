@@ -298,8 +298,12 @@ func _update_objective() -> void:
 					_objective.position = newest.position
 					_objective.captured_at = newest.captured_at
 					_failed_sites.clear()
-				_tasks[id].state = &"blocked"
-				_tasks[id].reason = &"attack_post_invalid"
+				_tasks[id].needs_replan = true
+				# A moved contact endpoint does not invalidate the safe approach
+				# already in progress. Continue it while preparing a new endpoint.
+				if Contract.horizontal(_bodies[id].position, _tasks[id].position) <= 0.08:
+					_tasks[id].state = &"blocked"
+					_tasks[id].reason = &"attack_post_invalid"
 				_due = 0.0
 		return
 	var previous = _objective
@@ -361,6 +365,7 @@ func _plan() -> void:
 	for id in _tasks:
 		var task: Dictionary = _tasks[id]
 		var defense_role = _defense.role(id)
+		must_replan = must_replan or task.get("needs_replan", false)
 		if task.has("overwatch_for"):
 			var has_inspector := false
 			for other in _tasks:
@@ -376,11 +381,7 @@ func _plan() -> void:
 		must_replan = must_replan or task.has("barrier_id") and not _barriers.has(task.barrier_id)
 		must_replan = must_replan or task.get("coverage_version", _search.coverage.map_version) != _search.coverage.map_version
 		if _objective.phase == &"contact":
-			if not _bodies[id].firearms and not _bodies[id].occupied and task.role in [&"engage", &"flank"]:
-				var remaining := Traffic.remaining(_bodies[id].position, task.route)
-				var length: float = _context(id).cover_selection._path_length_from_path(remaining)
-				var executor := Combat.contact_executor(_profiles[id], _bodies[id], task.role, length, _objective.position)
-				must_replan = must_replan or not executor.is_empty() and executor != task.action
+			must_replan = must_replan or elapsed >= float(task.get("reconsider_at", INF))
 			must_replan = must_replan or (_bodies[id].visible == false and task.role in [&"engage", &"support", &"flank"] and task.state == &"executing" and Contract.horizontal(_bodies[id].position, task.position) < 0.15)
 			must_replan = must_replan or (_bodies[id].firearms and _bodies[id].visible and not _bodies[id].fire_lane_valid and task.role in [&"engage", &"support", &"flank"] and Contract.horizontal(_bodies[id].position, task.position) < 0.15)
 			must_replan = must_replan or not defense_role.is_empty() and task.role != defense_role
@@ -409,33 +410,31 @@ func _plan() -> void:
 		if not defense.ready:
 			_due = elapsed
 			return
-		candidates.append_array(defense.candidates)
+		work.sites.append_array(defense.candidates)
 		work.defense_ready = true
-	while work.cursor < work.sites.size() and candidates.size() < 6:
-		if Time.get_ticks_usec() >= deadline:
-			_due = elapsed
-			return
-		var site: Dictionary = work.sites[work.cursor]
-		work.cursor += 1
-		if _recent_inspection(site, map_revision) or _failed_sites.get([id, site.site_key], -INF) > elapsed: continue
-		if _objective.phase == &"patrol" and _patrol_visits.has(site.site_key): continue
-		if _objective.phase == &"contact" and not site.has("role"): site.role = _contact_role(id)
-		# A physical box has four bounded bypass alternatives. Test them on
-		# successive budget slots instead of hiding all four inside one query.
-		if not site.has("detour_variant"): site.detour_variant = 0
-		var candidate = Formation.candidate(_context(id), _profiles.get(id, {}), _bodies[id], site, _objective, _tasks[id])
-		if candidate.get("retry_detour", false):
-			var retry := site.duplicate(true)
-			retry.detour_variant += 1
-			work.sites.append(retry)
-			continue
-		if not candidate.is_empty():
-			if candidate.has("overwatch_for"):
-				candidate.supported_sites = Support.covered_sites(_context(id), candidate, _preparation.sites)
-				if candidate.supported_sites.is_empty(): continue
-			if candidate.has("coverage_key"):
-				_search.routes.extend(_context(id), candidate, _search.coverage, work.sites, deadline)
-			candidates.append(candidate)
+	if not work.has("offer_cursor"):
+		var eligible: Array = []
+		for site: Dictionary in work.sites:
+			if _recent_inspection(site, map_revision) or _failed_sites.get([id, site.site_key], -INF) > elapsed: continue
+			if _objective.phase == &"patrol" and _patrol_visits.has(site.site_key): continue
+			eligible.append(site)
+		work.sites = eligible
+		work.offer_cursor = {}
+	var query := {"profile": _profiles[id], "body": _bodies[id], "objective": _objective,
+		"previous": _tasks[id], "sites": work.sites,
+		"revision": [generation, _profiles[id].profile_id, _objective.objective_id, map_revision]}
+	var batch: Dictionary = {"done": true, "cursor": {}, "offers": []} if work.get("retain", false) else _context(id).prepare_command_offers(query, work.offer_cursor, deadline)
+	work.offer_cursor = batch.cursor
+	if not batch.done:
+		_due = elapsed
+		return
+	for candidate: Dictionary in batch.offers:
+		if candidate.has("overwatch_for"):
+			candidate.supported_sites = Support.covered_sites(_context(id), candidate, _preparation.sites)
+			if candidate.supported_sites.is_empty(): continue
+		if candidate.has("coverage_key"):
+			_search.routes.extend(_context(id), candidate, _search.coverage, work.sites, deadline)
+		candidates.append(candidate)
 	_preparation.erase("work")
 	# Every member can keep a validated holding post while a teammate reloads
 	# or completes the remaining search points; one impossible route must not
@@ -468,12 +467,26 @@ func _finish_plan(deadline: int) -> void:
 		return
 	planning_count += 1
 	_reason = result.reason
-	_preparation.clear()
 	if result.complete and result.tasks.values().any(func(task): return task.role != &"guard"):
 		frame_costs.stage = &"commit"
 		if not _commit(result.tasks, result.traffic):
 			_last_replan = &"commit_revalidation_failed"
+			# A cooldown/window may expire while other members are preparing.
+			# Remove only expired offers and reuse the already prepared pool.
+			var removed := false
+			for id in _preparation.candidates:
+				var valid: Array[Dictionary] = []
+				for offer: Dictionary in _preparation.candidates[id]:
+					if _context(id).validate_command_offer(offer, _profiles[id]): valid.append(offer)
+					else: removed = true
+				_preparation.candidates[id] = valid
+			if removed:
+				_preparation.solution = _planner.begin({"members": _bodies, "profiles": _profiles, "template": _template,
+					"objective": _objective, "candidates": _preparation.candidates, "synchronize_search": _synchronize_search()})
+				_due = elapsed
+				return
 			_attempt += 1
+			_due = elapsed
 	else:
 		_attempt += 1
 		# Exhaust the first bounded geometry alternatives on subsequent area
@@ -488,6 +501,7 @@ func _finish_plan(deadline: int) -> void:
 			for task in _tasks.values():
 				task.reason = &"retry_other_posts"
 				task.check_at = elapsed + Contract.PERIOD
+	_preparation.clear()
 
 func _member_work(id: int) -> Dictionary:
 	var candidates: Array[Dictionary] = []
@@ -511,6 +525,15 @@ func _member_work(id: int) -> Dictionary:
 	if needs_reload: sites = [{"position": body.position, "look_position": _objective.position, "site_key": "reload:%s" % id}]
 	var previous: Dictionary = _tasks[id]
 	var defense_role = _defense.role(id)
+	# Repair the changed member promptly; already valid teammates need no new
+	# geometry scan for this emergency transaction. Periodic planning still
+	# enumerates every installed executor for the full team.
+	if _objective.phase == &"contact" and _tasks.values().any(func(task): return task.get("needs_replan", false)) and not previous.get("needs_replan", false) and defense_role.is_empty() and not needs_reload and previous.role in [&"engage", &"support", &"flank"] and previous.state in [&"executing", &"occupied"] and previous.expires_at > elapsed and context.validate_command_offer(previous, _profiles[id]):
+		var retained := previous.duplicate(true)
+		retained.route = Traffic.remaining(body.position, previous.route)
+		retained.estimate = 0.0
+		candidates.append(retained)
+		return {"candidates": candidates, "sites": [], "cursor": 0, "defense_ready": true, "proactive": false, "retain": true}
 	if _objective.phase == &"search" and previous.has("overwatch_for") and previous.state != &"blocked" and previous.expires_at > elapsed and previous.get("search_revision") == _objective.get("search_revision") and not needs_reload:
 		var inspecting := false
 		for other in _tasks:
@@ -520,18 +543,7 @@ func _member_work(id: int) -> Dictionary:
 			continuing.route = Traffic.remaining(body.position, previous.route)
 			continuing.estimate = 0.0
 			candidates.append(continuing)
-	if _objective.phase == &"contact" and defense_role.is_empty() and not needs_reload and previous.role in [&"engage", &"support", &"flank"] and previous.state != &"blocked" and previous.expires_at > elapsed:
-		var valid: bool = body.visible and body.fire_lane_valid and Contract.horizontal(body.position, _objective.position) >= 3.0 if body.firearms else Combat.melee_post_valid(context, _profiles[id], previous.position, _objective.position, 0.08)
-		if valid and not body.firearms and not body.occupied:
-			var length: float = context.cover_selection._path_length_from_path(Traffic.remaining(body.position, previous.route))
-			valid = Combat.contact_executor(_profiles[id], body, previous.role, length, _objective.position) == previous.action
-		if valid:
-			var continuing := previous.duplicate(true)
-			continuing.route = Traffic.remaining(body.position, previous.route)
-			continuing.objective_id = _objective.objective_id
-			continuing.look_position = _objective.position
-			continuing.estimate = 0.0
-			candidates.append(continuing)
+
 	if _objective.phase == &"contact" and defense_role.is_empty() and not needs_reload:
 		# Defaults remain preferences. A qualified visible member can replace a
 		# blind support slot; unseen members continue to a real firing position.
@@ -597,8 +609,11 @@ func _commit(proposals: Dictionary, _traffic: Dictionary) -> bool:
 		var peer = _context(id)
 		if peer == null or peer.actor.is_dead: return false
 		_bodies[id] = peer.member_runtime_snapshot()
+		if routes[id].get("contact_post", false):
+			var latest: Dictionary = environment.planning_observation(peer)
+			if not latest.is_empty() and not Combat.refresh_contact_post(peer, _profiles[id], _bodies[id], routes[id], latest.position): return false
 		routes[id].route = Traffic.remaining(_bodies[id].position, routes[id].route)
-		if not peer.validate_command_post(routes[id], _profiles.get(id, {})): return false
+		if not peer.validate_command_post(routes[id], _profiles.get(id, {})) or not peer.validate_command_offer(routes[id], _profiles[id]): return false
 	var traffic = Traffic.plan(routes, _bodies, _synchronize_search())
 	if not traffic.valid: return false
 	if not Support.acyclic(routes, traffic): return false
@@ -615,6 +630,8 @@ func _commit(proposals: Dictionary, _traffic: Dictionary) -> bool:
 			table[id] = _new_task(id, proposal)
 			table[id].version = _version + 1
 			table[id].expires_at = elapsed + maxf(Contract.TASK_SECONDS, float(proposal.get("travel_seconds", 0.0)) + 4.0)
+		table[id].erase("needs_replan")
+		table[id].reconsider_at = elapsed + 0.6
 		table[id].waiting_for = traffic.get("dependencies", {}).get(id, []).duplicate()
 		table[id].preparation_waiting_for = traffic.get("preparation_dependencies", {}).get(id, []).duplicate()
 		if not traffic.get("synchronized_members", []).has(id): table[id].erase("barrier_id")
@@ -719,7 +736,11 @@ func assignment(context) -> Dictionary:
 func accept(context, token: Dictionary) -> bool:
 	var id: int = context.actor.get_instance_id()
 	if not Contract.same_task(token, _tasks.get(id, {})): return false
-	if int(_tasks[id].get("map_revision", context.coordination_search_revision())) != context.coordination_search_revision(): return false
+	if int(_tasks[id].get("map_revision", context.coordination_search_revision())) != context.coordination_search_revision():
+		# Map preparation can publish another static source after commitment.
+		# Revalidate the actual remaining route; a new revision is not a wall.
+		if not Formation.valid_route(context, Traffic.remaining(context.actor.global_position, _tasks[id].route)): return false
+		_tasks[id].map_revision = context.coordination_search_revision()
 	if not context.validate_command_post(_tasks[id], _profiles.get(id, {})): return false
 	_tasks[id].accepted = true
 	_tasks[id].state = &"executing"
@@ -754,7 +775,10 @@ func report(context, report: Dictionary) -> bool:
 			_patrol_visits[task.site_key] = {"position": task.position, "visited_at": elapsed, "member_id": id}
 		_due = 0.0
 	elif report.state == &"blocked":
-		_failed_sites[[id, task.site_key]] = elapsed + 4.0
+		# An executor window expiring says nothing about the physical post.
+		# Other trained actions must still be able to use that route immediately.
+		if not task.reason in [&"executor_unavailable", &"accept_failed"]:
+			_failed_sites[[id, task.site_key]] = elapsed + 4.0
 		if task.role == &"search": _search.reject(task.site_key, elapsed)
 		_due = 0.0
 	return true

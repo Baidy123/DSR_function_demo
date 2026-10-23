@@ -68,8 +68,24 @@ func _initialize() -> void:
 	_search_roles(planner, bodies)
 	_combat_roles(planner)
 	_support_contract()
+	_offer_contract()
 	print("SQUAD COMMAND CONTRACT: %d/%d passed" % [checks - failures, checks])
 	quit(1 if failures else 0)
+
+func _offer_contract() -> void:
+	var profile := {"actions": {&"a": {"roles": [&"engage"]}, &"b": {"roles": [&"engage"], "default_assignment": false}}}
+	check(Contract.executors(profile, &"engage") == [&"a", &"b"], "Role eligibility includes every trained executor, including optional tactics")
+	var offers: Array = []
+	for index in 10:
+		var offer := _post(Vector3.ZERO, Vector3(index, 0, 0), float(index))
+		offer.action = &"a"
+		offers.append(offer)
+	var late := _post(Vector3.ZERO, Vector3(20, 0, 0), 20.0)
+	late.action = &"b"
+	offers.append(late)
+	var retained := preload("res://scripts/enemy/services/enemy_command_offers.gd").bounded(offers, 4)
+	check(retained.size() == 4 and retained.any(func(offer): return offer.action == &"b"), "An early action cannot fill every slot before a later executor is considered")
+	check(Contract.pure_value(retained) and not Contract.pure_value({"executor": RefCounted.new()}), "Offer boundaries accept value snapshots and reject executor objects")
 
 func _post(start: Vector3, goal: Vector3, cost: float) -> Dictionary:
 	return {"role": &"engage", "action": &"engage", "position": goal, "route": PackedVector3Array([start, goal]), "estimate": cost}

@@ -17,7 +17,7 @@ func begin(snapshot: Dictionary) -> Dictionary:
 	snapshot.overwatch_groups = {}
 	for id in ids:
 		for candidate in snapshot.candidates.get(id, []):
-			if candidate.has("overwatch_for") and Contract.executor(snapshot.profiles[id], &"support") == candidate.action:
+			if candidate.has("overwatch_for") and Contract.qualified(snapshot.profiles[id], candidate.action, &"support"):
 				snapshot.overwatch_groups[candidate.overwatch_for] = true
 	ids.sort_custom(func(a, b): return snapshot.candidates.get(a, []).size() < snapshot.candidates.get(b, []).size())
 	for candidates in snapshot.candidates.values(): candidates.sort_custom(func(a, b): return float(a.estimate) < float(b.estimate))

@@ -8,14 +8,45 @@ var _command_burst_started := false
 func command_roles() -> Array[StringName]:
 	return [&"engage", &"flank"] if actor.weapon != null and actor.weapon.melee_enabled else []
 
+func command_default_assignment() -> bool:
+	return false
+
+func command_site_offer(query: Dictionary, site: Dictionary) -> Dictionary:
+	if query.body.get("firearms", true) or not _command_window(query.body, query.objective.position): return {}
+	var offer := super.command_site_offer(query, site)
+	if offer.is_empty() or offer.get("retry_detour", false): return offer
+	var length: float = selection._path_length_from_path(offer.route)
+	var speed: float = _setting(&"rush_speed_multiplier", 2.5)
+	var seconds: float = length / maxf(0.1, query.body.move_speed * speed)
+	var remaining: float = _burst_remaining if _command_burst_started else float(_setting(&"rush_seconds", 1.0))
+	if length < 0.2 or seconds > remaining: return {}
+	var saved: float = maxf(0.0, float(offer.travel_seconds) - seconds)
+	offer.estimate = maxf(0.0, float(offer.estimate) - saved * (1.0 + float(offer.tactical.get("exposure", 0.0))))
+	offer.travel_seconds = seconds
+	offer.tactical.travel = seconds
+	if _command_burst_started: offer.burst_until = context.evidence_elapsed_seconds + _burst_remaining
+	return offer
+
+func _command_window(body: Dictionary, target: Vector3) -> bool:
+	if not body.get("visible", false) and body.get("observed_reload", 0.0) <= 0.0: return false
+	if _command_burst_started:
+		if _burst_remaining <= 0.0: return false
+	elif cooldown_remaining() > 0.0: return false
+	var distance: float = context._horizontal_distance_between(body.position, target)
+	return distance > Approach.stopping_distance(context) + 0.1 and (body.get("observed_reload", 0.0) > 0.0 or distance <= float(_setting(&"rush_distance", 3.5)))
+
+func validate_command_offer(query: Dictionary, offer: Dictionary) -> Dictionary:
+	var result := super.validate_command_offer(query, offer)
+	var target: Vector3 = context.last_known_position if query.body.get("visible", false) else offer.look_position
+	result.valid = result.valid and _command_window(query.body, target)
+	return result
+
 func freeze_command_capability() -> Dictionary:
 	var result := super.freeze_command_capability()
 	var defaults := {&"rush_distance": 3.5, &"rush_speed_multiplier": 2.5, &"rush_seconds": 1.0, &"rush_cooldown_seconds": 4.0}
 	for key in defaults:
 		_battle_settings[key] = _setting(key, defaults[key])
 	result.parameters = _battle_settings.duplicate(true)
-	result.contact_motion = {"distance": _battle_settings.rush_distance, "multiplier": _battle_settings.rush_speed_multiplier,
-		"seconds": _battle_settings.rush_seconds, "minimum_distance": Approach.stopping_distance(context) + 0.1}
 	return result
 
 func command_runtime_state() -> Dictionary:
@@ -25,7 +56,12 @@ func command_runtime_state() -> Dictionary:
 func begin_command(task: Dictionary) -> bool:
 	_command_burst_started = false
 	_burst_remaining = 0.0
-	return super.begin_command(task)
+	if not super.begin_command(task): return false
+	var until: float = task.get("burst_until", -INF)
+	if until > context.evidence_elapsed_seconds and until <= _ready_at:
+		_command_burst_started = true
+		_burst_remaining = until - context.evidence_elapsed_seconds
+	return true
 
 func execute_command(delta: float, visible: bool) -> Dictionary:
 	if _command_burst_started: _burst_remaining = maxf(0.0, _burst_remaining - maxf(0.0, delta))

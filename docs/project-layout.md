@@ -70,7 +70,8 @@ movement_demo/
 
 | 文件 | 当前职责 |
 | --- | --- |
-| `enemy/services/squad_combat_tactics.gd` | 按冻结武器与合法目标生成近战攻击点、远程交叉/后侧射位，评价整队射界及近战路线冲突，检查停点有效性；以冻结机动能力和执行状态选择有限接敌执行器，无任务所有权或身体控制。 |
+| `enemy/services/squad_combat_tactics.gd` | 按冻结武器与合法目标生成近战攻击点、远程交叉/后侧射位，评价整队射界及近战路线冲突，提交前刷新近战停点；不选择动作，无任务所有权或身体控制。 |
+| `enemy/services/enemy_command_offers.gd` | AI 持有的统一提案适配器，按共同截止时间轮询已装配动作、保留不同执行器和空间方案；只返回纯值，不提交任务或执行身体。 |
 | `enemy/services/squad_support.gd` | 协调器持有的任务身份关联、实际掩护观察核对、累计等待期限和短段独立恢复建议；清理完成/替换/减员关系，无独立循环或任务提交权。 |
 | `world/squad_controller.gd` | Squad 配置、区域注册、单次区域时钟推进、销毁；不增加独立 AI 循环。 |
 | `enemy/services/squad_coordination.gd` | 本场能力档案、默认模板、持续目标、全员任务表、反馈、逐轮同步与共同续接、原子提交与生命周期。 |
@@ -86,7 +87,7 @@ movement_demo/
 | `enemy/services/enemy_cooperation.gd` | 区域关系、合法情报存储、公共物理预约；只通过协调器收发团队情报。 |
 | `enemy/services/enemy_context.gd` | 能力/身体值接口、情报适配、任务接受/反馈与只读诊断；转交动作状态纯值快照，不持有动作对象。 |
 | `enemy/enemy_ai.gd` | 按等级分流个人 Utility 与命令执行；负责原动作/身体/火控交接，发布已装配动作的命令状态。 |
-| `enemy/actions/enemy_action.gd` | 命令执行协议、只读运行状态钩子与实际路线游标，按准备点进度切换入口前后关注点；个人模式保留原 begin/tick/cancel。 |
+| `enemy/actions/enemy_action.gd` | 共同提案/校验和命令执行协议、只读运行状态钩子与实际路线游标，按准备点进度切换入口前后关注点；个人模式保留原 begin/tick/cancel。 |
 | `enemy/actions/enemy_melee_rush_action.gd` | 声明有限接敌机动能力，沿通用命令路线执行短程加速；持有本动作时限和冷却，个人与团队入口共用原时钟及基础挥击。 |
 
 团队避险的执行适配位于原 `enemy_cover_action.gd` / `enemy_covering_retreat_action.gd` 的命令入口，按协调器路线执行躲藏、探出和撤回；原个人 `begin/tick` 保留。抗压值属于 `config/tactics_settings.gd`，通过 Training 保存并由 AI 装配成能力档案；压力事实仍来自原受击/近弹接口，Context 只补充运行快照字段。无新增场景节点或第二套身体/火控。

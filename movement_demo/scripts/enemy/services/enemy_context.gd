@@ -2,6 +2,7 @@ extends "res://scripts/enemy/services/enemy_memory.gd"
 
 ## 只提供公共能力、记忆和事件；不持有 AI 控制器或可选动作实例。
 signal reevaluate
+signal command_query_requested(request: Dictionary)
 signal event_received(event: StringName, data: Dictionary)
 var actor: CharacterBody3D
 var player: Node3D
@@ -1071,6 +1072,22 @@ func cooperation_publish_execution(output: Dictionary) -> void:
 
 var _battle_capabilities: Dictionary = {}
 var command_action_states: Dictionary = {}
+
+func prepare_command_offers(query: Dictionary, cursor: Dictionary, deadline: int) -> Dictionary:
+	var request := {"kind": &"prepare", "query": query, "cursor": cursor, "deadline": deadline,
+		"result": {"done": true, "cursor": {}, "offers": [], "reasons": {}}}
+	command_query_requested.emit(request)
+	return request.result
+
+func validate_command_offer(offer: Dictionary, profile: Dictionary) -> bool:
+	if offer.has("profile_id") and offer.profile_id != profile.get("profile_id"): return false
+	var query := {"profile": profile, "body": member_runtime_snapshot(),
+		"objective": {"position": offer.get("look_position", actor.global_position), "objective_id": offer.get("objective_id", 0)},
+		"previous": coordination_assignment()}
+	var request := {"kind": &"validate", "query": query, "offer": offer,
+		"result": {"valid": false, "reason": &"executor_unavailable"}}
+	command_query_requested.emit(request)
+	return bool(request.result.get("valid", false))
 
 func commanded() -> bool:
 	return cooperation != null and cooperation.has_team_binding(self) and cooperation_level() > 0

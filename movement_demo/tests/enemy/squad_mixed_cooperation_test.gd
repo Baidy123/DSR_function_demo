@@ -33,6 +33,9 @@ func _run() -> void:
 			else:
 				await _contact_cooperation()
 				await _small_retreat()
+		if OS.get_cmdline_user_args().has("--extension"):
+			var probe = shooters[0].get_node("AI").actions.get(&"trained_extension_probe")
+			check(probe != null and probe.ticks > 0 and shooters[0].shot_count > 0, "A newly trained action executes and fires through the unchanged coordinator protocol")
 		check(ownership, "Members keep installed roles and squad authority")
 		check(clearance >= 0.64, "Bodies preserve physical collision clearance")
 		costs.sort()
@@ -71,6 +74,18 @@ func _setup_mixed() -> bool:
 		training.selected_tactics.clear()
 		training.selected_tactics.append(&"cooperate" if close else &"suppression")
 		if close and OS.get_cmdline_user_args().has("--pursuit") and not OS.get_cmdline_user_args().has("--untrained"): training.selected_tactics.append(&"melee_rush")
+		if index == 0 and OS.get_cmdline_user_args().has("--extension"):
+			var unit = actor.get_node("UnitType").profile.duplicate(true)
+			unit.default_behaviors = unit.default_behaviors.filter(func(item): return item.action_id != &"engage")
+			var definition := EnemyActionDefinition.new()
+			definition.action_id = &"trained_extension_probe"
+			definition.implementation = preload("res://tests/enemy/modular_probe_action.gd")
+			definition.required_capabilities.append(&"firearms")
+			definition.config_section = &"tactics"
+			unit.tactical_actions.append(definition)
+			training.selected_tactics.clear()
+			training.selected_tactics.append(definition.action_id)
+			actor.get_node("UnitType").profile = unit
 		training.search.tracking_cheat_enabled = false
 		actor.get_node("Training").profile = training
 		if close: melee_members.append(actor)

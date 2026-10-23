@@ -138,19 +138,11 @@ func _continue_candidates(ctx, profile: Dictionary, body: Dictionary, objective:
 		if not destination.is_finite(): continue
 		var path = Formation.route(ctx, destination)
 		if path.is_empty(): continue
-		var action = Contract.executor(profile, request.phase)
-		# Only an installed retreat executor may shoot during withdrawal.
-		if request.phase == &"shelter" and body.visible and profile.actions.has(&"covering_retreat"):
-			action = &"covering_retreat"
-		var settings: Dictionary = profile.actions[action].parameters
-		var speed = float(settings.get("peek_speed_multiplier", 0.5)) if request.phase == &"cover_peek" else float(settings.get("covering_retreat_speed_multiplier", 0.8) if action == &"covering_retreat" else settings.get("run_speed_multiplier", 2.0))
-		var seconds: float = ctx.cover_selection._path_length_from_path(path) / maxf(0.1, body.move_speed * speed)
-		result.append({"action": action, "role": request.phase, "position": destination, "route": path, "look_position": objective.position,
+		# Geometry opportunities have no executor. All qualified actions may bid.
+		result.append({"role": request.phase, "position": destination, "prepared_route": path, "look_position": objective.position,
 			"site_key": "defense:%s:%s:%s" % [post.cover_id, request.phase, destination], "objective_id": objective.objective_id,
 			"defense_id": request.id, "defense_post": post.duplicate(true), "stress_tolerance": profile.get("stress_tolerance", 0.4),
-			"speed_multiplier": speed, "travel_seconds": seconds, "estimate": seconds + (1.0 if request.get("proactive", false) else 0.0) + (0.0 if post.peek.is_finite() else 2.0),
-			"defense_proactive": request.get("proactive", false),
-			"tactical": {"protected": true, "sustainable_fire": request.phase == &"cover_peek" and body.rounds > 0, "travel": seconds, "pressure": body.pressure}})
+			"defense_proactive": request.get("proactive", false)})
 	_preparing.erase(ctx.actor.get_instance_id())
 	return {"ready": true, "candidates": result}
 

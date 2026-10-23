@@ -50,7 +50,7 @@ static func template(profiles: Dictionary, identity: int) -> Dictionary:
 		for role in [&"support", &"flank"]:
 			if unassigned.size() <= 1: break
 			for option in roles.get(role, []):
-				if profiles[option.member_id].actions[option.action].has("contact_motion"): continue
+				if not profiles[option.member_id].actions[option.action].get("default_assignment", true): continue
 				if unassigned.has(option.member_id):
 					defaults[option.member_id] = role
 					unassigned.erase(option.member_id)
@@ -60,10 +60,31 @@ static func template(profiles: Dictionary, identity: int) -> Dictionary:
 		"phases": {&"contact": [&"support", &"flank", &"engage"], &"search": [&"search", &"guard"], &"patrol": [&"patrol", &"guard"]}}
 
 static func executor(profile: Dictionary, role: StringName) -> StringName:
-	for id in profile.get("actions", {}):
-		if profile.actions[id].has("contact_motion"): continue
-		if profile.actions[id].roles.has(role): return id
+	# Stable baseline for temporary holding/configuration queries only.
+	# Tactical selection enumerates all offers, including optional executors.
+	for id in executors(profile, role):
+		if profile.actions[id].get("default_assignment", true): return id
 	return &""
+
+static func executors(profile: Dictionary, role: StringName) -> Array[StringName]:
+	var result: Array[StringName] = []
+	for id in profile.get("actions", {}):
+		if qualified(profile, id, role): result.append(id)
+	result.sort()
+	return result
+
+static func qualified(profile: Dictionary, action: StringName, role: StringName) -> bool:
+	return profile.get("actions", {}).get(action, {}).get("roles", []).has(role)
+
+static func pure_value(value: Variant) -> bool:
+	if value is Object or value is Callable or value is Signal: return false
+	if value is Dictionary:
+		for key in value:
+			if not pure_value(key) or not pure_value(value[key]): return false
+	elif value is Array:
+		for item in value:
+			if not pure_value(item): return false
+	return true
 
 static func horizontal(a: Vector3, b: Vector3) -> float:
 	return Vector2(a.x - b.x, a.z - b.z).length()

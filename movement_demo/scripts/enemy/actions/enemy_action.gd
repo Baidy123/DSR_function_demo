@@ -178,6 +178,49 @@ func route_tick(_delta: float, _visible: bool) -> Dictionary:
 func command_roles() -> Array[StringName]:
 	return []
 
+## The shared post adapter is also the default implementation for ordinary
+## route/observation actions. Specialized tactics override this same protocol.
+func prepare_command_offers(query: Dictionary, cursor: Dictionary, deadline_usec: int) -> Dictionary:
+	if command_roles().is_empty(): return {"done": true, "offers": [], "reason": &"command_adapter_missing"}
+	var work := cursor.duplicate(true)
+	var index: int = work.get("index", 0)
+	var count: int = work.get("count", 0)
+	var sites: Array = query.get("sites", [])
+	var offers: Array[Dictionary] = []
+	while index < sites.size() and Time.get_ticks_usec() < deadline_usec:
+		var site: Dictionary = sites[index].duplicate(true)
+		var role: StringName = site.get("role", &"search" if query.objective.phase == &"search" else (&"engage" if query.objective.phase == &"contact" else &"patrol"))
+		if not site.has("defense_post") and (query.body.reloading or query.body.can_reload and query.body.rounds == 0): role = &"reload"
+		if not command_roles().has(role):
+			index += 1
+			continue
+		site.role = role
+		site.detour_variant = int(work.get("detour", 0))
+		var offer := command_site_offer(query, site)
+		if offer.get("retry_detour", false):
+			work.detour = site.detour_variant + 1
+		else:
+			work.detour = 0
+			index += 1
+			if not offer.is_empty():
+				offers.append(offer)
+				count += 1
+		break # One geometry unit per turn; the AI rotates through executors.
+	work.index = index
+	work.count = count
+	return {"offers": offers, "next_cursor": work, "done": index >= sites.size() or count >= 6}
+
+func command_site_offer(query: Dictionary, site: Dictionary) -> Dictionary:
+	return preload("res://scripts/enemy/services/enemy_search_formation.gd").candidate(context, query.profile, query.body, site, query.objective, query.previous, action_id)
+
+func validate_command_offer(query: Dictionary, offer: Dictionary) -> Dictionary:
+	var valid_offer: bool = is_enabled() and offer.get("action") == action_id and command_roles().has(offer.get("role"))
+	valid_offer = valid_offer and query.profile.get("actions", {}).has(action_id)
+	return {"valid": valid_offer, "reason": &"" if valid_offer else &"executor_unavailable"}
+
+func command_default_assignment() -> bool:
+	return true
+
 ## Pure execution facts published by AI; the context never owns action objects.
 func command_runtime_state() -> Dictionary:
 	return {}
@@ -193,7 +236,7 @@ func freeze_command_capability() -> Dictionary:
 		var value = context.setting(config_section, key, null, definition.parameters if definition != null else {})
 		if not value is Object: values[key] = value
 	_battle_settings = values.duplicate(true)
-	return {"roles": command_roles(), "parameters": values, "implementation": get_script().resource_path,
+	return {"roles": command_roles(), "parameters": values, "default_assignment": command_default_assignment(), "implementation": get_script().resource_path,
 		"required_capabilities": definition.required_capabilities.duplicate(),
 		"basis": "installed:%s;unit-capabilities:%s;equipment-validated" % [action_id, definition.required_capabilities]}
 

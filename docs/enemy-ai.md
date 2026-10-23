@@ -98,7 +98,11 @@ Debug 地面显示未查（橙）、部分查（黄）、近期查过（绿）�
 
 ### 个人训练如何参与团队决策
 
-2026-10-24 后续方向：用户已确认统一遍历实际装配战术，短程突进和火力压制也使用共同提案、整队评分与阶段执行流程。当前代码核查及全动作迁移范围见[统一战术接入设计](superpowers/specs/2026-10-24-unified-command-actions-design.md)，精简验证与改动步骤见[实施计划](superpowers/plans/2026-10-24-unified-command-actions.md)。尚未修改运行代码；下表仍描述当前运行行为。
+2026-10-24 统一接入阶段1：默认行为、短程突进和现有支援射击已进入共同提案、整队评分与命令执行流程。全动作目标及剩余范围见[设计](superpowers/specs/2026-10-24-unified-command-actions-design.md)，精简验证与阶段记录见[实施计划](superpowers/plans/2026-10-24-unified-command-actions.md)。本阶段不代表攻击占位、近战掩体和有限压制的专用过程已全部完成。
+
+训练资源仍在每次战斗初始化时装配并冻结；运行期的遍历对象是本场已装配动作，不重新加载训练或解锁战术。协调器经 Context 纯值查询通道请求候选，AI 持有的 `enemy_command_offers.gd` 轮询各动作共同的 `prepare_command_offers / validate_command_offer`，沿用每次约2.5毫秒的准备预算。当前每动作最多保留六个有效机会，整队规划前每成员最多八个提案，再加合法保持岗位；先保留不同执行器/角色，再补充不同空间位置。候选不是个人 Utility 分数，获选、通行、同步与原子提交仍归协调器。
+
+动作窗口失效不会封禁其他动作可用的同一站位。近战终点的小位移先请求重排，仍安全的接近段继续执行；紧急修订复用有效队友任务，提交前用最新合法目击核对近战终点。地图版本在接单前变化时重新核对真实剩余路线，通过后接受；不能仅因版本数字变化取消仍可走的任务，也不能跳过实际几何检查。
 
 当前读取链是 `Enemy/Training.profile → EnemyActionLibrary.resolve() → 成功装配动作 → freeze_command_capability() → install_member_capabilities() → 协调器候选与执行器`。动作的 `roles` 决定它能承担哪些团队任务，`parameters` 保存本场生效参数。协调器不是绕过个人训练统一发放所有战术；已装配动作也不等于其个人行为分支已完整接入团队指挥。
 

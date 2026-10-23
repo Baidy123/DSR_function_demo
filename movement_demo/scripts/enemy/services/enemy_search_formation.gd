@@ -99,6 +99,11 @@ static func _cover_sites(geometry: Dictionary, count: int, attempt: int) -> Arra
 		result.append_array(watch)
 	return result
 
+static func valid_route(context, path: PackedVector3Array) -> bool:
+	if path.is_empty(): return false
+	var radius: float = context.coordination_motion_state().radius
+	return CoverGeometry._walkable_path(context, path, radius) and BodyGeometry.can_occupy(context.actor, path[-1], context.actor.get_body_height(), radius, true)
+
 static func route(context, destination: Vector3, via: Vector3 = Vector3.INF, detour_variant: int = -1) -> PackedVector3Array:
 	var path = PackedVector3Array([context.actor.global_position])
 	var from: Vector3 = context.actor.global_position
@@ -168,25 +173,21 @@ static func _obstacle_detour(context, blocked: PackedVector3Array, radius: float
 			best_length = length
 	return best
 
-static func candidate(context, profile: Dictionary, body: Dictionary, site: Dictionary, objective: Dictionary, previous: Dictionary) -> Dictionary:
+static func candidate(context, profile: Dictionary, body: Dictionary, site: Dictionary, objective: Dictionary, previous: Dictionary, action: StringName) -> Dictionary:
 	context.cover_selection.begin_geometry_evaluation()
 	context.fire.begin_geometry_evaluation()
-	var result := _candidate(context, profile, body, site, objective, previous)
+	var result := _candidate(context, profile, body, site, objective, previous, action)
 	context.fire.end_geometry_evaluation()
 	context.cover_selection.end_geometry_evaluation()
 	return result
 
-static func _candidate(context, profile: Dictionary, body: Dictionary, site: Dictionary, objective: Dictionary, previous: Dictionary) -> Dictionary:
+static func _candidate(context, profile: Dictionary, body: Dictionary, site: Dictionary, objective: Dictionary, previous: Dictionary, action: StringName) -> Dictionary:
 	var phase: StringName = objective.get("phase", &"patrol")
 	var role: StringName = &"search" if phase == &"search" else (&"engage" if phase == &"contact" else &"patrol")
 	role = site.get("role", role)
 	if site.has("overwatch_for") and (not profile.firearms or not body.can_attack or body.reloading or body.rounds <= 0 or Contract.executor(profile, &"support").is_empty()): return {}
-	if body.reloading or body.can_reload and body.rounds == 0: role = &"reload"
-	var action = Contract.executor(profile, role)
-	if action.is_empty():
-		role = &"guard"
-		action = Contract.executor(profile, role)
-	if action.is_empty(): return {}
+	if not site.has("defense_post") and (body.reloading or body.can_reload and body.rounds == 0): role = &"reload"
+	if not Contract.qualified(profile, action, role): return {}
 	var point: Vector3 = site.position
 	if role == &"search" and site.has("coverage_key"):
 		# Inspect from an offset post when it can see the whole target patch;
@@ -227,7 +228,8 @@ static func _candidate(context, profile: Dictionary, body: Dictionary, site: Dic
 			point = Combat.melee_position(context, profile, body, point, objective.position)
 			if not point.is_finite(): return {}
 	var detour_variant: int = site.get("detour_variant", -1)
-	var path = route(context, point, site.get("via", Vector3.INF), detour_variant)
+	var path: PackedVector3Array = site.get("prepared_route", PackedVector3Array())
+	if path.is_empty(): path = route(context, point, site.get("via", Vector3.INF), detour_variant)
 	if path.is_empty():
 		return {"retry_detour": true} if detour_variant >= 0 and detour_variant < 3 and not site.get("via", Vector3.INF).is_finite() else {}
 	if role == &"flank" and profile.firearms and Traffic.distance_to_path(objective.position, path) < 1.5:
@@ -242,15 +244,11 @@ static func _candidate(context, profile: Dictionary, body: Dictionary, site: Dic
 		if detour.is_empty(): return {}
 		path = detour
 	var length: float = context.cover_selection._path_length_from_path(path)
-	if phase == &"contact" and not profile.firearms and role in [&"engage", &"flank"]:
-		var contact_action := Combat.contact_executor(profile, body, role, length, objective.position)
-		if not contact_action.is_empty(): action = contact_action
 	var parameters: Dictionary = profile.actions[action].parameters
 	var speed = maxf(0.1, float(parameters.get("focused_search_speed_multiplier", 1.0))) if role == &"search" else 1.0
 	var run_speed: float = profile.get("run_speed_multiplier", 2.0)
 	var travel_speed: float = maxf(speed, run_speed) if role == &"flank" or site.has("overwatch_for") else speed
 	var seconds: float = maxf(0.0, length - 1.4) / maxf(0.1, body.move_speed * travel_speed) + minf(1.4, length) / maxf(0.1, body.move_speed * speed)
-	if profile.actions[action].has("contact_motion"): seconds = length / maxf(0.1, body.move_speed * float(profile.actions[action].contact_motion.multiplier))
 	var estimate: float = seconds + (0.0 if previous.get("position", Vector3.INF).distance_to(point) < 0.2 else 0.6)
 	if role == &"guard" and phase != &"patrol": estimate += 8.0
 	if role == &"search" and site.has("coverage_key"):
@@ -288,7 +286,10 @@ static func _candidate(context, profile: Dictionary, body: Dictionary, site: Dic
 		"sync_key": site.get("sync_key", ""), "search_revision": objective.get("search_revision", 0)}
 	for key in Contract.SEARCH_STEP_FIELDS:
 		if site.has(key): result[key] = site[key]
+	for key in ["defense_id", "defense_post", "stress_tolerance", "defense_proactive"]:
+		if site.has(key): result[key] = site[key]
 	if site.has("overwatch_for"): result.overwatch_for = site.overwatch_for
+	if phase == &"contact" and not profile.firearms and role in [&"engage", &"flank"]: result.contact_post = true
 	if role == &"search" and objective.get("source") in [&"visual", &"shared_visual"]:
 		# Reuse the frozen, time-limited pursuit setting on long approach legs.
 		# Hints and arrival cannot renew the original visual evidence timestamp.
