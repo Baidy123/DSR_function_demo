@@ -96,6 +96,8 @@ movement_demo/
 
 `enemy/services/enemy_team_planner.gd` 是纯值输入输出的有界组合 helper，负责排除冲突并提议互补岗位，不访问场景、找路、控制身体或制造任务期限。各小队的 `squad_coordination.gd` 调用它安排互补检查、侧翼／前线与地图搜索，动作仅执行被选择的合法岗位；纯协议由 `enemy_team_planner_test.gd` 验证。
 
+区域 `enemy_cooperation.gd` 独占公共身份分配、版本更新及已获取观察的身份核验；小队通过 `allocate_coordination_id`、`notify_coordination_changed` 和 `observation_contact_id` 调用，不再代理区域序号、版本和情报字典。预约几何／事务辅助保持原归属，进一步收紧接口仍需逐组维护。该整理未新增节点或脚本文件，详见 [AI 维护设计](superpowers/specs/2026-10-23-ai-maintenance-design.md)。
+
 基础位置预约位于原 `enemy_cooperation.gd`，Context 负责候选值快照和身份版本，AI 使用通用资格集合及准备／提交／回滚接点。小队节点不控制身体；`advanced_enabled` 不限制基础排重，关系接口同时区分物理空间与情报域。`enemy_team_board_test.gd` 检查身份、物理排重、期限与生命周期，`enemy_team_basic_runtime_test.gd` 检查高级OFF真实共享／移动／开火、单人和多转单，以及明确区分的事务与身体保护合同；高级岗位由小队协调器通过区域公共预约与通用执行接口接入，基础预约不依赖高级开关。
 
 公共目的地预约的批量只读筛选仍在 `enemy_cooperation.gd`，由 Context 在原资格过滤阶段调用，不转移到 planner 或小队节点。多候选共享的障碍投影仅存于一次同步调用的局部变量；单候选与准备／提交沿原实时查询。`enemy_reservation_batch_test.gd` 验证新旧查询等价、候选顺序与同帧状态变化，执行和性能结果仍以[敌人测试](enemy-tests.md)为准。

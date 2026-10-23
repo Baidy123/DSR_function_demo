@@ -17,6 +17,13 @@ func _run() -> void:
 		return
 	_source_contract()
 	_source_fallback_contract()
+	_observation_identity_contract()
+	if OS.get_cmdline_user_args().has("--source-only"):
+		print("TEAM SOURCE CONTRACT: %d/%d passed" % [checks - failures, checks])
+		scene.queue_free()
+		await scene.tree_exited
+		quit(1 if failures else 0)
+		return
 	_snapshot_isolation()
 	_inspect_transaction()
 	_visibility_and_permissions()
@@ -199,6 +206,29 @@ func _report(index: int, state: StringName, fields: Dictionary = {}) -> bool:
 	job.merge({"state": state, "execution_valid": true, "segment_boundary": true}, true)
 	job.merge(fields, true)
 	return board.report_assignment(contexts[index], job)
+
+func _observation_identity_contract() -> void:
+	_reset_tactical()
+	var observer = contexts[0]
+	var receiver = contexts[1]
+	observer.sees_player = true
+	board.publish_visual(observer, true)
+	var report: Dictionary = board.evidence(receiver, observer.cooperation_target_id())
+	check(not report.is_empty(), "Area observation: a real publication supplies the shared report")
+	if report.is_empty(): return
+	var before: int = board.revision
+	check(board.observation_contact_id(receiver, report.id, report.target_id, report.position) == report.contact_id, "Area observation: contact identity comes from the matching acquired report")
+	check(board.observation_contact_id(receiver, report.id + 1000, report.target_id, report.position) == -1 and board.observation_contact_id(receiver, report.id, report.target_id + 1, report.position) == -1, "Area observation: unrelated source or target cannot authenticate a planning event")
+	check(board.observation_contact_id(receiver, report.id, report.target_id, report.position + Vector3.RIGHT) == -1 and board.observation_contact_id(receiver, report.id, report.target_id, Vector3.INF) == -1, "Area observation: modified or nonfinite positions are rejected")
+	var group: StringName = receiver.actor.communication_group
+	receiver.actor.communication_group = &"isolated_observer"
+	check(board.observation_contact_id(receiver, report.id, report.target_id, report.position) == -1, "Area observation: current communication eligibility gates identity queries")
+	receiver.actor.communication_group = group
+	check(board.revision == before and board.evidence(receiver, report.target_id) == report, "Area observation: identity queries neither mutate reports nor publish revisions")
+	_advance(float(report.valid_until) - board.elapsed + 0.01)
+	check(board.observation_contact_id(receiver, report.id, report.target_id, report.position) == -1, "Area observation: an expired source cannot authenticate a new planning event")
+	_reset_tactical()
+	check(board.observation_contact_id(receiver, report.id, report.target_id, report.position) == -1, "Area observation: reset cannot revive an old report identity")
 
 func _source_contract() -> void:
 	var a = contexts[0]

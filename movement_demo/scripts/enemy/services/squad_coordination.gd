@@ -21,18 +21,6 @@ var generation: int:
 	get: return environment.generation
 var relation_revision: int:
 	get: return environment.relation_revision
-var _serial: int:
-	get: return environment._serial
-	set(value): environment._serial = value
-var revision: int:
-	get: return environment.revision
-	set(value): environment.revision = value
-var _reports: Dictionary:
-	get: return environment._reports
-var _relations: Dictionary:
-	get: return environment._relations
-var _inspection_reports: Dictionary:
-	get: return environment._inspection_reports
 var _coordination_sources: Dictionary = {}
 var _coordination_source_pool: Dictionary = {}
 var _coordination_receipts: Dictionary = {}
@@ -270,43 +258,45 @@ func _coordination_team(context) -> int:
 func _coordination_key(team_id: int, target_id: int) -> String:
 	return "%s:%s:%s" % [generation, team_id, target_id]
 
-func _coordination_source_valid(context, source: Dictionary) -> bool:
-	if _coordination_team(context) == 0: return false
-	if typeof(source.get("source_id")) != TYPE_INT or source.source_id <= 0: return false
-	if typeof(source.get("target_id")) != TYPE_INT or source.target_id < 0: return false
-	if not source.get("position") is Vector3 or not source.position.is_finite(): return false
-	if not _reservation_text(source.get("source")): return false
-	if not _reservation_number(source.get("captured_at")) or not _reservation_number(source.get("valid_until")): return false
-	if source.captured_at < 0.0 or source.captured_at > context.evidence_elapsed_seconds or source.valid_until <= context.evidence_elapsed_seconds: return false
+## Return the validated contact identity, or -1 for an unauthorized source.
+## Personal/noise/investigation evidence has no renewed-contact identity (0).
+func _coordination_source_contact(context, source: Dictionary) -> int:
+	if _coordination_team(context) == 0: return -1
+	if typeof(source.get("source_id")) != TYPE_INT or source.source_id <= 0: return -1
+	if typeof(source.get("target_id")) != TYPE_INT or source.target_id < 0: return -1
+	if not source.get("position") is Vector3 or not source.position.is_finite(): return -1
+	if not _reservation_text(source.get("source")): return -1
+	if not _reservation_number(source.get("captured_at")) or not _reservation_number(source.get("valid_until")): return -1
+	if source.captured_at < 0.0 or source.captured_at > context.evidence_elapsed_seconds or source.valid_until <= context.evidence_elapsed_seconds: return -1
 	if source.target_id == 0:
-		return source.source in [&"noise", &"sound"] and context.noise_search_origin.is_finite() and context.noise_search_origin.distance_squared_to(source.position) < 0.0001
-	if source.target_id != context.cooperation_target_id(): return false
+		return 0 if source.source in [&"noise", &"sound"] and context.noise_search_origin.is_finite() and context.noise_search_origin.distance_squared_to(source.position) < 0.0001 else -1
+	if source.target_id != context.cooperation_target_id(): return -1
 	# The Context event bridge is the source authority; this additionally checks
 	# against acquired observation values, never the hidden target's transform.
 	if source.source == &"visual":
-		return context.sees_player and context.last_seen_position.distance_squared_to(source.position) < 0.0001
+		return 0 if context.sees_player and context.last_seen_position.distance_squared_to(source.position) < 0.0001 else -1
 	if source.source in [&"visual_loss", &"close_cover_exact", &"inspection"]:
 		var inspected := inspection_evidence(context, source.target_id)
-		return not inspected.is_empty() and int(inspected.id) == source.source_id and inspected.position.distance_squared_to(source.position) < 0.0001
+		return 0 if not inspected.is_empty() and int(inspected.id) == source.source_id and inspected.position.distance_squared_to(source.position) < 0.0001 else -1
 	if source.source in [&"shared_visual", &"observation_memory"]:
-		if source.source == &"observation_memory" and source.valid_until > source.captured_at + maxf(0.1, context.setting(&"cooperation", &"cover_inspection_seconds", 20.0)) + 0.0001: return false
-		for report: Dictionary in _reports.values():
-			if int(report.id) == source.source_id and report.target_id == source.target_id and report.valid_until > elapsed and _inspection_domain_matches(context, report) and report.position.distance_squared_to(source.position) < 0.0001: return true
-	return false
+		if source.source == &"observation_memory" and source.valid_until > source.captured_at + maxf(0.1, context.setting(&"cooperation", &"cover_inspection_seconds", 20.0)) + 0.0001: return -1
+		return environment.observation_contact_id(context, source.source_id, source.target_id, source.position)
+	return -1
 
 ## Input timestamps use Context time. A duplicate source event cannot refresh
 ## its timestamp or deadline; only a genuinely acquired newer source can do so.
 
 func publish_noise_source(context, position: Vector3) -> void:
 	if not context.cooperation_enabled() or not position.is_finite(): return
-	_serial += 1
+	var source_id: int = environment.allocate_coordination_id()
 	var captured: float = context.evidence_elapsed_seconds
-	publish_coordination_source(context, {"source_id": _serial, "source": &"noise", "target_id": 0,
+	publish_coordination_source(context, {"source_id": source_id, "source": &"noise", "target_id": 0,
 		"position": position, "captured_at": captured,
 		"valid_until": captured + maxf(0.1, context.setting(&"cooperation", &"cover_inspection_seconds", 20.0))})
 
 func publish_coordination_source(context, source: Dictionary) -> void:
-	if not _coordination_source_valid(context, source): return
+	var contact_id := _coordination_source_contact(context, source)
+	if contact_id < 0: return
 	var actor_id: int = context.actor.get_instance_id()
 	var team_id := _coordination_team(context)
 	var key := _coordination_key(team_id, source.target_id)
@@ -320,12 +310,8 @@ func publish_coordination_source(context, source: Dictionary) -> void:
 	if deadline <= elapsed: return
 	_coordination_receipts[receipt_key] = {"source_id": source.source_id, "captured_at": captured, "valid_until": deadline, "team_id": team_id}
 	var previous := _active_coordination_source(key)
-	# Read the contact identity from the authoritative report, not a caller's
-	# payload. A reacquisition contradicts old search progress even at one point.
-	var contact_id := 0
-	if source.source in [&"shared_visual", &"observation_memory"]:
-		for report: Dictionary in _reports.values():
-			if report.id == source.source_id: contact_id = int(report.get("contact_id", 0))
+	# The area validated the identity above; a reacquisition contradicts old
+	# search progress even at one point. Never trust a caller-supplied identity.
 	if contact_id > 0 and contact_id < int(previous.get("contact_id", 0)): return
 	# A newer sight at another location contradicts an older investigation. An
 	# older, longer-lived clue at the SAME frozen anchor remains a valid fallback.
@@ -333,8 +319,7 @@ func publish_coordination_source(context, source: Dictionary) -> void:
 	var new_anchor: bool = previous.is_empty() or previous.position.distance_to(source.position) >= COORDINATION_SOURCE_DISTANCE or contact_id > int(previous.get("contact_id", 0))
 	var evidence_id: int = int(previous.get("evidence_id", 0))
 	if new_anchor:
-		_serial += 1
-		evidence_id = _serial
+		evidence_id = environment.allocate_coordination_id()
 		_drop_coordination_plan(team_id, &"new_evidence")
 		_coordination_source_pool[key] = {}
 	var anchor: Vector3 = source.position if new_anchor else previous.position
@@ -353,7 +338,7 @@ func publish_coordination_source(context, source: Dictionary) -> void:
 		"evidence_id": evidence_id, "contact_id": maxi(contact_id, int(previous.get("contact_id", 0))), "generation": generation, "team_id": team_id}
 	if new_anchor:
 		_coordination_due[team_id] = elapsed
-		revision += 1
+		environment.notify_coordination_changed()
 
 func _active_coordination_source(key: String) -> Dictionary:
 	var frame: Dictionary = _coordination_sources.get(key, {})
@@ -739,7 +724,7 @@ func _prepare_inspection_order(team_id: int, source: Dictionary, ids: Array) -> 
 		attempted = old.attempted.duplicate()
 		if old.kind == &"point":
 			old.slots.clear()
-			revision += 1
+			environment.notify_coordination_changed()
 			return
 		# Prefer the side whose local routes did not fail. Every alternative is
 		# tried at most once for this evidence/member set, with a finite window.
@@ -794,8 +779,7 @@ func _prepare_inspection_order(team_id: int, source: Dictionary, ids: Array) -> 
 	var order_expires: float = minf(source.valid_until, elapsed + float(representative.setting(&"cooperation", &"cover_inspection_plan_seconds", 16.0)))
 	if old.get("evidence_id") == source.evidence_id:
 		order_expires = minf(order_expires, float(old.expires_at))
-	_serial += 1
-	var order_id := _serial
+	var order_id: int = environment.allocate_coordination_id()
 	for side in 2:
 		for row in sides[side].size():
 			slots[sides[side][row]] = {"side": -1 if side == 0 else 1, "row": row,
@@ -812,7 +796,7 @@ func _prepare_inspection_order(team_id: int, source: Dictionary, ids: Array) -> 
 	var previous_plan: Dictionary = _coordination_plans.get(team_id, {})
 	if not previous_plan.is_empty() and previous_plan.tactic != &"inspect":
 		_drop_coordination_plan(team_id, &"whole_squad_search")
-	revision += 1
+	environment.notify_coordination_changed()
 
 func _coordination_source_axis(team_id: int, anchor: Vector3, target_id: int) -> Vector3:
 	var center := Vector3.ZERO
@@ -989,8 +973,7 @@ func _coordination_environment(team_id: int, ids: Array) -> int:
 		signature.append([id, member.member_generation, member.environment_revision, member.navigation_revision])
 	var previous: Dictionary = _coordination_environments.get(team_id, {})
 	if previous.is_empty() or previous.signature != signature:
-		_serial += 1
-		_coordination_environments[team_id] = {"signature": signature, "revision": _serial}
+		_coordination_environments[team_id] = {"signature": signature, "revision": environment.allocate_coordination_id()}
 	return int(_coordination_environments[team_id].revision)
 
 func _coordination_plan_source(plan: Dictionary) -> Dictionary:
@@ -1128,8 +1111,7 @@ func prepare_assignment(context, identity: Dictionary, offer_key: String) -> Dic
 	if entry.accepted:
 		# A different allowed segment gets a separate pending physical lease;
 		# the task itself and its original deadline remain exactly the same.
-		_serial += 1
-		proposed.reservation_id = _serial
+		proposed.reservation_id = environment.allocate_coordination_id()
 		proposed.phase = &"pending"
 		proposed.created_at = elapsed
 		proposed.accept_until = minf(entry.expires_at, elapsed + COORDINATION_ACCEPT_SECONDS)
@@ -1459,10 +1441,8 @@ func _coordination_entry(proposal: Dictionary, plan: Dictionary) -> Dictionary:
 	if raw_offers.is_empty(): return {}
 	var entry := proposal.duplicate(true)
 	entry.merge(coordination_identity(context))
-	_serial += 1
-	entry.assignment_id = _serial
-	_serial += 1
-	entry.reservation_id = _serial
+	entry.assignment_id = environment.allocate_coordination_id()
+	entry.reservation_id = environment.allocate_coordination_id()
 	entry.assignment_revision = 1
 	entry.plan_id = plan.plan_id
 	entry.plan_version = plan.plan_version
@@ -1517,8 +1497,7 @@ func _install_coordination_proposal(team_id: int, source: Dictionary, proposal: 
 	var repairing: bool = proposal.operation in [&"repair", &"extend", &"revise"] and not previous.is_empty()
 	var plan: Dictionary = previous.duplicate(true) if repairing else {}
 	if not repairing:
-		_serial += 1
-		plan = {"plan_id": _serial, "plan_version": 1, "generation": generation, "team_id": team_id,
+		plan = {"plan_id": environment.allocate_coordination_id(), "plan_version": 1, "generation": generation, "team_id": team_id,
 			"domain": "team:%s" % team_id, "target_id": source.target_id, "evidence_id": source.evidence_id,
 			"tactic": proposal.tactic, "phase": &"assigning", "phase_id": 1, "release_at": -1.0,
 			"created_at": elapsed, "expires_at": minf(source.valid_until, elapsed + _coordination_plan_duration(proposal)),
@@ -1607,7 +1586,7 @@ func _install_coordination_proposal(team_id: int, source: Dictionary, proposal: 
 	_coordination_plans[team_id] = plan
 	for entry: Dictionary in new_entries:
 		if entry.get("constraint_mode") != &"advisory": environment.store_tactical_reservation(self, _coordination_reservation(_context(entry.actor_id), entry, plan))
-	revision += 1
+	environment.notify_coordination_changed()
 
 func _drop_coordination_plan(team_id: int, _reason: StringName) -> void:
 	var plan: Dictionary = _coordination_plans.get(team_id, {})
@@ -1621,7 +1600,7 @@ func _drop_coordination_plan(team_id: int, _reason: StringName) -> void:
 		environment.release_tactical_reservation(self, entry.reservation_id)
 		environment.release_tactical_reservation(self, entry.get("pending_reservation_id", 0))
 	_coordination_plans.erase(team_id)
-	revision += 1
+	environment.notify_coordination_changed()
 
 func _invalidate_coordination_member(owner_id: int, reason: StringName) -> void:
 	var plan: Dictionary = _coordination_plans.get(_team_by_member.get(owner_id, 0), {})
@@ -1652,7 +1631,7 @@ func _install_support_handoff(plan: Dictionary, proposal: Dictionary) -> void:
 		if _context(existing.actor_id).actor.global_position.distance_to(existing.staging_position) > 0.35:
 			for offer: Dictionary in existing.raw_offers: travel = maxf(travel, float(offer.travel_seconds))
 		plan.handoff.expires_at = minf(plan.expires_at, elapsed + travel + COORDINATION_WAIT_SECONDS)
-		revision += 1
+		environment.notify_coordination_changed()
 		return
 	if proposal.assignments.size() != 1: return
 	var entry := _coordination_entry(proposal.assignments[0], plan)
@@ -1664,7 +1643,7 @@ func _install_support_handoff(plan: Dictionary, proposal: Dictionary) -> void:
 	plan.handoff = handoff
 	plan.assignments.append(entry)
 	environment.store_tactical_reservation(self, _coordination_reservation(_context(entry.actor_id), entry, plan))
-	revision += 1
+	environment.notify_coordination_changed()
 
 func _support_assignment_ready(entry: Dictionary, plan: Dictionary) -> bool:
 	if entry.is_empty() or not entry.accepted or entry.get("report_phase_id", -1) != plan.phase_id or elapsed - float(entry.last_report_at) > COORDINATION_REPORT_SECONDS: return false
@@ -1679,7 +1658,7 @@ func _advance_support_handoff(plan: Dictionary) -> bool:
 			link.provider_id = link.pending_provider_id
 			link.erase("pending_provider_id")
 			link.revision += 1
-			revision += 1
+			environment.notify_coordination_changed()
 	var handoff: Dictionary = plan.get("handoff", {})
 	if not handoff.is_empty():
 		var replacement := _assignment_for_owner(handoff.replacement_provider_id)
@@ -1693,7 +1672,7 @@ func _advance_support_handoff(plan: Dictionary) -> bool:
 			plan.required_participants = plan.required_participants.map(func(id): return handoff.replacement_provider_id if id == handoff.previous_provider_id else id)
 			plan.handoff = {}
 			plan.handoff_wait = {}
-			revision += 1
+			environment.notify_coordination_changed()
 		elif replacement.is_empty() or handoff.expires_at <= elapsed:
 			if not handoff.get("existing_replacement", false): _remove_support_assignment(plan, handoff.replacement_provider_id)
 			plan.handoff = {}
@@ -1796,7 +1775,7 @@ func _advance_coordination_phase(plan: Dictionary) -> void:
 		for entry: Dictionary in plan.assignments:
 			entry.support_prepare_until = minf(entry.expires_at, elapsed + COORDINATION_WAIT_SECONDS)
 		plan.stage_until = plan.expires_at
-		revision += 1
+		environment.notify_coordination_changed()
 	elif plan.phase != &"executing" and elapsed >= plan.stage_until:
 		for entry: Dictionary in unready: _record_coordination_failure(entry, plan)
 		# A late additional flank has exhausted its own preparation window. Keep
@@ -1875,12 +1854,6 @@ func _coordination_actual(context, target_id: int) -> Dictionary:
 
 func _coordination_physical_summary(context, summary: Dictionary, target_id: int) -> Dictionary:
 	return environment._coordination_physical_summary(context, summary, target_id)
-
-func _domain(actor) -> String:
-	return environment._domain(actor)
-
-func _inspection_domain_matches(context, report: Dictionary) -> bool:
-	return environment._inspection_domain_matches(context, report)
 
 func _reservation_footprint(context, position: Vector3) -> Dictionary:
 	return environment._reservation_footprint(context, position)

@@ -33,6 +33,25 @@ var _squads: Dictionary = {}
 var last_advance_usec := 0
 var last_region_usec := 0
 
+## Area-wide identities share one sequence across observations and leases.
+## Allocating an identity does not publish a change or renew any deadline.
+func allocate_coordination_id() -> int:
+	_serial += 1
+	return _serial
+
+func notify_coordination_changed() -> void:
+	revision += 1
+
+## Validate a frozen observation without exposing the area's mutable report.
+## -1 means invalid; 0 is a valid report without a renewed-contact identity.
+func observation_contact_id(context, source_id: int, target_id: int, position: Vector3) -> int:
+	if context == null or not is_instance_valid(context.actor) or source_id <= 0 or target_id <= 0 or not position.is_finite(): return -1
+	for report: Dictionary in _reports.values():
+		if int(report.id) != source_id or report.target_id != target_id or report.valid_until <= elapsed: continue
+		if not _inspection_domain_matches(context, report) or report.position.distance_squared_to(position) >= 0.0001: continue
+		return int(report.get("contact_id", 0))
+	return -1
+
 func coordinator_for(context):
 	if context != null and is_instance_valid(context.actor):
 		var member: Dictionary = _members.get(context.actor.get_instance_id(), {})

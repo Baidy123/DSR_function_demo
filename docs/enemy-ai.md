@@ -353,6 +353,8 @@ Cooperation 默认值属于实施参数：情报5秒、支援准备估计1.2秒�
 | 竞技场接入与复位 | `scripts/world/shooting_range.gd`、`scenes/enemy/enemy.tscn` |
 | 基础执行能力 | `scripts/enemy/enemy_actor.gd`、武器和弹药组件 |
 
+区域与小队的共享状态边界：区域 `allocate_coordination_id()` 分配同一序列的证据／任务／预约身份，`notify_coordination_changed()` 发布原有版本变化；小队不直接读写区域序号或版本。`observation_contact_id(context, source_id, target_id, position)` 在区域内核对已获取报告、原期限、通信关系与冻结位置，只返回接触身份（无有效报告为 -1），不公开可写情报字典。小队据此一次完成来源核验及再接敌身份读取。公共预约的几何和事务辅助仍沿原接口，不能据此声称所有内部依赖均已迁移。
+
 当前默认行为入口为 `scripts/enemy/actions/enemy_patrol_action.gd`、`scripts/enemy/actions/enemy_search.gd`、`scripts/enemy/actions/enemy_tactics.gd`（远程接敌）、`scripts/enemy/actions/enemy_melee_action.gd`（近战接近）和 `scripts/enemy/actions/enemy_reload_action.gd`。远程模板仍装配巡逻、搜索、接敌、换弹四个默认行为；近战模板保留巡逻、搜索、接近三个默认行为。
 射击、移动、近战挥击是底层执行能力，本身不登记为默认行为或战术行为。现有行为组织这些能力并可提供多个方案；远程接敌的站定射击、移动退让和近战推开共享 `engage` 行为 ID，近战方案由 `plan = melee` 区分，仍由 Utility 统一选择，不另建装配项或训练开关。
 
