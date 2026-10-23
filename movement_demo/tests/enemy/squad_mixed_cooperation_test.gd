@@ -14,8 +14,11 @@ func _run() -> void:
 		if arg.begins_with("--level="): level = int(arg.trim_prefix("--level="))
 	seed(20261024)
 	if await _setup_mixed():
-		await _contact_cooperation()
-		await _small_retreat()
+		if OS.get_cmdline_user_args().has("--ranged"):
+			await _crossfire()
+		else:
+			await _contact_cooperation()
+			await _small_retreat()
 		check(ownership, "Members keep installed roles and squad authority")
 		check(clearance >= 0.64, "Bodies preserve physical collision clearance")
 		costs.sort()
@@ -37,7 +40,7 @@ func _setup_mixed() -> bool:
 	hits.clear()
 	for index in actors.size():
 		var actor = actors[index]
-		var close := index > 0
+		var close := index > 0 and not OS.get_cmdline_user_args().has("--ranged")
 		actor.get_node("UnitType").profile = load("res://resources/enemy/units/%s.tres" % ("melee" if close else "ranged"))
 		actor.weapon = load("res://resources/weapons/enemy_test_%s.tres" % ("melee" if close else "pistol")).duplicate(true)
 		actor.weapon.fire_mode = 2 if close else 0
@@ -60,6 +63,9 @@ func _setup_mixed() -> bool:
 	player.get("health").debug_invincible = true
 	player.global_position = arena.to_global(Vector3(1, 0, 0))
 	var starts := [Vector3(-2, 0, -3), Vector3(1, 0, -3), Vector3(4, 0, -3)]
+	if OS.get_cmdline_user_args().has("--ranged"):
+		player.global_position = arena.to_global(Vector3(1, 0, 2))
+		starts = [Vector3(-0.3, 0, -3), Vector3(1, 0, -3), Vector3(2.3, 0, -3)]
 	for index in actors.size():
 		actors[index].global_position = arena.to_global(starts[index])
 		actors[index].look_at(player.global_position)
@@ -90,16 +96,20 @@ func _sample() -> void:
 
 func _contact_cooperation() -> void:
 	var concurrent := 0
+	var rear_shots := 0
 	var previous: int = shooters[0].shot_count
 	for frame in 600:
 		await physics_frame
 		_sample()
 		var approaching: bool = melee_members.any(func(actor): return actor.velocity.length() > 0.2 and actor.global_position.distance_to(player.global_position) > actor.weapon.melee_range)
-		if shooters[0].shot_count > previous and approaching: concurrent += shooters[0].shot_count - previous
+		if shooters[0].shot_count > previous and approaching:
+			concurrent += shooters[0].shot_count - previous
+			if melee_members.any(func(actor): return actor.velocity.length() > 0.2 and shooters[0].global_position.distance_to(player.global_position) > actor.global_position.distance_to(player.global_position) + 0.5): rear_shots += 1
 		previous = shooters[0].shot_count
 		if frame % 120 == 0: print("MIXED CONTACT ", frame, " ", JSON.stringify(actors.map(_trace)), " hits=", hits)
 	check(melee_members.all(func(actor): return hits[actor.get_instance_id()] > 0), "Each melee member actually reaches and hits the player")
 	check(concurrent > 0, "Ranged fire occurs during a teammate's real melee approach")
+	check(rear_shots > 0, "Concurrent support shots originate behind the advancing melee front")
 	print("MIXED FIRE concurrent=", concurrent, " hits=", hits)
 
 func _small_retreat() -> void:
@@ -124,3 +134,27 @@ func _small_retreat() -> void:
 	check(initial_distance > actor.weapon.melee_range, "A real 0.7m retreat invalidates the former attack range")
 	check(recovered >= 0 and recovered <= 180, "The same melee member adjusts and hits again within three seconds")
 	print("MIXED RETREAT distance=", initial_distance, " recovered=", recovered, " ", JSON.stringify(actors.map(_trace)))
+
+func _crossfire() -> void:
+	var shots := {}
+	var directions := {}
+	var widest := 0.0
+	var moving_fire := 0
+	for actor in shooters: shots[actor.get_instance_id()] = actor.shot_count
+	for frame in 600:
+		await physics_frame
+		_sample()
+		for actor in shooters:
+			var id: int = actor.get_instance_id()
+			if actor.shot_count <= shots[id]: continue
+			shots[id] = actor.shot_count
+			var direction: Vector3 = (actor.global_position - player.global_position).normalized()
+			for other in directions:
+				if other != id: widest = maxf(widest, direction.angle_to(directions[other]))
+			directions[id] = direction
+			if shooters.any(func(peer): return peer != actor and peer.velocity.length() > 0.2): moving_fire += 1
+		if frame % 180 == 0: print("CROSSFIRE ", frame, " ", JSON.stringify(actors.map(_trace)))
+	check(directions.size() == shooters.size(), "Every ranged member actually fires with personal sight")
+	check(widest >= deg_to_rad(45.0), "Available lateral posts produce actual shots at least 45 degrees apart")
+	check(moving_fire > 0, "A shooter retains fire while another member manoeuvres")
+	print("CROSSFIRE METRICS angle=", rad_to_deg(widest), " moving_fire=", moving_fire)

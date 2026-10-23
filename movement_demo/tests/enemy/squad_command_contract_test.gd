@@ -66,6 +66,7 @@ func _initialize() -> void:
 	column_bodies[2].position = Vector3(-3, 0, 0)
 	check(Traffic.cohesion(1, column, column_bodies).speed_scale == 1.0, "Reloading members do not acquire an unrelated movement barrier")
 	_search_roles(planner, bodies)
+	_combat_roles(planner)
 	print("SQUAD COMMAND CONTRACT: %d/%d passed" % [checks - failures, checks])
 	quit(1 if failures else 0)
 
@@ -100,3 +101,40 @@ func _search_roles(planner, bodies: Dictionary) -> void:
 	for id in candidates: candidates[id] = candidates[id].filter(func(task): return task.role != &"search")
 	result = planner.propose(snapshot)
 	check(result.complete and result.tasks.values().all(func(task): return not task.has("overwatch_for")), "No remaining inspector means no orphaned overwatch assignment")
+
+func _combat_roles(planner) -> void:
+	var bodies := {}
+	var profiles := {}
+	var candidates := {}
+	for id in [1, 2]:
+		var position := Vector3(-1 if id == 1 else 1, 0, -6)
+		bodies[id] = {"position": position, "radius": 0.35, "spacing_margin": 0.45, "visible": true, "fire_lane_valid": true, "can_attack": true, "rounds": 5}
+		profiles[id] = {"profile_id": str(id), "firearms": true, "actions": {&"engage": {"roles": [&"engage"], "basis": "installed_fixture"}}}
+		var hold := _post(position, position, 0.0)
+		hold.look_position = Vector3.ZERO
+		hold.tactical = {"sustainable_fire": true}
+		candidates[id] = [hold]
+	var lateral := _post(bodies[2].position, Vector3(5, 0, -1), 3.0)
+	lateral.look_position = Vector3.ZERO
+	lateral.tactical = {"sustainable_fire": true}
+	candidates[2].append(lateral)
+	var snapshot := {"members": bodies, "profiles": profiles, "template": Contract.template(profiles, 1), "candidates": candidates, "objective": {"phase": &"contact", "position": Vector3.ZERO}}
+	var result: Dictionary = planner.propose(snapshot)
+	check(result.complete and result.tasks[2].position == lateral.position and result.tasks[1].position == bodies[1].position, "A useful crossfire angle justifies one lateral move while retaining the other firing post")
+	candidates[2].erase(lateral)
+	result = planner.propose(snapshot)
+	check(result.complete and result.tasks[1].position == bodies[1].position and result.tasks[2].position == bodies[2].position, "A narrow layout keeps legal fire when no lateral post exists")
+	profiles[1].firearms = false
+	bodies[1].position = Vector3(0, 0, -4)
+	var approach := _post(bodies[1].position, Vector3(0, 0, -1.2), 1.0)
+	approach.look_position = Vector3.ZERO
+	candidates[1] = [approach]
+	var rear := _post(bodies[2].position, Vector3(3, 0, -5), 1.5)
+	rear.look_position = Vector3.ZERO
+	rear.tactical = {"sustainable_fire": true}
+	var exposed := _post(bodies[2].position, Vector3(3, 0, 2), 1.0)
+	exposed.look_position = Vector3.ZERO
+	exposed.tactical = {"sustainable_fire": true}
+	candidates[2] = [exposed, rear]
+	result = planner.propose(snapshot)
+	check(result.complete and result.tasks[2].position == rear.position, "Mixed plan prefers the rear-side gun position relative to the real melee approach")

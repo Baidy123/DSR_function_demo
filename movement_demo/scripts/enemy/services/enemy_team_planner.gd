@@ -4,6 +4,7 @@ extends RefCounted
 ## No personal candidates, Utility scores, scene access or tactical authority.
 const Contract = preload("res://scripts/enemy/services/squad_contract.gd")
 const Traffic = preload("res://scripts/enemy/services/squad_traffic.gd")
+const Combat = preload("res://scripts/enemy/services/squad_combat_tactics.gd")
 const MAX_COMBINATIONS := 256
 
 func propose(snapshot: Dictionary) -> Dictionary:
@@ -87,7 +88,7 @@ func _team_cost(snapshot: Dictionary, tasks: Dictionary) -> float:
 		if tasks[id].role in [&"engage", &"support", &"flank", &"cover_peek"]: retained = true
 	# Keep useful fire while other members investigate or shelter. Pressure can
 	# still require everyone to retreat when no qualified firing plan exists.
-	return 8.0 if available and not retained else 0.0
+	return (8.0 if available and not retained else 0.0) + Combat.team_cost(snapshot, tasks)
 
 func _eligible(snapshot: Dictionary, id: int, candidate: Dictionary, selected: Dictionary) -> bool:
 	# The scene-independent template is an input constraint, not a label.

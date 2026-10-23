@@ -474,6 +474,7 @@ func _member_work(id: int) -> Dictionary:
 	var body: Dictionary = _bodies[id]
 	var context = _context(id)
 	var sites: Array = _preparation.sites.duplicate(true)
+	if _objective.phase == &"contact": sites = Combat.sites(context, _profiles[id], body, _objective, _bodies, _profiles)
 	if _objective.phase == &"search":
 		# A completed route can continue into its prepared future, after checking
 		# current coverage and revalidating navigation through normal candidates.
@@ -493,6 +494,8 @@ func _member_work(id: int) -> Dictionary:
 		if valid:
 			var continuing := previous.duplicate(true)
 			continuing.route = Traffic.remaining(body.position, previous.route)
+			continuing.objective_id = _objective.objective_id
+			continuing.look_position = _objective.position
 			continuing.estimate = 0.0
 			candidates.append(continuing)
 	if _objective.phase == &"contact" and defense_role.is_empty() and not needs_reload:
@@ -503,8 +506,10 @@ func _member_work(id: int) -> Dictionary:
 			if role == &"support" and (not body.visible or body.rounds <= 0): continue
 			if not roles.has(role) and not Contract.executor(_profiles[id], role).is_empty(): roles.append(role)
 		var expanded: Array = []
-		for site in sites:
-			for role in roles:
+		# Spatial alternatives must enter the bounded pool before multiple role
+		# labels of the same point consume every slot.
+		for role in roles:
+			for site in sites:
 				var variant: Dictionary = site.duplicate(true)
 				variant.role = role
 				variant.role_cost = 0.0 if role == _contact_role(id) else 0.35
