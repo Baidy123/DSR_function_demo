@@ -81,12 +81,16 @@ static func _cover_sites(geometry: Dictionary, count: int, attempt: int) -> Arra
 			var entry: Vector3 = peek - axis * depth * 2.0
 			var focus: Vector3 = rear + axis * (0.6 + float(rank) * 0.6)
 			if rank > 0: focus += outward * maxf(0.0, half_length - 1.0)
+			# The approach inspects the near side first. Only after physically
+			# reaching the entry should attention turn into the rear inspection.
+			var approach_focus: Vector3 = focus - axis * (2.0 * (depth + 0.6 + float(rank) * 0.6))
 			if geometry.ends.has(side):
 				var offset: Vector3 = outward * float(rank) * 1.4
 				var lateral: Vector3 = (entry - geometry.observer_position).normalized() * float(attempt % 3) * 0.35
 				lateral.y = 0.0
 				result.append({"position": peek + offset + lateral, "via": entry + offset + lateral,
-					"look_position": focus, "site_key": "%s:%s:%s" % [group, side, rank], "sync_key": group, "side": side})
+					"look_position": focus, "approach_look_position": approach_focus,
+					"site_key": "%s:%s:%s" % [group, side, rank], "sync_key": group, "side": side})
 			var offset: Vector3 = outward * (2.2 + rank * 1.4)
 			watch.append({"role": &"support", "position": peek + offset + axis * (0.4 + rank * 1.6),
 				"via": entry + offset, "look_position": rear + outward * maxf(0.0, half_length - 1.0) + axis * 1.8,

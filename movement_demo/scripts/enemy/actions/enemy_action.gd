@@ -195,6 +195,7 @@ func freeze_command_capability() -> Dictionary:
 
 var command: Dictionary = {}
 var _command_index = 1
+var _command_approach_index = -1
 var _command_observe = 0.0
 var _command_started = false
 var _command_path_check = 0.0
@@ -205,15 +206,28 @@ func begin_command(task: Dictionary) -> bool:
 	plan = {"id": action_id, "plan": &"squad_command", "destination": {"position": task.position, "path": task.route}}
 	_running = true
 	_command_index = 1
+	_command_approach_index = -1
+	var staging: Vector3 = task.get("staging_position", Vector3.INF)
+	for index in task.route.size():
+		if preload("res://scripts/enemy/services/squad_contract.gd").horizontal(task.route[index], staging) <= 0.05:
+			_command_approach_index = index
+			break
 	_command_observe = 0.0
 	_command_started = false
 	_command_path_check = 0.0
 	return true
 
+func command_look_position(fallback: Vector3 = Vector3.INF) -> Vector3:
+	if not fallback.is_finite(): fallback = command.get("look_position", actor.global_position)
+	var approach: Vector3 = command.get("approach_look_position", Vector3.INF)
+	if command.get("role") == &"search" and approach.is_finite() and _command_index <= _command_approach_index:
+		if context._horizontal_distance(command.staging_position) > 0.08: return approach
+	return fallback
+
 ## Shared route following belongs to the action, like existing route_motion.
 ## Task work remains in its installed executor. No target/role is chosen here.
 func execute_command(delta: float, visible: bool) -> Dictionary:
-	var output = motion(Vector3.ZERO, 1.0, command.get("look_position", actor.global_position) - actor.global_position)
+	var output = motion(Vector3.ZERO, 1.0, command_look_position() - actor.global_position)
 	if visible: output.facing = context.last_known_position - actor.global_position
 	output.scheduled_members = context.coordinated_stationary_members()
 	if command.is_empty(): return output
@@ -231,6 +245,7 @@ func execute_command(delta: float, visible: bool) -> Dictionary:
 	var permission: Dictionary = context.command_permission(command)
 	var path: PackedVector3Array = command.route
 	while _command_index < path.size() and context._horizontal_distance(path[_command_index]) < 0.06: _command_index += 1
+	if not visible: output.facing = command_look_position() - actor.global_position
 	var arrived: bool = context._horizontal_distance(command.position) <= 0.08
 	if not permission.get("allowed", false):
 		if not command.role in [&"search", &"reload"]:

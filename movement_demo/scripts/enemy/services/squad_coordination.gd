@@ -191,7 +191,6 @@ func advance() -> void:
 		_search.advance(_bodies.keys().map(func(id): return _context(id)), _profiles, elapsed)
 		if revision != _search.revision:
 			_preparation.clear()
-			_covered.clear()
 			_due = 0.0
 		_objective.search_center = _search.center
 		_objective.search_revision = _search.revision
@@ -387,7 +386,7 @@ func _plan() -> void:
 			return
 		var site: Dictionary = work.sites[work.cursor]
 		work.cursor += 1
-		if _covered.has(site.site_key) and not site.has("coverage_key") or _failed_sites.get([id, site.site_key], -INF) > elapsed: continue
+		if _recent_inspection(site, map_revision) or _failed_sites.get([id, site.site_key], -INF) > elapsed: continue
 		if _objective.phase == &"patrol" and _patrol_visits.has(site.site_key): continue
 		if _objective.phase == &"contact" and not site.has("role"): site.role = _contact_role(id)
 		# A physical box has four bounded bypass alternatives. Test them on
@@ -418,6 +417,14 @@ func _plan() -> void:
 	_preparation.solution = _planner.begin({"members": _bodies, "profiles": _profiles, "template": _template,
 		"objective": _objective, "candidates": _preparation.candidates, "synchronize_search": _synchronize_search()})
 	_finish_plan(deadline)
+
+func _recent_inspection(site: Dictionary, map_revision: int) -> bool:
+	if site.has("coverage_key"): return false
+	var record: Dictionary = _covered.get(site.site_key, {})
+	if record.is_empty() or record.get("map_revision", -1) != map_revision: return false
+	# A hint changes priorities, not the fact that this exact hiding patch was
+	# just inspected. Different faces/geometry and genuinely old checks compete.
+	return record.position.distance_to(site.look_position) < 0.25 and elapsed - float(record.observed_at) < _search.coverage.REVISIT_SECONDS
 
 func _finish_plan(deadline: int) -> void:
 	frame_costs.stage = &"combinations"
@@ -675,7 +682,8 @@ func report(context, report: Dictionary) -> bool:
 	task.progress = report.get("progress", 0.0)
 	if report.state == &"complete":
 		if task.role == &"search":
-			_covered[task.site_key] = {"position": task.look_position, "observed_at": elapsed, "member_id": id}
+			_covered[task.site_key] = {"position": task.look_position, "observed_at": elapsed, "member_id": id,
+				"map_revision": context.coordination_search_revision()}
 			if _waiting_for_search_peers(id): task.reason = &"search_peers"
 		elif task.role == &"patrol":
 			_patrol_visits[task.site_key] = {"position": task.position, "visited_at": elapsed, "member_id": id}

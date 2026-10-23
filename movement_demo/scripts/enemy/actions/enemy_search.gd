@@ -1451,4 +1451,4 @@ func command_work(delta: float, _visible: bool, arrived: bool) -> Dictionary:
 		return {}
 	var complete: bool = evidence.get("complete", false)
 	context.report_command(command, &"complete" if complete else &"executing", {"progress": evidence.get("progress", 0.0)})
-	return {"facing": focus - actor.global_position} if not _visible else {}
+	return {"facing": command_look_position(focus) - actor.global_position} if not _visible else {}

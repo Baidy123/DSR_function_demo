@@ -32,6 +32,18 @@ func _run() -> void:
 	squad.profile = squad.profile.duplicate(true)
 	squad.profile.level = level
 	actors = scene.get_node("Arena").find_children("*", "CharacterBody3D", true, false).filter(func(actor): return actor.has_node("AI"))
+	if OS.get_cmdline_user_args().has("--search-corners"):
+		for actor in actors:
+			var training = actor.get_node("Training")
+			training.profile = training.profile.duplicate(true)
+			training.profile.search.lost_target_hint_chance = 1.0
+			training.profile.selected_tactics.erase(&"cooperate")
+			training.profile.selected_tactics.erase(&"cover")
+			training.profile.selected_tactics.erase(&"covering_retreat")
+			training.profile.search.search_hint_chance = 1.0
+			training.profile.search.search_hint_min_multiplier = 1.0
+			training.profile.search.search_hint_interval_seconds = 0.5
+			training.profile.search.tracking_hint_error_radius = 0.1
 	if OS.get_cmdline_user_args().has("--flank-motion"):
 		for index in actors.size():
 			var training = actors[index].get_node("Training")
@@ -71,6 +83,13 @@ func _run() -> void:
 	player.get("combat").set_physics_process(false)
 	player.get("health").debug_invincible = true
 	player.global_position = arena.to_global(Vector3.ZERO)
+	if OS.get_cmdline_user_args().has("--search-corners"):
+		await _search_corners_case()
+		scene.queue_free()
+		await physics_frame
+		print("SQUAD SEARCH CORNERS: %d/%d passed" % [checks - failures, checks])
+		quit(1 if failures else 0)
+		return
 	if OS.get_cmdline_user_args().has("--flank-motion"):
 		await _flank_motion_case()
 		scene.queue_free()
@@ -171,6 +190,100 @@ func _run() -> void:
 	if level > 0: await _reload_scene()
 	print("SQUAD COMMAND RUNTIME: %d/%d passed" % [checks - failures, checks])
 	quit(1 if failures else 0)
+
+func _search_corners_case() -> void:
+	# Live demonstration: lone survivor north of the saved left tall wall,
+	# genuine sight along its west edge, then the player hides on the east.
+	var actor = actors[0]
+	player.global_position = Vector3(15.3, 0, 4.516)
+	actor.global_position = Vector3(15.6, 0, -3.2)
+	actor.look_at(player.global_position)
+	for peer in actors.slice(1): peer.receive_hit(peer.max_health + 1.0)
+	for frame in 30:
+		await physics_frame
+		if actor.get_node("AI").context.sees_player: break
+	check(actor.get_node("AI").context.sees_player, "Corner fixture starts with genuine personal sight along the left wall")
+	var wall = arena.find_child("CoverA", true, false).get_node("CollisionShape3D")
+	var half: Vector3 = wall.shape.size * 0.5
+	var north: Vector3 = wall.to_global(Vector3(0, -half.y, -half.z - 1.2))
+	var south: Vector3 = wall.to_global(Vector3(0, -half.y, half.z + 1.2))
+	var audit := {"before": 0, "before_wrong": 0, "after": 0, "after_wrong": 0, "turns": 0, "repeats": 0, "hints": 0}
+	var completed := {}
+	var seen := {}
+	var task_id := -1
+	var age := 0
+	var passed := false
+	var turn_age := 0
+	var captured := {}
+	if OS.get_cmdline_user_args().has("--capture-corners"): root.get_node("DebugSettings").enabled = true
+	var costs: Array[int] = []
+	var squad = arena.get_node("Squad").coordinator
+	var start_revision: int = squad._search.revision
+	for frame in 1800:
+		# Physical player input only. Vary the hidden clue to exercise legitimate
+		# hints; do not write perception, objectives, tasks or completion facts.
+		var local: Vector3 = wall.to_local(actor.global_position)
+		var side: float = 1.0 if local.x < 0.0 else -1.0
+		var z := -signf(local.z) * 1.8 if absf(local.z) > 1.0 else (-0.8 if int(frame / 180) % 2 == 0 else 0.8)
+		player.global_position = wall.to_global(Vector3(side * (half.x + 0.55), -half.y, z))
+		await physics_frame
+		var ctx = actor.get_node("AI").context
+		var task: Dictionary = ctx.coordination_assignment()
+		audit.hints = squad._search.revision - start_revision
+		var total: int = arena.cooperation.last_advance_usec
+		for cost in actor.get_node("AI").frame_costs.values(): total += int(cost)
+		costs.append(total)
+		if task.get("task_id", -1) != task_id:
+			task_id = task.get("task_id", -1)
+			age = 0
+			passed = false
+			turn_age = 0
+			if task.get("role") == &"search" and not task.get("sync_key", "").is_empty():
+				var key = [task.site_key, task.objective_id]
+				if completed.has(key) and squad.elapsed - completed[key].time < 30.0 and completed[key].look.distance_to(task.look_position) < 0.25:
+					audit.repeats += 1
+				seen[task_id] = task.duplicate(true)
+				print("CORNER TASK ", JSON.stringify(task))
+		age += 1
+		if task.get("role") != &"search" or task.get("sync_key", "").is_empty(): continue
+		if task.get("state") == &"complete": completed[[task.site_key, task.objective_id]] = {"time": squad.elapsed, "look": task.look_position}
+		var entry: Vector3 = task.staging_position
+		var goal: Vector3 = task.position
+		# Derive north/south from the actual wall, independently of the new
+		# task-facing fields and the action's own route cursor.
+		if wall.to_local(entry).z > -half.z or wall.to_local(goal).z < half.z: continue
+		if not passed and actor.global_position.distance_to(entry) < 0.12:
+			passed = true
+			audit.turns += 1
+		if passed: turn_age += 1
+		if ctx.sees_player or actor.velocity.length() < 0.2: continue
+		var facing: Vector3 = -actor.global_basis.z
+		if not passed and age > 20:
+			audit.before += 1
+			if facing.dot((north - actor.global_position).normalized()) < 0.8:
+				audit.before_wrong += 1
+				print("CORNER FACING FAILURE ", {"task": task_id, "age": age, "position": actor.global_position, "entry": entry, "facing": facing, "expected": north, "velocity": actor.velocity})
+		elif passed and turn_age > 25:
+			audit.after += 1
+			if facing.dot((south - actor.global_position).normalized()) < 0.8: audit.after_wrong += 1
+		var phase := "after" if passed else "before"
+		if age > 30 and absf(wall.to_local(actor.global_position).z) < 1.0 and (not passed or turn_age > 30) and not captured.has(phase) and OS.get_cmdline_user_args().has("--capture-corners"):
+			captured[phase] = true
+			_capture_corner_phase(phase)
+	check(audit.before > 30 and audit.after > 30 and audit.turns > 0, "Lone survivor actually approaches and passes the wall inspection corner")
+	check(audit.before_wrong == 0, "Before the upper corner the actual body watches the upper hiding area")
+	check(audit.after_wrong == 0, "After reaching the upper corner the actual body turns toward the lower inspection area")
+	check(audit.hints > 2 and completed.size() > 0 and audit.repeats == 0, "Changing uncertain hints do not immediately repeat a completed identical inspection")
+	check(actor.get_node("AI").utility_decision_count == 0, "The lone survivor remains under squad command")
+	costs.sort()
+	check(costs[int(costs.size() * 0.99)] < 16000 and costs[-1] < 50000, "Corner inspection retains the original whole-frame budget")
+	print("CORNER AUDIT ", JSON.stringify(audit), " tasks=", seen.size(), " completed=", completed.size(), " p99=", costs[int(costs.size() * 0.99)], " peak=", costs[-1])
+
+func _capture_corner_phase(phase: String) -> void:
+	# Rendering waits must not skip physics samples at the actual turning point.
+	await RenderingServer.frame_post_draw
+	DirAccess.make_dir_recursive_absolute("res://logs/search_backtrack_20261024")
+	check(root.get_texture().get_image().save_png("res://logs/search_backtrack_20261024/corner_%s.png" % phase) == OK, "Actual rendered corner phase captured: " + phase)
 
 func _flank_motion_case() -> void:
 	# Two real observers can keep contact while the third starts behind the

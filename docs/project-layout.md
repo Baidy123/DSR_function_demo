@@ -74,7 +74,7 @@ movement_demo/
 | `enemy/services/squad_coordination.gd` | 本场能力档案、默认模板、持续目标、全员任务表、反馈、逐轮同步与共同续接、原子提交与生命周期。 |
 | `enemy/services/squad_contract.gd` | 纯值任务身份、状态、能力角色、观察步骤字段及整队默认模板。 |
 | `enemy/services/enemy_team_planner.gd` | 全成员岗位组合搜索，按模板能力与几何排除不完整方案；限制重复入口、比较检查/掩护组合及侧翼人数。 |
-| `enemy/services/enemy_search_formation.gd` | 根据合法线索生成两端检查、远侧掩护和接敌站位，验证完整路线、观察/枪线；提供冻结的任务机动速度。 |
+| `enemy/services/enemy_search_formation.gd` | 根据合法线索生成两端检查、远侧掩护和接敌站位，验证完整路线、观察/枪线；提供入口前后关注点及冻结的任务机动速度。 |
 | `enemy/services/squad_traffic.gd` | 全队通行顺序、准备点占位与离开顺序、观察线互挡、当前阻挡者与剩余路线计算。 |
 | `enemy/services/squad_search.gd` | 编排合法线索、地图覆盖和多段路线；hint 改变优先级，不清空观察历史。 |
 | `enemy/services/squad_map_coverage.gd` | 各小队独立的地图/楼层面积样本、观察时长与来源、当前监视、复查及局部几何失效；不控制身体或下达任务。 |
@@ -84,7 +84,7 @@ movement_demo/
 | `enemy/services/enemy_cooperation.gd` | 区域关系、合法情报存储、公共物理预约；只通过协调器收发团队情报。 |
 | `enemy/services/enemy_context.gd` | 能力/身体值接口、情报适配、任务接受/反馈与只读诊断。 |
 | `enemy/enemy_ai.gd` | 按等级分流个人 Utility 与命令执行；负责原动作/身体/火控交接。 |
-| `enemy/actions/enemy_action.gd` | 新命令执行协议；个人模式保留原 begin/tick/cancel。 |
+| `enemy/actions/enemy_action.gd` | 命令执行协议与实际路线游标，按准备点进度切换入口前后关注点；个人模式保留原 begin/tick/cancel。 |
 
 团队避险的执行适配位于原 `enemy_cover_action.gd` / `enemy_covering_retreat_action.gd` 的命令入口，按协调器路线执行躲藏、探出和撤回；原个人 `begin/tick` 保留。抗压值属于 `config/tactics_settings.gd`，通过 Training 保存并由 AI 装配成能力档案；压力事实仍来自原受击/近弹接口，Context 只补充运行快照字段。无新增场景节点或第二套身体/火控。
 
