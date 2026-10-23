@@ -65,8 +65,38 @@ func _initialize() -> void:
 	column[2].role = &"reload"
 	column_bodies[2].position = Vector3(-3, 0, 0)
 	check(Traffic.cohesion(1, column, column_bodies).speed_scale == 1.0, "Reloading members do not acquire an unrelated movement barrier")
+	_search_roles(planner, bodies)
 	print("SQUAD COMMAND CONTRACT: %d/%d passed" % [checks - failures, checks])
 	quit(1 if failures else 0)
 
 func _post(start: Vector3, goal: Vector3, cost: float) -> Dictionary:
 	return {"role": &"engage", "action": &"engage", "position": goal, "route": PackedVector3Array([start, goal]), "estimate": cost}
+
+func _search_roles(planner, bodies: Dictionary) -> void:
+	var profiles := {}
+	var candidates := {}
+	for id in bodies:
+		profiles[id] = {"profile_id": str(id), "actions": {&"fixture": {"roles": [&"search", &"support", &"guard"], "basis": "installed_fixture"}}}
+		var inspect := _post(bodies[id].position, bodies[id].position + Vector3(0, 0, 3), 1.0)
+		inspect.merge({"action": &"fixture", "role": &"search", "sync_key": "cover:fixture", "side": -1}, true)
+		var hold := _post(bodies[id].position, bodies[id].position, 40.0)
+		hold.merge({"action": &"fixture", "role": &"guard"}, true)
+		candidates[id] = [inspect, hold]
+	var opposite: Dictionary = candidates[2][0].duplicate(true)
+	opposite.position = Vector3(3, 0, -3)
+	opposite.route = PackedVector3Array([bodies[2].position, opposite.position])
+	opposite.side = 1
+	opposite.estimate = 5.0
+	candidates[2].append(opposite)
+	var watch := _post(bodies[3].position, Vector3(6, 0, -3), 4.0)
+	watch.merge({"action": &"fixture", "role": &"support", "overwatch_for": "cover:fixture", "side": 1}, true)
+	candidates[3].append(watch)
+	var snapshot := {"members": bodies, "profiles": profiles, "template": Contract.template(profiles, 1), "candidates": candidates, "objective": {"phase": &"search"}}
+	var result: Dictionary = planner.propose(snapshot)
+	check(result.complete and result.tasks[2].get("side") == 1 and result.tasks[3].has("overwatch_for"), "A longer opposite entrance plus overwatch beats three cheap same-side inspections")
+	candidates[2].erase(opposite)
+	result = planner.propose(snapshot)
+	check(result.complete and result.tasks.values().filter(func(task): return task.role == &"search").size() == 1, "An unavailable opposite entrance reduces inspectors instead of stacking them")
+	for id in candidates: candidates[id] = candidates[id].filter(func(task): return task.role != &"search")
+	result = planner.propose(snapshot)
+	check(result.complete and result.tasks.values().all(func(task): return not task.has("overwatch_for")), "No remaining inspector means no orphaned overwatch assignment")

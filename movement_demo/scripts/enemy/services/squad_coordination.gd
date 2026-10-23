@@ -336,6 +336,16 @@ func _plan() -> void:
 	for id in _tasks:
 		var task: Dictionary = _tasks[id]
 		var defense_role = _defense.role(id)
+		if task.has("overwatch_for"):
+			var has_inspector := false
+			for other in _tasks:
+				if other != id and _tasks[other].get("role") == &"search" and _tasks[other].get("sync_key") == task.overwatch_for and _tasks[other].state != &"complete": has_inspector = true
+			must_replan = must_replan or not has_inspector
+		if task.has("overwatch_for") and Contract.horizontal(_bodies[id].position, task.position) < 0.18:
+			var peer = _context(id)
+			if not preload("res://scripts/enemy/services/enemy_visual_observation.gd").clear_from(peer, peer.actor.get_eye_position(), task.look_position):
+				task.state = &"blocked"
+				task.reason = &"overwatch_obstructed"
 		must_replan = must_replan or not defense_role.is_empty() and task.role != defense_role
 		must_replan = must_replan or task.role == &"guard" or task.state == &"blocked" or (task.state == &"complete" and not _waiting_for_search_peers(id)) or task.expires_at <= elapsed or task.objective_id != _objective.objective_id
 		must_replan = must_replan or task.has("barrier_id") and not _barriers.has(task.barrier_id)
@@ -685,6 +695,9 @@ func motion_permission(context, token: Dictionary) -> Dictionary:
 		if peer != null and is_instance_valid(peer.actor) and not peer.actor.is_dead: bodies[member] = peer.member_runtime_snapshot()
 	var task: Dictionary = _tasks[id]
 	var motion_tasks = _tasks
+	var hurry := false
+	for peer in _feedback:
+		if peer != id and Contract.same_task(_feedback[peer], _tasks.get(peer, {})) and _feedback[peer].get("state") == &"waiting" and _feedback[peer].get("waiting_for", []).has(id): hurry = true
 	var dependencies: Array = task.waiting_for
 	var barrier_id = task.get("barrier_id", 0)
 	if barrier_id != 0 and not _barriers.has(barrier_id):
@@ -706,6 +719,7 @@ func motion_permission(context, token: Dictionary) -> Dictionary:
 			var awaiting = barrier.members.filter(func(member): return not barrier.ready.has(member))
 			return {"allowed": false, "waiting_for": awaiting, "reason": &"staging_barrier", "members": bodies.keys()}
 		if not barrier.released:
+			hurry = hurry or not barrier.ready.is_empty()
 			motion_tasks = _tasks.duplicate(true)
 			for member in barrier.members:
 				motion_tasks[member].route = Traffic.approach(_tasks[member])
@@ -722,7 +736,7 @@ func motion_permission(context, token: Dictionary) -> Dictionary:
 	var cohesion := Traffic.cohesion(id, _tasks, bodies) if _synchronize_search() else {"speed_scale": 1.0}
 	if waiting.is_empty() and float(cohesion.speed_scale) <= 0.01:
 		return {"allowed": false, "waiting_for": cohesion.get("waiting_for", []), "reason": &"formation_gap", "speed_scale": 0.0}
-	return {"allowed": waiting.is_empty(), "waiting_for": waiting, "reason": &"occupied_corridor" if not waiting.is_empty() else &"", "members": bodies.keys(), "speed_scale": cohesion.speed_scale}
+	return {"allowed": waiting.is_empty(), "waiting_for": waiting, "reason": &"occupied_corridor" if not waiting.is_empty() else &"", "members": bodies.keys(), "speed_scale": cohesion.speed_scale, "hurry": hurry}
 
 func debug_member_snapshot(context) -> Dictionary:
 	var task = assignment(context)

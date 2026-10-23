@@ -30,3 +30,9 @@ func _init() -> void:
 	set(value):
 		spacing_margin = value
 		mark_override(&"spacing_margin")
+
+## Commanded flanking and catching up to waiting teammates; frozen per battle.
+@export_range(1.0, 3.0, 0.1) var run_speed_multiplier := 2.0:
+	set(value):
+		run_speed_multiplier = value
+		mark_override(&"run_speed_multiplier")

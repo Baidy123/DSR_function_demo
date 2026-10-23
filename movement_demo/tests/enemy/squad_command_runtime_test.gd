@@ -12,6 +12,7 @@ var level := 1
 var mixed := false
 var _search_audit: Dictionary = {}
 var _search_audit_previous: Dictionary = {}
+var _maneuver_audit := {"flank_moving": 0, "flank_running": 0, "open_facing": 0, "wrong_facing": 0, "last": {}}
 
 func _initialize() -> void:
 	_run.call_deferred()
@@ -31,6 +32,13 @@ func _run() -> void:
 	squad.profile = squad.profile.duplicate(true)
 	squad.profile.level = level
 	actors = scene.get_node("Arena").find_children("*", "CharacterBody3D", true, false).filter(func(actor): return actor.has_node("AI"))
+	if OS.get_cmdline_user_args().has("--flank-motion"):
+		for index in actors.size():
+			var training = actors[index].get_node("Training")
+			training.profile = training.profile.duplicate(true)
+			training.profile.selected_tactics.erase(&"cover")
+			training.profile.selected_tactics.erase(&"covering_retreat")
+			if index != 1: training.profile.selected_tactics.erase(&"cooperate")
 	if OS.get_cmdline_user_args().has("--defense"):
 		for index in actors.size():
 			var training = actors[index].get_node("Training")
@@ -44,10 +52,11 @@ func _run() -> void:
 			actor.get_node("Training").profile = actor.get_node("Training").profile.duplicate(true)
 			actor.get_node("Training").profile.search.tracking_cheat_enabled = false
 	if OS.get_cmdline_user_args().has("--handoff"):
-		# Unequal frozen inspection durations exercise a real early completion,
-		# even when equal-speed members leave the preparation barrier together.
-		actors[0].get_node("Training").profile = actors[0].get_node("Training").profile.duplicate(true)
-		actors[0].get_node("Training").profile.search.search_pause_seconds = 0.9
+		# Any two inspectors have unequal real durations, including when the
+		# coordinator chooses the third member as their overwatch provider.
+		for index in actors.size():
+			actors[index].get_node("Training").profile = actors[index].get_node("Training").profile.duplicate(true)
+			actors[index].get_node("Training").profile.search.search_pause_seconds = 0.6 + index * 0.3
 	if mixed:
 		actors[2].get_node("UnitType").profile = load("res://resources/enemy/units/melee.tres")
 		actors[2].get_node("Training").profile = load("res://resources/enemy/training/melee_assault.tres").duplicate(true)
@@ -62,6 +71,20 @@ func _run() -> void:
 	player.get("combat").set_physics_process(false)
 	player.get("health").debug_invincible = true
 	player.global_position = arena.to_global(Vector3.ZERO)
+	if OS.get_cmdline_user_args().has("--flank-motion"):
+		await _flank_motion_case()
+		scene.queue_free()
+		await physics_frame
+		print("SQUAD FLANK MOTION: %d/%d passed" % [checks - failures, checks])
+		quit(1 if failures else 0)
+		return
+	if OS.get_cmdline_user_args().has("--middle-right"):
+		await _middle_right_case()
+		scene.queue_free()
+		await physics_frame
+		print("SQUAD MIDDLE RIGHT: %d/%d passed" % [checks - failures, checks])
+		quit(1 if failures else 0)
+		return
 	if OS.get_cmdline_user_args().has("--normal-cover"):
 		await _normal_cover_case()
 		scene.queue_free()
@@ -113,6 +136,7 @@ func _run() -> void:
 			var actor = actors[index]
 			var ai = actor.get_node("AI")
 			var task: Dictionary = ai.context.coordination_assignment()
+			_audit_maneuver(actor, task)
 			if frame > 5 and level > 0: owned = owned and not task.is_empty()
 			if task.get("accepted", false): accepted[index] = true
 			if ai.context.sees_player and not first_seen.has(index): first_seen[index] = frame
@@ -147,6 +171,89 @@ func _run() -> void:
 	if level > 0: await _reload_scene()
 	print("SQUAD COMMAND RUNTIME: %d/%d passed" % [checks - failures, checks])
 	quit(1 if failures else 0)
+
+func _flank_motion_case() -> void:
+	# Two real observers can keep contact while the third starts behind the
+	# middle wall. This exercises a sustained flank, not a 0.2-second loss.
+	var starts := [Vector3(0, 0, -3.8), Vector3(8, 0, 5), Vector3(-4, 0, -3)]
+	for index in actors.size():
+		actors[index].global_position = arena.to_global(starts[index])
+		actors[index].look_at(player.global_position)
+	var minimum := INF
+	var costs: Array[int] = []
+	for frame in 450:
+		# A moving, still exposed player makes the flanker revise its angle;
+		# otherwise a nearby legal firing post may legitimately stay preferred.
+		player.global_position = arena.to_global(Vector3(sin(frame / 90.0) * 2.0, 0, 0))
+		await physics_frame
+		var total: int = arena.get("cooperation").last_advance_usec
+		for index in actors.size():
+			var actor = actors[index]
+			_audit_maneuver(actor, actor.get_node("AI").context.coordination_assignment())
+			for cost in actor.get_node("AI").frame_costs.values(): total += int(cost)
+			for other in actors.slice(index + 1): minimum = minf(minimum, actor.global_position.distance_to(other.global_position))
+		costs.append(total)
+		if frame % 90 == 0: print("FLANK TRACE ", frame, " ", JSON.stringify(actors.map(_trace)))
+	check(_maneuver_audit.flank_moving > 15 and _maneuver_audit.flank_running > 15, "Flanking bodies actually run during their approach")
+	check(_maneuver_audit.open_facing > 15 and _maneuver_audit.wrong_facing == 0, "Unobstructed flanking keeps the body facing the known player while moving")
+	check(minimum >= 0.64 and actors.all(func(actor): return actor.get_node("AI").utility_decision_count == 0), "Running flank retains real spacing and squad authority")
+	costs.sort()
+	check(costs[int(costs.size() * 0.99)] < 16000 and costs[-1] < 50000, "Running flank stays within the original whole-frame budget")
+	print("MANEUVER AUDIT ", JSON.stringify(_maneuver_audit), " minimum=", minimum, " p99=", costs[int(costs.size() * 0.99)], " peak=", costs[-1])
+
+func _middle_right_case() -> void:
+	# The user's hard-to-reproduce location, on the saved middle tall cover's
+	# right side. Only fixture inputs move; all evidence/tasks come from AI.
+	player.global_position = arena.to_global(Vector3(4, 0, 0.9))
+	var starts := [Vector3(2, 0, 2.2), Vector3(1, 0, 3.7), Vector3(2, 0, 5.2)]
+	for index in actors.size():
+		actors[index].global_position = arena.to_global(starts[index])
+		actors[index].look_at(player.global_position)
+	for frame in 30: await physics_frame
+	check(actors.any(func(actor): return actor.get_node("AI").context.sees_player), "Middle-cover fixture begins with genuine visual evidence")
+	player.global_position = arena.to_global(Vector3(7, 0, 3.7))
+	var audit := {"unique_entrances": true, "mixed": 0, "watch_visible": 0, "hurry_running": 0}
+	var hidden := false
+	var searches := 0
+	var opposite := false
+	var captured := false
+	var reacquired := -1
+	var minimum := INF
+	var costs: Array[int] = []
+	for frame in 900:
+		await physics_frame
+		var squad = arena.get_node("Squad").coordinator
+		_audit_search_cooperation(squad, audit)
+		var unseen: bool = actors.all(func(actor): return not actor.get_node("AI").context.sees_player)
+		hidden = hidden or unseen
+		if hidden and not unseen and reacquired < 0: reacquired = frame
+		var total: int = arena.get("cooperation").last_advance_usec
+		for index in actors.size():
+			var actor = actors[index]
+			for cost in actor.get_node("AI").frame_costs.values(): total += int(cost)
+			for other in actors.slice(index + 1): minimum = minf(minimum, actor.global_position.distance_to(other.global_position))
+			var task: Dictionary = actor.get_node("AI").context.coordination_assignment()
+			if task.get("role") == &"search": searches += 1
+			if task.has("overwatch_for"):
+				for peer in squad._tasks.values():
+					if peer.get("sync_key") == task.overwatch_for and peer.get("side") != task.side: opposite = true
+		costs.append(total)
+		if frame % 120 == 0: print("MIDDLE TRACE ", frame, " ", JSON.stringify(actors.map(_trace)))
+		if not captured and frame > 30 and unseen and audit.mixed > 0 and OS.get_cmdline_user_args().has("--capture-maneuver"):
+			captured = true
+			root.get_node("DebugSettings").enabled = true
+			for redraw in 3: await process_frame
+			await RenderingServer.frame_post_draw
+			var picture := root.get_texture().get_image()
+			DirAccess.make_dir_recursive_absolute("res://logs/squad_maneuver_20261024")
+			check(picture.save_png("res://logs/squad_maneuver_20261024/middle_right.png") == OK, "Middle-cover cooperation is captured from the actual rendered scene")
+	check(hidden and searches > 0, "The player is genuinely hidden on the middle tall cover's right side")
+	check(audit.unique_entrances and audit.mixed > 0 and opposite, "Crowded cover uses an inspector plus a different-side overwatch option")
+	check(reacquired >= 0 and reacquired <= 480, "Middle-cover investigation actually reacquires within eight seconds")
+	check(minimum >= 0.64 and actors.all(func(actor): return actor.get_node("AI").utility_decision_count == 0), "Middle-cover cooperation keeps physical spacing and squad ownership")
+	costs.sort()
+	check(costs[int(costs.size() * 0.99)] < 16000 and costs[-1] < 50000, "Middle-cover planning retains the original full-frame budget")
+	print("MIDDLE RESULT ", audit, " opposite=", opposite, " reacquired=", reacquired, " minimum=", minimum, " p99=", costs[int(costs.size() * 0.99)], " peak=", costs[-1])
 
 func _contact_edge_case() -> void:
 	# The actual user capture: one eye can see around CoverF, but its muzzle
@@ -289,7 +396,7 @@ func _melee_reload_case() -> void:
 func _search_case() -> void:
 	var handoff = OS.get_cmdline_user_args().has("--handoff")
 	if level == 2:
-		_search_audit = {"grouped": true, "ready": true, "held": true, "wait_frames": 0, "hold_frames": 0, "releases": 0, "seen": {}}
+		_search_audit = {"grouped": true, "ready": true, "held": true, "wait_frames": 0, "hold_frames": 0, "releases": 0, "seen": {}, "subsequent_solo_steps": {}}
 		physics_frame.connect(_audit_search_step)
 	var initial_waits: int = arena.get_node("Squad").coordinator.traffic_wait_count
 	if OS.get_cmdline_user_args().has("--blocked-exit"):
@@ -341,6 +448,7 @@ func _search_case() -> void:
 	var peak_cost := 0
 	var rear_facing := {"targets": true, "sides": {}, "body_sides": {}, "moving_sides": {}}
 	var capture_rear := OS.get_cmdline_user_args().has("--capture-rear")
+	var cooperation_audit := {"unique_entrances": true, "mixed": 0, "watch_visible": 0, "hurry_running": 0}
 	for frame in 900:
 		await physics_frame
 		var total: int = arena.get("cooperation").last_advance_usec
@@ -356,12 +464,13 @@ func _search_case() -> void:
 			var task: Dictionary = ai.context.coordination_assignment()
 			_audit_cover_rear(actor, task, rear_facing)
 			owned = owned and not task.is_empty() and ai.utility_decision_count == 0
-			if task.get("role") == &"search" and task.get("accepted", false): search_members[index] = true
+			if (task.get("role") == &"search" or task.has("overwatch_for")) and task.get("accepted", false): search_members[index] = true
 			if task.get("state") == &"waiting" and task.get("reason") == &"occupied_corridor": waits[index] = true
 			if not false_completion_rejected and task.get("role") == &"search" and actor.global_position.distance_to(task.position) > 0.5:
 				false_completion_rejected = not ai.context.report_command(task, &"complete", {"observed": true})
 			for other in actors.slice(index + 1): closest = minf(closest, actor.global_position.distance_to(other.global_position))
 		var squad = arena.get_node("Squad").coordinator
+		_audit_search_cooperation(squad, cooperation_audit)
 		var current: Dictionary = squad._objective
 		for key in squad._barriers:
 			barriers_seen[key] = true
@@ -390,7 +499,12 @@ func _search_case() -> void:
 			DirAccess.make_dir_recursive_absolute(capture_directory)
 			check(not picture.is_empty() and picture.save_png(capture_directory.path_join("cover_rear_facing.png" if capture_rear else "map_observation_routes.png")) == OK, "Rendered world-space command routes are captured")
 	check(owned, "Loss, congestion and replanning never return tactical authority to personal Utility")
-	check(search_members.size() == actors.size(), "All members actually execute search commands")
+	check(search_members.size() == actors.size(), "All members actually execute investigation or trained overwatch")
+	if OS.get_cmdline_user_args().has("--maneuver"):
+		check(cooperation_audit.unique_entrances and cooperation_audit.mixed > 0, "Cover search assigns different entrances and a concrete overwatch duty")
+		if handoff: check(cooperation_audit.watch_visible > 0, "An overwatch body actually reaches its post and sees the watched hiding area")
+		if level == 2: check(cooperation_audit.hurry_running > 0, "A delayed inspector runs while its teammates are actually waiting")
+		print("SEARCH COOPERATION AUDIT ", JSON.stringify(cooperation_audit))
 	check(rear_facing.targets and not rear_facing.sides.is_empty(), "Cover inspection targets lie inside the hiding space behind the wall")
 	if not OS.get_cmdline_user_args().has("--blocked-exit"):
 		check(rear_facing.sides.size() == 2, "Saved wall search inspects both cover ends")
@@ -418,9 +532,47 @@ func _search_case() -> void:
 		check(_search_audit.ready and _search_audit.releases > 0, "Exposure starts only when all participants are physically at preparation posts")
 		check(_search_audit.held and _search_audit.wait_frames > 0, "Early arrivals hold their assigned posts while later participants are still travelling")
 		if handoff:
-			check(_search_audit.hold_frames > 0 and _search_audit.releases >= 2, "Completed observers wait for their peers and subsequent search steps synchronize again")
+			check(_search_audit.hold_frames > 0 and (_search_audit.releases >= 2 or not _search_audit.subsequent_solo_steps.is_empty()), "Completed inspectors wait for peers, then continue with synchronized pairs or a single inspector")
 		print("HANDOFF AUDIT ", JSON.stringify(_search_audit))
 	print("SEARCH RESULT reacquired=", reacquired, " min=", closest, " barriers=", barriers_seen.size(), " waits=", barrier_waits, " released=", released, " p99_usec=", search_costs[int(search_costs.size() * 0.99)], " peak_usec=", search_costs[-1], " moved=", actors.map(func(actor): return actor.global_position.distance_to(starts[actors.find(actor)])))
+
+func _audit_maneuver(actor, task: Dictionary) -> void:
+	var id: int = actor.get_instance_id()
+	var stamp: Dictionary = _maneuver_audit.last.get(id, {})
+	if stamp.is_empty() or stamp.get("task") != task.get("task_id"): stamp = {"task": task.get("task_id"), "ticks": 0}
+	stamp.ticks += 1
+	_maneuver_audit.last[id] = stamp
+	if task.get("role") != &"flank" or Vector2(actor.velocity.x, actor.velocity.z).length() < 0.2: return
+	_maneuver_audit.flank_moving += 1
+	if actor.velocity.length() > actor.move_speed * 1.5: _maneuver_audit.flank_running += 1
+	if stamp.ticks < 20: return
+	var ctx = actor.get_node("AI").context
+	if not ctx.cover_selection.has_clear_line(actor.get_eye_position(), player.global_position + Vector3.UP): return
+	var toward: Vector3 = player.global_position - actor.global_position
+	toward.y = 0.0
+	_maneuver_audit.open_facing += 1
+	if (-actor.global_basis.z).dot(toward.normalized()) < 0.8: _maneuver_audit.wrong_facing += 1
+
+func _audit_search_cooperation(squad, audit: Dictionary) -> void:
+	var entrances := {}
+	var inspectors := 0
+	var watchers := 0
+	for actor in actors:
+		if actor.is_dead: continue
+		var task: Dictionary = actor.get_node("AI").context.coordination_assignment()
+		if task.get("role") == &"search" and not task.get("sync_key", "").is_empty():
+			inspectors += 1
+			var key: String = "%s:%s" % [task.sync_key, task.side]
+			if entrances.has(key): audit.unique_entrances = false
+			entrances[key] = true
+			if actor.velocity.length() > actor.move_speed * 1.5:
+				for other in squad._feedback:
+					var report: Dictionary = squad._feedback[other]
+					if report.get("state") == &"waiting" and report.get("waiting_for", []).has(actor.get_instance_id()): audit.hurry_running += 1
+		if task.has("overwatch_for"):
+			watchers += 1
+			if actor.global_position.distance_to(task.position) < 0.18 and preload("res://scripts/enemy/services/enemy_visual_observation.gd").visible(actor.get_node("AI").context, task.look_position): audit.watch_visible += 1
+	if inspectors > 0 and watchers > 0: audit.mixed += 1
 
 func _audit_cover_rear(actor, task: Dictionary, audit: Dictionary) -> void:
 	var key: String = task.get("site_key", "")
@@ -458,6 +610,11 @@ func _audit_search_step() -> void:
 		_search_audit_previous.clear()
 		return
 	var searchers: Array = task_table.keys().filter(func(id): return task_table[id].role == &"search" and not task_table[id].get("sync_key", "").is_empty())
+	if searchers.size() == 1 and _search_audit.releases > 0:
+		var id = searchers[0]
+		var task: Dictionary = task_table[id]
+		if not task.has("barrier_id") and task.get("accepted", false) and instance_from_id(id).velocity.length() > 0.2:
+			_search_audit.subsequent_solo_steps[task.task_id] = true
 	if searchers.size() < 2: return
 	var grouped = true
 	for id in searchers:

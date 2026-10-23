@@ -12,6 +12,11 @@ func propose(snapshot: Dictionary) -> Dictionary:
 func begin(snapshot: Dictionary) -> Dictionary:
 	snapshot = snapshot.duplicate(true)
 	var ids: Array = snapshot.members.keys()
+	snapshot.overwatch_groups = {}
+	for id in ids:
+		for candidate in snapshot.candidates.get(id, []):
+			if candidate.has("overwatch_for") and Contract.executor(snapshot.profiles[id], &"support") == candidate.action:
+				snapshot.overwatch_groups[candidate.overwatch_for] = true
 	ids.sort_custom(func(a, b): return snapshot.candidates.get(a, []).size() < snapshot.candidates.get(b, []).size())
 	for candidates in snapshot.candidates.values(): candidates.sort_custom(func(a, b): return float(a.estimate) < float(b.estimate))
 	return {"snapshot": snapshot, "ids": ids, "stack": [{"index": 0, "selected": {}, "cost": 0.0}],
@@ -53,7 +58,10 @@ func advance(work: Dictionary, deadline: int) -> Dictionary:
 func _team_cost(snapshot: Dictionary, tasks: Dictionary) -> float:
 	if snapshot.get("objective", {}).get("phase") == &"search":
 		var entrances := {}
+		var watchers := {}
 		for task in tasks.values():
+			if task.has("overwatch_for"):
+				watchers[task.overwatch_for] = int(watchers.get(task.overwatch_for, 0)) + 1
 			var key: String = task.get("sync_key", "")
 			if key.is_empty(): continue
 			var side: int = task.get("side", 0)
@@ -61,8 +69,13 @@ func _team_cost(snapshot: Dictionary, tasks: Dictionary) -> float:
 			group[side] = int(group.get(side, 0)) + 1
 			entrances[key] = group
 		var repeated := 0.0
-		for group in entrances.values():
-			for count in group.values(): repeated += maxf(0.0, float(count) - 2.0) * 5.0
+		for key in watchers:
+			# A fire provider must support a concrete active investigation.
+			# Once its inspectors leave, its old post competes as no duty at all.
+			if not entrances.has(key): return INF
+			repeated += maxf(0.0, float(watchers[key]) - 1.0) * 8.0
+		for key in entrances:
+			if snapshot.overwatch_groups.has(key) and not watchers.has(key): repeated += 6.0
 		return repeated
 	if snapshot.get("objective", {}).get("phase") != &"contact": return 0.0
 	var available := false
@@ -82,8 +95,18 @@ func _eligible(snapshot: Dictionary, id: int, candidate: Dictionary, selected: D
 	for slot in snapshot.template.roles.get(candidate.role, []):
 		if slot.member_id == id and slot.action == candidate.action: qualified = true
 	if not qualified: return false
+	if candidate.role == &"flank":
+		var flankers := 0
+		for peer in selected.values():
+			if peer.role == &"flank": flankers += 1
+		if flankers >= maxi(1, snapshot.members.size() / 2): return false
 	var clear = true
 	for other in selected:
+		var peer: Dictionary = selected[other]
+		# Alternative ranks are observation choices, not a queue of bodies
+		# assigned to inspect the same entrance one after another.
+		if candidate.get("role") == &"search" and not candidate.get("sync_key", "").is_empty() and candidate.get("sync_key") == peer.get("sync_key") and candidate.get("side") == peer.get("side"): return false
+		if candidate.has("overwatch_for") and candidate.get("overwatch_for") == peer.get("overwatch_for") and candidate.get("side") == peer.get("side"): return false
 		var gap: float = snapshot.members[id].radius + snapshot.members[other].radius + maxf(snapshot.members[id].spacing_margin, snapshot.members[other].spacing_margin)
 		if Contract.horizontal(candidate.position, selected[other].position) < gap:
 			clear = false

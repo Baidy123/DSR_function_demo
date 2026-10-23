@@ -251,11 +251,14 @@ func execute_command(delta: float, visible: bool) -> Dictionary:
 		output.direction = direction.normalized()
 		var speed := float(command.get("speed_multiplier", 1.0))
 		var approach: Vector3 = command.get("staging_position", command.position)
+		var travelling: bool = context._horizontal_distance(command.position) > 1.4 and context._horizontal_distance(approach) > 1.4
+		if travelling and (command.role == &"flank" or command.has("overwatch_for") or permission.get("hurry", false)):
+			speed = maxf(speed, float(command.get("run_speed_multiplier", speed)))
 		if command.role == &"search" and context.coordination_now() < float(command.get("pursuit_until", -INF)) and context._horizontal_distance(approach) > 1.4:
 			speed = maxf(speed, float(command.get("pursuit_multiplier", speed)))
 		output.multiplier = minf(speed * float(permission.get("speed_scale", 1.0)), direction.length() / maxf(0.001, actor.move_speed * delta))
 		output.stop_position = waypoint
-		if not visible and command.role != &"search": output.facing = direction
+		if not visible and not command.role in [&"search", &"engage", &"flank", &"support"]: output.facing = direction
 	output.merge(command_work(delta, visible, arrived), true)
 	if command.role in [&"patrol", &"move"] and arrived:
 		_command_observe += delta

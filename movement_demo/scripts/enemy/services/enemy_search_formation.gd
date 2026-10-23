@@ -28,27 +28,19 @@ static func sites(context, objective: Dictionary, count: int, attempt: int) -> A
 				geometry = CoverGeometry.describe(context, nearby, false)
 				if not geometry.is_empty(): break
 		if not geometry.is_empty():
-			for side in geometry.ends:
-				var end: Dictionary = geometry.ends[side]
-				var outward: Vector3 = (geometry.cover_transform.basis.x if geometry.along_x else geometry.cover_transform.basis.z).normalized() * float(side)
-				var axis: Vector3 = (end.peek - end.entry).normalized()
-				var rear_local: Vector3 = geometry.cover_transform.affine_inverse() * end.peek
-				if geometry.along_x: rear_local.x = 0.0
-				else: rear_local.z = 0.0
-				var rear: Vector3 = geometry.cover_transform * rear_local
-				var half_length: float = geometry.half_along * (geometry.cover_transform.basis.x if geometry.along_x else geometry.cover_transform.basis.z).length()
-				for rank in maxi(2, count):
-					# Look inward behind the cover, independently of the entry leg.
-					# Outer lanes inspect deeper space so their sightline passes
-					# behind the inner observer instead of through its parked body.
-					var offset: Vector3 = outward * float(rank) * 1.4
-					var focus: Vector3 = rear + axis * (0.6 + float(rank) * 0.6)
-					if rank > 0: focus += outward * maxf(0.0, half_length - 1.0)
-					# Shift the entire lane outward when a previous layout failed.
-					var lateral: Vector3 = (end.entry - geometry.observer_position).normalized() * float(attempt % 3) * 0.35
-					lateral.y = 0.0
-					result.append({"position": end.peek + offset + lateral, "via": end.entry + offset + lateral,
-						"look_position": focus, "site_key": "cover:%s:%s:%s" % [geometry.cover_id, side, rank], "sync_key": "cover:%s" % geometry.cover_id, "side": side})
+			result = _cover_sites(geometry, count, attempt)
+		else:
+			# A brief loss in open ground still has a concrete last-seen clue.
+			# Investigate it before nearby map cells pull everybody elsewhere.
+			var toward_observer: Vector3 = objective.get("observer_position", context.actor.global_position) - center
+			toward_observer.y = 0.0
+			if toward_observer.is_zero_approx(): toward_observer = Vector3.BACK
+			for angle_offset in [-0.65, 0.0, 0.65]:
+				var point: Vector3 = center + toward_observer.normalized().rotated(Vector3.UP, angle_offset) * 2.5
+				var projected := NavigationServer3D.region_get_closest_point(context.navigation_region.get_rid(), point)
+				projected.y = context.actor.global_position.y
+				if Contract.horizontal(point, projected) < 0.4:
+					result.append({"position": projected, "look_position": center, "site_key": "clue:%s:%s" % [objective.get("objective_id", 0), angle_offset]})
 		return result
 	if phase == &"patrol": center = context._spawn_position
 	var radial: Vector3 = context.actor.global_position - center
@@ -66,6 +58,40 @@ static func sites(context, objective: Dictionary, count: int, attempt: int) -> A
 		projected.y = context.actor.global_position.y
 		result.append({"position": projected, "look_position": center if phase == &"contact" else projected + direction,
 			"site_key": "%s:%s:%s" % [phase, 0 if phase == &"patrol" else attempt / 3, i]})
+	return result
+
+static func _cover_sites(geometry: Dictionary, count: int, attempt: int) -> Array[Dictionary]:
+	var result: Array[Dictionary] = []
+	var transform: Transform3D = geometry.cover_transform
+	var along: Vector3 = transform.basis.x if geometry.along_x else transform.basis.z
+	var across: Vector3 = transform.basis.z if geometry.along_x else transform.basis.x
+	var axis: Vector3 = -across.normalized() * geometry.front_sign
+	var half_length: float = geometry.half_along * along.length()
+	var depth: float = geometry.half_across * across.length() + geometry.radius + 0.25
+	var rear: Vector3 = transform.origin + axis * depth
+	rear.y = geometry.ends.values()[0].peek.y
+	var group := "cover:%s" % geometry.cover_id
+	# Interleave both ends and duties before the bounded candidate list fills.
+	# Wider posts remain hypotheses even when an inner entrance is obstructed.
+	for rank in maxi(2, count):
+		var watch: Array[Dictionary] = []
+		for side in [-1, 1]:
+			var outward: Vector3 = along.normalized() * side
+			var peek: Vector3 = rear + outward * (half_length + geometry.radius + 0.25)
+			var entry: Vector3 = peek - axis * depth * 2.0
+			var focus: Vector3 = rear + axis * (0.6 + float(rank) * 0.6)
+			if rank > 0: focus += outward * maxf(0.0, half_length - 1.0)
+			if geometry.ends.has(side):
+				var offset: Vector3 = outward * float(rank) * 1.4
+				var lateral: Vector3 = (entry - geometry.observer_position).normalized() * float(attempt % 3) * 0.35
+				lateral.y = 0.0
+				result.append({"position": peek + offset + lateral, "via": entry + offset + lateral,
+					"look_position": focus, "site_key": "%s:%s:%s" % [group, side, rank], "sync_key": group, "side": side})
+			var offset: Vector3 = outward * (2.2 + rank * 1.4)
+			watch.append({"role": &"support", "position": peek + offset + axis * (0.4 + rank * 1.6),
+				"via": entry + offset, "look_position": rear + outward * maxf(0.0, half_length - 1.0) + axis * 1.8,
+				"site_key": "watch:%s:%s:%s" % [geometry.cover_id, side, rank], "overwatch_for": group, "side": side})
+		result.append_array(watch)
 	return result
 
 static func route(context, destination: Vector3, via: Vector3 = Vector3.INF, detour_variant: int = -1) -> PackedVector3Array:
@@ -149,6 +175,7 @@ static func _candidate(context, profile: Dictionary, body: Dictionary, site: Dic
 	var phase: StringName = objective.get("phase", &"patrol")
 	var role: StringName = &"search" if phase == &"search" else (&"engage" if phase == &"contact" else &"patrol")
 	role = site.get("role", role)
+	if site.has("overwatch_for") and (not profile.firearms or not body.can_attack or body.reloading or body.rounds <= 0 or Contract.executor(profile, &"support").is_empty()): return {}
 	if body.reloading or body.can_reload and body.rounds == 0: role = &"reload"
 	var action = Contract.executor(profile, role)
 	if action.is_empty():
@@ -170,9 +197,14 @@ static func _candidate(context, profile: Dictionary, body: Dictionary, site: Dic
 				for sample: Vector3 in site.observation_samples:
 					if not preload("res://scripts/enemy/services/enemy_visual_observation.gd").clear_from(context, projected + Vector3.UP * context.actor.get_body_height() * 0.85, sample): clear = false
 				if clear: point = projected
-	if role == &"search":
+	if role == &"search" or site.has("overwatch_for"):
 		var eye = point + Vector3.UP * context.actor.get_body_height() * 0.85
 		if not context.cover_selection.has_clear_line(eye, site.look_position + Vector3.UP * 0.7): return {}
+		if site.has("overwatch_for"):
+			if not preload("res://scripts/enemy/services/enemy_visual_observation.gd").clear_from(context, eye, site.look_position): return {}
+			var muzzle: Vector3 = context.actor.get_posture_muzzle_position(false, point)
+			var aim: Vector3 = site.look_position + Vector3.UP
+			if muzzle.distance_to(aim) > profile.weapon.fire_range or not context.fire.has_clear_firing_lane(muzzle, aim - muzzle, muzzle.distance_to(aim)): return {}
 	if role == &"patrol" and Contract.horizontal(point, body.position) < 0.75: return {}
 	if phase == &"contact" and role in [&"engage", &"support", &"flank"]:
 		if profile.firearms:
@@ -206,7 +238,10 @@ static func _candidate(context, profile: Dictionary, body: Dictionary, site: Dic
 		path = detour
 	var parameters: Dictionary = profile.actions[action].parameters
 	var speed = maxf(0.1, float(parameters.get("focused_search_speed_multiplier", 1.0))) if role == &"search" else 1.0
-	var seconds: float = context.cover_selection._path_length_from_path(path) / maxf(0.1, body.move_speed * speed)
+	var run_speed: float = profile.get("run_speed_multiplier", 2.0)
+	var travel_speed: float = maxf(speed, run_speed) if role == &"flank" or site.has("overwatch_for") else speed
+	var length: float = context.cover_selection._path_length_from_path(path)
+	var seconds: float = maxf(0.0, length - 1.4) / maxf(0.1, body.move_speed * travel_speed) + minf(1.4, length) / maxf(0.1, body.move_speed * speed)
 	var estimate: float = seconds + (0.0 if previous.get("position", Vector3.INF).distance_to(point) < 0.2 else 0.6)
 	if role == &"guard" and phase != &"patrol": estimate += 8.0
 	if role == &"search" and site.has("coverage_key"):
@@ -218,6 +253,8 @@ static func _candidate(context, profile: Dictionary, body: Dictionary, site: Dic
 		var flank = (point - objective.position).normalized()
 		estimate += maxf(0.0, approach.dot(flank)) * 4.0
 	var tactical := {}
+	if site.has("overwatch_for"):
+		tactical = {"sustainable_fire": true}
 	if phase == &"contact" and role in [&"engage", &"support", &"flank"]:
 		var threat: Vector3 = objective.position + Vector3.UP
 		var exposure := 0.0
@@ -237,11 +274,12 @@ static func _candidate(context, profile: Dictionary, body: Dictionary, site: Dic
 	var result := {"action": action, "role": role, "position": point, "route": path,
 		"look_position": site.get("look_position", objective.get("position", point)),
 		"staging_position": site.get("via", point if role == &"search" else Vector3.INF), "site_key": site.get("site_key", str(point)),
-		"estimate": estimate, "tactical": tactical, "travel_seconds": seconds, "speed_multiplier": speed, "objective_id": objective.get("objective_id", 0),
+		"estimate": estimate, "tactical": tactical, "travel_seconds": seconds, "speed_multiplier": speed, "run_speed_multiplier": run_speed, "objective_id": objective.get("objective_id", 0),
 		"evidence_id": objective.get("id", 0), "target_id": objective.get("target_id", 0), "side": site.get("side", 0),
 		"sync_key": site.get("sync_key", ""), "search_revision": objective.get("search_revision", 0)}
 	for key in Contract.SEARCH_STEP_FIELDS:
 		if site.has(key): result[key] = site[key]
+	if site.has("overwatch_for"): result.overwatch_for = site.overwatch_for
 	if role == &"search" and objective.get("source") in [&"visual", &"shared_visual"]:
 		# Reuse the frozen, time-limited pursuit setting on long approach legs.
 		# Hints and arrival cannot renew the original visual evidence timestamp.
