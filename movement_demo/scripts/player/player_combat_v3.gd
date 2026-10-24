@@ -18,13 +18,15 @@ enum AimMode { PROBABILITY, SPREAD_CONE }
 @export_range(0.0, 1.0, 0.01) var crouch_accuracy_bonus: float = 0.25
 var crouch_bonus_blocked_until_recovery: bool = false
 
-@export_group("受击准度")
-## 被有效命中时增加的散布半角（度），Debug 无敌也生效；0关闭。
-@export_range(0.0, 45.0, 0.1, "suffix:°") var damage_spread_degrees: float = 3.0
-## 未命中的敌方子弹从附近通过时增加的散布半角（度）；一发只应用一次。
-@export_range(0.0, 45.0, 0.1, "suffix:°") var nearby_shot_spread_degrees: float = 0.4
-## 真实弹道到玩家胸部的近弹检测距离；墙后延长线不参与。
-@export_range(0.0, 5.0, 0.1) var nearby_shot_radius: float = 1.5
+@export_group("受击反应倍率")
+## 受到攻击武器命中精度损失的倍率，射击与附带近战共用；0免除此项、0.5减半、1正常、2加倍。
+## 例如武器损失20%、本值0.5，实际扣10个百分点，精度80%变70%；不改变伤害或擦过影响。
+@export_range(0.0, 10.0, 0.05, "suffix:×") var hit_accuracy_loss_multiplier: float = 1.0
+## 受到敌方弹道擦过时的精度损失倍率；0关闭该损失、0.5减半、1正常。范围仍由攻击武器决定，不改变命中影响。
+@export_range(0.0, 10.0, 0.05, "suffix:×") var suppression_accuracy_loss_multiplier: float = 1.0
+## 命中速度损失倍率，射击与附带近战共用；武器减速30%×0.5=减速15%、保留85%速度。
+## 0免除减速，1正常，2加倍；只缩放损失，不缩放持续时间、击退或重力，擦过不会减速。
+@export_range(0.0, 10.0, 0.05, "suffix:×") var hit_speed_loss_multiplier: float = 1.0
 
 signal weapon_changed(data: WeaponData)
 signal shot_fired(hit: bool, stability: float)
@@ -47,7 +49,7 @@ var _melee_settings: Dictionary = {}
 var _melee_struck: bool = false
 var _melee_effect: Node3D
 var _melee_region: WeakRef
-var _melee_accuracy_frame: int = -1
+var _hit_accuracy_frame: int = -1
 var _pending_melee_weapon: WeaponData
 var _locked_aim_point: Vector3 = Vector3.INF
 
@@ -75,7 +77,6 @@ var player_position_before_move: Vector3 = Vector3.ZERO
 
 func _ready() -> void:
 	debug_settings.changed.connect(_apply_debug_mode)
-	player.get_node("Health").hit_received.connect(_on_hit_received)
 	player.get_node("Health").died.connect(cancel_melee)
 	add_to_group("shot_listener")
 	equip_weapon(weapon)
@@ -173,38 +174,40 @@ func _hold_reload_accuracy() -> void:
 	crouch_bonus_blocked_until_recovery = true
 	accuracy_recovery_timer = maxf(0.0, weapon.get_aim_settings(is_using_spread_cone()).delay) if weapon != null else 0.0
 
-func _on_hit_received(damage: float) -> void:
-	if damage > 0.0: _apply_aim_disruption(damage_spread_degrees)
+## 攻击基础值来自攻击者快照；无来源扣血不调用此入口，也不回退旧角色常量。
+func apply_weapon_hit(effects: Dictionary) -> void:
+	var loss := _scaled_loss(float(effects.get("hit_accuracy_loss", 0.0)), hit_accuracy_loss_multiplier)
+	var melee: bool = effects.get("melee", false)
+	_apply_accuracy_loss(loss, melee)
+	if melee and loss > 0.0:
+		player.get_node("Equipment").apply_stowed_accuracy_loss(loss)
+	player.apply_hit_slowdown(_scaled_loss(float(effects.get("hit_speed_loss", 0.0)), hit_speed_loss_multiplier),
+		float(effects.get("hit_speed_loss_seconds", 0.0)))
 
+func _scaled_loss(base: float, multiplier: float) -> float:
+	if not is_finite(base) or not is_finite(multiplier): return 0.0
+	return clampf(maxf(0.0, base) * maxf(0.0, multiplier), 0.0, 1.0)
 
-func apply_melee_disruption() -> void:
-	accuracy = 0.0
-	crouch_bonus_blocked_until_recovery = true
-	accuracy_recovery_timer = maxf(0.0, weapon.get_aim_settings(is_using_spread_cone()).delay) if weapon != null else 0.0
-	_melee_accuracy_frame = Engine.get_physics_frames()
-	var slots := player.get_node_or_null("Equipment")
-	if slots != null: slots.apply_melee_disruption()
-
-func _apply_aim_disruption(degrees: float) -> void:
-	if weapon == null or player.is_dead() or not is_finite(degrees) or degrees <= 0.0: return
-	var minimum := clampf(weapon.min_spread_angle_degrees, 0.0, 45.0)
-	var maximum := clampf(weapon.max_spread_angle_degrees, minimum, 45.0)
-	var span := maximum - minimum
-	if span <= 0.0: return
-	# 检查器以角度调参，内部仍沿用已有稳定度和两种瞄准模式的恢复流程。
-	accuracy = clampf(accuracy - degrees / span, 0.0, 1.0)
+func _apply_accuracy_loss(loss: float, block_crouch: bool = false) -> void:
+	if weapon == null or player.is_dead() or not is_finite(loss) or loss <= 0.0: return
+	accuracy = clampf(accuracy - loss, 0.0, 1.0)
 	accuracy_recovery_timer = maxf(accuracy_recovery_timer, weapon.get_aim_settings(is_using_spread_cone()).delay)
+	if block_crouch:
+		_hit_accuracy_frame = Engine.get_physics_frames()
+		crouch_bonus_blocked_until_recovery = true
 
-func notice_shot(origin: Vector3, endpoint: Vector3) -> void:
+func notice_shot(origin: Vector3, endpoint: Vector3, effects: Dictionary) -> void:
 	if weapon == null or player.is_dead() or player.is_in_dialogue or get_tree().paused: return
+	var radius: float = effects.get("near_miss_radius", 0.0)
+	if not is_finite(radius) or radius <= 0.0: return
 	var chest: Vector3 = player.get_torso_position()
 	var closest := Geometry3D.get_closest_point_to_segment(chest, origin, endpoint)
-	if chest.distance_to(closest) > maxf(0.0, nearby_shot_radius): return
+	if chest.distance_to(closest) > radius: return
 	if chest.distance_squared_to(closest) > 0.000001:
 		var query := PhysicsRayQueryParameters3D.create(chest, closest, 1, [player.get_rid()])
 		query.hit_from_inside = true
 		if not player.get_world_3d().direct_space_state.intersect_ray(query).is_empty(): return
-	_apply_aim_disruption(nearby_shot_spread_degrees)
+	_apply_accuracy_loss(_scaled_loss(float(effects.get("suppression_accuracy_loss", 0.0)), suppression_accuracy_loss_multiplier))
 
 
 func cancel_aim() -> void:
@@ -309,7 +312,7 @@ func end_frame(delta: float, moving: bool) -> void:
 		if was_reloading:
 			# 完成的这一帧也保持最低，下一帧才开始原恢复等待，避免大delta提前恢复。
 			_hold_reload_accuracy()
-		elif _melee_accuracy_frame == Engine.get_physics_frames():
+		elif _hit_accuracy_frame == Engine.get_physics_frames():
 			pass # 近战命中的同一物理帧不能立即恢复准度。
 		elif moving:
 			var displacement: Vector3 = player.global_position - player_position_before_move
@@ -336,7 +339,7 @@ func end_frame(delta: float, moving: bool) -> void:
 			# 未瞄准时 begin_frame 会先把稳定度限制到初始值；此处仍按本帧时间恢复。
 			accuracy = minf(1.0, accuracy + recovery * recovery_delta)
 	# 只有未被 UI 消费的按下事件才能启动连发；释放事件即使被 UI 消费也能停火。
-	if not was_reloading and _melee_accuracy_frame != Engine.get_physics_frames() and accuracy_recovery_timer <= 0.0:
+	if not was_reloading and _hit_accuracy_frame != Engine.get_physics_frames() and accuracy_recovery_timer <= 0.0:
 		crouch_bonus_blocked_until_recovery = false
 	if not Input.is_action_pressed("fire"):
 		fire_held = false
@@ -457,6 +460,7 @@ func shoot() -> void:
 	if is_instance_valid(locked_target) and not _target_visible(locked_target):
 		clear_target_lock()
 	shot_count += 1
+	var attack_effects := weapon.get_attack_effects()
 	if weapon.shot_noise != null:
 		weapon.shot_noise.emit_from(player, weapon.shot_noise_radius)
 	shot_cooldown = weapon.shot_interval
@@ -482,15 +486,18 @@ func shoot() -> void:
 	if not hit.is_empty():
 		endpoint = hit.position
 		if hit.collider.is_in_group("combat_target"):
-			hit.collider.receive_hit(weapon.damage, player.global_position)
+			if hit.collider.has_method("receive_weapon_hit"):
+				hit.collider.receive_weapon_hit(weapon.damage, player.global_position, attack_effects)
+			else:
+				hit.collider.receive_hit(weapon.damage, player.global_position)
 			target_hit = true
 			if locked_target == hit.collider and not hit.collider.is_in_group("combat_target"):
 				clear_target_lock()
 				$HUD/Reticle.hide()
 	# 使用实际命中点截断后的线段检测近处来弹；墙后的延长线不会触发。
 	for listener in get_tree().get_nodes_in_group("shot_listener"):
-		if listener.get_parent() != player and listener.get_parent() != last_shot_collider:
-			listener.notice_shot(origin, endpoint)
+		if listener.get_parent() != player and listener.get_parent() != last_shot_collider and not listener.get_parent().is_in_group("player"):
+			listener.notice_shot(origin, endpoint, attack_effects)
 	var settings: Dictionary = weapon.get_aim_settings(is_using_spread_cone())
 	accuracy = maxf(minf(accuracy, settings.shot_floor), accuracy - settings.shot_penalty)
 	accuracy_recovery_timer = settings.delay
@@ -620,7 +627,7 @@ func request_melee() -> bool:
 		"recovery": maxf(0.0, weapon.melee_recovery_seconds),
 		"distance": maxf(0.0, weapon.melee_knockback_distance),
 		"duration": maxf(0.05, weapon.melee_knockback_seconds),
-		"slow_multiplier": weapon.melee_slow_multiplier, "slow_seconds": weapon.melee_slow_seconds,
+		"effects": weapon.get_attack_effects(true),
 	}
 	melee_direction = -player.global_basis.z
 	melee_direction.y = 0.0
@@ -732,7 +739,7 @@ func _execute_player_melee() -> void:
 		if target.has_method("receive_melee_hit"):
 			target.receive_melee_hit(_melee_settings.damage, player.global_position,
 				_melee_settings.distance, _melee_settings.duration, melee_direction,
-				_melee_settings.slow_multiplier, _melee_settings.slow_seconds)
+				_melee_settings.effects)
 		else:
 			# 固定训练靶沿用自身计数与生命规则，不改成可移动角色。
 			target.receive_hit(_melee_settings.damage, player.global_position)

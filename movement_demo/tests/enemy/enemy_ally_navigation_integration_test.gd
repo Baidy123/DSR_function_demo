@@ -227,7 +227,7 @@ func _body_interruptions() -> void:
 	await _pending_correction()
 	var actor = actors[0]
 	var before: Vector3 = actor.global_position
-	actor.receive_melee_hit(0.0, before + Vector3.RIGHT, 0.4, 0.2)
+	actor.receive_melee_hit(0.0, before + Vector3.RIGHT, 0.4, 0.2, Vector3.FORWARD, {"melee": true, "hit_accuracy_loss": 1.0})
 	var push_only := true
 	for frame in 60:
 		await physics_frame

@@ -101,31 +101,31 @@ func _run() -> void:
 	var other_ai = other.get_node("AI")
 	other_ai.cover_selection.debug_attack_points = false
 	check(other_ai.training.profile != source and other_ai.training.profile.tactics != source.tactics, "敌人运行配置深复制，不写回共享资源")
-	other_ai.training.profile.set_setting(&"tactics", &"damage_accuracy_penalty", 0.23)
-	other_ai.training.profile.set_setting(&"tactics", &"nearby_shot_accuracy_penalty", 0.04)
+	other_ai.training.profile.set_setting(&"tactics", &"hit_accuracy_loss_multiplier", 0.23)
+	other_ai.training.profile.set_setting(&"tactics", &"suppression_accuracy_loss_multiplier", 0.04)
 	other_ai.refresh_configuration(true)
-	check(source.fingerprint() == source_fingerprint and ai.training.profile.setting(&"tactics", &"damage_accuracy_penalty") == 0.15, "另一敌人调参不改变本敌人或资源文件")
+	check(source.fingerprint() == source_fingerprint and ai.training.profile.setting(&"tactics", &"hit_accuracy_loss_multiplier") == 1.0, "另一敌人调参不改变本敌人或资源文件")
 	var path := "res://logs/aim_training_roundtrip.tres"
 	check(ResourceSaver.save(other_ai.training.profile, path) == OK, "准度参数可保存")
 	var restored = ResourceLoader.load(path, "", ResourceLoader.CACHE_MODE_IGNORE)
-	check(is_equal_approx(restored.setting(&"tactics", &"damage_accuracy_penalty"), 0.23) and is_equal_approx(restored.setting(&"tactics", &"nearby_shot_accuracy_penalty"), 0.04), "重载保留两个惩罚参数")
-	check(restored.tactics.overridden.has("damage_accuracy_penalty") and restored.tactics.overridden.has("nearby_shot_accuracy_penalty"), "新字段遵守显式覆盖维护协议")
+	check(is_equal_approx(restored.setting(&"tactics", &"hit_accuracy_loss_multiplier"), 0.23) and is_equal_approx(restored.setting(&"tactics", &"suppression_accuracy_loss_multiplier"), 0.04), "重载保留两个惩罚参数")
+	check(restored.tactics.overridden.has("hit_accuracy_loss_multiplier") and restored.tactics.overridden.has("suppression_accuracy_loss_multiplier"), "新字段遵守显式覆盖维护协议")
 	ai.training.profile.selected_tactics.clear()
 	ai.refresh_configuration(true)
 	actor.weapon_stability = 0.8
-	actor.receive_hit(1.0)
+	actor.receive_weapon_hit(1.0, Vector3.ZERO, WeaponData.new().get_attack_effects())
 	check(is_equal_approx(actor.weapon_stability, 0.65), "移除全部战术后受伤准度仍由公共射击服务处理一次")
 	var replacement := EnemyTrainingProfile.new()
-	replacement.set_setting(&"tactics", &"damage_accuracy_penalty", 0.3)
+	replacement.set_setting(&"tactics", &"hit_accuracy_loss_multiplier", 2.0)
 	ai.training.profile = replacement
 	ai.refresh_configuration(true)
 	actor.weapon_stability = 0.8
-	actor.receive_hit(1.0)
+	actor.receive_weapon_hit(1.0, Vector3.ZERO, WeaponData.new().get_attack_effects())
 	check(is_equal_approx(actor.weapon_stability, 0.5), "运行替换训练配置后读取新参数，不重复连接事件")
 	ai.training.profile = null
 	ai.refresh_configuration(true)
 	actor.weapon_stability = 0.8
-	actor.receive_hit(1.0)
+	actor.receive_weapon_hit(1.0, Vector3.ZERO, WeaponData.new().get_attack_effects())
 	check(is_equal_approx(actor.weapon_stability, 0.65), "训练资源缺省时使用默认惩罚，基础流程可运行")
 	actor.reset_target()
 	check(is_equal_approx(actor.weapon_stability, actor.weapon.get_aim_settings(false).initial) and actor.weapon_recovery_timer == 0.0, "重生清理准度与恢复计时")

@@ -312,16 +312,30 @@ func _investigate_attack(position: Vector3) -> void:
 	event_received.emit(&"threat", {"position": last_known_position})
 	invalidate_utility()
 
-func notice_shot(origin: Vector3, endpoint: Vector3) -> void:
+## 攻击武器只提供基础值，三个受方倍率只从本敌人的训练配置读取。
+func apply_weapon_hit(effects: Dictionary) -> void:
+	actor.apply_aim_penalty(_scaled_attack_loss(float(effects.get("hit_accuracy_loss", 0.0)), &"hit_accuracy_loss_multiplier"), effects.get("melee", false))
+	actor.apply_hit_slowdown(_scaled_attack_loss(float(effects.get("hit_speed_loss", 0.0)), &"hit_speed_loss_multiplier"),
+		float(effects.get("hit_speed_loss_seconds", 0.0)))
+
+func _scaled_attack_loss(base: float, key: StringName) -> float:
+	var multiplier: float = setting(&"tactics", key, 1.0)
+	if not is_finite(base) or not is_finite(multiplier): return 0.0
+	return clampf(maxf(0.0, base) * maxf(0.0, multiplier), 0.0, 1.0)
+
+func notice_shot(origin: Vector3, endpoint: Vector3, effects: Dictionary) -> void:
 	if not is_arena_active() or actor.is_dead:
 		return
+	var radius: float = effects.get("near_miss_radius", 0.0)
+	if not is_finite(radius) or radius <= 0.0: return
 	var chest: Vector3 = actor.get_torso_position()
 	var closest := Geometry3D.get_closest_point_to_segment(chest, origin, endpoint)
-	if chest.distance_to(closest) > float(setting(&"cover", &"shot_radius", 1.5)) or not cover_selection.has_clear_line(chest, closest):
+	if chest.distance_to(closest) > radius or not cover_selection.has_clear_line(chest, closest):
 		return
 	_investigate_attack(Vector3(origin.x, actor.global_position.y, origin.z))
 	nearby_shot_pressure = minf(1.0, nearby_shot_pressure + 0.15)
-	event_received.emit(&"near_shot", {})
+	actor.apply_aim_penalty(_scaled_attack_loss(float(effects.get("suppression_accuracy_loss", 0.0)), &"suppression_accuracy_loss_multiplier"))
+	event_received.emit(&"near_shot", effects.duplicate())
 	invalidate_utility()
 
 func resume_after_action(_visible: bool, _position: Vector3) -> void:

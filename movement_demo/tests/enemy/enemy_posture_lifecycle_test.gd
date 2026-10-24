@@ -72,7 +72,7 @@ func _run() -> void:
 		enemy._physics_process(1.0 / 60.0)
 		check(enemy.body_motion.progress == progress, "each physics frame advances vault at most once")
 	check(enemy.global_position.y > 1.0, "interruption occurs above the wall")
-	enemy.receive_melee_hit(0.0, enemy.global_position - Vector3.RIGHT, 0.5, 0.2)
+	enemy.receive_melee_hit(0.0, enemy.global_position - Vector3.RIGHT, 0.5, 0.2, Vector3.FORWARD, {"melee": true, "hit_accuracy_loss": 1.0})
 	for frame in 120:
 		await physics_frame
 		enemy._physics_process(1.0 / 60.0)

@@ -154,6 +154,8 @@ Spatial 的路线样本层仅在同步候选比较中复用同路径已实际观
 
 近战命中减速与击退同放在原 WeaponData 的“近战参数”中，玩家从 Equipment 内编辑，敌人仍从自身 Weapon 编辑。双方攻击入口各自保存本次参数快照；受击倍率和剩余时间分别属于 `player.gd`、`enemy_actor.gd` 实例，沿用原移动入口与生命周期清理。武器槽、共享资源和 AI 行为不保存受击进度，不新增状态管理节点或共用双方受击实现。
 
+2026-10-24 命中／压制效果继续沿原模块扩展：`weapon_data.gd.get_attack_effects()` 提供纯值攻击快照，双方射击／近战入口传入真实角色的 `receive_weapon_hit`／`receive_melee_hit`，擦过通知同时携带快照。玩家 Combat 导出三个受方倍率，敌人只从 Training 的 tactics 读取同义倍率，由 Context 将计算结果交给身体执行；FireController 不再额外监听生命／近弹去叠加固定损失。双方身体复用原减速状态与物理时钟，接口统一为 `get_hit_movement_multiplier()`／`clear_hit_effects()`，不新增节点或共用双方执行函数。旧角色基础损失字段、Cover半径和资源覆盖键已清理，详情见 [实施与清理记录](superpowers/specs/2026-10-24-weapon-impact-accuracy-cleanup-design.md)。
+
 敌人基础执行的条件查询与互斥规则继续放在身体／服务中；行为不读取近战控制器的阶段枚举，表现适配器读取状态快照。两种压制共同使用的环境推断参数属于 `config/selection_settings.gd`，由 `services/enemy_cover_selection.gd` 读取，不放在某个可选动作的专用配置中。接口见 [敌人 AI](enemy-ai.md#基础执行接口与冲突规则)。
 
 团队指挥下的基础近战请求统一放在 `actions/enemy_action.gd` 的命令执行入口，使用 Context 的本场装备资格与原近战服务查询；各岗位不另复制挥击判断。原 `enemy_melee_controller.gd` 和身体继续负责时序、命中及取消。挥击仅占用当前任务；被打断的换弹仍由 `enemy_reload_action.gd` 重新请求实际换弹。个人 Utility 接敌与退让逻辑保持独立。

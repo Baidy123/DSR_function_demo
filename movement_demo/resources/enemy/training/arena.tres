@@ -63,9 +63,8 @@ overridden = PackedStringArray()
 
 [sub_resource type="Resource" id="tactics"]
 script = ExtResource("tactics")
-nearby_shot_accuracy_penalty = 0.1
 fire_stability_target = 0.6
-overridden = PackedStringArray("fire_stability_target", "burst_shot_count", "burst_pause_seconds", "damage_accuracy_penalty", "nearby_shot_accuracy_penalty")
+overridden = PackedStringArray("fire_stability_target", "burst_shot_count", "burst_pause_seconds")
 
 [resource]
 script = ExtResource("profile")

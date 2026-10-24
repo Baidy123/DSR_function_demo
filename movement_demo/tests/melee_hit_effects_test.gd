@@ -50,10 +50,14 @@ func _run() -> void:
 	_test_resources()
 	await _test_slot_hits()
 	await _test_enemy_hit()
+	_test_ranged_hits()
 	for mode in ["walk", "sprint", "crouch", "aim", "melee"]:
 		var normal: float = await _measure_player(mode, false)
 		var slowed: float = await _measure_player(mode, true)
 		_check(normal > 0.02 and absf(slowed / normal - 0.5) < 0.06, "玩家真实位移减半：%s（%.4f → %.4f）" % [mode, normal, slowed])
+	var normal_ranged: float = await _measure_player("walk", false)
+	var slowed_ranged: float = await _measure_player("walk", true, true)
+	_check(normal_ranged > 0.02 and absf(slowed_ranged / normal_ranged - 0.5) < 0.06, "子弹命中复用身体减速，真实玩家位移减半")
 	await _test_enemy_motion()
 	await _test_push()
 	await _test_lifecycle()
@@ -63,7 +67,7 @@ func _run() -> void:
 	var restarted = preload("res://tests/enemy/enemy_fire_fixture.gd").unbound_scene()
 	root.add_child(restarted)
 	current_scene = restarted
-	_check(restarted.get_node("Player").get_melee_movement_multiplier() == 1.0 and preload("res://tests/enemy/enemy_fire_fixture.gd").primary_enemy(restarted).get_melee_movement_multiplier() == 1.0, "重开场景没有遗留减速")
+	_check(restarted.get_node("Player").get_hit_movement_multiplier() == 1.0 and preload("res://tests/enemy/enemy_fire_fixture.gd").primary_enemy(restarted).get_hit_movement_multiplier() == 1.0, "重开场景没有遗留减速")
 	restarted.queue_free()
 	await process_frame
 	print("Melee hit effects: %d/%d passed" % [checks - failures, checks])
@@ -77,10 +81,17 @@ func _test_resources() -> void:
 	data.melee_slow_seconds = 0.7
 	data.melee_knockback_distance = 1.75
 	data.melee_knockback_seconds = 0.33
+	data.hit_accuracy_loss = 0.23
+	data.suppression_accuracy_loss = 0.07
+	data.near_miss_radius = 2.4
+	data.hit_speed_loss = 0.35
+	data.hit_speed_loss_seconds = 0.9
+	data.melee_accuracy_loss = 0.4
 	var path := "user://melee_hit_effects_test.tres"
 	_check(ResourceSaver.save(data, path) == OK, "减速和击退可保存为同一武器资源")
 	var restored = ResourceLoader.load(path, "", ResourceLoader.CACHE_MODE_IGNORE)
 	_check(restored != null and is_equal_approx(restored.melee_slow_multiplier, 0.3) and is_equal_approx(restored.melee_slow_seconds, 0.7) and is_equal_approx(restored.melee_knockback_distance, 1.75) and is_equal_approx(restored.melee_knockback_seconds, 0.33), "资源重载保留全部命中效果参数")
+	_check(restored.hit_accuracy_loss == 0.23 and restored.suppression_accuracy_loss == 0.07 and restored.near_miss_radius == 2.4 and restored.hit_speed_loss == 0.35 and restored.hit_speed_loss_seconds == 0.9 and restored.melee_accuracy_loss == 0.4, "六个新攻击效果字段保存重载不丢值")
 	DirAccess.remove_absolute(path)
 
 
@@ -99,19 +110,19 @@ func _test_slot_hits() -> void:
 		player.global_position = Vector3.ZERO
 		player.rotation = Vector3.ZERO
 		enemy.global_position = Vector3(0, 0, -1.2)
-		enemy.clear_melee_hit_effects()
+		enemy.clear_hit_effects()
 		await _frames(3)
 		_check(combat.request_melee(), "当前槽可正常发起近战：" + str(slot))
-		_check(enemy.get_melee_movement_multiplier() == 1.0, "前摇不提前施加减速：" + str(slot))
+		_check(enemy.get_hit_movement_multiplier() == 1.0, "前摇不提前施加减速：" + str(slot))
 		weapon.melee_slow_multiplier = 0.1
 		weapon.melee_slow_seconds = 3.0
 		weapon.melee_knockback_distance = 4.0
 		combat.begin_frame(0.05, false)
-		_check(combat.last_melee_target == enemy and is_equal_approx(enemy.get_melee_movement_multiplier(), factor) and is_equal_approx(enemy._hit_slow_remaining, seconds), "玩家命中使用所选槽的减速快照：" + str(slot))
+		_check(combat.last_melee_target == enemy and is_equal_approx(enemy.get_hit_movement_multiplier(), factor) and is_equal_approx(enemy._hit_slow_remaining, seconds), "玩家命中使用所选槽的减速快照：" + str(slot))
 		_check(is_equal_approx(enemy._hit_push_velocity.length() * enemy._hit_push_duration * 0.5, 0.4 + slot * 0.2), "玩家击退沿用同一武器的出手快照：" + str(slot))
 		combat.begin_frame(1.0, false)
-		enemy.clear_melee_hit_effects()
-	player.clear_melee_hit_effects()
+		enemy.clear_hit_effects()
+	player.clear_hit_effects()
 
 
 func _test_enemy_hit() -> void:
@@ -129,18 +140,43 @@ func _test_enemy_hit() -> void:
 	await _frames(3)
 	var settings: Dictionary = enemy.get_node("AI").context.melee.weapon_settings()
 	_check(enemy.begin_melee(0.6) and enemy.execute_melee(player, settings, Vector3.FORWARD), "敌人原基础近战入口实际命中玩家")
-	_check(is_equal_approx(player.get_melee_movement_multiplier(), 0.4) and is_equal_approx(player._melee_slow_remaining, 0.6), "敌人武器的减速参数传给真实玩家")
+	_check(is_equal_approx(player.get_hit_movement_multiplier(), 0.4) and is_equal_approx(player._hit_slow_remaining, 0.6), "敌人武器的减速参数传给真实玩家")
 	_check(is_equal_approx(player._melee_push_velocity.length() * player._melee_push_duration * 0.5, 0.5), "敌人武器的击退参数保持独立")
 	enemy.cancel_melee()
-	player.clear_melee_hit_effects()
+	player.clear_hit_effects()
 
 
-func _measure_player(mode: String, slowed: bool) -> float:
+func _test_ranged_hits() -> void:
+	var weapon := WeaponData.new()
+	weapon.hit_speed_loss = 0.3
+	weapon.hit_speed_loss_seconds = 0.8
+	weapon.melee_slow_multiplier = 0.7
+	weapon.melee_slow_seconds = 0.8
+	weapon.melee_accuracy_loss = 0.2
+	combat.hit_speed_loss_multiplier = 0.5
+	combat.hit_accuracy_loss_multiplier = 0.5
+	player.clear_hit_effects()
+	player.receive_weapon_hit(1.0, Vector3.ZERO, weapon.get_attack_effects())
+	_check(is_equal_approx(player.get_hit_movement_multiplier(), 0.85), "射击速度损失30%×0.5，真实身体保留85%速度")
+	combat.accuracy = 0.8
+	player.receive_melee_hit(0.0, Vector3.ZERO, 0.0, 0.2, Vector3.FORWARD, weapon.get_attack_effects(true))
+	_check(is_equal_approx(player.get_hit_movement_multiplier(), 0.85) and is_equal_approx(combat.accuracy, 0.7), "附带近战共用两个命中倍率，不再无条件精度清零或叠乘减速")
+	weapon.hit_speed_loss = 0.0
+	player.receive_weapon_hit(1.0, Vector3.ZERO, weapon.get_attack_effects())
+	_check(is_equal_approx(player.get_hit_movement_multiplier(), 0.85) and is_equal_approx(player._hit_slow_remaining, 0.8), "无减速子弹不清除或续期已有减速")
+	player._physics_process(0.9)
+	_check(player.get_hit_movement_multiplier() == 1.0, "命中减速由原身体物理时钟到期恢复")
+	combat.hit_speed_loss_multiplier = 1.0
+	combat.hit_accuracy_loss_multiplier = 1.0
+	player.clear_hit_effects()
+
+
+func _measure_player(mode: String, slowed: bool, ranged: bool = false) -> float:
 	_release_input()
 	combat.cancel_melee()
 	combat.cancel_aim()
 	combat.melee_cooldown = 0.0
-	player.clear_melee_hit_effects()
+	player.clear_hit_effects()
 	player.global_position = Vector3(-3, 0, 3)
 	scene.get_node("CombatTest/CombatZone").global_position = player.global_position
 	player.rotation = Vector3.ZERO
@@ -165,7 +201,9 @@ func _measure_player(mode: String, slowed: bool) -> float:
 	Input.action_press("move_right" if mode == "aim" else "move_up")
 	player.current_speed = speed
 	player.velocity = (Vector3.RIGHT if mode == "aim" else Vector3.FORWARD) * speed
-	if slowed: _slow(player)
+	if slowed:
+		if ranged: player.receive_weapon_hit(1.0, Vector3.ZERO, WeaponData.new().get_attack_effects())
+		else: _slow(player)
 	var before: Vector3 = player.global_position
 	player.set_physics_process(true)
 	await _frames(6)
@@ -183,7 +221,7 @@ func _test_enemy_motion() -> void:
 	enemy.cancel_melee()
 	enemy.cancel_reload()
 	enemy.body_motion.amount = 0.0
-	enemy.clear_melee_hit_effects()
+	enemy.clear_hit_effects()
 	await _frames(3)
 	var driver := EnemyMoveDriver.new()
 	driver.actor = enemy
@@ -194,7 +232,7 @@ func _test_enemy_motion() -> void:
 	await _frames(6)
 	driver.set_physics_process(false)
 	var normal: float = Vector2(enemy.global_position.x - before.x, enemy.global_position.z - before.z).length()
-	_slow(enemy)
+	enemy.receive_weapon_hit(1.0, Vector3.ZERO, WeaponData.new().get_attack_effects())
 	before = enemy.global_position
 	driver.set_physics_process(true)
 	await _frames(6)
@@ -217,7 +255,7 @@ func _test_enemy_motion() -> void:
 	enemy.body_motion.amount = 1.0
 	_check(is_equal_approx(enemy.get_effective_movement_multiplier(1.0), enemy.crouching_speed_multiplier * 0.5), "敌人蹲行与减速组合")
 	enemy.body_motion.amount = 0.0
-	enemy.clear_melee_hit_effects()
+	enemy.clear_hit_effects()
 
 
 func _test_push() -> void:
@@ -231,63 +269,63 @@ func _test_push() -> void:
 		if actor == player: player.current_speed = 0.0
 		await _frames(3)
 		var before: Vector3 = actor.global_position
-		actor.receive_melee_hit(0.0, before + Vector3.FORWARD, 1.0, 0.2, Vector3.BACK, 0.5, 0.5)
+		actor.receive_melee_hit(0.0, before + Vector3.FORWARD, 1.0, 0.2, Vector3.BACK, {"melee": true, "hit_accuracy_loss": 1.0, "hit_speed_loss": 1.0 - (0.5), "hit_speed_loss_seconds": 0.5})
 		actor.set_physics_process(true)
 		await _frames(18)
 		actor.set_physics_process(false)
 		_check(absf(actor.global_position.z - before.z - 1.0) < 0.06, "减速不缩短真实击退距离：" + str(actor.name))
-		_check(actor.get_melee_movement_multiplier() == 0.5, "击退结束后减速仍按独立期限生效：" + str(actor.name))
+		_check(actor.get_hit_movement_multiplier() == 0.5, "击退结束后减速仍按独立期限生效：" + str(actor.name))
 
 
 func _test_lifecycle() -> void:
 	for actor in [player, enemy]:
-		actor.clear_melee_hit_effects()
+		actor.clear_hit_effects()
 		_slow(actor)
 		actor._physics_process(0.3)
 		_slow(actor)
-		_check(actor.get_melee_movement_multiplier() == 0.5, "连续命中不叠乘：" + str(actor.name))
+		_check(actor.get_hit_movement_multiplier() == 0.5, "连续命中不叠乘：" + str(actor.name))
 		actor._physics_process(0.49)
-		_check(actor.get_melee_movement_multiplier() == 0.5, "再次命中刷新完整期限：" + str(actor.name))
+		_check(actor.get_hit_movement_multiplier() == 0.5, "再次命中刷新完整期限：" + str(actor.name))
 		actor._physics_process(0.01)
-		_check(actor.get_melee_movement_multiplier() == 1.0, "0.5秒届满恢复原速度：" + str(actor.name))
+		_check(actor.get_hit_movement_multiplier() == 1.0, "0.5秒届满恢复原速度：" + str(actor.name))
 		_slow(actor)
 		actor.receive_hit(0.0, actor.global_position + Vector3.RIGHT)
-		actor.receive_melee_hit(0.0, actor.global_position + Vector3.RIGHT, 0.0, 0.2)
-		_check(actor.get_melee_movement_multiplier() == 0.5, "普通受伤和旧参数调用不会清除已有减速：" + str(actor.name))
-		actor.clear_melee_hit_effects()
-		actor.receive_melee_hit(0.0, actor.global_position + Vector3.RIGHT, 0.0, 0.2, Vector3.FORWARD, 0.5, 0.0)
-		_check(actor.get_melee_movement_multiplier() == 1.0, "武器0时长关闭减速：" + str(actor.name))
-		actor.receive_melee_hit(0.0, actor.global_position + Vector3.RIGHT, 0.0, 0.2, Vector3.FORWARD, 1.0, 0.5)
-		_check(actor.get_melee_movement_multiplier() == 1.0, "武器100%速度关闭减速：" + str(actor.name))
+		actor.receive_melee_hit(0.0, actor.global_position + Vector3.RIGHT, 0.0, 0.2, Vector3.FORWARD, {"melee": true, "hit_accuracy_loss": 1.0})
+		_check(actor.get_hit_movement_multiplier() == 0.5, "普通受伤和旧参数调用不会清除已有减速：" + str(actor.name))
+		actor.clear_hit_effects()
+		actor.receive_melee_hit(0.0, actor.global_position + Vector3.RIGHT, 0.0, 0.2, Vector3.FORWARD, {"melee": true, "hit_accuracy_loss": 1.0, "hit_speed_loss": 1.0 - (0.5), "hit_speed_loss_seconds": 0.0})
+		_check(actor.get_hit_movement_multiplier() == 1.0, "武器0时长关闭减速：" + str(actor.name))
+		actor.receive_melee_hit(0.0, actor.global_position + Vector3.RIGHT, 0.0, 0.2, Vector3.FORWARD, {"melee": true, "hit_accuracy_loss": 1.0, "hit_speed_loss": 1.0 - (1.0), "hit_speed_loss_seconds": 0.5})
+		_check(actor.get_hit_movement_multiplier() == 1.0, "武器100%速度关闭减速：" + str(actor.name))
 		_slow(actor)
 		actor.set_physics_process(true)
 	paused = true
 	for frame in 12: await process_frame
-	_check(is_equal_approx(player._melee_slow_remaining, 0.5) and is_equal_approx(enemy._hit_slow_remaining, 0.5), "暂停冻结双方减速计时")
+	_check(is_equal_approx(player._hit_slow_remaining, 0.5) and is_equal_approx(enemy._hit_slow_remaining, 0.5), "暂停冻结双方减速计时")
 	player.set_physics_process(false)
 	enemy.set_physics_process(false)
 	paused = false
 	slots.select_slot(1 - slots.active_slot)
 	enemy.equip_weapon(WeaponData.new())
-	_check(player.get_melee_movement_multiplier() == 0.5 and enemy.get_melee_movement_multiplier() == 0.5, "换武器不清除身体减速")
+	_check(player.get_hit_movement_multiplier() == 0.5 and enemy.get_hit_movement_multiplier() == 0.5, "换武器不清除身体减速")
 	player.set_dialogue_active(true)
 	enemy.get_node("AI")._physics_process(0.01)
-	_check(player.get_melee_movement_multiplier() == 1.0 and enemy.get_melee_movement_multiplier() == 1.0, "进入对话清理双方受击效果")
+	_check(player.get_hit_movement_multiplier() == 1.0 and enemy.get_hit_movement_multiplier() == 1.0, "进入对话清理双方受击效果")
 	player.set_dialogue_active(false)
 	_slow(enemy)
 	enemy.reset_target()
-	_check(enemy.get_melee_movement_multiplier() == 1.0, "区域复位清理敌人减速")
+	_check(enemy.get_hit_movement_multiplier() == 1.0, "区域复位清理敌人减速")
 	_slow(enemy)
 	enemy.receive_hit(10000.0)
-	_check(enemy.is_dead and enemy.get_melee_movement_multiplier() == 1.0, "死亡清理敌人减速")
+	_check(enemy.is_dead and enemy.get_hit_movement_multiplier() == 1.0, "死亡清理敌人减速")
 	_slow(player)
 	player.receive_hit(10000.0)
-	_check(player.is_dead() and player.get_melee_movement_multiplier() == 1.0, "死亡清理玩家减速")
+	_check(player.is_dead() and player.get_hit_movement_multiplier() == 1.0, "死亡清理玩家减速")
 	paused = false
 
 
 func _slow(actor) -> void:
-	actor.receive_melee_hit(0.0, actor.global_position + Vector3.RIGHT, 0.0, 0.2, Vector3.FORWARD, 0.5, 0.5)
+	actor.receive_melee_hit(0.0, actor.global_position + Vector3.RIGHT, 0.0, 0.2, Vector3.FORWARD, {"melee": true, "hit_accuracy_loss": 1.0, "hit_speed_loss": 1.0 - (0.5), "hit_speed_loss_seconds": 0.5})
 
 
 func _release_input() -> void:

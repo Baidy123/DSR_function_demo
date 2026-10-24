@@ -19,6 +19,13 @@ func _run() -> void:
 	EditorInterface.get_inspector().expand_all_folding()
 	for frame in 10: await process_frame
 	var ranged := _properties(EditorInterface.get_inspector(), weapon)
+	for field in ["hit_accuracy_loss", "suppression_accuracy_loss", "hit_speed_loss", "melee_accuracy_loss"]:
+		var found := false
+		for prop in _descendants(EditorInterface.get_inspector(), "EditorProperty"):
+			if prop.get_edited_object() != weapon or prop.get_edited_property() != field: continue
+			var spins := _descendants(prop, "SpinBox")
+			found = spins.size() == 1 and spins[0].suffix == "%" and not spins[0].tooltip_text.is_empty()
+		check(found, "攻击效果在真实检查器显示百分比及解释：" + field)
 	check(ranged.has("fire_mode") and not ranged.has("weapon_type") and ranged.has("magazine_capacity") and ranged.has("melee_range"), "原Fire Mode和枪械近战参数可见，没有额外Weapon Type")
 	var bridge := EditorPlugin.new()
 	var manager = bridge.get_undo_redo()
@@ -47,7 +54,13 @@ func _run() -> void:
 	var undone: bool = history.undo()
 	weapon.set_block_signals(false)
 	for frame in 30: await process_frame
-	check(undone and weapon.fire_mode != WeaponData.FireMode.MELEE and _properties(EditorInterface.get_inspector(), weapon).has("magazine_capacity"), "缺少资源即时通知时，撤销也恢复远程字段")
+	# 原生检查器轮询按实际时间推进；无渲染的30帧可能先于下一次刷新。
+	# 仍要求真正撤销并恢复字段，只为异步UI刷新提供最多一秒的条件等待。
+	var refresh_deadline := Time.get_ticks_msec() + 1000
+	while undone and weapon.fire_mode != WeaponData.FireMode.MELEE and not _properties(EditorInterface.get_inspector(), weapon).has("magazine_capacity") and Time.get_ticks_msec() < refresh_deadline:
+		await process_frame
+	var capacity_visible: bool = _properties(EditorInterface.get_inspector(), weapon).has("magazine_capacity")
+	check(undone and weapon.fire_mode != WeaponData.FireMode.MELEE and capacity_visible, "缺少资源即时通知时，撤销也恢复远程字段")
 	weapon.set_block_signals(true)
 	var redone: bool = history.redo()
 	weapon.set_block_signals(false)

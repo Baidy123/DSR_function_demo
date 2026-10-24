@@ -68,7 +68,7 @@ func _run() -> void:
 	for frame in 15: await process_frame
 	_check("real pause keeps progress and stock unchanged", medkit.is_using() and is_equal_approx(medkit.get_progress(), progress) and medkit.remaining_count == 2)
 	paused = false
-	player.receive_melee_hit(10.0, player.global_position + Vector3.RIGHT, 0.25, 0.2)
+	player.receive_melee_hit(10.0, player.global_position + Vector3.RIGHT, 0.25, 0.2, Vector3.FORWARD, {"melee": true, "hit_accuracy_loss": 1.0})
 	_check("existing melee hit cancels before knockback without consuming", not medkit.is_using() and medkit.remaining_count == 2 and health.health == 65.0)
 	await _frames(30)
 	_check("other instance retains its own stock after a cancelled use", second_medkit.remaining_count == 5)

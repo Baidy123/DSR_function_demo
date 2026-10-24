@@ -1,6 +1,7 @@
 @tool
 extends EditorInspectorPlugin
 
+
 const PROBABILITY_FIELDS := {
 	"initial_accuracy": "初始中心概率",
 	"stabilize_seconds": "恢复到满概率用时",
@@ -30,6 +31,9 @@ const SPREAD_FIELDS := {
 	"spread_target_move_fast_speed": "高速目标速度",
 }
 const COMMON_FIELDS := {
+	"hit_accuracy_loss": "命中精度损失", "suppression_accuracy_loss": "被压制精度损失",
+	"near_miss_radius": "擦过检测范围（米）", "hit_speed_loss": "击中速度损失",
+	"hit_speed_loss_seconds": "击中减速时长（秒）", "melee_accuracy_loss": "近战命中精度损失",
 	"camera_view_size": "视野大小（0沿用场景）", "camera_transition_seconds": "视野过渡时间",
 	"damage": "单发伤害", "aim_range": "锁定距离", "fire_range": "弹道射程",
 	"cone_angle_degrees": "索敌总角度", "locked_move_multiplier": "锁定移动倍率",
@@ -44,16 +48,30 @@ const COMMON_FIELDS := {
 	"melee_slow_multiplier": "命中后移动速度", "melee_slow_seconds": "命中减速时长（秒）",
 }
 const PERCENT_FIELDS := [
+	"hit_accuracy_loss", "suppression_accuracy_loss", "hit_speed_loss", "melee_accuracy_loss",
 	"initial_accuracy", "moving_accuracy_cap", "shot_accuracy_penalty", "minimum_accuracy",
 	"target_move_accuracy_loss_per_meter_slow", "target_move_accuracy_loss_per_meter_fast",
 	"target_move_minimum_accuracy", "player_move_accuracy_loss_per_meter",
 	"melee_slow_multiplier",
 ]
 const FIREARM_FIELDS := [
+	"hit_accuracy_loss", "suppression_accuracy_loss", "near_miss_radius", "hit_speed_loss", "hit_speed_loss_seconds",
 	"ammo_type", "magazine_capacity", "reload_seconds", "shot_noise", "shot_noise_radius",
 	"damage", "aim_range", "fire_range", "cone_angle_degrees", "locked_move_multiplier",
 	"shot_interval",
 ]
+
+## 自定义数值控件也提供直接提示；脚本的 ## 属性文档同时保留原生检查器帮助。
+const EFFECT_HELP := {
+	"hit_accuracy_loss": "攻击武器命中后扣目标的精度，按百分点计算。20%×受方倍率0.5=扣10个百分点，80%变70%；0关闭。不影响自己的后坐力。",
+	"suppression_accuracy_loss": "敌方子弹擦过时扣目标的精度，再乘受方压制精度倍率；0只关闭精度损失，仍保留真实近弹警戒。",
+	"near_miss_radius": "目标胸部到实际弹道线段的最大距离（米）；0关闭擦过检测。弹道在第一碰撞截断，墙后延长线无效；与枪声范围无关。",
+	"hit_speed_loss": "子弹命中损失的自主速度比例。30%×受方速度损失倍率0.5=减速15%、保留85%；0关闭。不影响击退或重力，擦过不减速。",
+	"hit_speed_loss_seconds": "子弹命中减速持续秒数；0关闭。有效新命中刷新强度与时长，不叠乘；受方倍率只改强度，不缩放时间。",
+	"melee_accuracy_loss": "近战基础精度损失，乘与射击共用的受方命中精度倍率。100%×0.5只扣50个百分点，不会再额外强制清零；0关闭。",
+	"melee_slow_multiplier": "近战命中后基础保留速度。保留50%=基础损失50%；受方速度损失倍率0.5时只损失25%、实际保留75%。100%不减速。",
+	"melee_slow_seconds": "近战命中减速持续秒数；0关闭。使用与射击共用的受方速度损失倍率，倍率不改变本时长；无减速命中不清除已有减速。",
+}
 
 
 func _can_handle(object: Object) -> bool:
@@ -79,6 +97,9 @@ func _parse_property(object: Object, type: Variant.Type, path: String, hint: Pro
 		return false
 	var editor := NumberProperty.new()
 	editor.configure(hint_text, path in PERCENT_FIELDS)
+	if EFFECT_HELP.has(path):
+		editor.tooltip_text = EFFECT_HELP[path]
+		editor.spin.tooltip_text = EFFECT_HELP[path]
 	add_property_editor(path, editor, false, label_text)
 	return true
 
@@ -118,6 +139,7 @@ class FireModeProperty extends EditorProperty:
 			var parts := entry.rsplit(":", true, 1)
 			option.add_item(parts[0], int(parts[1]) if parts.size() == 2 else option.item_count)
 
+
 	func _update_property() -> void:
 		var weapon := get_edited_object()
 		var mode: int = int(weapon.get(get_edited_property()))
@@ -132,6 +154,8 @@ class FireModeProperty extends EditorProperty:
 	func _on_selected(index: int) -> void:
 		var weapon := get_edited_object()
 		shown_mode = option.get_item_id(index)
+		# 面板重建可能把同一选值再提交一次；不让无变化操作占据原生撤销历史。
+		if int(weapon.get(get_edited_property())) == shown_mode: return
 		emit_changed(get_edited_property(), shown_mode)
 		weapon.notify_property_list_changed.call_deferred()
 

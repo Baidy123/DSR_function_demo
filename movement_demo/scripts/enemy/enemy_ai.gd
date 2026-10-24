@@ -84,6 +84,7 @@ func _ready() -> void:
 	context.fire.shot_fired.connect(_on_shot_fired)
 	perception.noise_heard.connect(_on_noise_heard)
 	actor.hit_received.connect(_on_hit_received)
+	actor.weapon_effects_received.connect(context.apply_weapon_hit)
 	actor.reset_completed.connect(_reset_decisions)
 	add_to_group("shot_listener")
 	refresh_configuration(true)
@@ -138,7 +139,7 @@ func _physics_process(delta: float) -> void:
 		context.set(key, get(key))
 	var enabled: bool = not actor.is_dead and is_arena_active() and not player.is_dead() and not player.is_in_dialogue
 	if not enabled:
-		if is_instance_valid(player) and player.is_in_dialogue: actor.clear_melee_hit_effects()
+		if is_instance_valid(player) and player.is_in_dialogue: actor.clear_hit_effects()
 		if _enabled_last_frame: reset_actions()
 		_enabled_last_frame = false
 		actor.cancel_reload()
@@ -373,8 +374,8 @@ func _on_hit_received(damage: float, attacker_position: Vector3) -> void:
 		invalidate_utility()
 	_update_label()
 
-func notice_shot(origin: Vector3, endpoint: Vector3) -> void:
-	context.notice_shot(origin, endpoint)
+func notice_shot(origin: Vector3, endpoint: Vector3, effects: Dictionary) -> void:
+	context.notice_shot(origin, endpoint, effects)
 
 func _on_noise_heard(position: Vector3) -> void:
 	if actor.is_dead or not is_arena_active() or perception.can_see_player(): return
@@ -401,6 +402,8 @@ func _update_label() -> void:
 	actor.set_status_text("%s：%s\n生命 %d / %d" % [name, label, ceili(actor.health), ceili(actor.max_health)])
 
 func _exit_tree() -> void:
+	if is_instance_valid(actor) and actor.weapon_effects_received.is_connected(context.apply_weapon_hit):
+		actor.weapon_effects_received.disconnect(context.apply_weapon_hit)
 	_physics_was_enabled = is_physics_processing()
 	context.detach_environment()
 	# 打破公共 RefCounted 服务之间的所有权环；运行中实例由 actions 唯一持有。

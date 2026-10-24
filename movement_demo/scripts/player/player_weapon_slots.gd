@@ -121,13 +121,17 @@ func _weapon_at(slot: int) -> WeaponData:
 	return data if data == null or data.fire_mode != WeaponData.FireMode.MELEE else null
 
 
-## 受击属于玩家；尚未拔出的武器也保存最低准度，避免切槽跳过惩罚。
-func apply_melee_disruption() -> void:
+## 近战命中的同一已缩放损失也作用于收起的枪；不再绕过倍率强制清零。
+func apply_stowed_accuracy_loss(loss: float) -> void:
 	for slot in range(2):
+		if slot == active_slot: continue
 		var data := _weapon_at(slot)
 		if data == null: continue
-		_aim_states[slot] = {"weapon": data, "accuracy": 0.0, "crouch_bonus_blocked": true,
-			"delay": maxf(float(_aim_states[slot].get("delay", 0.0)), data.get_aim_settings(combat.is_using_spread_cone()).delay)}
+		var settings: Dictionary = data.get_aim_settings(combat.is_using_spread_cone())
+		var saved: Dictionary = _aim_states[slot]
+		var previous: float = saved.get("accuracy", settings.initial) if saved.get("weapon") == data else settings.initial
+		_aim_states[slot] = {"weapon": data, "accuracy": maxf(0.0, previous - loss), "crouch_bonus_blocked": true,
+			"delay": maxf(float(saved.get("delay", 0.0)), settings.delay)}
 
 func _update_display() -> void:
 	var labels: Array[Label] = [primary_label, secondary_label]

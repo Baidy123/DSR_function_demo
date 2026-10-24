@@ -462,7 +462,11 @@ Spatial 的掩体列表准备另保留最多一份纯坐标表：当前导航区
 
 ### 评分与射击节奏
 
-受伤与近弹的准度损失属于公共射击服务，不依赖掩体、攻击占位或压制动作。Training → Profile → tactics 的 `damage_accuracy_penalty` 默认 0.15（15 个百分点），`nearby_shot_accuracy_penalty` 默认 0.02（2 个百分点）；0 关闭相应损失，新字段遵守 `mark_override` 和保存重载规则。身体只提供 `apply_aim_penalty` 执行接口，参数由服务读取本敌人的训练快照。近弹使用真实碰撞截断的弹道线段和遮挡检查；自己的射击、同阵营射击以及直接命中的同一发不重复计入近弹。
+2026-10-24 起，命中／压制精度损失、擦过范围以及子弹击中速度损失与时长统一来自攻击武器的纯值快照。受方 Training → Profile → tactics 只提供三个倍率：`hit_accuracy_loss_multiplier`、`suppression_accuracy_loss_multiplier`、`hit_speed_loss_multiplier`，默认×1，遵守原 `mark_override`、保存重载和本场训练配置读取；射击与附带近战共用对应倍率。精度损失按百分点扣减，速度倍率乘损失量而非剩余速度，各项检查器注释说明单位、示例及0的语义。旧固定损失字段及 `cover.shot_radius` 已删除。
+
+命中快照通过身体 `weapon_effects_received` 交给 Context，Context 读取训练倍率并调用身体 `apply_aim_penalty`／`apply_hit_slowdown`；无攻击来源的生命事件保留原生命、警戒和压力通知，但不产生固定准度惩罚。擦过由 `notice_shot(origin, endpoint, effects)` 读取攻击武器范围，记录原警戒、攻击方向线索和近弹压力，再结算压制精度损失。FireController 原先监听生命／近弹并读取旧损失的两个订阅已移除，避免重复结算；基础效果不依赖掩体、攻击占位或压制战术装配。
+
+近弹继续使用真实碰撞截断的弹道线段和遮挡检查；自己的射击、同阵营射击以及直接命中的同一发不重复计入近弹。免除精度损失不等于免除真实警戒；擦过不减速。有效命中减速覆盖强度与时长、不叠乘，状态和物理计时只属于身体，击退／重力独立。参数表见 [战斗说明](gameplay/COMBAT.md#命中压制与击中减速2026-10-24)。
 
 成功开始换弹立即将中心概率降到 0，换弹期间及完成的这一帧保持最低，然后按武器原有延迟和速度恢复。取消不返还旧准度，失败的换弹请求不改变准度。初始中心概率为 100% 时，恢复速度按 `stabilize_seconds` 内从 0 恢复到 100% 计算，避免受罚后永久不能恢复；其他初始值沿用原计算。路线评分的可开火时间必须晚于换弹完成，同步评估批次缓存包含感知距离、枪程与枪械资格等输入，配置重置会清理路线缓存。
 
@@ -592,7 +596,7 @@ python movement_demo/tests/enemy/run_enemy_regressions.py --godot E:/Godot/Godot
 
 文档修改遵守 [文档维护约束](project-layout.md#文档维护约束)。本说明中的当前实现和历史记录不构成改变用户已确认方向的授权。尤其保留近战与移动、射击并列的基础执行层级，以及玩家、敌人攻击实现分离的要求；后续 agent 不得为适配自己的方案而改写这些约束。
 
-`enemy_actor.gd.receive_melee_hit()` 独立处理敌人受击，伤害沿用 `receive_hit()`，当前准度清零后按原规则恢复，击退通过身体碰撞移动执行。末尾可选参数 `slow_multiplier / slow_seconds` 由攻击者武器快照传入，缺省保持旧调用无减速；正常挥击默认使目标自主移动降为50%、持续0.5秒。身体的 `get_effective_movement_multiplier()` 先应用姿态／换弹／挥击限制，再乘受击倍率，击退不乘减速。AI 正常提交移动的帧只推进一次，AI 未激活时由身体补推进；减速计时也只在身体物理入口推进，不由行为维护。死亡与区域复位调用 `clear_melee_hit_effects()` 清理外力和减速；原 AI 停用分支在对话时通知同一身体入口清理。暂停冻结，换枪或行为切换不解除减速。
+`enemy_actor.gd.receive_melee_hit()` 独立处理敌人受击，伤害沿用 `receive_hit()`，末尾统一接收攻击武器纯值 `effects` 快照。精度损失与减速由Context读取训练倍率后交给身体执行，与射击共用对应倍率，不再无条件精度清零；近战默认100%精度损失、50%速度损失持续0.5秒均为攻击武器初值。击退通过身体碰撞移动执行。身体的 `get_effective_movement_multiplier()` 先应用姿态／换弹／挥击限制，再乘 `get_hit_movement_multiplier()`，击退不乘减速。AI 正常提交移动的帧只推进一次，AI 未激活时由身体补推进；减速计时也只在身体物理入口推进，不由行为维护。死亡与区域复位调用 `clear_hit_effects()` 清理外力和减速；原 AI 停用分支在对话时通知同一身体入口清理。暂停冻结，换枪或行为切换不解除减速。
 
 敌人主动近战沿用射击分层：动作提交 `melee` 意图，AI 转交近战控制器，控制器管理前摇／收招和参数快照，actor 提供 `can_melee()`、`begin_melee()`、`execute_melee()` 及射击／换弹互斥。近战冷却仅由 actor 物理更新推进；取消和切动作保留冷却，复位归零。动作无需也不能调用玩家 Combat 的近战攻击实现。现有远程接敌提供 `engage / melee` 方案，估计停火时间、推开后的空间暴露与障碍限制，仍经过原统一评分；没有独立挥击行为或近距离强制动作分支。同一接敌行为内切换方案也遵守前摇／收招的中断边界，执行完成后重新选择原射击或退让方案。敌人武器的体力消耗字段只对玩家有效。操作、受击及后续近战兵范围见 [近战说明](gameplay/MELEE.md)。
 
@@ -733,7 +737,7 @@ if squad != null and squad.profile != null:
 | selection | `away_from_threat_weight`、`closer_to_threat_weight`、`cover_quality_weight` | 仅旧同步 `choose_cover` 使用；当前由统一路线/风险评分负责 |
 | exit_suppression | `target_radius` | 出口动作覆盖了普通区域采样流程，该字段没有消费者 |
 
-普通压制的 `suppression.target_radius`、公共近弹检测用的 `cover.shot_radius`、感知用的 `search.track_sight_angle_degrees` 都保留；仅移除动作上无消费者的重复转发。所有搜索提示模式和 CUSTOM 扩展保留。NoiseData 的 `audio_stream` 是有文档与持久化测试的音频预留，当前不驱动播放；对话资源动态访问的 GameState 字段、动作基类协议和引擎/信号回调均保留。
+普通压制的 `suppression.target_radius`、感知用的 `search.track_sight_angle_degrees` 继续保留；原公共近弹检测 `cover.shot_radius` 已按2026-10-24用户新要求移除，范围改由攻击武器 `near_miss_radius` 提供。原动作上无消费者的重复转发仍保持清理。所有搜索提示模式和 CUSTOM 扩展保留。NoiseData 的 `audio_stream` 是有文档与持久化测试的音频预留，当前不驱动播放；对话资源动态访问的 GameState 字段、动作基类协议和引擎/信号回调均保留。
 
 Training 节点的旧前缀字段与无消费者的配置包装已移除，统一使用 `training.profile.setting(section, key)` / `set_setting(section, key, value)`。切兵种直接替换 `unit_type.profile`。攻击占位只执行统一评分已选定的位置，删除无人使用的旧 `start/can_start/FIND` 遍历及专用结果信号；掩体和压制也不再保留无人订阅的 finished 信号。公共动作协议与事件保持不变。
 

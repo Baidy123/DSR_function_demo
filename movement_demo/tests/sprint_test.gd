@@ -193,7 +193,7 @@ func _run_walls() -> void:
 	await _wall_tick(3)
 	Input.action_press("move_up")
 	Input.action_press("sprint")
-	player.receive_melee_hit(0.0, player.global_position - Vector3.RIGHT, 0.8, 0.25)
+	player.receive_melee_hit(0.0, player.global_position - Vector3.RIGHT, 0.8, 0.25, Vector3.FORWARD, {"melee": true, "hit_accuracy_loss": 1.0})
 	var before_push: float = player.stamina
 	await _wall_tick(2)
 	_check(player.position.x > 0.05 and not player.is_sprinting and player.stamina >= before_push, "external sideways push is preserved without counting as sprint through a wall")

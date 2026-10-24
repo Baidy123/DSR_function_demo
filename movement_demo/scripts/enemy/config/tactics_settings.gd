@@ -11,16 +11,27 @@ func _init() -> void:
 		stress_tolerance = clampf(value, 0.0, 4.0)
 		mark_override(&"stress_tolerance")
 
-## 实际受伤一次减少的中心命中概率；0.15 表示减少15个百分点，0关闭。
-@export_range(0.0, 1.0, 0.01) var damage_accuracy_penalty: float = 0.15:
+@export_group("受击反应倍率")
+## 攻击武器造成的命中精度损失倍率，射击与附带近战共用；0免除、0.5减半、1正常、2加倍。
+## 武器损失20%×0.5=扣10个百分点，精度80%变70%；不改变伤害或擦过影响。
+@export_range(0.0, 10.0, 0.05, "suffix:×") var hit_accuracy_loss_multiplier: float = 1.0:
 	set(value):
-		damage_accuracy_penalty = value
-		mark_override(&"damage_accuracy_penalty")
-## 一发未命中的子弹从附近通过时减少的中心概率；0.02表示2个百分点。
-@export_range(0.0, 1.0, 0.01) var nearby_shot_accuracy_penalty: float = 0.02:
+		hit_accuracy_loss_multiplier = maxf(0.0, value) if is_finite(value) else 0.0
+		mark_override(&"hit_accuracy_loss_multiplier")
+## 敌方弹道擦过的精度损失倍率；0免除、0.5减半、1正常、2加倍。范围取自攻击武器，与命中损失独立。
+## 免除精度损失仍保留真实近弹压力和警戒，不要求解锁掩体战术；遵守本场训练配置读取规则。
+@export_range(0.0, 10.0, 0.05, "suffix:×") var suppression_accuracy_loss_multiplier: float = 1.0:
 	set(value):
-		nearby_shot_accuracy_penalty = value
-		mark_override(&"nearby_shot_accuracy_penalty")
+		suppression_accuracy_loss_multiplier = maxf(0.0, value) if is_finite(value) else 0.0
+		mark_override(&"suppression_accuracy_loss_multiplier")
+## 命中速度损失倍率，射击与附带近战共用；武器减速30%×0.5=减速15%、保留85%自主速度。
+## 0免除减速，1正常，2加倍；只缩放损失，不改变时长、击退或重力，擦过不减速。
+@export_range(0.0, 10.0, 0.05, "suffix:×") var hit_speed_loss_multiplier: float = 1.0:
+	set(value):
+		hit_speed_loss_multiplier = maxf(0.0, value) if is_finite(value) else 0.0
+		mark_override(&"hit_speed_loss_multiplier")
+
+@export_group("")
 
 ## 接敌侧移/后退和掩护撤退时允许开火；关闭后只在停稳时射击，转身冲刺仍停火。
 @export var fire_while_moving: bool = true:

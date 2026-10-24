@@ -36,7 +36,7 @@ func _run() -> void:
 			actor.velocity = Vector3.ZERO
 			await _frames(3)
 			var before: Vector3 = actor.global_position
-			actor.receive_melee_hit(1.0, before + Vector3.BACK, 1.0, 0.2)
+			actor.receive_melee_hit(1.0, before + Vector3.BACK, 1.0, 0.2, Vector3.FORWARD, {"melee": true, "hit_accuracy_loss": 1.0})
 			await _frames(int(ceil(rate * 0.2)) + 2)
 			var travelled := Vector2(actor.global_position.x - before.x, actor.global_position.z - before.z).length()
 			_check("%dHz %s击退约1米且不重复推进" % [rate, "有正常移动调用" if driven else "无AI移动调用"], absf(travelled - 1.0) < 0.045)
@@ -45,7 +45,7 @@ func _run() -> void:
 	actor.global_position = Vector3(0, 0, -3)
 	await _frames(2)
 	var before: Vector3 = actor.global_position
-	actor.receive_melee_hit(1.0, before + Vector3.BACK, 1.0, 0.2)
+	actor.receive_melee_hit(1.0, before + Vector3.BACK, 1.0, 0.2, Vector3.FORWARD, {"melee": true, "hit_accuracy_loss": 1.0})
 	await _frames(14)
 	_check("自主横移与向后击退正确合成", actor.global_position.x > before.x + 0.2 and absf(actor.global_position.z - before.z + 1.0) < 0.045)
 	scene.queue_free()

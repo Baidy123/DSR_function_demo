@@ -45,7 +45,7 @@ func _run() -> void:
 	await settle()
 	var pause: float = ai.patrol_pause_timer
 	ai._physics_process(1.0)
-	ai.notice_shot(first.get_shot_origin(), first.get_shot_origin() + Vector3.RIGHT)
+	ai.notice_shot(first.get_shot_origin(), first.get_shot_origin() + Vector3.RIGHT, WeaponData.new().get_attack_effects())
 	first.receive_hit(1.0, player.global_position)
 	check(not ai.is_arena_active() and not ai.is_alerted and ai.patrol_pause_timer == pause and first.position == Vector3(0, 0, -2), "区域外待命，近弹和受击不启动巡逻调查")
 	player.global_position = arena.to_global(Vector3(1, 0, 2))

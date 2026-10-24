@@ -28,25 +28,11 @@ var ranged_min_distance: float:
 func setup(shared_context) -> void:
 	context = shared_context
 	fire_decision.setup(context, &"fire_decision")
-	actor.hit_received.connect(_on_hit_received)
-	context.event_received.connect(_on_evidence_event)
 
 
 func detach() -> void:
-	if actor.hit_received.is_connected(_on_hit_received):
-		actor.hit_received.disconnect(_on_hit_received)
-	if context.event_received.is_connected(_on_evidence_event):
-		context.event_received.disconnect(_on_evidence_event)
 	fire_decision.context = null
 	context = null
-
-func _on_hit_received(damage: float, _attacker_position: Vector3) -> void:
-	if is_finite(damage) and damage > 0.0:
-		actor.apply_aim_penalty(float(context.setting(&"tactics", &"damage_accuracy_penalty", 0.15)))
-
-func _on_evidence_event(event: StringName, _data: Dictionary) -> void:
-	if event == &"near_shot":
-		actor.apply_aim_penalty(float(context.setting(&"tactics", &"nearby_shot_accuracy_penalty", 0.02)))
 
 func update(delta: float, visible: bool, moving: bool, intent: Dictionary) -> void:
 	request = intent

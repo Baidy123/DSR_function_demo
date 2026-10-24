@@ -33,11 +33,6 @@ func _init() -> void:
 		low_cover_hide_seconds = maxf(0.0, value)
 		mark_override(&"low_cover_hide_seconds")
 
-## 敌人胸部到实际弹道线段的警戒半径（米）；墙挡住来弹时不会隔墙触发。
-@export_range(0.1, 5.0, 0.1) var shot_radius: float = 1.5:
-	set(value):
-		shot_radius = value
-		mark_override(&"shot_radius")
 ## 抵达 Peek 后最多观察多少秒；看见玩家会提前结束，否则转入追踪或搜索。
 @export_range(0.1, 10.0, 0.1) var watch_seconds: float = 2.0:
 	set(value):

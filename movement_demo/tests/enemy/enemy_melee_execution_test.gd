@@ -7,10 +7,10 @@ class Target extends CharacterBody3D:
 	var is_in_dialogue := false
 	func is_dead() -> bool: return false
 	func receive_melee_hit(damage: float, _origin: Vector3, distance: float, duration: float, _direction: Vector3,
-			slow_multiplier: float = 1.0, slow_seconds: float = 0.0) -> void:
+			effects: Dictionary = {}) -> void:
 		hits += 1
 		damage_received += damage
-		hit_effects = Vector4(distance, duration, slow_multiplier, slow_seconds)
+		hit_effects = Vector4(distance, duration, 1.0 - float(effects.get("hit_speed_loss", 0.0)), float(effects.get("hit_speed_loss_seconds", 0.0)))
 
 var checks := 0
 var failures := 0

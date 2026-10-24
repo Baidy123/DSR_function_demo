@@ -27,7 +27,7 @@ func _run() -> void:
 	for mode in [combat.AimMode.PROBABILITY, combat.AimMode.SPREAD_CONE]:
 		combat.aim_mode = mode
 		combat.accuracy = 1.0
-		player.receive_melee_hit(5.0, Vector3(0, 0, -1), 0.0, 0.2)
+		player.receive_melee_hit(5.0, Vector3(0, 0, -1), 0.0, 0.2, Vector3.FORWARD, {"melee": true, "hit_accuracy_loss": 1.0})
 		check(combat.accuracy == 0.0, "近战清零当前准度模式" + str(mode))
 		combat.end_frame(0.2, false)
 		check(combat.accuracy == 0.0, "受击同帧不立刻恢复" + str(mode))
@@ -41,7 +41,7 @@ func _run() -> void:
 		player.velocity = Vector3.ZERO
 		player.current_speed = 0.0
 		await frames(3)
-		player.receive_melee_hit(0.0, Vector3(0, 0, -1), 1.0, 0.2)
+		player.receive_melee_hit(0.0, Vector3(0, 0, -1), 1.0, 0.2, Vector3.FORWARD, {"melee": true, "hit_accuracy_loss": 1.0})
 		player.set_physics_process(true)
 		await frames(ceili(ticks * 0.3))
 		player.set_physics_process(false)
@@ -56,7 +56,7 @@ func _run() -> void:
 	await frames(3)
 	Input.action_press("aim")
 	Input.action_press("move_right")
-	player.receive_melee_hit(0.0, Vector3(0, 0, -1), 1.0, 0.2)
+	player.receive_melee_hit(0.0, Vector3(0, 0, -1), 1.0, 0.2, Vector3.FORWARD, {"melee": true, "hit_accuracy_loss": 1.0})
 	player.set_physics_process(true)
 	await frames(ceili(original_ticks * 0.3))
 	player.set_physics_process(false)
@@ -69,7 +69,7 @@ func _run() -> void:
 	player.velocity = Vector3.ZERO
 	player.current_speed = 0.0
 	await frames(3)
-	player.receive_melee_hit(0.0, Vector3(0, 0, -1), 1.0, 0.2)
+	player.receive_melee_hit(0.0, Vector3(0, 0, -1), 1.0, 0.2, Vector3.FORWARD, {"melee": true, "hit_accuracy_loss": 1.0})
 	player.set_physics_process(true)
 	await frames(4)
 	Input.action_press("aim")
@@ -88,16 +88,16 @@ func _run() -> void:
 	player.velocity = Vector3.ZERO
 	player.current_speed = 0.0
 	await frames(3)
-	player.receive_melee_hit(0.0, Vector3(0, 0, -1), 2.0, 0.2)
+	player.receive_melee_hit(0.0, Vector3(0, 0, -1), 2.0, 0.2, Vector3.FORWARD, {"melee": true, "hit_accuracy_loss": 1.0})
 	player.set_physics_process(true)
 	await frames(ceili(original_ticks * 0.3))
 	player.set_physics_process(false)
 	check(player.global_position.z < 0.7 and player.global_position.z > 0.05, "玩家击退受墙体碰撞阻挡")
-	player.receive_melee_hit(0.0, Vector3(0, 0, -1), 1.0, 0.2)
+	player.receive_melee_hit(0.0, Vector3(0, 0, -1), 1.0, 0.2, Vector3.FORWARD, {"melee": true, "hit_accuracy_loss": 1.0})
 	player.set_dialogue_active(true)
 	check(player._melee_push_remaining == 0.0, "进入对话清理剩余击退")
 	player.set_dialogue_active(false)
-	player.receive_melee_hit(10000.0, Vector3(0, 0, -1), 1.0, 0.2)
+	player.receive_melee_hit(10000.0, Vector3(0, 0, -1), 1.0, 0.2, Vector3.FORWARD, {"melee": true, "hit_accuracy_loss": 1.0})
 	check(player.is_dead() and player._melee_push_remaining == 0.0, "致死攻击不留下击退")
 	paused = false
 	scene.queue_free()

@@ -100,7 +100,7 @@ func _vault_lifecycle() -> void:
 	await _settle(3)
 	_check("world pause leaves body snapshot unchanged", actor.get_posture_presentation_state() == airborne and spy.land_count() == landed_before)
 	paused = false
-	actor.receive_melee_hit(0.0, actor.global_position + Vector3.LEFT, 0.0, 0.2)
+	actor.receive_melee_hit(0.0, actor.global_position + Vector3.LEFT, 0.0, 0.2, Vector3.FORWARD, {"melee": true, "hit_accuracy_loss": 1.0})
 	adapter._physics_process(STEP)
 	_check("real hit interruption publishes falling without a false landing", spy.latest.vaulting and spy.latest.falling and is_equal_approx(spy.latest.progress, airborne.vault_progress) and spy.land_count() == landed_before)
 	await _wait_for_landing()

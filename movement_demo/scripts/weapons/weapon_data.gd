@@ -53,7 +53,24 @@ enum AmmoType { RIFLE, PISTOL, SMG, SHOTGUN }
 ## 两次射击的最短间隔（秒）。
 @export_range(0.05, 3.0, 0.05) var shot_interval: float = 0.2
 
+@export_group("对目标命中与压制效果")
+## 命中目标时扣除的基础精度；按百分点扣减。20%×受方倍率0.5=扣10个百分点，80%变70%；0关闭。
+## 这是给目标的干扰，不是持枪者自己的后坐力；射击命中时冻结本次值。
+@export_range(0.0, 1.0, 0.01) var hit_accuracy_loss: float = 0.15
+## 子弹擦过敌方目标时扣除的基础精度；再乘受方被压制精度倍率。0只关闭精度损失，不取消真实警戒事实。
+@export_range(0.0, 1.0, 0.01) var suppression_accuracy_loss: float = 0.02
+## 从目标胸部到本次真实弹道线段的最大擦过距离（米）；0关闭擦过检测。墙后的延长线无效，与枪声半径无关。
+@export_range(0.0, 10.0, 0.1, "suffix:m") var near_miss_radius: float = 1.5
+## 子弹命中后目标损失的自主速度比例；30%×受方速度损失倍率0.5=减速15%，保留85%速度。0关闭。
+## 不影响击退或重力，也不作用于擦过；附带近战的基础减速仍在近战参数中配置。
+@export_range(0.0, 1.0, 0.01) var hit_speed_loss: float = 0.5
+## 子弹命中减速持续时间（秒）；0关闭。有效新命中刷新强度和时长，不叠乘；受方倍率不缩放时长。
+@export_range(0.0, 5.0, 0.05, "suffix:s") var hit_speed_loss_seconds: float = 0.5
+
 @export_group("近战参数")
+## 附带近战／专用近战命中时的基础精度损失；乘与射击共用的受方命中精度倍率。
+## 100%且倍率1可降到0；倍率0.5只扣50个百分点，不会再额外强制清零。0关闭精度损失。
+@export_range(0.0, 1.0, 0.01) var melee_accuracy_loss: float = 1.0
 ## 远程武器的附带近战或近战武器的攻击开关；不消耗弹药。
 @export var melee_enabled: bool = true
 ## 近战伤害，与单发子弹伤害分别配置。
@@ -77,7 +94,8 @@ enum AmmoType { RIFLE, PISTOL, SMG, SHOTGUN }
 @export_range(0.0, 5.0, 0.05) var melee_knockback_distance: float = 1.0
 ## 击退外力衰减至零的时间（秒）。
 @export_range(0.05, 2.0, 0.01) var melee_knockback_seconds: float = 0.2
-## 近战命中后目标自主移动保留的比例；0.5为原速度50%，1不减速，不缩小击退外力。
+## 近战命中后目标自主移动保留的基础比例；50%表示基础损失50%，再乘与射击共用的受方速度损失倍率。
+## 例如保留50%且受方倍率0.5，实际只损失25%、保留75%；100%不减速，不缩小击退外力。
 @export_range(0.0, 1.0, 0.05) var melee_slow_multiplier: float = 0.5
 ## 命中减速持续时间（秒）；0关闭。再次命中刷新本次效果，不叠乘速度。
 @export_range(0.0, 5.0, 0.05, "suffix:s") var melee_slow_seconds: float = 0.5
@@ -178,3 +196,21 @@ func _angle_to_stability(angle: float, minimum: float, span: float) -> float:
 	if span <= 0.00001:
 		return 1.0
 	return 1.0 - clampf((angle - minimum) / span, 0.0, 1.0)
+
+
+## 攻击者在开火／近战起手时取得纯值快照；之后切枪或修改资源不改变这一击。
+func get_attack_effects(melee: bool = false) -> Dictionary:
+	return {
+		"melee": melee,
+		"hit_accuracy_loss": _valid_fraction(melee_accuracy_loss if melee else hit_accuracy_loss),
+		"suppression_accuracy_loss": 0.0 if melee else _valid_fraction(suppression_accuracy_loss),
+		"near_miss_radius": 0.0 if melee or not is_finite(near_miss_radius) else maxf(0.0, near_miss_radius),
+		"hit_speed_loss": _valid_fraction(1.0 - melee_slow_multiplier if melee else hit_speed_loss),
+		"hit_speed_loss_seconds": _valid_seconds(melee_slow_seconds if melee else hit_speed_loss_seconds),
+	}
+
+func _valid_fraction(value: float) -> float:
+	return clampf(value, 0.0, 1.0) if is_finite(value) else 0.0
+
+func _valid_seconds(value: float) -> float:
+	return maxf(0.0, value) if is_finite(value) else 0.0

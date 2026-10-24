@@ -20,9 +20,9 @@ func _run() -> void:
 	health.debug_invincible = false
 	ai.cover_selection.debug_attack_points = false
 	ai.cover_selection.debug_cover_selection = false
-	# 固定本专项验证的惩罚初值；用户可在场景训练资源中独立调参。
-	ai.training.profile.set_setting(&"tactics", &"damage_accuracy_penalty", 0.15)
-	ai.training.profile.set_setting(&"tactics", &"nearby_shot_accuracy_penalty", 0.02)
+	# 攻击基础值来自两把测试武器，受方只配置倍率。
+	ai.training.profile.set_setting(&"tactics", &"hit_accuracy_loss_multiplier", 1.0)
+	ai.training.profile.set_setting(&"tactics", &"suppression_accuracy_loss_multiplier", 1.0)
 	actor.debug_shooting = false
 	for wall in get_nodes_in_group("cover_region"): wall.collision_layer = 0
 	player.global_position = Vector3(22, 0, -2)
@@ -42,35 +42,35 @@ func _run() -> void:
 	actor.equip_weapon(enemy_weapon)
 	for frame in range(8): await physics_frame
 	combat.accuracy = 1.0
-	player.receive_hit(1.0)
-	check(close(combat.get_spread_half_angle_degrees(), 6.0), "真实受伤使玩家散布半角增加3度")
+	player.receive_weapon_hit(1.0, Vector3.ZERO, enemy_weapon.get_attack_effects())
+	check(close(combat.accuracy, 0.85) and close(combat.get_spread_half_angle_degrees(), 6.15), "攻击武器命中损失15个百分点，玩家散布据自身表示映射")
 	actor.weapon_stability = 0.8
-	actor.receive_hit(1.0)
+	actor.receive_weapon_hit(1.0, Vector3.ZERO, weapon.get_attack_effects())
 	check(close(actor.weapon_stability, 0.65), "敌人受伤减15个百分点，而不是乘以85%")
 	combat.accuracy = 1.0
-	player.receive_hit(0.0)
-	player.receive_hit(-1.0)
-	player.receive_hit(NAN)
-	player.receive_hit(INF)
+	player.receive_weapon_hit(0.0, Vector3.ZERO, enemy_weapon.get_attack_effects())
+	player.receive_weapon_hit(-1.0, Vector3.ZERO, enemy_weapon.get_attack_effects())
+	player.receive_weapon_hit(NAN, Vector3.ZERO, enemy_weapon.get_attack_effects())
+	player.receive_weapon_hit(INF, Vector3.ZERO, enemy_weapon.get_attack_effects())
 	check(close(combat.accuracy, 1.0), "无效命中参数不降低玩家准度")
 	health.debug_invincible = true
 	var debug_health: float = health.health
-	player.receive_hit(1.0)
-	check(close(health.health, debug_health) and close(combat.get_spread_half_angle_degrees(), 6.0), "Debug 无敌被命中仍扩大3度且不扣血")
+	player.receive_weapon_hit(1.0, Vector3.ZERO, enemy_weapon.get_attack_effects())
+	check(close(health.health, debug_health) and close(combat.accuracy, 0.85), "真实武器命中无敌玩家仍扣15个百分点且不扣血")
 	health._debug_damage()
-	check(close(health.health, debug_health) and close(combat.get_spread_half_angle_degrees(), 9.0), "Debug 测试受伤按钮也能在无敌时验证命中惩罚")
+	check(close(health.health, debug_health) and close(combat.accuracy, 0.85), "无攻击来源的测试扣血不回退旧准度常量或重复惩罚")
 	health.debug_invincible = false
 	combat.accuracy = 1.0
 	# 独立线段：经过身体附近，且没有直接命中。
-	combat.notice_shot(Vector3(20, 0.8, -1), Vector3(24, 0.8, -1))
-	check(close(combat.get_spread_half_angle_degrees(), 3.4), "玩家近弹扩大0.4度")
+	combat.notice_shot(Vector3(20, 0.8, -1), Vector3(24, 0.8, -1), enemy_weapon.get_attack_effects())
+	check(close(combat.accuracy, 0.98), "攻击武器擦过损失2个百分点")
 	actor.weapon_stability = 0.8
-	ai.notice_shot(Vector3(22, 0.8, -1), Vector3(26, 0.8, -1))
+	ai.notice_shot(Vector3(22, 0.8, -1), Vector3(26, 0.8, -1), weapon.get_attack_effects())
 	check(close(actor.weapon_stability, 0.78), "敌人近弹减2个百分点")
 	combat.accuracy = 1.0
 	actor.weapon_stability = 0.8
-	combat.notice_shot(Vector3(10, 0.8, -1), Vector3(18, 0.8, -1))
-	ai.notice_shot(Vector3(10, 0.8, -1), Vector3(18, 0.8, -1))
+	combat.notice_shot(Vector3(10, 0.8, -1), Vector3(18, 0.8, -1), enemy_weapon.get_attack_effects())
+	ai.notice_shot(Vector3(10, 0.8, -1), Vector3(18, 0.8, -1), weapon.get_attack_effects())
 	check(close(combat.accuracy, 1.0) and close(actor.weapon_stability, 0.8), "弹道截断后的延长线不触发近弹")
 	var barrier := StaticBody3D.new()
 	var shape := CollisionShape3D.new()
@@ -81,23 +81,24 @@ func _run() -> void:
 	scene.add_child(barrier)
 	barrier.global_position = Vector3(23, 1.1, -1.5)
 	for frame in range(3): await physics_frame
-	combat.notice_shot(Vector3(20, 0.8, -1), Vector3(26, 0.8, -1))
-	ai.notice_shot(Vector3(20, 0.8, -1), Vector3(26, 0.8, -1))
+	combat.notice_shot(Vector3(20, 0.8, -1), Vector3(26, 0.8, -1), enemy_weapon.get_attack_effects())
+	ai.notice_shot(Vector3(20, 0.8, -1), Vector3(26, 0.8, -1), weapon.get_attack_effects())
 	check(close(combat.accuracy, 1.0) and close(actor.weapon_stability, 0.8), "隔墙从旁经过的弹道不施加近弹惩罚")
 	barrier.queue_free()
 	for frame in range(3): await physics_frame
-	combat.damage_spread_degrees = 0.0
-	ai.training.profile.set_setting(&"tactics", &"damage_accuracy_penalty", 0.0)
-	player.receive_hit(1.0)
-	actor.receive_hit(1.0)
+	combat.hit_accuracy_loss_multiplier = 0.0
+	ai.training.profile.set_setting(&"tactics", &"hit_accuracy_loss_multiplier", 0.0)
+	player.receive_weapon_hit(1.0, Vector3.ZERO, enemy_weapon.get_attack_effects())
+	actor.receive_weapon_hit(1.0, Vector3.ZERO, weapon.get_attack_effects())
 	check(close(combat.accuracy, 1.0) and close(actor.weapon_stability, 0.8), "导出惩罚设置为零可关闭")
-	combat.damage_spread_degrees = 3.0
-	ai.training.profile.set_setting(&"tactics", &"damage_accuracy_penalty", 0.15)
+	combat.hit_accuracy_loss_multiplier = 1.0
+	ai.training.profile.set_setting(&"tactics", &"hit_accuracy_loss_multiplier", 1.0)
 	combat.accuracy = 0.01
 	actor.weapon_stability = 0.01
-	player.receive_hit(1.0)
-	actor.receive_hit(1.0)
+	player.receive_weapon_hit(1.0, Vector3.ZERO, enemy_weapon.get_attack_effects())
+	actor.receive_weapon_hit(1.0, Vector3.ZERO, weapon.get_attack_effects())
 	check(combat.accuracy == 0.0 and actor.weapon_stability == 0.0, "连续惩罚最多降到零，不被射击或移动下限反向抬高")
+	_test_multipliers(player, combat, actor, ai, weapon, enemy_weapon)
 	# 成功开始、过程、完成帧、恢复等待与恢复后的边界。
 	combat.accuracy = 1.0
 	actor.weapon_stability = 0.8
@@ -168,7 +169,7 @@ func _run() -> void:
 	health.debug_invincible = false
 	# 角度上下限相同不允许除零。
 	weapon.max_spread_angle_degrees = weapon.min_spread_angle_degrees
-	player.receive_hit(1.0)
+	player.receive_weapon_hit(1.0, Vector3.ZERO, enemy_weapon.get_attack_effects())
 	check(is_finite(combat.accuracy) and combat.get_spread_half_angle_degrees() == 0.0, "固定散布角武器保持有限状态")
 	enemy_weapon.initial_accuracy = 1.0
 	actor.weapon_stability = 0.0
@@ -178,8 +179,8 @@ func _run() -> void:
 	weapon.max_spread_angle_degrees = 20.0
 	combat.aim_mode = combat.AimMode.PROBABILITY
 	combat.accuracy = 1.0
-	player.receive_hit(1.0)
-	check(close(combat.accuracy, 0.85), "保留概率模式时将Combat角度参数按武器角度范围换算")
+	player.receive_weapon_hit(1.0, Vector3.ZERO, enemy_weapon.get_attack_effects())
+	check(close(combat.accuracy, 0.85), "概率模式同样按攻击武器百分点扣减，不读取旧角度配置")
 	actor.shot_cooldown = 0.0
 	ai.context.fire.fire_pause_remaining = 0.0
 	ai.context.fire.fire_reaction_elapsed = ai.context.fire.fire_reaction_seconds
@@ -196,6 +197,56 @@ func _run() -> void:
 	check(route.fire_seconds == 0.0, "同帧改变感知参数不复用旧射击路线缓存")
 	print("AIM DISRUPTION: %d/%d passed" % [checks - failures, checks])
 	quit(1 if failures else 0)
+
+func _test_multipliers(player, combat, actor, ai, weapon: WeaponData, enemy_weapon: WeaponData) -> void:
+	var attack := WeaponData.new()
+	attack.hit_accuracy_loss = 0.2
+	attack.suppression_accuracy_loss = 0.04
+	attack.hit_speed_loss = 0.3
+	var frozen := attack.get_attack_effects()
+	attack.hit_accuracy_loss = 0.9
+	for factor in [0.0, 0.5, 1.0, 2.0]:
+		combat.hit_accuracy_loss_multiplier = factor
+		ai.training.profile.set_setting(&"tactics", &"hit_accuracy_loss_multiplier", factor)
+		combat.hit_speed_loss_multiplier = 0.5
+		ai.training.profile.set_setting(&"tactics", &"hit_speed_loss_multiplier", 0.5)
+		combat.accuracy = 0.8
+		actor.weapon_stability = 0.8
+		player.receive_weapon_hit(1.0, Vector3.ZERO, frozen)
+		actor.receive_weapon_hit(1.0, Vector3.ZERO, frozen)
+		check(close(combat.accuracy, 0.8 - 0.2 * factor) and close(actor.weapon_stability, 0.8 - 0.2 * factor), "双方命中倍率与冻结武器百分点值：×" + str(factor))
+		check(close(player.get_hit_movement_multiplier(), 0.85) and close(actor.get_hit_movement_multiplier(), 0.85), "速度损失倍率独立于命中精度倍率，30%×0.5只减速15%")
+	combat.hit_accuracy_loss_multiplier = 1.0
+	combat.hit_speed_loss_multiplier = 1.0
+	ai.training.profile.set_setting(&"tactics", &"hit_accuracy_loss_multiplier", 1.0)
+	ai.training.profile.set_setting(&"tactics", &"hit_speed_loss_multiplier", 1.0)
+	combat.suppression_accuracy_loss_multiplier = 2.0
+	ai.training.profile.set_setting(&"tactics", &"suppression_accuracy_loss_multiplier", 2.0)
+	player.clear_hit_effects()
+	actor.clear_hit_effects()
+	combat.accuracy = 0.8
+	actor.weapon_stability = 0.8
+	frozen.near_miss_radius = 0.5
+	combat.notice_shot(Vector3(20, 0.8, -1), Vector3(24, 0.8, -1), frozen)
+	ai.notice_shot(Vector3(22, 0.8, -1), Vector3(26, 0.8, -1), frozen)
+	check(close(combat.accuracy, 0.8) and close(actor.weapon_stability, 0.8), "同一弹道在攻击武器窄擦过范围外不生效")
+	frozen.near_miss_radius = 1.5
+	combat.notice_shot(Vector3(20, 0.8, -1), Vector3(24, 0.8, -1), frozen)
+	ai.notice_shot(Vector3(22, 0.8, -1), Vector3(26, 0.8, -1), frozen)
+	check(close(combat.accuracy, 0.72) and close(actor.weapon_stability, 0.72), "只扩大攻击武器范围即可擦过，压制4%×2扣8个百分点")
+	check(player.get_hit_movement_multiplier() == 1.0 and actor.get_hit_movement_multiplier() == 1.0, "擦过不会套用命中速度损失")
+	combat.suppression_accuracy_loss_multiplier = 1.0
+	ai.training.profile.set_setting(&"tactics", &"suppression_accuracy_loss_multiplier", 1.0)
+	combat.accuracy = 0.8
+	actor.weapon_stability = 0.8
+	player.receive_hit(1.0)
+	actor.receive_hit(1.0)
+	check(close(combat.accuracy, 0.8) and close(actor.weapon_stability, 0.8), "无攻击来源生命事件不产生旧固定精度惩罚")
+	frozen.hit_accuracy_loss = NAN
+	frozen.hit_speed_loss = INF
+	player.receive_weapon_hit(1.0, Vector3.ZERO, frozen)
+	actor.receive_weapon_hit(1.0, Vector3.ZERO, frozen)
+	check(close(combat.accuracy, 0.8) and close(actor.weapon_stability, 0.8) and player.get_hit_movement_multiplier() == 1.0, "非有限基础损失不污染精度与移动状态")
 
 func close(a: float, b: float) -> bool:
 	return absf(a - b) < 0.0001
