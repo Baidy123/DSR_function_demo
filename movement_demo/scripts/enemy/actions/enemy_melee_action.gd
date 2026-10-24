@@ -1,6 +1,24 @@
 extends "res://scripts/enemy/actions/enemy_action.gd"
 
 const Approach = preload("res://scripts/enemy/services/enemy_melee_approach.gd")
+var _contact_route_target := Vector3.INF
+var _contact_observation := Vector3.INF
+
+func reset() -> void:
+	_contact_route_target = Vector3.INF
+	_contact_observation = Vector3.INF
+
+func cancel(reason: StringName = &"switch") -> void:
+	var retained_target := _contact_route_target
+	var retained_observation := _contact_observation
+	super.cancel(reason)
+	if reason == &"switch":
+		_contact_route_target = retained_target
+		_contact_observation = retained_observation
+
+func configuration_changed() -> void:
+	super.configuration_changed()
+	reset()
 
 func collect_candidates(visible: bool) -> Array[Dictionary]:
 	if not visible: return []
@@ -36,8 +54,27 @@ func _contact_available(point: Vector3) -> bool:
 	return not context.personal_position_choices(choices).is_empty()
 
 func _contact_candidate(path: PackedVector3Array, detour: bool) -> Dictionary:
+	var route_target: Vector3 = path[-1]
+	# Ground contact leaves a tiny floor clearance. Keep the known floor's
+	# height instead of requesting a new crossing for that settling offset.
+	if absf(route_target.y - context.last_known_position.y) < 0.05:
+		route_target.y = context.last_known_position.y
+	# A contact post may remain useful while the observed target moves a little.
+	# Keep that exact post, not its old path relabeled as a new destination.
+	if not detour:
+		var retained_post := false
+		if _contact_route_target.is_finite() and _contact_observation.is_finite() and context._horizontal_distance_between(_contact_observation, context.last_known_position) <= 0.5 and Approach.contact_position_valid(context, _contact_route_target):
+			var retained: PackedVector3Array = context.routes.planning_path(actor.global_position, _contact_route_target).duplicate()
+			if not retained.is_empty():
+				for index in retained.size(): retained[index].y = actor.global_position.y
+				path = retained
+				route_target = _contact_route_target
+				retained_post = true
+		_contact_route_target = route_target
+		if not retained_post: _contact_observation = context.last_known_position
 	var candidate := option({"position": path[-1], "path": path} if detour else {}, 0.0, 0.0)
-	candidate.route_target = path[-1]
+	candidate.route_target = route_target
+	candidate.route_priority = true
 	candidate.contact_path = path
 	if detour: candidate.mode = &"contact_detour"
 	return candidate

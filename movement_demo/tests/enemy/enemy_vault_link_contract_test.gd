@@ -81,7 +81,15 @@ func _run() -> void:
 		await physics_frame
 		alternate = NativeRoute.query(ai.context, TARGET, Vector3.INF, ai.context.routes.failed_links())
 		if not alternate.is_empty(): break
-	check(not alternate.is_empty() and alternate.segments[1].link_key != vault.link_key, "Failed channel can prepare a bounded neighboring crossing")
+	check(not alternate.is_empty() and alternate.segments[1].entry.distance_to(vault.entry) >= 0.5 and NativeRoute.current(ai.context, alternate), "Failed point can prepare a physically distinct current crossing in the same wall area")
+	if not alternate.is_empty():
+		var side: Dictionary = alternate.segments[1]
+		check(side.has("crossing_key") and _pure(alternate) and not ai.action_selector.same_option({"id": &"melee_engage", "route": description}, {"id": &"melee_engage", "route": alternate}), "Area crossing has pure point identity distinct from the original native channel")
+		enemy.global_position = side.entry
+		player.global_position = vault.exit
+		await physics_frame
+		check(LowGeometry.query_vault_at(enemy, wall, side.entry, side.direction, side.duration, false).get("valid", false), "Side crossing passes real capsule preflight while the original landing remains occupied")
+		player.global_position = TARGET
 	# Airborne cancellation/death cannot release physical transit ownership.
 	enemy.global_position = vault.entry
 	await physics_frame

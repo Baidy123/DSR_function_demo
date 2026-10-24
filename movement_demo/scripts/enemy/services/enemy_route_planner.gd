@@ -53,6 +53,9 @@ func alternatives(destination: Vector3, priority: bool = false) -> Array[Diction
 func has_pending() -> bool:
 	return not _pending.is_empty()
 
+func has_priority_pending() -> bool:
+	return not _priority_pending.is_empty()
+
 func advance_one(deadline_usec: int = 0) -> int:
 	if _pending.is_empty(): return 0
 	var destination: Vector3 = _priority_pending.pop_front() if not _priority_pending.is_empty() else _pending[0]

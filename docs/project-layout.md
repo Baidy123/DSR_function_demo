@@ -118,6 +118,10 @@ Spatial 的路线样本层仅在同步候选比较中复用同路径已实际观
 
 `world/vault_navigation.gd` 由原 `shooting_range.gd` 持有并提供给 Context，增量维护所属区域的原生 NavigationLink3D：步行层1，翻越连接层2。公共 `cover.tscn` 的 `NavigationBakeObstacle` 子节点使用 `world/navigation_bake_obstacle.gd`，按真实碰撞同步原生烘焙轮廓；维护命令复用它，运行时不重烘导航。
 
+2026-10-25 个人区域选点仍使用这些原生连接定位低墙。区域服务的 `area_candidates()` 从真实盒体整段墙面提供最多两个纯值候选；`enemy_navigation_route.gd` 在实际起跳失败后分帧验证接近／落地步行段与翻越弧。分段可带 `crossing_key` 区分同一原生连接上的具体位置，原 `link_key/owner_id` 继续核对几何生命周期并保守串行预约；失败位置独立避让，不将整个低墙判成不可翻越。团队沿用原原生通道，烘焙辅助、保存导航和场景结构未变。
+
+个人近战动作保留仍可出手的准确停靠点及对应合法观察位置，普通动作切换可保留这份准备依据；配置变化和复位清理。候选的可选 `route_priority` 只控制路线准备，当前追击及已启动的分段准备每显示帧最多推进一次，未开始的普通路线保持原四物理步间隔，仍共用24点／2毫秒截止时间；收集候选不直接同步准备翻越几何。
+
 个人 `enemy_route_planner.gd` 保留有界优先队列、短时失败连接和原 Spatial 预算，调用 `enemy_navigation_route.gd`。同一查询也供团队提案读取，返回纯值 `route_plan`（版本、几何版本、摘要点列和 walk/vault 分段）。查询游标每次最多一次原生查询、四个验证单位，未完成的验证不会被结果缓存期限清空。普通 `_path_to()` 与 NavigationAgent3D 仍仅使用步行层；摘要点列不证明可步行。
 
 动作各自持有 `enemy_route_motion.gd` 的分段进度，个人与团队共享执行器，原身体独占实际起跳、占位复核与安全落地。团队任务保留原 `route` 摘要并可带 `route_plan`，特化动作等待查询并按实际分段耗时估计；旧 before/vault/after 与纯步行任务继续兼容。通道占用由现有 `enemy_cooperation.gd` 管理，任务取消／死亡／退队不提前释放仍在空中的身体。近战备用接敌点也走同一准备入口。

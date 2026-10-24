@@ -97,6 +97,43 @@ func resolve_link(owner_id: int) -> Dictionary:
 	if _region.global_transform != _region_transform or _region.navigation_mesh != _mesh: return {}
 	return data.duplicate(true)
 
+## The native link identifies a wall; personal traversal may choose a different
+## crossing along its whole face. These are static proposals, never occupancy
+## reads of a hidden character. Walking, arc and live landing checks still run.
+func area_candidates(owner_id: int, from: Vector3, destination: Vector3, radius: float, excluded: Array = []) -> Array[Dictionary]:
+	var result: Array[Dictionary] = []
+	var source := resolve_link(owner_id)
+	if source.is_empty(): return result
+	var cover := instance_from_id(source.cover_id) as Node3D
+	var collision := cover.get_node("CollisionShape3D") as CollisionShape3D
+	var size: Vector3 = collision.shape.size
+	var along := 0 if size.x * collision.global_basis.x.length() >= size.z * collision.global_basis.z.length() else 2
+	var across := 2 if along == 0 else 0
+	var scale: float = collision.global_basis[along].length()
+	var start := collision.to_local(from)
+	var target := collision.to_local(destination)
+	var fraction := clampf(-start[across] / (target[across] - start[across]), 0.0, 1.0) if absf(target[across] - start[across]) > 0.001 else 0.5
+	var half: float = size[along] * 0.5
+	var ideal := clampf(lerpf(start[along], target[along], fraction), -half, half)
+	var original: float = collision.to_local(source.feet_entry)[along]
+	var spacing := maxf(0.8, radius * 2.0 + 0.1) / scale
+	var used: Array[int] = []
+	for value: float in [ideal, original, original + spacing, original - spacing, ideal + spacing, ideal - spacing]:
+		var offset := clampf(value, -half, half)
+		if excluded.has(source.link_key) and absf(offset - original) < spacing - 0.001: continue
+		var slot := roundi(offset * scale / 0.05)
+		if used.has(slot): continue
+		used.append(slot)
+		var key := "%s:area:%d" % [source.link_key, slot]
+		if excluded.has(key): continue
+		var candidate := source.duplicate(true)
+		var shift: Vector3 = collision.global_basis[along] * (offset - original)
+		for field in ["entry", "exit", "feet_entry", "feet_exit"]: candidate[field] += shift
+		candidate.crossing_key = key
+		result.append(candidate)
+		if result.size() == 2: break
+	return result
+
 func release() -> void:
 	if is_instance_valid(_tree):
 		if _tree.node_added.is_connected(_node_added): _tree.node_added.disconnect(_node_added)

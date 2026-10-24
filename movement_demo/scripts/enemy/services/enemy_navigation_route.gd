@@ -97,8 +97,9 @@ static func _prepare(context, destination: Vector3, from: Vector3, excluded: Arr
 		var owner: int = result.path_owner_ids[index]
 		var connection: Dictionary = registry.resolve_link(owner)
 		if connection.is_empty(): return []
-		if excluded.has(connection.link_key):
-			_prepare_adjacent(context, connection, excluded, work)
+		var area_failed: bool = not context.commanded() and excluded.any(func(key): return String(key).begins_with(String(connection.link_key) + ":area:"))
+		if excluded.has(connection.link_key) or area_failed:
+			_prepare_adjacent(context, connection, excluded, work, destination)
 			return []
 		var forward: bool = context._horizontal_distance_between(walk[-1], connection.entry) <= context._horizontal_distance_between(walk[-1], connection.exit)
 		var entry: Vector3 = connection.get("feet_entry", Vector3(connection.entry.x, from.y, connection.entry.z)) if forward else connection.get("feet_exit", Vector3(connection.exit.x, from.y, connection.exit.z))
@@ -147,10 +148,12 @@ static func _advance_validation(context, work: Dictionary) -> bool:
 	return true
 
 static func _vault_segment(connection: Dictionary, vault: Dictionary, direction: Vector3) -> Dictionary:
-	return {"kind": &"vault", "link_key": connection.link_key, "owner_id": connection.owner_id,
+	var result := {"kind": &"vault", "link_key": connection.link_key, "owner_id": connection.owner_id,
 		"cover_id": connection.cover_id, "cover_revision": connection.cover_revision,
 		"entry": vault.entry, "exit": vault.exit, "direction": direction,
 		"duration": vault.duration, "height": vault.height, "points": vault.points}
+	if connection.has("crossing_key"): result.crossing_key = connection.crossing_key
+	return result
 
 static func _walk_valid(context, path: PackedVector3Array) -> bool:
 	if path.is_empty(): return false
@@ -179,9 +182,13 @@ static func _pack(segments: Array[Dictionary], revision: int, destination: Vecto
 		result.after = segments[split + 1].points.duplicate()
 	return result
 
-static func _prepare_adjacent(context, failed: Dictionary, excluded: Array, work: Dictionary) -> void:
+static func _prepare_adjacent(context, failed: Dictionary, excluded: Array, work: Dictionary, destination: Vector3) -> void:
 	var alternatives: Array = context.vault_navigation.connections().filter(func(value): return value.cover_id == failed.cover_id and not excluded.has(value.link_key))
 	alternatives.sort_custom(func(a, b): return a.entry.distance_squared_to(failed.entry) < b.entry.distance_squared_to(failed.entry))
+	if not context.commanded():
+		# A blocked point is not a blocked wall. Refine the wall's continuous
+		# crossing area before falling back to the remaining native channels.
+		alternatives = context.vault_navigation.area_candidates(failed.owner_id, work.origin, destination, Low._radius(context.actor), excluded) + alternatives
 	work.adjacent_pool = alternatives.slice(0, 2)
 	work.adjacent_index = -1
 	_next_adjacent(work)

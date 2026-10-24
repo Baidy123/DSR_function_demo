@@ -31,6 +31,7 @@ func _run() -> void:
 		check(LowGeometry.query_vault_at(enemy, wall, route.vault.entry, Vector3.FORWARD, 0.8, false).get("valid", false), "adjusted entry passes the complete physical preflight again")
 	check(not ai.context.cover_selection._path_to(START, TARGET).is_empty(), "connected control retains the ordinary walk around the low wall")
 	await _preference_checks()
+	await _contact_route_checks()
 	await _prepare()
 	player.health.debug_invincible = true
 	# A connected arena legitimately allows the finite melee-cover charge to
@@ -163,6 +164,33 @@ func _preference_checks() -> void:
 	await physics_frame
 	var blocked: Dictionary = LowGeometry.query_vault_at(enemy, wall, enemy.global_position, vault.exit - vault.entry, vault.duration, false)
 	check(blocked.get("reason") == "landing_space" and not enemy.begin_vault(vault) and not enemy.is_vaulting(), "nine personal preference credits never permit vaulting into the player's occupied landing space")
+
+func _contact_route_checks() -> void:
+	await _prepare()
+	ai.training.profile.selected_tactics.clear()
+	ai.refresh_configuration(true)
+	var action = ai.actions[&"melee_engage"]
+	var candidates: Array[Dictionary] = action.collect_candidates(true)
+	check(not candidates.is_empty() and candidates[0].get("route_priority", false), "current melee contact requests priority route preparation")
+	if candidates.is_empty(): return
+	var first: Vector3 = candidates[0].route_target
+	enemy._physics_process(STEP)
+	await physics_frame
+	ai.context.update_evidence(0.0, ai.perception.can_see_player())
+	candidates = action.collect_candidates(true)
+	check(not candidates.is_empty() and candidates[0].route_target == first, "real body floor clearance does not change the crossing destination")
+	player.global_position.x += 0.03
+	await physics_frame
+	ai.context.update_evidence(0.0, ai.perception.can_see_player())
+	candidates = action.collect_candidates(true)
+	check(not candidates.is_empty() and candidates[0].route_target == first, "small visible target motion keeps the exact still-valid contact post")
+	player.global_position.x += enemy.weapon.melee_range * 2.0
+	await physics_frame
+	ai.context.update_evidence(0.0, ai.perception.can_see_player())
+	candidates = action.collect_candidates(true)
+	check(not candidates.is_empty() and candidates.all(func(candidate): return candidate.get("route_target", Vector3.INF) != first), "target leaving melee reach discards the old contact post")
+	ai.reset_actions()
+	check(not action._contact_route_target.is_finite(), "area reset clears retained contact geometry")
 
 func _priority_checks() -> void:
 	ai.context.spatial.reset_evaluation()

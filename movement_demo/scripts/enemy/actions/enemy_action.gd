@@ -142,7 +142,7 @@ func expand_route_candidates(candidates: Array[Dictionary]) -> Array[Dictionary]
 		# own spatial budget. Never repeat every path query in synchronous scoring.
 		if not context.routes.requires_vault(point) or not candidate.get("route", {}).is_empty(): result.append(candidate)
 		if not point.is_finite() or not candidate.get("route", {}).is_empty(): continue
-		var alternatives: Array[Dictionary] = context.routes.alternatives(point)
+		var alternatives: Array[Dictionary] = context.routes.alternatives(point, candidate.get("route_priority", false))
 		if alternatives.is_empty(): continue
 		var path: PackedVector3Array = destination.get("path", PackedVector3Array())
 		if path.is_empty(): path = context.routes.planning_path(actor.global_position, point)

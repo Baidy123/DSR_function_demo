@@ -125,8 +125,10 @@ func advance_evaluation() -> void:
 	total_evaluated_count += prepared
 	# Route geometry shares the same frame budget, rather than running inside candidate collection.
 	# Catch-up can leave only odd physics frames available for preparation.
-	# Preserve the four-step interval without depending on one modulo phase.
-	if context.routes.has_pending() and (_route_preparation_frame < 0 or frame - _route_preparation_frame >= 4) and Time.get_ticks_usec() - started < EVALUATION_BUDGET_USEC:
+	# Current pursuit and started validation must finish before movement invalidates
+	# their origin. Unstarted optional routes retain the four-step interval.
+	var route_interval := 1 if context.routes.has_priority_pending() else 4
+	if context.routes.has_pending() and (_route_preparation_frame < 0 or frame - _route_preparation_frame >= route_interval) and Time.get_ticks_usec() - started < EVALUATION_BUDGET_USEC:
 		var route_units: int = context.routes.advance_one(started + EVALUATION_BUDGET_USEC)
 		_route_preparation_frame = frame
 		last_evaluated_count += route_units

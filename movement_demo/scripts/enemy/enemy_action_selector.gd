@@ -40,8 +40,8 @@ func same_option(a: Dictionary, b: Dictionary) -> bool:
 	if a.get("id", &"") != b.get("id", &"") or a.get("plan", &"") != b.get("plan", &"") or a.get("mode", &"") != b.get("mode", &""):
 		return false
 	if a.get("route", {}).get("vault", {}).get("cover") != b.get("route", {}).get("vault", {}).get("cover"): return false
-	var a_links: Array = a.get("route", {}).get("segments", []).filter(func(segment): return segment.kind == &"vault").map(func(segment): return segment.link_key)
-	var b_links: Array = b.get("route", {}).get("segments", []).filter(func(segment): return segment.kind == &"vault").map(func(segment): return segment.link_key)
+	var a_links: Array = a.get("route", {}).get("segments", []).filter(func(segment): return segment.kind == &"vault").map(func(segment): return segment.get("crossing_key", segment.link_key))
+	var b_links: Array = b.get("route", {}).get("segments", []).filter(func(segment): return segment.kind == &"vault").map(func(segment): return segment.get("crossing_key", segment.link_key))
 	if a_links != b_links: return false
 	var first: Dictionary = a.get("destination", {})
 	var second: Dictionary = b.get("destination", {})

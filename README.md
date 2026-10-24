@@ -26,7 +26,7 @@
 
 半身掩体操作：**C** 切换蹲／站，**空格** 翻越面前矮墙。蹲在矮墙后瞄准会按当前方向临时起身，普通蹲姿可直接瞄准；翻越后恢复手动姿态。竞技场新增绿色低掩体，参数与限制见 [移动说明](docs/gameplay/MOVEMENT.md)。
 
-个人 Utility 与团队 AI 共用原生翻越连接，能执行步行／翻越／继续追击，普通步行导航仍避开实体墙。编辑低墙碰撞后可使用 `NavigationRegion3D` 的原生烘焙按钮，并保存场景和导航资源；操作见 [关卡导航](docs/gameplay/LEVEL_MAPS.md#区域导航与空小队)，验证范围见 [敌人测试](docs/enemy-tests.md)。
+个人 Utility 与团队 AI 共用原生翻越连接，能执行步行／翻越／继续追击，普通步行导航仍避开实体墙。个人翻越落点受阻时可在同一墙面区域内改选具体起跳／落地点；该选择发生在运行时，烘焙仍保留地面面积与跨墙连接。编辑低墙碰撞后可使用 `NavigationRegion3D` 的原生烘焙按钮，并保存场景和导航资源；操作见 [关卡导航](docs/gameplay/LEVEL_MAPS.md#区域导航与空小队)，验证范围见 [敌人测试](docs/enemy-tests.md)。
 
 玩家和相机可分别复用：拖入 `scenes/player/player.tscn` 与 `scenes/player/player_camera_rig.tscn`，在相机根节点的 **Player Path** 指定玩家（同级且名为 Player 时默认即有效）。切枪继续读取武器的视野大小／过渡时间，移动、战斗、生命和装备仍属于玩家。主场景与 lvl3 已改为实例，详见 [相机与复用说明](docs/gameplay/CAMERA.md#玩家与相机分场景复用2026-10-24)。
 

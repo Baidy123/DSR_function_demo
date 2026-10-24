@@ -84,7 +84,7 @@ func _apply_segments(context, output: Dictionary, delta: float) -> Dictionary:
 			if started:
 				if context.cooperation != null: context.cooperation.release_vault_transit(context)
 				if context._horizontal_distance_between(actor.global_position, segment.exit) > 0.45 or absf(actor.global_position.y - segment.exit.y) > 0.3:
-					context.routes.reject_link(segment.link_key)
+					context.routes.reject_link(segment.get("crossing_key", segment.link_key))
 					return _fail(context, output)
 				segment_index += 1
 				waypoint = 0
