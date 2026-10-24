@@ -10,7 +10,7 @@
 [ext_resource type="NavigationMesh" path="res://resources/navigation/lvl_1_navigation.tres" id="navigation"]
 
 [sub_resource type="BoxShape3D" id="CombatZoneShape"]
-size = Vector3(18.5, 3, 18.5)
+size = Vector3(13.875, 3, 13.875)
 
 [sub_resource type="Resource" id="SquadProfile"]
 resource_local_to_scene = true
@@ -36,89 +36,89 @@ roughness = 1.0
 [sub_resource type="BoxMesh" id="Mesh_FullCover_FullCover01"]
 resource_local_to_scene = true
 material = SubResource("Material_FullCover")
-size = Vector3(4.4, 2.2, 7.4)
+size = Vector3(3.3, 2.2, 5.55)
 
 [sub_resource type="BoxShape3D" id="Shape_FullCover_FullCover01"]
 resource_local_to_scene = true
-size = Vector3(4.4, 2.2, 7.4)
+size = Vector3(3.3, 2.2, 5.55)
 
 [sub_resource type="BoxMesh" id="Mesh_FullCover_FullCover02"]
 resource_local_to_scene = true
 material = SubResource("Material_FullCover")
-size = Vector3(5.55, 2.2, 3.1)
+size = Vector3(4.1625, 2.2, 2.325)
 
 [sub_resource type="BoxShape3D" id="Shape_FullCover_FullCover02"]
 resource_local_to_scene = true
-size = Vector3(5.55, 2.2, 3.1)
+size = Vector3(4.1625, 2.2, 2.325)
 
 [sub_resource type="BoxMesh" id="Mesh_HalfCover_HalfCover01"]
 resource_local_to_scene = true
 material = SubResource("Material_HalfCover")
-size = Vector3(3.2, 1.1, 0.65)
+size = Vector3(2.4, 1.1, 0.4875)
 
 [sub_resource type="BoxShape3D" id="Shape_HalfCover_HalfCover01"]
 resource_local_to_scene = true
-size = Vector3(3.2, 1.1, 0.65)
+size = Vector3(2.4, 1.1, 0.4875)
 
 [sub_resource type="BoxMesh" id="Mesh_HalfCover_HalfCover02"]
 resource_local_to_scene = true
 material = SubResource("Material_HalfCover")
-size = Vector3(2.65, 1.1, 0.65)
+size = Vector3(1.9875, 1.1, 0.4875)
 
 [sub_resource type="BoxShape3D" id="Shape_HalfCover_HalfCover02"]
 resource_local_to_scene = true
-size = Vector3(2.65, 1.1, 0.65)
+size = Vector3(1.9875, 1.1, 0.4875)
 
 [sub_resource type="BoxMesh" id="Mesh_Boundary_North"]
 resource_local_to_scene = true
 material = SubResource("Material_Boundary")
-size = Vector3(19.1, 2.2, 0.3)
+size = Vector3(14.325, 2.2, 0.225)
 
 [sub_resource type="BoxShape3D" id="Shape_Boundary_North"]
 resource_local_to_scene = true
-size = Vector3(19.1, 2.2, 0.3)
+size = Vector3(14.325, 2.2, 0.225)
 
 [sub_resource type="BoxMesh" id="Mesh_Boundary_South"]
 resource_local_to_scene = true
 material = SubResource("Material_Boundary")
-size = Vector3(19.1, 2.2, 0.3)
+size = Vector3(14.325, 2.2, 0.225)
 
 [sub_resource type="BoxShape3D" id="Shape_Boundary_South"]
 resource_local_to_scene = true
-size = Vector3(19.1, 2.2, 0.3)
+size = Vector3(14.325, 2.2, 0.225)
 
 [sub_resource type="BoxMesh" id="Mesh_Boundary_West"]
 resource_local_to_scene = true
 material = SubResource("Material_Boundary")
-size = Vector3(0.3, 2.2, 18.5)
+size = Vector3(0.225, 2.2, 13.875)
 
 [sub_resource type="BoxShape3D" id="Shape_Boundary_West"]
 resource_local_to_scene = true
-size = Vector3(0.3, 2.2, 18.5)
+size = Vector3(0.225, 2.2, 13.875)
 
 [sub_resource type="BoxMesh" id="Mesh_Boundary_East"]
 resource_local_to_scene = true
 material = SubResource("Material_Boundary")
-size = Vector3(0.3, 2.2, 18.5)
+size = Vector3(0.225, 2.2, 13.875)
 
 [sub_resource type="BoxShape3D" id="Shape_Boundary_East"]
 resource_local_to_scene = true
-size = Vector3(0.3, 2.2, 18.5)
+size = Vector3(0.225, 2.2, 13.875)
 
 [sub_resource type="BoxMesh" id="Mesh_Ground_Floor"]
 resource_local_to_scene = true
 material = SubResource("Material_Ground")
-size = Vector3(19.1, 0.2, 19.1)
+size = Vector3(14.325, 0.2, 14.325)
 
 [sub_resource type="BoxShape3D" id="Shape_Ground_Floor"]
 resource_local_to_scene = true
-size = Vector3(19.1, 0.2, 19.1)
+size = Vector3(14.325, 0.2, 14.325)
 
 [node name="Lvl1" type="Node3D"]
 script = ExtResource("area")
 metadata/source_svg = "res://scenes/Lvl_1.svg"
-metadata/meters_per_svg_unit = 0.05
-metadata/interior_size = Vector2(18.5, 18.5)
+metadata/meters_per_svg_unit = 0.0375
+metadata/interior_size = Vector2(13.875, 13.875)
 
 [node name="CombatZone" type="Area3D" parent="." groups=["combat_zone"]]
 position = Vector3(0, 1, 0)
@@ -141,7 +141,7 @@ navigation_mesh = ExtResource("navigation")
 [node name="FullCover" type="Node3D" parent="NavigationRegion3D/Environment"]
 
 [node name="FullCover01" parent="NavigationRegion3D/Environment/FullCover" instance=ExtResource("1_full")]
-position = Vector3(-2.8, 1.1, -0.9)
+position = Vector3(-2.1, 1.1, -0.675)
 metadata/source_rect = Rect2(100, 108, 88, 148)
 
 [node name="Mesh" parent="NavigationRegion3D/Environment/FullCover/FullCover01" index="0"]
@@ -151,7 +151,7 @@ mesh = SubResource("Mesh_FullCover_FullCover01")
 shape = SubResource("Shape_FullCover_FullCover01")
 
 [node name="FullCover02" parent="NavigationRegion3D/Environment/FullCover" instance=ExtResource("1_full")]
-position = Vector3(4.625, 1.1, 0.4)
+position = Vector3(3.46875, 1.1, 0.3)
 metadata/source_rect = Rect2(237, 177, 111, 62)
 
 [node name="Mesh" parent="NavigationRegion3D/Environment/FullCover/FullCover02" index="0"]
@@ -163,7 +163,7 @@ shape = SubResource("Shape_FullCover_FullCover02")
 [node name="HalfCover" type="Node3D" parent="NavigationRegion3D/Environment"]
 
 [node name="HalfCover01" parent="NavigationRegion3D/Environment/HalfCover" instance=ExtResource("2_low")]
-position = Vector3(-5.4, 0.55, 4.875)
+position = Vector3(-4.05, 0.55, 3.65625)
 metadata/source_rect = Rect2(60, 291, 64, 13)
 
 [node name="Mesh" parent="NavigationRegion3D/Environment/HalfCover/HalfCover01" index="0"]
@@ -173,7 +173,7 @@ mesh = SubResource("Mesh_HalfCover_HalfCover01")
 shape = SubResource("Shape_HalfCover_HalfCover01")
 
 [node name="HalfCover02" parent="NavigationRegion3D/Environment/HalfCover" instance=ExtResource("2_low")]
-position = Vector3(4.275, 0.55, 4.775)
+position = Vector3(3.20625, 0.55, 3.58125)
 metadata/source_rect = Rect2(259, 289, 53, 13)
 
 [node name="Mesh" parent="NavigationRegion3D/Environment/HalfCover/HalfCover02" index="0"]
@@ -187,7 +187,7 @@ shape = SubResource("Shape_HalfCover_HalfCover02")
 [node name="Boundary" type="Node3D" parent="NavigationRegion3D/Environment"]
 
 [node name="North" type="StaticBody3D" parent="NavigationRegion3D/Environment/Boundary"]
-position = Vector3(0, 1.1, -9.4)
+position = Vector3(0, 1.1, -7.05)
 
 [node name="Mesh" type="MeshInstance3D" parent="NavigationRegion3D/Environment/Boundary/North"]
 mesh = SubResource("Mesh_Boundary_North")
@@ -196,7 +196,7 @@ mesh = SubResource("Mesh_Boundary_North")
 shape = SubResource("Shape_Boundary_North")
 
 [node name="South" type="StaticBody3D" parent="NavigationRegion3D/Environment/Boundary"]
-position = Vector3(0, 1.1, 9.4)
+position = Vector3(0, 1.1, 7.05)
 
 [node name="Mesh" type="MeshInstance3D" parent="NavigationRegion3D/Environment/Boundary/South"]
 mesh = SubResource("Mesh_Boundary_South")
@@ -205,7 +205,7 @@ mesh = SubResource("Mesh_Boundary_South")
 shape = SubResource("Shape_Boundary_South")
 
 [node name="West" type="StaticBody3D" parent="NavigationRegion3D/Environment/Boundary"]
-position = Vector3(-9.4, 1.1, 0)
+position = Vector3(-7.05, 1.1, 0)
 
 [node name="Mesh" type="MeshInstance3D" parent="NavigationRegion3D/Environment/Boundary/West"]
 mesh = SubResource("Mesh_Boundary_West")
@@ -214,7 +214,7 @@ mesh = SubResource("Mesh_Boundary_West")
 shape = SubResource("Shape_Boundary_West")
 
 [node name="East" type="StaticBody3D" parent="NavigationRegion3D/Environment/Boundary"]
-position = Vector3(9.4, 1.1, 0)
+position = Vector3(7.05, 1.1, 0)
 
 [node name="Mesh" type="MeshInstance3D" parent="NavigationRegion3D/Environment/Boundary/East"]
 mesh = SubResource("Mesh_Boundary_East")
