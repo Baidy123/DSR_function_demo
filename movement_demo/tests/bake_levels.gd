@@ -17,9 +17,17 @@ func _bake() -> void:
 		mesh.agent_height = 1.75
 		mesh.agent_max_climb = 0.25
 		var source := NavigationMeshSourceGeometryData3D.new()
+		for obstacle in region.find_children("*", "NavigationObstacle3D", true, false):
+			if obstacle.has_method("sync_geometry"): obstacle.sync_geometry()
 		NavigationServer3D.parse_source_geometry_data(mesh, source, region)
 		for body in region.get_node("Environment").find_children("*", "StaticBody3D", true, false):
 			if body.get_parent().name == "Ground": continue
+			var native := false
+			for obstacle in body.find_children("*", "NavigationObstacle3D", true, false):
+				if obstacle.affect_navigation_mesh:
+					native = true
+					break
+			if native: continue
 			var collision: CollisionShape3D = body.get_node("CollisionShape3D")
 			var half: Vector3 = collision.shape.size * 0.5
 			var footprint := PackedVector3Array()

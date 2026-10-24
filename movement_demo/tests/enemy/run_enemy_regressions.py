@@ -34,6 +34,7 @@ TESTS = [
     "enemy_low_cover_behavior_test",
     "enemy_vault_utility_test",
     "enemy_vault_navigation_test",
+    "vault_navigation_world_test",
     "enemy_posture_lifecycle_test",
     "enemy_modular_contract_test",
     "enemy_configuration_cleanup_test",
