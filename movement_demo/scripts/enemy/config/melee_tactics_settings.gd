@@ -48,3 +48,28 @@ func _init() -> void:
 	set(value):
 		rush_cooldown_seconds = value
 		mark_override(&"rush_cooldown_seconds")
+
+@export_group("近战堵截")
+## 只从合法目击预测短段路线；候选固定至多两个，不随时间窗增加采样数。
+@export_range(0.5, 2.5, 0.1) var intercept_horizon_seconds := 1.8:
+	set(value):
+		intercept_horizon_seconds = value
+		mark_override(&"intercept_horizon_seconds")
+@export_range(1.0, 8.0, 0.25) var intercept_max_distance := 6.0:
+	set(value):
+		intercept_max_distance = value
+		mark_override(&"intercept_max_distance")
+## 已开始的预测允许短暂失视；更新的合法观察仍须符合原路线与方向。
+@export_range(0.1, 1.0, 0.05) var intercept_memory_seconds := 0.6:
+	set(value):
+		intercept_memory_seconds = value
+		mark_override(&"intercept_memory_seconds")
+## 普通抢位奔跑，不调用或解锁短程突进。
+@export_range(1.0, 3.0, 0.1) var intercept_speed_multiplier := 2.0:
+	set(value):
+		intercept_speed_multiplier = value
+		mark_override(&"intercept_speed_multiplier")
+@export_range(0.0, 1.0, 0.05) var intercept_min_gain_seconds := 0.25:
+	set(value):
+		intercept_min_gain_seconds = value
+		mark_override(&"intercept_min_gain_seconds")

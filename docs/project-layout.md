@@ -146,6 +146,8 @@ Spatial 的路线样本层仅在同步候选比较中复用同路径已实际观
 
 2026-10-24 个人近战占点冲突修复：`enemy_melee_approach.gd` 增加有限侧向接近路线与位置有效性查询；`enemy_melee_action.gd` 负责候选占用过滤、保持有效侧向点及执行目的地，`enemy_melee_rush_action.gd` 复用准备并保留原时限/冷却。`enemy_search_coverage.gd` 仅调整代价排序和实时占用检查的先后顺序。没有新增节点、资源格式、协调器决策入口或动作专用指挥接口。
 
+2026-10-24 近战堵截继续按原训练目录扩展：`resources/enemy/actions/melee_intercept.tres` 登记到 `units/melee.tres`，`actions/enemy_melee_intercept_action.gd` 提供个人候选/执行和共同命令提案，`services/enemy_melee_interception.gd` 负责只读有限观察预测与路径准备。参数扩展原 `config/melee_tactics_settings.gd`，无新节点、协调器专用分支或训练自动勾选。专项 `tests/enemy/enemy_melee_intercept_test.gd` 注册原敌人运行器；设计与代码入口见[实施说明](superpowers/specs/2026-10-24-trained-melee-interception-design.md)。
+
 `enemy/services/enemy_tactical_map.gd` 由 `shooting_range.gd` 持有并通过环境接口提供给 Context。同区域共用一份静态模板；Spatial 在原预算内推进地图与增量搜索准备，coverage 保存个人覆盖数据。地图模板不替代身体与路线验证；玩家线索与实际观察账本归区域管理，岗位、建议和计划期限归小队协调器管理。
 
 统一提案阶段2继续在原动作内适配专用过程：`enemy_attack_position_action.gd` 按预算批次提供真实攻击区域；`enemy_melee_cover_action.gd` 提供接近/出口/有限接敌步骤；`enemy_suppression_action.gd` 提供支援、近距及本人失视的有限射击。AI 保留同一 `plan_key/stage` 的执行状态，Context 与 Fire 核对冻结本人事件权限。原 Cover 计时、身体、射击与近战执行器保持各自职责。无新增节点或动作专用协调器接口。

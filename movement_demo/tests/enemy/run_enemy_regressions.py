@@ -51,6 +51,7 @@ TESTS = [
     "enemy_melee_utility_test",
     "enemy_melee_approach_test",
     "enemy_melee_intel_runtime_test",
+    "enemy_melee_intercept_test",
     "enemy_melee_timing_test",
     "enemy_melee_weapon_test",
     "enemy_reload_observation_test",
