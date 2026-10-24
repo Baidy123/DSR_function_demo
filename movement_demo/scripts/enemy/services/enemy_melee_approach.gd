@@ -8,6 +8,30 @@ static func stopping_distance(context) -> float:
 		distance = minf(distance, maxf(0.1, weapon.melee_range - 0.05))
 	return distance
 
+## Local alternatives for a contested personal contact point. These are not
+## team assignments and never bypass body, navigation or reservation checks.
+static func contact_alternatives(context) -> Array[PackedVector3Array]:
+	var result: Array[PackedVector3Array] = []
+	var target: Vector3 = context.last_known_position
+	var origin: Vector3 = context.actor.global_position
+	var away := origin - target
+	away.y = 0.0
+	if away.is_zero_approx(): return result
+	for angle in [-1.0, 1.0, -2.0, 2.0, PI]:
+		var point: Vector3 = target + away.normalized().rotated(Vector3.UP, angle) * stopping_distance(context)
+		point.y = origin.y
+		if not contact_position_valid(context, point) or context.is_utility_destination_blocked(point): continue
+		var path: PackedVector3Array = context.cover_selection._path_to(origin, point).duplicate()
+		if path.is_empty(): continue
+		for index in path.size(): path[index].y = origin.y
+		if contact_position_valid(context, path[-1]): result.append(path)
+	return result
+
+static func contact_position_valid(context, point: Vector3) -> bool:
+	var weapon: WeaponData = context.actor.weapon
+	var target: Vector3 = context.last_known_position
+	return weapon != null and weapon.melee_enabled and absf(point.y - target.y) <= weapon.melee_height_tolerance and context._horizontal_distance_between(point, target) <= weapon.melee_range - 0.05 and context.is_position_free(point) and context.cover_selection.has_clear_line(point + Vector3.UP * 0.8, target + Vector3.UP * 0.8)
+
 static func contact_path(context, origin: Vector3 = Vector3.INF) -> PackedVector3Array:
 	if not origin.is_finite(): origin = context.actor.global_position
 	var target: Vector3 = context.last_known_position

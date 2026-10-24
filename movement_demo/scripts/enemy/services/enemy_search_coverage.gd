@@ -296,14 +296,7 @@ func take_next(prediction: Vector3, prefer_focus: bool = false) -> Dictionary:
 		if not focus.is_empty(): return focus
 	# 候选已有空间/路径过滤；这里只做廉价排序，选中后重新核实路径。
 	while not pending.is_empty():
-		var chosen_index := -1
-		var best_cost := INF
-		for candidate_index in range(pending.size()):
-			if not _available(pending[candidate_index], checked): continue
-			var cost := point_cost(pending[candidate_index], prediction, evidence)
-			if cost < best_cost:
-				chosen_index = candidate_index
-				best_cost = cost
+		var chosen_index := _next_available_index(prediction, checked, evidence)
 		if chosen_index < 0: return {}
 		var destination: Vector3 = pending[chosen_index]
 		pending.remove_at(chosen_index)
@@ -318,6 +311,19 @@ func take_next(prediction: Vector3, prefer_focus: bool = false) -> Dictionary:
 			continue
 		return {"position": destination, "path": path}
 	return {}
+
+
+func _next_available_index(prediction: Vector3, checked: Dictionary, evidence: Dictionary) -> int:
+	# Occupancy checks inspect live bodies and reservations. Rank the cheap
+	# costs first, then test in that exact order until the cheapest free point.
+	# Equal costs retain the original pending order; no candidate is discarded.
+	var ranked: Array[Dictionary] = []
+	for index in pending.size():
+		ranked.append({"index": index, "cost": point_cost(pending[index], prediction, evidence)})
+	ranked.sort_custom(func(a, b): return a.index < b.index if a.cost == b.cost else a.cost < b.cost)
+	for entry in ranked:
+		if _available(pending[entry.index], checked): return entry.index
+	return -1
 
 
 ## Revalidation after a door/ally change belongs to the same Spatial queue as
@@ -352,14 +358,7 @@ func _advance_selection_one() -> bool:
 			_selected_point = request.best
 			_selection_request = {}
 		return true
-	var chosen := -1
-	var best_cost := INF
-	for index in pending.size():
-		if not _available(pending[index], checked): continue
-		var cost := point_cost(pending[index], request.prediction, evidence)
-		if cost < best_cost:
-			chosen = index
-			best_cost = cost
+	var chosen := _next_available_index(request.prediction, checked, evidence)
 	if chosen < 0:
 		_selection_request = {}
 		return true

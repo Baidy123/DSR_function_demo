@@ -95,19 +95,19 @@ func collect_candidates(visible: bool) -> Array[Dictionary]:
 	var distance: float = context._horizontal_distance(context.last_known_position)
 	if distance <= Approach.stopping_distance(context) + 0.1: return []
 	if not _running and context.observed_reload_window() <= 0.0 and distance > float(_setting(&"rush_distance", 3.5)): return []
-	var path: PackedVector3Array = Approach.contact_path(context)
-	if path.is_empty(): return []
 	var multiplier := maxf(1.0, float(_setting(&"rush_speed_multiplier", 2.5)))
 	var duration := maxf(0.0, float(_setting(&"rush_seconds", 1.0)))
-	var length: float = selection._path_length_from_path(path)
-	if not _running and length > actor.move_speed * multiplier * duration: return []
-	var candidate := option({}, 0.0, 0.0, 0.0, &"burst")
-	candidate.outcome = Approach.contact_outcome(context, path, multiplier, _burst_remaining if _running else duration)
-	candidate.route_target = path[path.size() - 1]
-	return [candidate]
+	var candidates: Array[Dictionary] = []
+	for candidate in _contact_candidates():
+		var path: PackedVector3Array = candidate.contact_path
+		if not _running and selection._path_length_from_path(path) > actor.move_speed * multiplier * duration: continue
+		candidate.plan = &"burst"
+		candidate.outcome = Approach.contact_outcome(context, path, multiplier, _burst_remaining if _running else duration)
+		candidates.append(candidate)
+	return candidates
 
-func validate(_candidate: Dictionary, visible: bool) -> bool:
-	return not collect_candidates(visible).is_empty()
+func validate(candidate: Dictionary, visible: bool) -> bool:
+	return (candidate.get("mode") != &"contact_detour" or Approach.contact_position_valid(context, candidate.destination.position)) and not collect_candidates(visible).is_empty()
 
 func valid(visible: bool) -> bool:
 	return _running and _burst_remaining > 0.0 and is_enabled() and (visible or context.observed_reload_window() > 0.0)
@@ -125,8 +125,9 @@ func tick(delta: float, visible: bool) -> Dictionary:
 	if not valid(visible) or context._horizontal_distance(context.last_known_position) <= Approach.stopping_distance(context) + 0.1:
 		_running = false
 		return motion(Vector3.ZERO)
-	if agent.target_position.distance_to(context.last_known_position) > 0.25:
-		agent.target_position = context.last_known_position
+	var target: Vector3 = plan.destination.position if plan.get("mode") == &"contact_detour" else context.last_known_position
+	if agent.target_position.distance_to(target) > (0.05 if plan.get("mode") == &"contact_detour" else 0.25):
+		agent.target_position = target
 	var next: Vector3 = agent.get_next_path_position()
 	if agent.is_navigation_finished():
 		_running = false
