@@ -94,7 +94,7 @@ func _run() -> void:
 func _preference_checks() -> void:
 	# Compare actual connected walk/vault alternatives without changing score
 	# weights, physical timing, navigation or the candidate's original outcome.
-	check(ai.context.setting(&"selection", &"vault_preference", 0.0) == 6.0, "existing training inherits the stronger six-point vault preference")
+	check(ai.context.setting(&"selection", &"vault_preference", 0.0) == 6.0, "existing training retains the six-point base vault preference shared with the coordinator")
 	ai.training.profile.selected_tactics.clear()
 	ai.training.profile.set_setting(&"selection", &"vault_preference", 0.0)
 	ai.refresh_configuration(true)
@@ -116,7 +116,7 @@ func _preference_checks() -> void:
 	check(not vaults.is_empty(), "enabling preference preserves the same geometrically valid vault")
 	if vaults.is_empty(): return
 	var preferred: Dictionary = vaults[0]
-	check(is_equal_approx(baseline.cost - preferred.cost, 2.0) and preferred.outcome.unavailable_seconds == baseline.outcome.unavailable_seconds and preferred.outcome.exposed_seconds == baseline.outcome.exposed_seconds and preferred.outcome.information_loss == baseline.outcome.information_loss, "two preference points change only credit, preserving real time, exposure and information costs")
+	check(is_equal_approx(baseline.cost - preferred.cost, 3.0) and preferred.outcome.unavailable_seconds == baseline.outcome.unavailable_seconds and preferred.outcome.exposed_seconds == baseline.outcome.exposed_seconds and preferred.outcome.information_loss == baseline.outcome.information_loss, "personal Utility scales two base preference points to three credits, preserving real time, exposure and information costs")
 	check(without_preference.get("route", {}).is_empty() and not ai.action_selector.choose_option(options).get("route", {}).is_empty(), "preference changes the ordinary winner from walking to vaulting without forcing the action")
 	var saved := "res://logs/vault_preference_training.tres"
 	var error := ResourceSaver.save(ai.training.profile, saved)
@@ -126,6 +126,9 @@ func _preference_checks() -> void:
 	options = ai.action_selector.assess_options(ai, true)
 	check(ai.action_selector.choose_option(options).get("route", {}).is_empty(), "zero preference restores the original winner without accumulating credit")
 	ai.training.profile.set_setting(&"selection", &"vault_preference", 6.0)
+	options = ai.action_selector.assess_options(ai, true)
+	vaults = options.filter(func(pick): return pick.id == &"melee_engage" and not pick.get("route", {}).is_empty())
+	check(not vaults.is_empty() and is_equal_approx(baseline.cost - float(vaults[0].cost), 9.0), "default personal Utility receives nine credits from the unchanged six-point base preference")
 	ai._cancel_utility_execution()
 	ai.context.spatial.reset_evaluation()
 	var crossed := false
@@ -151,7 +154,7 @@ func _preference_checks() -> void:
 	player.global_position = vault.exit
 	await physics_frame
 	var blocked: Dictionary = LowGeometry.query_vault_at(enemy, wall, enemy.global_position, vault.exit - vault.entry, vault.duration, false)
-	check(blocked.get("reason") == "landing_space" and not enemy.begin_vault(vault) and not enemy.is_vaulting(), "six preference points never permit vaulting into the player's occupied landing space")
+	check(blocked.get("reason") == "landing_space" and not enemy.begin_vault(vault) and not enemy.is_vaulting(), "nine personal preference credits never permit vaulting into the player's occupied landing space")
 
 func _priority_checks() -> void:
 	ai.context.spatial.reset_evaluation()

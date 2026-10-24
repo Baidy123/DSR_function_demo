@@ -4,7 +4,8 @@ extends "res://scripts/enemy/config/module_settings.gd"
 func _init() -> void:
 	section = &"selection"
 
-## 已通过完整路径与身体预检的翻越方案在共同总代价中扣除的分值；0关闭偏好。
+## 已通过完整路径与身体预检的翻越方案的基础偏好；0关闭。
+## 个人 Utility 按1.5倍扣除总代价（默认9分），团队协调器按原值（默认6分）。
 ## 不改变实际耗时、暴露或安全检查，其他更有利的方案仍可胜出。
 @export_range(0.0, 20.0, 0.25) var vault_preference: float = 6.0:
 	set(value):

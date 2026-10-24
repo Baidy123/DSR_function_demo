@@ -1,5 +1,8 @@
 extends RefCounted
 
+## 仅个人 Utility 的合法翻越候选使用此倍率；协调器仍直接使用训练中的基础偏好。
+const UTILITY_VAULT_PREFERENCE_MULTIPLIER := 1.5
+
 ## 所有动作的统一协议。实例只属于一个敌人；定义与参数资源不存执行进度。
 var context
 var definition: EnemyActionDefinition
@@ -165,7 +168,7 @@ func expand_route_candidates(candidates: Array[Dictionary]) -> Array[Dictionary]
 			outcome.information_loss = minf(horizon, maxf(0.0, float(outcome.information_loss) + time_change) + minf(horizon, assessment.vault_seconds))
 			# A soft preference uses the existing shared score; geometry and actual
 			# time/exposure remain unchanged. Base candidates never receive it.
-			outcome.preference_credit = float(outcome.get("preference_credit", 0.0)) + maxf(0.0, float(context.setting(&"selection", &"vault_preference", 6.0)))
+			outcome.preference_credit = float(outcome.get("preference_credit", 0.0)) + maxf(0.0, float(context.setting(&"selection", &"vault_preference", 6.0))) * UTILITY_VAULT_PREFERENCE_MULTIPLIER
 			result.append(alternative)
 	if _running and not route_motion.route.is_empty() and valid(context.sees_player):
 		var continuing := plan.duplicate(true)
