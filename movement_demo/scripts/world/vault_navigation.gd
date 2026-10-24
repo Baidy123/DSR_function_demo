@@ -184,8 +184,9 @@ func _queue_slots(cover: Node3D) -> void:
 	var across: int = 2 if along == 0 else 0
 	if size[across] * basis[across].length() > 1.2: return
 	var radius := maxf(0.35, _mesh.agent_radius)
-	var usable := size[along] * basis[along].length() - 2.0 * (radius + 0.03)
-	if usable < 0.0: return
+	# Include both physical ends, even for walls shorter than the agent diameter.
+	# Each seed still has to pass the full standing/lifted capsule checks.
+	var usable := size[along] * basis[along].length()
 	var requested := maxi(1, ceili(usable / SLOT_SPACING) + 1)
 	if requested > MAX_WALL_LINKS:
 		truncated_wall_count += 1

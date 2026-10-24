@@ -4,6 +4,7 @@ extends RefCounted
 const Geometry = preload("res://scripts/systems/character_geometry.gd")
 const VAULT_HEIGHT: float = 1.0
 const STANDING_HEIGHT: float = 1.75
+const VAULT_EDGE_EPSILON: float = 0.001
 
 static func _radius(actor: CollisionObject3D) -> float:
 	var collision := actor.get_node_or_null("CollisionShape3D") as CollisionShape3D
@@ -35,7 +36,16 @@ static func query_vault(actor: CollisionObject3D, direction: Vector3, max_distan
 	direction.y = 0.0
 	if direction.length_squared() < 0.001: return _failure("direction")
 	direction = direction.normalized()
-	var hit := _ray(actor, actor.global_position + Vector3.UP * 0.5, actor.global_position + Vector3.UP * 0.5 + direction * max_distance)
+	var origin := actor.global_position + Vector3.UP * 0.5
+	var hit := _ray(actor, origin, origin + direction * max_distance)
+	if hit.is_empty():
+		# An exactly aligned endpoint ray can miss from rotation roundoff. Probe
+		# one millimeter to either side; query_vault_at still validates the actual
+		# center, entire body corridor and landing, never the shifted ray origin.
+		var edge_offset := Vector3(direction.z, 0.0, -direction.x) * VAULT_EDGE_EPSILON
+		for offset: Vector3 in [edge_offset, -edge_offset]:
+			hit = _ray(actor, origin + offset, origin + offset + direction * max_distance)
+			if not hit.is_empty(): break
 	if hit.is_empty() or not _low(hit.collider): return _failure("no_low_cover")
 	return query_vault_at(actor, hit.collider, actor.global_position, direction, duration, false, ignore_pushable_characters)
 
@@ -62,7 +72,10 @@ static func query_vault_at(actor: CollisionObject3D, cover: Node3D, from: Vector
 	if side == 0.0 or absf(point[axis]) < half[axis]: return _failure("inside_wall")
 	var normal: Vector3 = basis[axis].normalized() * side
 	if direction.dot(-normal) < cos(deg_to_rad(40.0)): return _failure("approach_angle")
-	if absf(point[along]) > half[along] - (radius + 0.03) / scale_along: return _failure("edge")
+	# The capsule may extend past an open wall end. Actual occupancy and swept
+	# clearance below decide whether it fits; only its crossing center must be on
+	# the wall face (with a millimeter for transformed endpoint roundoff).
+	if (absf(point[along]) - half[along]) * scale_along > VAULT_EDGE_EPSILON: return _failure("edge")
 	var gap: float = (absf(point[axis]) - half[axis]) * scale_axis
 	if gap < radius - 0.03 or gap > 1.5: return _failure("entry_distance")
 	var thickness: float = half[axis] * 2.0 * scale_axis

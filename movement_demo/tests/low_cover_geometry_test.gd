@@ -44,7 +44,8 @@ func _run() -> void:
 		check(candidate.get("crouch", false) and candidate.get("stand") == candidate.hide, "低墙提供同落点站起与蹲藏")
 		break
 	check(actor.transform == before, "候选和翻越查询不移动身体")
-	check(not LowCover.query_vault_at(actor, cover, Vector3(1.45, 0, 0.85), Vector3.FORWARD).valid, "靠墙角不足整身空间拒绝翻越")
+	check(LowCover.query_vault_at(actor, cover, Vector3(1.45, 0, 0.85), Vector3.FORWARD).valid, "墙端身体部分超出墙面仍可安全翻越")
+	await _check_full_width(actor, cover)
 	var ceiling := _box(Vector3(4, 0.2, 4), Vector3(0, 1.6, 0))
 	await physics_frame
 	await physics_frame
@@ -103,6 +104,43 @@ func _run() -> void:
 	world.free()
 	print("LOW COVER GEOMETRY: %d/%d passed" % [checks - failed, checks])
 	quit(1 if failed else 0)
+
+func _check_full_width(actor: TestActor, cover: Node3D) -> void:
+	var saved := cover.transform
+	var original_position := actor.position
+	var collision := cover.get_node("CollisionShape3D") as CollisionShape3D
+	var half: Vector3 = collision.shape.size * 0.5
+	for rotated in [false, true]:
+		cover.transform = saved
+		if rotated:
+			cover.rotation.y = PI * 0.37
+			cover.scale = Vector3(0.75, 1.0, 0.75)
+		await physics_frame
+		await physics_frame
+		for side in [-1.0, 1.0]:
+			for fraction in [-1.0, -0.97, -0.5, 0.0, 0.5, 0.97, 1.0]:
+				actor.position = collision.to_global(Vector3(half.x * fraction, -half.y, side * (half.z + 0.55 / collision.global_basis.z.length())))
+				var direction: Vector3 = -collision.global_basis.z.normalized() * side
+				var plan := LowCover.query_vault_at(actor, cover, actor.position, direction)
+				check(plan.valid, "整段墙面双向可翻越 rotated=%s side=%s fraction=%s: %s" % [rotated, side, fraction, plan.reason])
+				check(LowCover.query_vault(actor, direction).valid, "方向探测可找到偏侧和端点墙面")
+		var outside := collision.to_global(Vector3(half.x + 0.02 / collision.global_basis.x.length(), -half.y, half.z + 0.55 / collision.global_basis.z.length()))
+		check(not LowCover.query_vault_at(actor, cover, outside, -collision.global_basis.z.normalized()).valid, "身体中心越出墙面不凭空翻越")
+	cover.transform = saved
+	actor.position = Vector3(1.45, 0, 0.85)
+	var blocker := _box(Vector3(0.4, 1.75, 0.6), Vector3(1.45, 0.875, -0.8))
+	await physics_frame
+	await physics_frame
+	check(not LowCover.query_vault(actor, Vector3.FORWARD).valid, "墙端落点有静态实体仍拒绝")
+	blocker.free()
+	blocker = _box(Vector3(0.4, 0.2, 0.8), Vector3(1.6, 1.6, 0))
+	await physics_frame
+	await physics_frame
+	check(not LowCover.query_vault(actor, Vector3.FORWARD).valid, "墙端抬升通道有障碍仍拒绝")
+	blocker.free()
+	actor.position = original_position
+	await physics_frame
+	await physics_frame
 
 func _actor(position: Vector3) -> TestActor:
 	var actor := TestActor.new()

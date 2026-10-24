@@ -328,8 +328,43 @@ func _run() -> void:
 	_check("new vault click creates no pending shot", not combat.shot_requested and not combat.fire_held)
 	await _step(65)
 	Input.action_release("aim")
+	await _check_edge_crossings()
 	print("Player half cover: %d/%d passed" % [checks - failed, checks])
 	quit(0 if failed == 0 else 1)
+
+func _check_edge_crossings() -> void:
+	var saved: Transform3D = wall.transform
+	var collision := wall.get_node("CollisionShape3D") as CollisionShape3D
+	var half: Vector3 = collision.shape.size * 0.5
+	for rotated in [false, true]:
+		wall.transform = saved
+		if rotated:
+			wall.rotation.y = PI * 0.37
+			wall.scale = Vector3(0.75, 1.0, 0.75)
+		for fraction in [-1.0, -0.9, 0.9, 1.0]:
+			var side := -1.0 if fraction < 0.0 else 1.0
+			var direction: Vector3 = -collision.global_basis.z.normalized() * side
+			player.global_position = collision.to_global(Vector3(half.x * fraction, -half.y, side * (half.z + 0.6 / collision.global_basis.z.length())))
+			player.global_rotation.y = atan2(-direction.x, -direction.z)
+			player.velocity = Vector3.ZERO
+			await _step(5)
+			# Exercise the same input chain as the Space key, including facing fallback.
+			var vault_input := InputEventAction.new()
+			vault_input.action = "vault"
+			vault_input.pressed = true
+			Input.parse_input_event(vault_input)
+			Input.flush_buffered_events()
+			await _step(1)
+			_check("edge Space input starts actual vault rotated=%s fraction=%s" % [rotated, fraction], player.is_vaulting())
+			vault_input = InputEventAction.new()
+			vault_input.action = "vault"
+			vault_input.pressed = false
+			Input.parse_input_event(vault_input)
+			Input.flush_buffered_events()
+			await _step(90)
+			var local_feet := collision.to_local(player.global_position)
+			_check("edge vault lands across the wall rotated=%s fraction=%s" % [rotated, fraction], not player.is_vaulting() and player.is_on_floor() and local_feet.z * side < -half.z and absf(player.global_position.y) < 0.02)
+	wall.transform = saved
 
 func _send_c_key(pressed: bool, echo: bool = false) -> void:
 	var key := InputEventKey.new()

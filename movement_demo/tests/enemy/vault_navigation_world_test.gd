@@ -167,6 +167,16 @@ func _run() -> void:
 	await _settle(region)
 	var links := service.connections()
 	_check(service.ready and links.size() >= 2, "bounded region service creates several static channels along one eligible wall")
+	var left_edge := false
+	var right_edge := false
+	for connection in links:
+		var local_entry := collision.to_local(connection.feet_entry)
+		left_edge = left_edge or absf(local_entry.x + collision.shape.size.x * 0.5) < 0.001
+		right_edge = right_edge or absf(local_entry.x - collision.shape.size.x * 0.5) < 0.001
+	_check(left_edge and right_edge, "native vault channels reach both physical wall ends without a body-radius inset")
+	for connection in links:
+		var endpoint_path := _path(region, connection.entry, connection.exit, 3)
+		_check(_arrived(endpoint_path, connection.exit), "each full-width channel participates in the native navigation graph")
 	var walk := _path(region, Vector3(0, 0.1, 3), Vector3(0, 0.1, -3), 1)
 	var vault := _path(region, Vector3(0, 0.1, 3), Vector3(0, 0.1, -3), 3)
 	_check(not _arrived(walk, Vector3(0, 0.1, -3)) and _arrived(vault, Vector3(0, 0.1, -3)), "native links connect known floor islands only with walk|vault mask")
@@ -207,12 +217,14 @@ func _run() -> void:
 	await _settle(region)
 	for unused in 20: service.advance(4)
 	_check(service.revision == before, "ungrouped dynamic characters do not invalidate the shared static geometry")
-	collision.shape.size.x += 0.01
+	# Perturb thickness so the rebuild retains the same slot count, including
+	# when the full wall length is an exact multiple of the slot spacing.
+	collision.shape.size.z += 0.01
 	for unused in 100: service.advance(4)
 	_check(service.connections().size() == links.size(), "static seed rebuild ignores actual dynamic capsule occupancy")
 	dynamic.position = Vector3(-0.32, 1.15, 0)
 	await _settle(region)
-	collision.shape.size.x += 0.01
+	collision.shape.size.z += 0.01
 	for unused in 100: service.advance(4)
 	_check(service.connections().size() == links.size(), "ungrouped characters across the lifted sweep do not disable static links")
 	dynamic.free()
@@ -242,6 +254,24 @@ func _run() -> void:
 	cover.scale.y = 2.0
 	for unused in 100: service.advance(4)
 	_check(service.ready and service.connections().is_empty(), "high wall cannot retain low-wall links")
+	cover.scale = Vector3.ONE
+	collision.shape.size = Vector3(0.75, 1.1, 0.6)
+	mesh.agent_radius = 0.5
+	await _settle(region)
+	for unused in 100: service.advance(4)
+	var short_links := service.connections()
+	_check(service.ready and short_links.size() == 2, "wall shorter than agent diameter still has two safe endpoint channels")
+	if short_links.size() == 2:
+		var left: Dictionary = short_links[0] if short_links[0].feet_entry.x < short_links[1].feet_entry.x else short_links[1]
+		var end_blocker := _box(region, Vector3(0.3, 1.75, 0.3), left.feet_entry + Vector3.UP * 0.875)
+		await _settle(region)
+		for unused in 100: service.advance(4)
+		var remaining := service.connections()
+		_check(remaining.size() == 1 and remaining[0].feet_entry.x > collision.global_position.x, "static blocker rejects one wall end while retaining the clear end")
+		end_blocker.free()
+		await _settle(region)
+		for unused in 100: service.advance(4)
+		_check(service.connections().size() == 2, "removing wall-end blocker restores the safe endpoint channel")
 	service.release()
 	_check(not region.has_node("_VaultNavigation") and service.connections().is_empty() and not service.ready, "release removes runtime native nodes and all identities")
 	service.bind_region(region)
