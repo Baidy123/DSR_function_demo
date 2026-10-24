@@ -320,7 +320,16 @@ func end_frame(delta: float, moving: bool) -> void:
 			# 两种模式都逐米累积；移动惩罚不能覆盖其他来源造成的更低稳定度。
 			if accuracy > settings.moving_cap:
 				accuracy = maxf(settings.moving_cap, accuracy - distance * settings.player_move_loss)
-			accuracy_recovery_timer = settings.delay
+				accuracy_recovery_timer = settings.delay
+			else:
+				# 受击等造成的额外损失允许边走边恢复；走路不能每帧续期这段等待。
+				var movement_limit: float = minf(settings.moving_cap, 1.0 if is_aiming else settings.initial)
+				if target_moving:
+					movement_limit = minf(movement_limit, _get_target_move_accuracy_floor())
+				if accuracy < movement_limit:
+					_recover_accuracy(delta, recovery, movement_limit)
+				else:
+					accuracy_recovery_timer = settings.delay
 		elif target_moving:
 			# 目标移动时，若当前稳定度已经低于“移动目标最低稳定度”，
 			# 仍允许按正常稳定速度恢复，但最多只恢复到这个下限。
@@ -328,16 +337,10 @@ func end_frame(delta: float, moving: bool) -> void:
 			# 避免移动惩罚被稳定恢复抵消。
 			var movement_floor: float = _get_target_move_accuracy_floor()
 			if accuracy < movement_floor:
-				var recovery_delta: float = maxf(0.0, delta - accuracy_recovery_timer)
-				accuracy_recovery_timer = maxf(0.0, accuracy_recovery_timer - delta)
-				accuracy = minf(movement_floor, accuracy + recovery * recovery_delta)
+				_recover_accuracy(delta, recovery, movement_floor)
 		else:
-			# 只计入延迟结束后剩余的时间，避免低帧率改变恢复速度。
-			var recovery_delta: float = maxf(0.0, delta - accuracy_recovery_timer)
-			accuracy_recovery_timer = maxf(0.0, accuracy_recovery_timer - delta)
-			# 没有玩家/目标移动惩罚时，延迟结束后按稳定速度恢复到 100%。
-			# 未瞄准时 begin_frame 会先把稳定度限制到初始值；此处仍按本帧时间恢复。
-			accuracy = minf(1.0, accuracy + recovery * recovery_delta)
+			# 瞄准可恢复到100%；未瞄准只恢复到初始值，避免帧尾越过初始散布。
+			_recover_accuracy(delta, recovery, 1.0 if is_aiming else settings.initial)
 	# 只有未被 UI 消费的按下事件才能启动连发；释放事件即使被 UI 消费也能停火。
 	if not was_reloading and _hit_accuracy_frame != Engine.get_physics_frames() and accuracy_recovery_timer <= 0.0:
 		crouch_bonus_blocked_until_recovery = false
@@ -348,6 +351,13 @@ func end_frame(delta: float, moving: bool) -> void:
 		shot_requested = false
 		shoot()
 	_update_status()
+
+
+func _recover_accuracy(delta: float, recovery: float, limit: float) -> void:
+	# 只计入延迟结束后剩余的时间，避免低帧率改变恢复速度。
+	var recovery_delta: float = maxf(0.0, delta - accuracy_recovery_timer)
+	accuracy_recovery_timer = maxf(0.0, accuracy_recovery_timer - delta)
+	accuracy = minf(limit, accuracy + recovery * recovery_delta)
 
 
 func _start_target_movement_tracking(target: Node3D) -> void:

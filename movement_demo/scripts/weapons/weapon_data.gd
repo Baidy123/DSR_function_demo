@@ -105,7 +105,8 @@ enum AmmoType { RIFLE, PISTOL, SMG, SHOTGUN }
 @export_range(0.0, 1.0, 0.01) var initial_accuracy: float = 0.5
 ## 从初始概率恢复到100%需要的秒数，不含恢复延迟；初始为100%时按从0到100%计算。
 @export_range(0.1, 10.0, 0.1) var stabilize_seconds: float = 2.0
-## 玩家移动惩罚最多将中心概率降到此值：0.35表示35%；不会抬高已经更低的概率。
+## 玩家移动惩罚最多将中心概率降到此值：0.35表示35%；不会瞬间抬高已经更低的概率。
+## 若受击等造成更低概率，经过恢复延迟后可边走边逐渐恢复到此值；未瞄准仍不超过初始概率。
 @export_range(0.0, 1.0, 0.01) var moving_accuracy_cap: float = 0.35
 ## 玩家实际水平移动每米降低多少概率；0.15表示15个百分点，0表示不增加移动惩罚。
 @export_range(0.0, 1.0, 0.005) var player_move_accuracy_loss_per_meter: float = 0.15
@@ -113,7 +114,7 @@ enum AmmoType { RIFLE, PISTOL, SMG, SHOTGUN }
 @export_range(0.0, 1.0, 0.01) var shot_accuracy_penalty: float = 0.25
 ## 射击惩罚的中心概率下限：0.1表示10%；不会抬高其他因素造成的更低概率。
 @export_range(0.0, 1.0, 0.01) var minimum_accuracy: float = 0.1
-## 玩家停步、停火后等多久开始恢复中心概率（秒）。
+## 新的精度损失后等多久开始恢复中心概率（秒）；低于移动下限时，继续走路不会反复刷新等待。
 @export_range(0.0, 3.0, 0.05) var accuracy_recovery_delay: float = 0.6
 ## 目标慢速移动时，每米扣除的中心概率：0.03表示每米3个百分点。
 @export_range(0.0, 0.5, 0.005) var target_move_accuracy_loss_per_meter_slow: float = 0.03
@@ -131,9 +132,11 @@ enum AmmoType { RIFLE, PISTOL, SMG, SHOTGUN }
 @export_range(0.0, 45.0, 0.1, "suffix:°") var max_spread_angle_degrees: float = 12.0
 ## 装备时的散布半角；松开瞄准后，散布也不会比本值更小。
 @export_range(0.0, 45.0, 0.1, "suffix:°") var initial_spread_angle_degrees: float = 6.0
-## 停稳并经过恢复延迟后，每秒收拢多少度；0表示不自动收拢。
+## 经过恢复延迟后，每秒收拢多少度；0表示不自动收拢。
+## 玩家走路时额外散布最多收拢到移动最大散布，停步且未瞄准时收拢到初始散布。
 @export_range(0.0, 90.0, 0.1, "suffix:°/s") var spread_recovery_degrees_per_second: float = 3.0
-## 持枪者移动惩罚最多把半角扩大到多少度；若已经更散，不会反过来收拢。
+## 持枪者移动惩罚最多把半角扩大到多少度；不会瞬间收拢其他原因造成的更大散布。
+## 玩家受击等造成额外散布时，经过恢复延迟后可边走边逐渐收拢到此值，未瞄准不比初始散布更小。
 @export_range(0.0, 45.0, 0.1, "suffix:°") var moving_spread_angle_degrees: float = 7.8
 ## 持枪者实际水平移动每米扩大多少度；随距离逐渐累积，0表示不增加移动散布。
 @export_range(0.0, 45.0, 0.05, "suffix:°/m") var player_move_spread_degrees_per_meter: float = 3.0
@@ -141,7 +144,7 @@ enum AmmoType { RIFLE, PISTOL, SMG, SHOTGUN }
 @export_range(0.0, 45.0, 0.05, "suffix:°") var shot_spread_penalty_degrees: float = 3.0
 ## 仅连射惩罚最多把半角扩大到多少度；不会收拢其他因素已经扩得更大的散布。
 @export_range(0.0, 45.0, 0.1, "suffix:°") var shot_max_spread_angle_degrees: float = 10.8
-## 持枪者停步、停火后等多久开始收拢（秒）。
+## 新的精度损失后等多久开始收拢（秒）；比移动最大散布更散时，继续走路不会反复刷新等待。
 @export_range(0.0, 3.0, 0.05) var spread_recovery_delay: float = 0.6
 ## 目标慢速移动时，每米扩大多少度。
 @export_range(0.0, 45.0, 0.01, "suffix:°/m") var target_move_spread_degrees_per_meter_slow: float = 0.36
