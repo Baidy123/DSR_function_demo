@@ -51,7 +51,7 @@ var _melee_accuracy_frame: int = -1
 var _pending_melee_weapon: WeaponData
 var _locked_aim_point: Vector3 = Vector3.INF
 
-## 由 WeaponSlots 装备的运行时引用；武器资源只在槽位中配置。
+## 由 Equipment 装备的运行时引用；武器资源只在槽位中配置。
 var weapon: WeaponData
 
 var is_aiming: bool = false
@@ -182,7 +182,7 @@ func apply_melee_disruption() -> void:
 	crouch_bonus_blocked_until_recovery = true
 	accuracy_recovery_timer = maxf(0.0, weapon.get_aim_settings(is_using_spread_cone()).delay) if weapon != null else 0.0
 	_melee_accuracy_frame = Engine.get_physics_frames()
-	var slots := player.get_node_or_null("WeaponSlots")
+	var slots := player.get_node_or_null("Equipment")
 	if slots != null: slots.apply_melee_disruption()
 
 func _apply_aim_disruption(degrees: float) -> void:

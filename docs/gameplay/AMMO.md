@@ -12,8 +12,8 @@
 
 | 位置 | 参数 | 作用 |
 | --- | --- | --- |
-| Main → Player → WeaponSlots → 初始共享备弹 | Starting Rifle / Pistol / Smg / Shotgun Ammo | 四类备弹的出生初值，脚本默认各36发；修改后重新运行生效 |
-| WeaponSlots的主／副武器资源 → 弹匣与换弹 | Ammo Type | 步枪、手枪、冲锋枪、霰弹枪；同类主副枪共用一个备弹池 |
+| Main → Player → Equipment → 初始共享备弹 | Starting Rifle / Pistol / Smg / Shotgun Ammo | 四类备弹的出生初值，脚本默认各36发；修改后重新运行生效 |
+| Equipment的主／副武器资源 → 弹匣与换弹 | Ammo Type | 步枪、手枪、冲锋枪、霰弹枪；同类主副枪共用一个备弹池 |
 | 同上；敌人则展开Enemy的Weapon | Magazine Capacity | 弹匣容量，脚本默认12发；每把枪独立保存余量 |
 | 同上 | Reload Seconds | 正常换弹秒数，脚本默认2秒 |
 | Player → Combat | Sprint Reload Speed Multiplier | 奔跑中开始的慢速换弹进度倍率，默认0.5；整次耗时为快速换弹的两倍，途中停跑不加速 |
@@ -43,9 +43,9 @@
 
 2026-10-08补充：低墙后原地换弹、转移到低墙换弹都会主动请求蹲姿；蹲下过渡不暂停、重置或加速基础换弹。附近安全掩体获得可调软偏好，按实际路线长度和相对原地的真实遮蔽收益折减，不因远处有墙就强行跑过去。参数位于 Training → Cover 的 `Reload Cover Preference`（默认6，0关闭）和 `Reload Cover Preference Distance`（默认4米）；0偏好仍保留低墙蹲换弹与防护判断。完整规则见[敌人 AI](../enemy-ai.md)。
 
-`scripts/weapons/weapon_ammo.gd`是小型RefCounted弹药状态对象，负责消耗、计时和补充，供玩家与敌人共用；WeaponData只保存配置。玩家WeaponSlots持有四类共享备弹字典与各枪状态，Combat引用当前枪；Enemy自己持有无限备弹状态。
+`scripts/weapons/weapon_ammo.gd`是小型RefCounted弹药状态对象，负责消耗、计时和补充，供玩家与敌人共用；WeaponData只保存配置。玩家Equipment持有四类共享备弹字典与各枪状态，Combat引用当前枪；Enemy自己持有无限备弹状态。
 
-半程策略由玩家 Combat 决定；共用 Ammo 只提供通用 `suspend_reload(checkpoint)`、阶段保存和续换能力，不读取奔跑输入或训练配置，敌人未启用暂停策略。WeaponSlots 为各槽保留弹药状态与快慢方式，收起武器不推进计时；没有把运行进度写入共享 WeaponData 资源。
+半程策略由玩家 Combat 决定；共用 Ammo 只提供通用 `suspend_reload(checkpoint)`、阶段保存和续换能力，不读取奔跑输入或训练配置，敌人未启用暂停策略。Equipment 为各槽保留弹药状态与快慢方式，收起武器不推进计时；没有把运行进度写入共享 WeaponData 资源。
 
 AI的`_update_reload_request()`只在竞技场激活且非玩家死亡／对话时，发现空匣就调用Enemy的`request_reload()`。基础执行不自行决定何时换弹，`update_weapon()`以固定速度推进；不新增动作库资源或训练权限。兵种枪械资格仍由`can_use_firearms()`检查，近战不能请求换弹。
 

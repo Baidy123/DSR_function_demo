@@ -12,19 +12,19 @@
 
 ## 医疗包（2026-10-09）
 
-用户要求医疗包放在 Health 下，使用有时间，动作输入和普通受击都会打断；表现为头顶圆形进度条与中央医疗十字，暂定两秒。原移动、战斗、武器槽、受伤和重开结构保持。H 键、初始数量、回血量及下面的边界处理是当前实现默认值，不是用户指定的固定平衡数值。
+用户于2026-10-24要求医疗包由原 Health 下迁入 Equipment（原 WeaponSlots）装备节点，并像武器一样直接在装备检查器挂载医疗包资源及设置数量；展开资源配置疗效。使用有时间，动作输入和普通受击都会打断；表现为头顶圆形进度条与中央医疗十字，暂定两秒。原移动、战斗、受伤和重开流程保持。H 键、初始数量、回血量及下面的边界处理是当前实现默认值，不是用户指定的固定平衡数值。
 
 按 **H** 开始。站立或蹲下、实际落地且生命未满时可用，场内外均可。松开方向及其他动作键后即可立即按 H，不用等待速度完全归零；残余惯性继续按原移动逻辑减速，不会拒绝或打断治疗。仍按住移动／其他动作键，或正在蹲起过渡、瞄准、换弹（含当前枪保留的半程）、近战、翻越时不能开始。完整计时结束才扣一个包并回血，不超过最大生命；满血、无包、配置为空或参数无效时不开始。
 
-在 Main 的 Player → Health 实例上启用“可编辑子节点”，选择 **Health → Medkit**；也可以直接打开 `scenes/player/player_health.tscn` 修改预设：
+在 Main 的 Player 实例上启用“可编辑子节点”，选中 **Player → Equipment**，在检查器的“医疗包”分组直接设置数量及资源，无需进入医疗执行子节点；也可以打开 `scenes/player/player_weapon_slots.tscn` 选择根节点修改预设：
 
 | 检查器位置 | 默认值 | 含义 |
 | --- | --- | --- |
-| Medkit → Remaining Count | 3 | 场景保存出生数量；运行时远程检查器显示当前剩余量 |
-| Medkit → Settings → Heal Amount | 50 | 完整使用一次恢复的生命值 |
-| Medkit → Settings → Use Seconds | 2秒 | 完整治疗时间 |
+| Equipment → Medkit Count | 3 | 场景保存出生数量；运行时远程检查器显示当前剩余量 |
+| Equipment → Medkit → Heal Amount | 50 | 展开挂载的 MedkitData 资源，完整使用一次恢复的生命值 |
+| Equipment → Medkit → Use Seconds | 2秒 | 完整治疗时间 |
 
-`resources/player/default_medkit.tres` 可复制成不同效果／时间配置，共享它的实例不共用库存或进度。一次治疗冻结开始时的参数，运行中修改资源影响下次使用。重开恢复场景保存的数量。按用户后续要求，医疗包数量和 H 键提示显示在右下角武器栏内，不依赖 Debug，并随武器栏在对话／死亡时隐藏；头顶治疗进度环保留。
+`resources/player/default_medkit.tres` 是现有医疗包资源，可像 WeaponData 一样拖入 Equipment 的 Medkit 槽，也可新建 MedkitData 并另存为 `.tres`；留空禁用医疗。资源可复制成不同效果／时间配置，共享它的实例不共用库存或进度。数量保存在各 Equipment 实例，不写进共享资源。一次治疗冻结开始时的参数，运行中修改资源影响下次使用。重开恢复场景保存的数量。按用户后续要求，医疗包数量和 H 键提示显示在右下角装备栏内，不依赖 Debug，并随装备栏在对话／死亡时隐藏；头顶治疗进度环保留。
 
 - WASD、Shift、瞄准、开火、R、V、C、Space、交互、数字／滚轮切枪和再次按 H 都会立即取消，即使对应动作当前无法执行；取消后原动作继续处理。已按住动作键时不能开始，反向方向键相抵也算动作输入。
 - 单纯移动鼠标、松开 H 和 H 的键盘长按重复事件不取消。按住 H 不会连续用包；再次按 H 只取消，不会在同一事件中重新开始。
@@ -32,7 +32,7 @@
 - 中断清零进度，不回血、不扣包，下次从零开始。暂停冻结计时；对话、死亡与节点卸载取消。医疗不能复活，重开仍保留原对话选择。
 - 圆环随真实进度顺时针填充，跟随实际站／蹲头顶的屏幕位置；相机后方、治疗结束或取消时隐藏。它不截获鼠标，不驱动模型动作、碰撞或攻击。
 
-职责：`scripts/player/medkit_data.gd` 只保存参数；Health/Medkit 的 `scripts/player/player_medkit.gd` 管库存、输入、条件复核与计时，通过 `Health.restore_health(amount)` 结算生命；Health/MedkitIndicator 的 `scripts/ui/medkit_indicator.gd` 只读取进度并绘制圆环／十字。WeaponSlots/Panel/Content/MedkitCount 的 `scripts/ui/medkit_stock_label.gd` 只订阅库存变化，武器槽脚本不管理医疗数量或使用。新增玩家动作时同步维护医疗组件的打断列表与输入回归，不得用净移动向量替代逐键检查。
+职责：`scripts/player/medkit_data.gd` 只保存参数；Equipment 的 `player_weapon_slots.gd` 挂载 `medkit` 资源并持有唯一的 `medkit_count` 库存。Equipment/Medkit 的 `scripts/player/player_medkit.gd` 通过 `settings/remaining_count` 访问这两个字段，管理输入、条件复核与计时，完成时扣库存并调用 `Health.restore_health(amount)` 结算生命；执行子节点不再重复导出配置。Equipment/MedkitIndicator 的 `scripts/ui/medkit_indicator.gd` 只读取进度并绘制圆环／十字。Equipment/Panel/Content/MedkitCount 的 `scripts/ui/medkit_stock_label.gd` 只订阅库存变化。Health 不再挂载医疗组件。新增玩家动作时同步维护医疗组件的打断列表与输入回归，不得用净移动向量替代逐键检查。
 
 两套专项注册在原玩家战斗运行器：`player_medkit_test` 覆盖真实输入、结算、受击、无效配置、动作接续和投影；`player_medkit_lifecycle_test` 在实际 Main 中覆盖自动计时、实例隔离、资源保存、暂停、近战命中、真实对话、死亡重开和卸载。
 

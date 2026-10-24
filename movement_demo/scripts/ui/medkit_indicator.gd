@@ -4,9 +4,10 @@ extends Control
 @export_range(12.0, 48.0, 1.0) var radius: float = 22.0
 @export_range(0.0, 40.0, 1.0) var head_gap: float = 10.0
 var progress := 0.0
-@onready var health = get_parent()
-@onready var medkit = health.get_node("Medkit")
-@onready var player = health.get_parent()
+@onready var equipment = get_parent()
+@onready var medkit = equipment.get_node("Medkit")
+@onready var player = equipment.get_parent()
+@onready var health = player.get_node("Health")
 
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_IGNORE

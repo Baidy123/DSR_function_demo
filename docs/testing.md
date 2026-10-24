@@ -72,6 +72,10 @@ python movement_demo/tests/run_regressions.py --check
 
 玩家／相机分场景复用的定向入口为 `player_scene_reuse_test`，已登记在 combat。它保存重载一个另建关卡，使用改名、嵌套的玩家与先就绪的独立相机，通过真实武器槽输入验证武器视野与跟随绑定；原 `player_camera_test`、`camera_occlusion_test` 保留视野／遮挡及死亡重开断言，仅更新移入相机场景的两个子节点路径。验证记录见 [相机说明](gameplay/CAMERA.md#玩家与相机分场景复用2026-10-24)。
 
+2026-10-24 装备统一入口：原 WeaponSlots 节点改名为 Equipment，医疗资源 `medkit` 与数量 `medkit_count` 直接在装备检查器导出。`player_scene_reuse_test` 同时覆盖检查器字段、医疗组件归属、关卡保存重载后数量／疗效／时间覆盖以及原预制默认值隔离；`player_medkit_test` 保留原动作、受击、消耗与暂停断言，并核对真实治疗消耗 Equipment 的库存。原测试只同步授权改名涉及的路径，不降低已有行为断言。
+
+最终本地工程完整玩家战斗回归26/27套：医疗98/98、玩家复用及医疗配置保存重载21/21、双方受击准度30/30；唯一失败为医疗生命周期的真实 NPC B 对话关闭检查（19/20），修改前的本地隔离副本同项失败。主场景、当前 lvl1／lvl3 各启动25帧，无脚本或资源错误。额外敌人武器专项22/26，四项失败及 Debug 旧夹具缺少 `CoordinatorPaths/Overlay` 的报错均在修改前副本复现，未修改原断言、用户武器／训练／地图以取得通过，未运行完整敌人回归。记录保存在本地忽略目录 `logs/equipment_20261024/`。
+
 地图维护命令 `tests/bake_levels.gd` 只重烘五张独立地图的导航，已列入维护脚本排除清单，不作为回归运行；用法与实体轮廓排除说明见 [关卡地图](gameplay/LEVEL_MAPS.md)。
 
 翻越定向检查包括 `vault_navigation_world_test`（原生 Bake／静态图）、`enemy_vault_link_contract_test`（增量查询／多段执行／生命周期）和 `enemy_vault_link_runtime_test`（默认0级双近战实战）。运行后者时在 Godot `--script` 参数后追加 `-- --level=1` 或 `-- --level=2` 验证团队，追加 `--all-trained` 装配该兵种全部战术。旧 `enemy_vault_navigation_test` 保留旧单次路线兼容断言；两种表示分别验证，不用旧夹具的单次同步调用代替新分帧流程。

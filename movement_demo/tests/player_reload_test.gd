@@ -15,14 +15,14 @@ func _initialize() -> void:
 func _run() -> void:
 	scene = preload("res://tests/enemy/enemy_fire_fixture.gd").unbound_scene()
 	# 行为断言使用独立初值；用户在检查器调整备弹不影响测试。
-	var initial_slots = scene.get_node("Player/WeaponSlots")
+	var initial_slots = scene.get_node("Player/Equipment")
 	for field in ["starting_rifle_ammo", "starting_pistol_ammo", "starting_smg_ammo", "starting_shotgun_ammo"]:
 		initial_slots.set(field, 36)
 	root.add_child(scene)
 	current_scene = scene
 	player = scene.get_node("Player")
 	combat = player.get_node("Combat")
-	slots = player.get_node("WeaponSlots")
+	slots = player.get_node("Equipment")
 	player.set_physics_process(false)
 	preload("res://tests/enemy/enemy_fire_fixture.gd").primary_enemy(scene).get_node("AI").set_physics_process(false)
 	check(combat.has_method("request_reload"), "玩家提供主动换弹接口")
@@ -127,7 +127,7 @@ func _run() -> void:
 		await process_frame
 	player = current_scene.get_node("Player")
 	combat = player.get_node("Combat")
-	slots = player.get_node("WeaponSlots")
+	slots = player.get_node("Equipment")
 	player.set_physics_process(false)
 	check(not paused and combat.ammo.magazine_rounds == combat.weapon.magazine_capacity and not combat.ammo.is_reloading, "实际重开恢复初始武器满弹及换弹状态")
 	check(slots.reserve_ammo[0] == slots.starting_rifle_ammo and slots.reserve_ammo[1] == slots.starting_pistol_ammo and slots.reserve_ammo[2] == slots.starting_smg_ammo and slots.reserve_ammo[3] == slots.starting_shotgun_ammo, "重开恢复四类备弹初值")

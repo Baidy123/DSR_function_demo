@@ -22,7 +22,7 @@
 
 敌人使用概率而非玩家角度参数：Training → Profile → tactics 中 `Damage Accuracy Penalty` 默认0.15、`Nearby Shot Accuracy Penalty` 默认0.02，分别为15和2个百分点。维护边界及结构验证见 [敌人 AI](../enemy-ai.md) 和 [回归说明](../enemy-tests.md)。
 
-> 2026-09-20：主、副武器现在由 Main/Player/WeaponSlots 配置，1/2或滚轮切换；Combat仍选择瞄准模式。槽位资源展开后显示两组参数，按Combat模式调整对应一组。见 [WEAPON_SLOTS.md](WEAPON_SLOTS.md)。下方直接展开Combat/Weapon的说明保留用于单武器配置与模式过滤介绍。
+> 2026-09-20：主、副武器现在由 Main/Player/Equipment 配置，1/2或滚轮切换；Combat仍选择瞄准模式。槽位资源展开后显示两组参数，按Combat模式调整对应一组。见 [WEAPON_SLOTS.md](WEAPON_SLOTS.md)。下方直接展开Combat/Weapon的说明保留用于单武器配置与模式过滤介绍。
 
 ## 在哪里切换模式（2026-09-19）
 
@@ -119,4 +119,4 @@ Godot AI 运行时执行：`await load("res://tests/combat_test.gd").new().run(s
 最新门操作：E 只开门，玩家离开门口 Sensor 范围后自动关门，关门途中折返会重新打开防夹。已通过 7 项针对性运行检查；上述旧门测试中的手动关闭预期不再适用。
 ## 玩家武器槽补充（2026-09-20）
 
-当前在 Main/Player/WeaponSlots 检查器配置主、副 WeaponData，按1/2或滚轮切换，右下角显示两槽并高亮当前武器。Combat仍决定瞄准模式并执行战斗；初始化和切槽时由WeaponSlots提供实际武器。游戏内装备留到商人系统完善后再做，操作与验证见 [WEAPON_SLOTS.md](WEAPON_SLOTS.md)。
+当前在 Main/Player/Equipment 检查器配置主、副 WeaponData，按1/2或滚轮切换，右下角显示两槽并高亮当前武器。Combat仍决定瞄准模式并执行战斗；初始化和切槽时由Equipment提供实际武器。游戏内装备留到商人系统完善后再做，操作与验证见 [WEAPON_SLOTS.md](WEAPON_SLOTS.md)。

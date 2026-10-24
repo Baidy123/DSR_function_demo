@@ -1,6 +1,6 @@
 extends Node
 
-## Health 的子组件；库存、计时属于本实例，生命结算只调用 Health。
+## Equipment 的医疗执行组件；读取装备的资源与库存，计时属于本实例。
 signal state_changed
 
 const MedkitSettings = preload("res://scripts/player/medkit_data.gd")
@@ -11,26 +11,29 @@ const INTERRUPTING_ACTIONS: Array[StringName] = [
 	&"weapon_primary", &"weapon_secondary", &"weapon_next", &"weapon_previous",
 ]
 
-## 场景内为出生数量，远程检查器中为当前剩余量；重开恢复场景保存值。
-@export_range(0, 999, 1) var remaining_count: int = 3:
+## 库存只存一份，在 Equipment 检查器配置；组件通过原接口读取和消耗。
+var remaining_count: int:
+	get:
+		return get_parent().medkit_count
 	set(value):
-		remaining_count = maxi(0, value)
-		if is_node_ready():
-			if remaining_count == 0: cancel()
-			state_changed.emit()
-## 可复用的医疗效果与时间资源；留空不能使用，不影响原生命系统。
-@export var settings: MedkitSettings = preload("res://resources/player/default_medkit.tres")
+		get_parent().medkit_count = value
+## 资源由 Equipment 挂载，不在执行子节点重复提供检查器入口。
+var settings: MedkitSettings:
+	get:
+		return get_parent().medkit
+	set(value):
+		get_parent().medkit = value
 
 var _using := false
 var _elapsed := 0.0
 var _duration := 0.0
 var _heal_amount := 0.0
-@onready var health = get_parent()
-@onready var player = health.get_parent()
+@onready var player = get_parent().get_parent()
+@onready var health = player.get_node("Health")
 @onready var combat = player.get_node_or_null("Combat")
 
 func _ready() -> void:
-	# 在原身体／战斗物理更新之后复核；Health 的 Always 不应让医疗绕过暂停。
+	# 在原身体／战斗物理更新之后复核；医疗与装备继承正常暂停规则。
 	process_physics_priority = 20
 	health.hit_received.connect(_on_hit_received)
 	health.died.connect(cancel)

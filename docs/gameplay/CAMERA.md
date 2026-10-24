@@ -6,12 +6,12 @@
 
 按用户要求拆为两个独立实例，武器对视野的影响继续有效：
 
-- `scenes/player/player.tscn`：根为 Player（CharacterBody3D），包含原移动、碰撞、Combat、WeaponSlots、Health／医疗包、HUD、表现与受击组件。
+- `scenes/player/player.tscn`：根为 Player（CharacterBody3D），包含原移动、碰撞、Combat、Equipment／医疗包、Health、HUD、表现与受击组件。
 - `scenes/player/player_camera_rig.tscn`：根为 Camera3D，包含原 PhantomCameraHost、CameraGroundAnchor、PhantomCamera3D、武器视野和遮挡透明。
 
 在关卡中分别拖入两个场景，移动 Player 根节点设置出生位置；选中 Camera3D，在检查器的 **Player Path** 指向该玩家。默认 `../Player` 适用于两者同级且玩家名为 Player 的情况。改名或嵌套时只改这一项，地面锚点和武器视野共用同一引用。保留一套活动相机即可；场景使用本项目既有输入映射、DebugSettings 和 PhantomCameraManager，不包含地面、灯光或战斗区。
 
-在 Player 实例启用“可编辑子节点”后，可以像原来一样修改 WeaponSlots 的武器资源，以及 Health 等配置；修改共享武器前按需要设为唯一。武器里的 `Camera View Size`、`Camera Transition Seconds` 仍由 Combat 的 `weapon_changed` 信号传给相机。无论先加载玩家还是相机，初始装备直接应用正确视野，后续切枪保持平滑过渡；配置0继续回退到相机场景 Size。
+在 Player 实例启用“可编辑子节点”后，可以像原来一样修改 Equipment 的武器资源，以及 Health 等配置；修改共享武器前按需要设为唯一。武器里的 `Camera View Size`、`Camera Transition Seconds` 仍由 Combat 的 `weapon_changed` 信号传给相机。无论先加载玩家还是相机，初始装备直接应用正确视野，后续切枪保持平滑过渡；配置0继续回退到相机场景 Size。
 
 Main 与当前本地 lvl3 已使用两个实例并保留各自出生位置和现有参数。`Player/Combat` 等路径以及关卡根下的 `Camera3D` 保持；锚点和虚拟镜头现在分别为 `Camera3D/CameraGroundAnchor`、`Camera3D/PhantomCamera3D`。相机位置仍由原插件控制，锚点和虚拟镜头不继承实际相机移动，避免跟随反馈；朝向、正交 Size、偏移和50／300／400的更新顺序保持。
 
@@ -25,13 +25,13 @@ Main 与当前本地 lvl3 已使用两个实例并保留各自出生位置和现
 
 ## 已确认方向与当前初值
 
-用户确认视野跟随当前装备的武器，参数放在 WeaponSlots 引用的武器资源内；遮挡透明只用于天花板或场景装饰物，现有玩法掩体保持不透明，并在主场景加入天花板／悬挂方块供测试。沿用原相机节点、Phantom Camera 跟随和翻越地面锚点，不改角色移动、枪械射程或敌人视线。分辨率与抗锯齿本次不调整，留待设置菜单阶段。
+用户确认视野跟随当前装备的武器，参数放在 Equipment 引用的武器资源内；遮挡透明只用于天花板或场景装饰物，现有玩法掩体保持不透明，并在主场景加入天花板／悬挂方块供测试。沿用原相机节点、Phantom Camera 跟随和翻越地面锚点，不改角色移动、枪械射程或敌人视线。分辨率与抗锯齿本次不调整，留待设置菜单阶段。
 
 当前主场景使用正交投影。`Main → Camera3D → Size` 原值为约12.93，作为未配置武器视野时的回退。Size 越大，看到的场景越广，角色在画面中越小；这个值不是透视相机的 FOV，也不是子弹射程或远裁剪面。
 
 ## 在武器槽内配置
 
-打开 `scenes/main.tscn`，选中 `Player → WeaponSlots`，展开 `Primary Weapon / Secondary Weapon` 中的 WeaponData，在 **相机视野（仅玩家）** 分组中调整：
+打开 `scenes/main.tscn`，选中 `Player → Equipment`，展开 `Primary Weapon / Secondary Weapon` 中的 WeaponData，在 **相机视野（仅玩家）** 分组中调整：
 
 | 检查器字段 | 资源字段 | 含义与初值 |
 | --- | --- | --- |

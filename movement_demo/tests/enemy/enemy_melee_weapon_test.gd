@@ -120,7 +120,7 @@ func _run() -> void:
 	var held: WeaponData = player.combat.weapon
 	player.combat.equip_weapon(MeleeWeapon)
 	check(player.combat.weapon == held, "玩家直接装备入口拒绝纯近战并保留原枪械")
-	var slots = player.get_node("WeaponSlots")
+	var slots = player.get_node("Equipment")
 	var invalid_slot: int = 1 - slots.active_slot
 	if invalid_slot == 0: slots.primary_weapon = MeleeWeapon
 	else: slots.secondary_weapon = MeleeWeapon
@@ -130,7 +130,7 @@ func _run() -> void:
 	await process_frame
 	for has_fallback in [true, false]:
 		var configured = preload("res://tests/enemy/enemy_fire_fixture.gd").unbound_scene()
-		var configured_slots = configured.get_node("Player/WeaponSlots")
+		var configured_slots = configured.get_node("Player/Equipment")
 		configured_slots.primary_weapon = MeleeWeapon
 		configured_slots.secondary_weapon = gun if has_fallback else MeleeWeapon
 		configured_slots.starting_slot = 0

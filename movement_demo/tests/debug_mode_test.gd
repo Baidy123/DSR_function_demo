@@ -45,7 +45,7 @@ func _run() -> void:
 	check(noise.get_child_count() == 1, "声音范围仅显式开启后绘制，保留独立诊断入口")
 	health.receive_hit(25.0)
 	check(health.health == health.max_health - 25.0, "无敌不扣血也不回血")
-	check(health.get_node("Status").visible and player.get_node("WeaponSlots/Panel").visible, "开启时保留正常状态和弹药界面")
+	check(health.get_node("Status").visible and player.get_node("Equipment/Panel").visible, "开启时保留正常状态和弹药界面")
 	toggle.button_pressed = false
 	check(not settings.enabled and not health.is_invincible(), "关闭总开关同时关闭无敌")
 	check(not paths.is_processing() and paths.snapshots.is_empty() and not paths.get_node("Overlay").visible, "关闭总开关清空路径快照并停止刷新")
@@ -63,7 +63,7 @@ func _run() -> void:
 	check(not combat.get_node("HUD/Panel").visible, "对话时仍隐藏战斗信息")
 	player.set_dialogue_active(false)
 	health.debug_mode = false
-	check(health.get_node("Status").visible and player.get_node("WeaponSlots/Panel").visible, "关闭 Debug 仍保留正常生命体力弹药")
+	check(health.get_node("Status").visible and player.get_node("Equipment/Panel").visible, "关闭 Debug 仍保留正常生命体力弹药")
 	finish()
 
 func check(ok: bool, label: String) -> void:

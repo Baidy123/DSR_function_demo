@@ -19,7 +19,7 @@ func _run() -> void:
 	var packed: PackedScene = load("res://scenes/main.tscn")
 	var scene = packed.instantiate()
 	var actor = scene.get_node("Player")
-	var slots = actor.get_node("WeaponSlots")
+	var slots = actor.get_node("Equipment")
 	var combat = actor.get_node("Combat")
 	var camera = scene.get_node("Camera3D")
 	var base_size: float = camera.size

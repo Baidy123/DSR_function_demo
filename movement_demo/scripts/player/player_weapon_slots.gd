@@ -8,6 +8,18 @@ const Ammo = preload("res://scripts/weapons/weapon_ammo.gd")
 ## 出生时使用哪个槽；该槽为空时自动选择另一个非空槽。
 @export_enum("主武器:0", "副武器:1") var starting_slot: int = 0
 
+@export_group("医疗包")
+## 像武器一样在装备节点挂载医疗资源；展开可调整回血量与使用时间，留空禁用。
+@export var medkit: MedkitData = preload("res://resources/player/default_medkit.tres")
+## 场景保存出生数量，远程检查器显示当前余量；库存属于装备实例，不写入资源。
+@export_range(0, 999, 1) var medkit_count: int = 3:
+	set(value):
+		medkit_count = maxi(0, value)
+		var controller := get_node_or_null("Medkit")
+		if controller != null and controller.is_node_ready():
+			if medkit_count == 0: controller.cancel()
+			controller.state_changed.emit()
+
 @export_group("初始共享备弹")
 ## 同弹药类型的主副武器共用此备弹；初始满弹匣不从备弹扣除。
 @export_range(0, 9999, 1) var starting_rifle_ammo: int = 36

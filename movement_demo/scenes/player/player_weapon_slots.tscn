@@ -1,14 +1,26 @@
-[gd_scene load_steps=5 format=3]
+[gd_scene load_steps=8 format=3]
 
 [ext_resource type="Script" path="res://scripts/player/player_weapon_slots.gd" id="1_slots"]
 [ext_resource type="Resource" path="res://resources/weapons/test_pistol.tres" id="2_primary"]
 [ext_resource type="Resource" path="res://resources/weapons/test_sidearm.tres" id="3_secondary"]
 [ext_resource type="Script" path="res://scripts/ui/medkit_stock_label.gd" id="4_medkit_stock"]
+[ext_resource type="Script" path="res://scripts/player/player_medkit.gd" id="3_medkit"]
+[ext_resource type="Script" path="res://scripts/ui/medkit_indicator.gd" id="4_medkit_indicator"]
+[ext_resource type="Resource" path="res://resources/player/default_medkit.tres" id="5_medkit_settings"]
 
-[node name="WeaponSlots" type="CanvasLayer"]
+[node name="Equipment" type="CanvasLayer"]
 script = ExtResource("1_slots")
 primary_weapon = ExtResource("2_primary")
 secondary_weapon = ExtResource("3_secondary")
+medkit = ExtResource("5_medkit_settings")
+
+[node name="Medkit" type="Node" parent="."]
+script = ExtResource("3_medkit")
+
+[node name="MedkitIndicator" type="Control" parent="."]
+visible = false
+mouse_filter = 2
+script = ExtResource("4_medkit_indicator")
 
 [node name="Panel" type="PanelContainer" parent="."]
 anchors_preset = 3

@@ -19,7 +19,7 @@ func _run() -> void:
 	current_scene = scene
 	player = scene.get_node("Player")
 	combat = player.get_node("Combat")
-	slots = player.get_node("WeaponSlots")
+	slots = player.get_node("Equipment")
 	player.set_physics_process(false)
 	var configurable_weapon := false
 	for property in combat.get_property_list():

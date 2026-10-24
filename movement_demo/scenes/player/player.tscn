@@ -52,7 +52,7 @@ death_during_pause = true
 [node name="Combat" parent="." unique_id=943451104 instance=ExtResource("3_4c57u")]
 sprint_reload_speed_multiplier = 0.7999999999999999
 
-[node name="WeaponSlots" parent="." unique_id=1929872714 instance=ExtResource("13_slots")]
+[node name="Equipment" parent="." unique_id=1929872714 instance=ExtResource("13_slots")]
 starting_rifle_ammo = 90
 starting_pistol_ammo = 48
 starting_smg_ammo = 120

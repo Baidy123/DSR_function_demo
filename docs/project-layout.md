@@ -15,7 +15,7 @@ movement_demo/
 │   ├── main.tscn          主场景，F5 默认入口
 │   ├── arena.tscn         战斗区域与敌人实例
 │   ├── enemy/             公共 enemy.tscn，types/兵种继承场景，levels/lvl_N/关卡预设
-│   ├── player/            独立 player.tscn、player_camera_rig.tscn 与战斗／生命／武器槽子场景
+│   ├── player/            独立 player.tscn、player_camera_rig.tscn 与战斗／生命／装备子场景
 │   ├── world/             掩体、训练区域、墙体、交互物与门禁通道场景
 │   │   ├── levels/        Lvl_1–5 独立地图，含区域、导航、空 Squad 及地图实体
 │   │   └── objects/       具体交互物：门禁卡、酒杯、终端、唱片机
@@ -27,7 +27,7 @@ movement_demo/
 │   │   ├── actions/       默认行为、战术动作和共用动作执行组件
 │   │   ├── config/        兵种、训练、动作定义及参数资源脚本
 │   │   └── services/      感知、记忆、上下文、射击、搜索提示/覆盖和空间查询
-│   ├── player/            玩家移动、战斗、生命和武器槽
+│   ├── player/            玩家移动、战斗、生命和装备
 │   ├── weapons/           武器数据与弹药执行
 │   ├── world/             掩体、训练靶、区域、门、NPC、交互物与屏障
 │   │   └── interactions/  交互效果基类、注入上下文与各效果实现
@@ -140,9 +140,11 @@ Spatial 的路线样本层仅在同步候选比较中复用同路径已实际观
 
 半身掩体沿用 `scripts/world/cover_region.gd` 与原掩体节点，预设为 `scenes/world/low_cover.tscn`。`world/low_cover_geometry.gd` 提供低墙、翻越轨迹及近距关系的只读查询；`systems/character_geometry.gd` 只校验假定胶囊的占位与扫掠，不管理玩家或敌人的动作、攻击、生命和计时。角色各自身体执行及适配器消费这些查询和共享表现快照。对应设计与实施记录在 `docs/superpowers/`。
 
-按用户后续要求，玩家和相机分为两个独立预制：`scenes/player/player.tscn` 的根仍是原 CharacterBody3D，保留 Combat、WeaponSlots、Health、Visual 与表现／受击子节点；`scenes/player/player_camera_rig.tscn` 以原 Camera3D 为根，包含 PhantomCameraHost、CameraGroundAnchor、PhantomCamera3D。Main 与 lvl3 引用这两个实例，保留 Player、Camera3D 根路径与出生位置；地面锚点／虚拟镜头路径改为 Camera3D 的子路径，不新增角色总控或修改插件。
+按用户后续要求，玩家和相机分为两个独立预制：`scenes/player/player.tscn` 的根仍是原 CharacterBody3D，保留 Combat、Equipment、Health、Visual 与表现／受击子节点；`scenes/player/player_camera_rig.tscn` 以原 Camera3D 为根，包含 PhantomCameraHost、CameraGroundAnchor、PhantomCamera3D。Main 与 lvl3 引用这两个实例，保留 Player、Camera3D 根路径与出生位置；地面锚点／虚拟镜头路径改为 Camera3D 的子路径，不新增角色总控或修改插件。
 
 相机根脚本 `get_follow_actor()` 按唯一的 `player_path` 解析玩家，地面锚点共用该引用；相机先就绪时等待玩家 ready 后再读取初始装备，避免漏掉武器视野或出生缩放。锚点与虚拟镜头保持 top_level，在原50／300／400的物理更新顺序下过滤翻越抬升。独立组件仍使用项目既有输入与 autoload，单视口配置一套活动相机。玩家、敌人、NPC 与示例胶囊站高仍为1.75米。
+
+2026-10-24 按用户要求将 WeaponSlots 节点改名为 Equipment（装备），保留 `player_weapon_slots.gd/.tscn` 路径、脚本 UID 和原节点 unique_id。Equipment 检查器像武器一样直接挂载 `medkit: MedkitData` 资源并保存 `medkit_count` 数量；资源保存回血量与时间，库存只属于装备实例。Medkit 与 MedkitIndicator 由 Health 迁入 Equipment，独立医疗组件访问装备的配置／库存并执行使用，Health 通过原 `restore_health()` 结算生命。Main、独立玩家和地图实例统一使用新路径，原武器槽内的 UI 相对路径、武器资源、弹药与准度保存机制保持。
 
 半身掩体阶段在 Arena 增加一个独立低掩体实例，原高掩体和行为资源保留。
 
@@ -150,7 +152,7 @@ Spatial 的路线样本层仅在同步候选比较中复用同路径已实际观
 
 玩家 V 近战直接扩展 `scripts/player/player_combat_v3.gd`，不另建玩家近战执行文件。纯表现剑光放在 `scripts/systems/effects/` 与 `scenes/effects/`；参数仍在 WeaponData。敌人由 `services/enemy_melee_controller.gd` 管请求与阶段，`enemy_actor.gd` 管实际命中、冷却及独立受击。近战与射击同属底层执行；现有 `actions/enemy_tactics.gd` 在远程接敌中提供近战推开方案，不新增独立挥击脚本／行为资源，不改默认行为、战术目录和训练选择。本轮不移动原模块，不与玩家共用攻击或受击函数，见 [近战说明](gameplay/MELEE.md)。
 
-近战命中减速与击退同放在原 WeaponData 的“近战参数”中，玩家从 WeaponSlots 内编辑，敌人仍从自身 Weapon 编辑。双方攻击入口各自保存本次参数快照；受击倍率和剩余时间分别属于 `player.gd`、`enemy_actor.gd` 实例，沿用原移动入口与生命周期清理。武器槽、共享资源和 AI 行为不保存受击进度，不新增状态管理节点或共用双方受击实现。
+近战命中减速与击退同放在原 WeaponData 的“近战参数”中，玩家从 Equipment 内编辑，敌人仍从自身 Weapon 编辑。双方攻击入口各自保存本次参数快照；受击倍率和剩余时间分别属于 `player.gd`、`enemy_actor.gd` 实例，沿用原移动入口与生命周期清理。武器槽、共享资源和 AI 行为不保存受击进度，不新增状态管理节点或共用双方受击实现。
 
 敌人基础执行的条件查询与互斥规则继续放在身体／服务中；行为不读取近战控制器的阶段枚举，表现适配器读取状态快照。两种压制共同使用的环境推断参数属于 `config/selection_settings.gd`，由 `services/enemy_cover_selection.gd` 读取，不放在某个可选动作的专用配置中。接口见 [敌人 AI](enemy-ai.md#基础执行接口与冲突规则)。
 

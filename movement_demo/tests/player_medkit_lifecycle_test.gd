@@ -19,7 +19,7 @@ func _run() -> void:
 	current_scene = scene
 	_bind()
 	await _frames(15)
-	_check("real Main has the medical module and original node paths", medkit != null and player.has_node("Combat") and player.has_node("WeaponSlots") and player.has_node("Visual/Body"))
+	_check("real Main has the medical module and original node paths", medkit != null and player.has_node("Combat") and player.has_node("Equipment") and player.has_node("Visual/Body"))
 	player.receive_hit(75.0)
 	_key(KEY_H, true)
 	_key(KEY_H, false)
@@ -34,9 +34,9 @@ func _run() -> void:
 		paused = false
 	await _frames(65)
 	_check("real elapsed physics completes one heal and consumes one", not medkit.is_using() and health.health == 75.0 and medkit.remaining_count == 2)
-	var stock_label = player.get_node("WeaponSlots/Panel/Content/MedkitCount")
-	_check("ordinary non-debug weapon HUD shows stock but hides completed ring", stock_label.is_visible_in_tree() and not health.get_node("MedkitIndicator").visible)
-	var panel = player.get_node("WeaponSlots/Panel")
+	var stock_label = player.get_node("Equipment/Panel/Content/MedkitCount")
+	_check("ordinary non-debug weapon HUD shows stock but hides completed ring", stock_label.is_visible_in_tree() and not player.get_node("Equipment/MedkitIndicator").visible)
+	var panel = player.get_node("Equipment/Panel")
 	var viewport_size: Vector2 = root.get_visible_rect().size
 	var stock_rect: Rect2 = stock_label.get_global_rect()
 	_check("stock label is inside the bottom-right weapon panel", panel.get_global_rect().encloses(stock_rect) and stock_rect.get_center().x > viewport_size.x * 0.5 and stock_rect.get_center().y > viewport_size.y * 0.5)
@@ -47,11 +47,11 @@ func _run() -> void:
 	original.free()
 	second.name = "SecondPlayer"
 	second.position = player.position + Vector3(4, 0, 0)
-	second.get_node("Health/Medkit").remaining_count = 5
+	second.get_node("Equipment/Medkit").remaining_count = 5
 	scene.add_child(second)
 	second.get_node("Health").hide()
 	await _frames(10)
-	var second_medkit = second.get_node("Health/Medkit")
+	var second_medkit = second.get_node("Equipment/Medkit")
 	_check("instances can share settings without sharing stock", second_medkit.settings == medkit.settings and second_medkit.remaining_count == 5 and medkit.remaining_count == 2)
 	_check("quantity is a node field rather than mutable resource state", medkit.settings.get("remaining_count") == null and medkit.settings.get("progress") == null)
 	var data = medkit.settings.duplicate()
@@ -109,7 +109,7 @@ func _run() -> void:
 func _bind() -> void:
 	player = scene.get_node("Player")
 	health = player.get_node("Health")
-	medkit = health.get_node("Medkit")
+	medkit = player.get_node("Equipment/Medkit")
 	var enemy = preload("res://tests/enemy/enemy_fire_fixture.gd").primary_enemy(scene)
 	enemy.shooting_enabled = false
 	enemy.set_physics_process(false)

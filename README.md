@@ -28,9 +28,9 @@
 
 个人 Utility 与团队 AI 共用原生翻越连接，能执行步行／翻越／继续追击，普通步行导航仍避开实体墙。编辑低墙碰撞后可使用 `NavigationRegion3D` 的原生烘焙按钮，并保存场景和导航资源；操作见 [关卡导航](docs/gameplay/LEVEL_MAPS.md#区域导航与空小队)，验证范围见 [敌人测试](docs/enemy-tests.md)。
 
-玩家和相机可分别复用：拖入 `scenes/player/player.tscn` 与 `scenes/player/player_camera_rig.tscn`，在相机根节点的 **Player Path** 指定玩家（同级且名为 Player 时默认即有效）。切枪继续读取武器的视野大小／过渡时间，移动、战斗、生命和武器槽仍属于玩家。主场景与 lvl3 已改为实例，详见 [相机与复用说明](docs/gameplay/CAMERA.md#玩家与相机分场景复用2026-10-24)。
+玩家和相机可分别复用：拖入 `scenes/player/player.tscn` 与 `scenes/player/player_camera_rig.tscn`，在相机根节点的 **Player Path** 指定玩家（同级且名为 Player 时默认即有效）。切枪继续读取武器的视野大小／过渡时间，移动、战斗、生命和装备仍属于玩家。主场景与 lvl3 已改为实例，详见 [相机与复用说明](docs/gameplay/CAMERA.md#玩家与相机分场景复用2026-10-24)。
 
-医疗包操作：松开动作键后按 **H** 治疗，无需等待惯性停稳；默认两秒完成、恢复50生命，初始3个。动作输入或受击立即打断，中断不消耗。头顶圆环显示进度，数量与效果配置在 `Player → Health → Medkit`，见 [生命与医疗包](docs/gameplay/PLAYER_HEALTH.md)。
+医疗包操作：松开动作键后按 **H** 治疗，无需等待惯性停稳；默认两秒完成、恢复50生命，初始3个。动作输入或受击立即打断，中断不消耗。选中 `Player → Equipment`，在“医疗包”分组配置 **Medkit Count** 与 **Medkit** 资源，展开资源调整回血量／时间；Equipment（装备）为原 WeaponSlots 节点，统一管理武器与医疗包，见 [生命与医疗包](docs/gameplay/PLAYER_HEALTH.md)。
 
 ## 打开工程
 

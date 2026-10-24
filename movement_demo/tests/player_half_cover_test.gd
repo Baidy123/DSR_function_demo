@@ -48,7 +48,7 @@ func _run() -> void:
 	scene.add_child(player)
 	player.set_physics_process(false)
 	combat = player.get_node("Combat")
-	slots = player.get_node("WeaponSlots")
+	slots = player.get_node("Equipment")
 	slots.primary_weapon = slots.primary_weapon.duplicate()
 	slots.secondary_weapon = slots.secondary_weapon.duplicate()
 	for weapon in [slots.primary_weapon, slots.secondary_weapon]:

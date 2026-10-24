@@ -12,7 +12,7 @@ func _run() -> void:
 	var player = scene.get_node("Player")
 	player.set_physics_process(false)
 	var combat = player.get_node("Combat")
-	var slots = player.get_node_or_null("WeaponSlots")
+	var slots = player.get_node_or_null("Equipment")
 	_check("玩家挂载双武器槽", slots != null)
 	if slots == null:
 		_finish()
@@ -95,13 +95,13 @@ func _run() -> void:
 	# 新实例验证初始配置，不修改运行中的用户资源。
 	var packed = load("res://scenes/main.tscn")
 	var other = packed.instantiate()
-	var other_slots = other.get_node("Player/WeaponSlots")
+	var other_slots = other.get_node("Player/Equipment")
 	other_slots.primary_weapon = null
 	root.add_child(other)
 	_check("初始主槽为空时自动选副槽", other_slots.active_slot == 1 and other.get_node("Player/Combat").weapon == other_slots.secondary_weapon)
 	other.free()
 	other = packed.instantiate()
-	other_slots = other.get_node("Player/WeaponSlots")
+	other_slots = other.get_node("Player/Equipment")
 	other_slots.primary_weapon = null
 	other_slots.secondary_weapon = null
 	root.add_child(other)
@@ -117,7 +117,7 @@ func _run() -> void:
 	health.get_node("DeathScreen/Center/Panel/Content/Restart").pressed.emit()
 	for frame in range(10):
 		await process_frame
-	slots = current_scene.get_node("Player/WeaponSlots")
+	slots = current_scene.get_node("Player/Equipment")
 	combat = current_scene.get_node("Player/Combat")
 	_check("死亡重开恢复检查器初始槽位和武器状态", not paused and slots.active_slot == 0 and combat.weapon == slots.primary_weapon and combat.shot_cooldown == 0.0)
 	_check("双武器重开仍保留对话选择", game_state.help_choice == "accepted")

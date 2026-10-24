@@ -17,7 +17,7 @@ func _run() -> void:
 	current_scene = scene
 	player = scene.get_node("Player")
 	combat = player.get_node("Combat")
-	slots = player.get_node("WeaponSlots")
+	slots = player.get_node("Equipment")
 	player.set_physics_process(false)
 	var enemy = preload("res://tests/enemy/enemy_fire_fixture.gd").primary_enemy(scene)
 	enemy.set_physics_process(false)

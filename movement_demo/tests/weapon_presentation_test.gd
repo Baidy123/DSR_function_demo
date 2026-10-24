@@ -216,7 +216,7 @@ func _real_equipment_adapters() -> void:
 	root.add_child(scene)
 	current_scene = scene
 	var actor = scene.get_node("Player")
-	var slots = actor.get_node("WeaponSlots")
+	var slots = actor.get_node("Equipment")
 	var combat = actor.get_node("Combat")
 	var view = actor.get_node("Visual/Presentation")
 	var enemy = preload("res://tests/enemy/enemy_fire_fixture.gd").primary_enemy(scene)

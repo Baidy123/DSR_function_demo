@@ -6,7 +6,7 @@ const KEY := "weapon_mode_inspector_fixture"
 
 func test_inspector_01_setup() -> void:
 	var c = EditorInterface.get_edited_scene_root().get_node("Player/Combat")
-	var slots = c.get_node("../WeaponSlots")
+	var slots = c.get_node("../Equipment")
 	var fixture := {"combat": c, "slots": slots, "original_weapon": slots.get("primary_weapon"), "mode": c.get("aim_mode")}
 	fixture.weapon = fixture.original_weapon.duplicate()
 	EditorInterface.get_base_control().set_meta(KEY, fixture)

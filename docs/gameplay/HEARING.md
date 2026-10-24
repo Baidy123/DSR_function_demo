@@ -13,7 +13,7 @@
 | Movement Noise 或 Shot Noise 展开的声音资源 | Occluded Range Multiplier | 隔墙半径倍率 0.4 |
 | 同上 | Audio Stream | 预留音频接口，可留空 |
 
-半径为直接 `@export` 参数：移动范围归角色脚本，枪声范围归 WeaponData，声音资源不再重复保存半径。玩家主／副武器也可从 Player/WeaponSlots 展开；敌人从 Enemy/Weapon 展开。
+半径为直接 `@export` 参数：移动范围归角色脚本，枪声范围归 WeaponData，声音资源不再重复保存半径。玩家主／副武器也可从 Player/Equipment 展开；敌人从 Enemy/Weapon 展开。
 
 对应姿态的有效半径为 0，或对应声音资源留空，就不产生该类声音事件。角色之间的移动半径独立；武器半径属于该武器资源，共用同一把武器资源的角色会使用同一半径。默认声音资源也是共享的，若要独立修改隔墙倍率或预留音频，请先将声音资源设为唯一或另存一份。
 
