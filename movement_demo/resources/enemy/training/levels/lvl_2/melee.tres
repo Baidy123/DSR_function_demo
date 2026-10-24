@@ -1,0 +1,8 @@
+[gd_resource type="Resource" script_class="EnemyTrainingProfile" format=3 uid="uid://jo3p6yuxdvpi"]
+
+[ext_resource type="Script" uid="uid://cmqxbw8d8ko4e" path="res://scripts/enemy/config/enemy_training_profile.gd" id="1_profile"]
+
+[resource]
+script = ExtResource("1_profile")
+display_name = "第2关近战兵示例训练"
+selected_tactics = Array[StringName]([&"melee_rush"])

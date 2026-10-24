@@ -14,7 +14,7 @@ movement_demo/
 ├── scenes/
 │   ├── main.tscn          主场景，F5 默认入口
 │   ├── arena.tscn         战斗区域与敌人实例
-│   ├── enemy/             可直接拖入竞技场的 enemy.tscn
+│   ├── enemy/             公共 enemy.tscn，types/兵种继承场景，levels/lvl_N/关卡预设
 │   ├── player/            独立 player.tscn、player_camera_rig.tscn 与战斗／生命／武器槽子场景
 │   ├── world/             掩体、训练区域、墙体、交互物与门禁通道场景
 │   │   ├── levels/        Lvl_1–5 独立地图，含区域、导航、空 Squad 及地图实体
@@ -42,7 +42,7 @@ movement_demo/
 │   │   ├── actions/       可配置动作 .tres
 │   │   ├── units/         兵种模板 .tres
 │   │   ├── cooperation/   三档团队意识模板与旧区域兼容绑定 .tres
-│   │   └── training/      训练配置 .tres
+│   │   └── training/      训练配置 .tres；levels/lvl_N/保存关卡独立训练
 │   ├── weapons/           玩家与敌人的武器 .tres
 │   ├── player/            玩家医疗包效果与时间等静态配置
 │   ├── noise/             移动声、枪声配置
@@ -61,6 +61,8 @@ movement_demo/
 ```
 
 新增运行脚本按职责放入对应目录；新增敌人动作实现放 `scripts/enemy/actions/`，其定义资源放 `resources/enemy/actions/`。新增交互效果放 `scripts/world/interactions/`，具体交互物场景放 `scenes/world/objects/`；交互物与效果只通过 `InteractionContext` 使用注入的状态，不直接查找全局节点。测试或临时诊断不要放回工程根目录，也不要混入运行脚本目录。
+
+关卡兵种示范使用 `scenes/enemy/enemy.tscn → types/melee.tscn → levels/lvl_1/melee.tscn`／`lvl_2/melee.tscn` 的场景继承链，保持原公共节点、脚本和UID；每个关卡预设仅覆盖生命与独立训练引用。训练保存到既有资源目录的对应 `training/levels/lvl_N/melee.tres`。示例参数和维护入口见[敌人配置](enemy-ai.md#按关卡维护兵种示范2026-10-24)，用户原独立近战副本与地图实例保留。
 
 `scenes/Lvl_1.svg` 至 `Lvl_5.svg` 是关卡俯视参考图；`scenes/world/levels/lvl_1.tscn` 至 `lvl_5.tscn` 是独立地图，根节点复用原区域控制器，含 CombatZone、空 Squad、NavigationRegion3D。地图实体在导航区域的 Environment 下，内部掩体继承原预制场景，外围墙和地板为普通静态碰撞体。各图独立引用 `resources/navigation/lvl_N_navigation.tres`。维护命令 `tests/bake_levels.gd` 解析完整碰撞并用盒体轮廓排除实体内部及顶部导航，不由游戏加载。尺寸、编号差异及重烘方式见 [关卡地图](gameplay/LEVEL_MAPS.md)。
 
