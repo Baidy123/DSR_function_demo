@@ -219,8 +219,6 @@ func _physics_process(delta: float) -> void:
 	velocity.x = forward.x * current_speed
 	velocity.z = forward.z * current_speed
 
-	_update_stamina(delta)
-
 	if not is_on_floor():
 		velocity += get_gravity() * delta
 	else:
@@ -230,6 +228,12 @@ func _physics_process(delta: float) -> void:
 	var push := _advance_melee_push(delta)
 	velocity += push
 	move_and_slide()
+	if is_sprinting and _sprint_blocked_by_wall(own_horizontal):
+		is_sprinting = false
+		current_speed = 0.0
+		own_horizontal = Vector2.ZERO
+	# 碰撞后再结算体力；顶墙停住不能保留奔跑状态或继续扣费。
+	_update_stamina(delta)
 	if is_on_floor(): _camera_ground_height = global_position.y
 	_update_movement_noise(delta, before_move)
 	if combat != null:
@@ -238,6 +242,21 @@ func _physics_process(delta: float) -> void:
 	if not push.is_zero_approx():
 		velocity.x = own_horizontal.x
 		velocity.z = own_horizontal.y
+
+
+func _sprint_blocked_by_wall(own_horizontal: Vector2) -> bool:
+	if not is_on_wall(): return false
+	var allowed := own_horizontal
+	for index in get_slide_collision_count():
+		var collision := get_slide_collision(index)
+		for contact in collision.get_collision_count():
+			var normal := collision.get_normal(contact)
+			if absf(normal.dot(up_direction)) >= cos(floor_max_angle): continue
+			var horizontal_normal := Vector2(normal.x, normal.z).normalized()
+			allowed -= horizontal_normal * minf(0.0, allowed.dot(horizontal_normal))
+	# 允许有真实位移的沿墙滑动；侧向击退不能冒充被墙挡住的主动奔跑。
+	var actual := Vector2(get_real_velocity().x, get_real_velocity().z)
+	return allowed.length_squared() <= 0.0001 or actual.length_squared() <= 0.0001
 
 
 # 锁定和近战时朝向交给 Combat；移动方向独立于角色朝向。
