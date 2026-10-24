@@ -26,6 +26,9 @@ func _run() -> void:
 		if arena.vault_navigation.ready and not arena.vault_navigation.connections().is_empty(): break
 	await physics_frame
 	await physics_frame
+	# Graph construction and the server's asynchronous map iteration are
+	# separate. Synchronize the native map before testing validation slices.
+	NavigationServer3D.map_force_update(ai.agent.get_navigation_map())
 	ai.context.routes.native_queries.clear()
 	ai.context.routes.native_last_units = 0
 	var description := NativeRoute.query(ai.context, TARGET)

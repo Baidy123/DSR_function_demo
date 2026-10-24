@@ -133,6 +133,21 @@ func _run() -> void:
 	await _settle(region)
 	var reloaded_top := NavigationServer3D.region_get_closest_point(region.get_rid(), Vector3(0.3, 1.1, 0))
 	_check(saved == OK and reloaded != null and absf(reloaded_top.z) > 0.7 and _arrived(_path(region, Vector3(0, 0, 3), Vector3(0, 0, -3), 1), Vector3(0, 0, -3)), "saved and reloaded fixture retains no cover top and valid floor detour")
+	# A tall closed box leaves enough apparent headroom below its top surface
+	# for Recast to retain an interior floor unless the outline's elevation is
+	# based on the physical bottom, not the box center or vertex Y values.
+	collision.shape.size.y = 2.2
+	collision.shape.size.z = 4.0
+	cover.position.y = 1.1
+	region.bake_navigation_mesh(false)
+	_check(obstacle.global_position.y <= -0.49, "tall-cover obstruction starts below the physical bottom")
+	await _settle(region)
+	var high_inside := NavigationServer3D.region_get_closest_point(region.get_rid(), Vector3(0.4, 0, 0))
+	var high_top := NavigationServer3D.region_get_closest_point(region.get_rid(), Vector3(0.4, 2.2, 0))
+	_check(absf(high_inside.z) > 2.2 and absf(high_top.z) > 2.2, "native bake excludes both the floor inside tall cover and its top")
+	collision.shape.size.y = 1.1
+	collision.shape.size.z = 0.8
+	cover.position.y = 0.55
 	# Hand-authored two-island mesh gives a known disconnected graph, independent
 	# of bake simplification, existing saved levels, or global edge connections.
 	var mesh := NavigationMesh.new()

@@ -48,6 +48,8 @@ func _run() -> void:
 		if arena.vault_navigation.ready and not arena.vault_navigation.connections().is_empty(): break
 	await physics_frame
 	await physics_frame
+	# Registry preparation does not finish the server's asynchronous map update.
+	NavigationServer3D.map_force_update(ai.agent.get_navigation_map())
 	# Let the normal AI entry assemble/freeze capabilities before querying them.
 	for actor in actors: actor.get_node("AI")._physics_process(STEP)
 	check(arena.vault_navigation.ready and not arena.vault_navigation.connections().is_empty(), "Owned static graph creates real native links")

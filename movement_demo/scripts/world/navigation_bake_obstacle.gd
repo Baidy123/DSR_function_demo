@@ -6,6 +6,7 @@ extends NavigationObstacle3D
 var _shape: BoxShape3D
 var _collision: CollisionShape3D
 var _signature: Array = []
+var _syncing := false
 static var _parser: RID
 static var _parser_users: int = 0
 
@@ -45,6 +46,7 @@ func _notification(what: int) -> void:
 		sync_geometry()
 
 func sync_geometry() -> void:
+	if _syncing: return
 	var collision := get_parent().get_node_or_null("CollisionShape3D") as CollisionShape3D
 	if collision == null or not collision.shape is BoxShape3D or collision.disabled:
 		vertices = PackedVector3Array()
@@ -58,24 +60,27 @@ func sync_geometry() -> void:
 	_collision = collision
 	var signature := [collision.global_transform, _shape.size, global_transform]
 	if signature == _signature: return
-	_signature = signature
+	_syncing = true
 	var half := _shape.size * 0.5
 	var bottom := INF
 	var top := -INF
+	for x in [-half.x, half.x]:
+		for y in [-half.y, half.y]:
+			for z in [-half.z, half.z]:
+				var point := collision.to_global(Vector3(x, y, z))
+				bottom = minf(bottom, point.y)
+				top = maxf(top, point.y)
+	# Native baking ignores vertex Y. Move the actual obstacle origin below
+	# the physical bottom so tall boxes cannot retain a walkable floor inside.
+	var origin := global_position
+	origin.y = bottom - 0.5
+	global_position = origin
 	var outline := PackedVector3Array()
 	for corner in [Vector3(-half.x, 0, -half.z), Vector3(half.x, 0, -half.z), Vector3(half.x, 0, half.z), Vector3(-half.x, 0, half.z)]:
 		var point := to_local(collision.to_global(corner))
 		point.y = 0.0
 		outline.append(point)
-	for x in [-half.x, half.x]:
-		for y in [-half.y, half.y]:
-			for z in [-half.z, half.z]:
-				var point := to_local(collision.to_global(Vector3(x, y, z)))
-				bottom = minf(bottom, point.y)
-				top = maxf(top, point.y)
-	# Obstacle extrusion starts at its origin. Keep the outline in this node's
-	# coordinates but shift its base below the complete physical box.
-	var base := bottom - 0.5 / maxf(global_basis.y.length(), 0.001)
-	for index in outline.size(): outline[index].y = base
 	vertices = outline
-	height = top - bottom + 1.0 / maxf(global_basis.y.length(), 0.001)
+	height = (top - bottom + 1.0) / maxf(global_basis.y.length(), 0.001)
+	_signature = [collision.global_transform, _shape.size, global_transform]
+	_syncing = false
