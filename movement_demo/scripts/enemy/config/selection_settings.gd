@@ -4,6 +4,13 @@ extends "res://scripts/enemy/config/module_settings.gd"
 func _init() -> void:
 	section = &"selection"
 
+## 已通过完整路径与身体预检的翻越方案在共同总代价中扣除的分值；0关闭偏好。
+## 不改变实际耗时、暴露或安全检查，其他更有利的方案仍可胜出。
+@export_range(0.0, 20.0, 0.25) var vault_preference: float = 6.0:
+	set(value):
+		vault_preference = maxf(0.0, value)
+		mark_override(&"vault_preference")
+
 ## 最后目击位置到掩体表面的最大推断距离；两种压制共用，不依赖出口压制是否解锁。
 @export_range(0.1, 4.0, 0.05) var cover_inference_distance: float = 1.75:
 	set(value):

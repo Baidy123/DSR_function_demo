@@ -163,6 +163,9 @@ func expand_route_candidates(candidates: Array[Dictionary]) -> Array[Dictionary]
 			var at_destination: float = context._reload_exposure(point, threat, -1.0, destination.get("crouch", false))
 			outcome.exposed_seconds = maxf(0.0, float(outcome.exposed_seconds) + assessment.exposure - original.exposure + at_destination * (maxf(0.0, horizon - assessment.seconds) - maxf(0.0, horizon - original.seconds)))
 			outcome.information_loss = minf(horizon, maxf(0.0, float(outcome.information_loss) + time_change) + minf(horizon, assessment.vault_seconds))
+			# A soft preference uses the existing shared score; geometry and actual
+			# time/exposure remain unchanged. Base candidates never receive it.
+			outcome.preference_credit = float(outcome.get("preference_credit", 0.0)) + maxf(0.0, float(context.setting(&"selection", &"vault_preference", 6.0)))
 			result.append(alternative)
 	if _running and not route_motion.route.is_empty() and valid(context.sees_player):
 		var continuing := plan.duplicate(true)
