@@ -127,10 +127,10 @@ func advance_evaluation() -> void:
 	# Catch-up can leave only odd physics frames available for preparation.
 	# Preserve the four-step interval without depending on one modulo phase.
 	if context.routes.has_pending() and (_route_preparation_frame < 0 or frame - _route_preparation_frame >= 4) and Time.get_ticks_usec() - started < EVALUATION_BUDGET_USEC:
-		context.routes.advance_one()
+		var route_units: int = context.routes.advance_one(started + EVALUATION_BUDGET_USEC)
 		_route_preparation_frame = frame
-		last_evaluated_count += 1
-		total_evaluated_count += 1
+		last_evaluated_count += route_units
+		total_evaluated_count += route_units
 	for job in jobs:
 		job.owners = job.owners.filter(func(owner): return owner.get_ref() != null and owner.get_ref().is_enabled())
 		if not job.owners.is_empty(): job.owner = job.owners[0]

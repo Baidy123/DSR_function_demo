@@ -10,6 +10,7 @@ var enemies: Array[CharacterBody3D] = []
 var _combat_zone: Area3D
 var tactical_map = preload("res://scripts/enemy/services/enemy_tactical_map.gd").new()
 var cooperation = preload("res://scripts/enemy/services/enemy_cooperation.gd").new()
+var vault_navigation = preload("res://scripts/world/vault_navigation.gd").new()
 
 
 func enemy_environment() -> Dictionary:
@@ -17,7 +18,8 @@ func enemy_environment() -> Dictionary:
 	cooperation.refresh_squads()
 	var navigation := get_node_or_null("NavigationRegion3D") as NavigationRegion3D
 	tactical_map.bind_region(navigation)
-	return {"zone": get_node_or_null("CombatZone"), "navigation": navigation, "cooperation": cooperation, "tactical_map": tactical_map}
+	vault_navigation.bind_region(navigation)
+	return {"zone": get_node_or_null("CombatZone"), "navigation": navigation, "cooperation": cooperation, "tactical_map": tactical_map, "vault_navigation": vault_navigation}
 
 
 func register_enemy(enemy: CharacterBody3D) -> void:
@@ -35,6 +37,7 @@ func _ready() -> void:
 
 
 func _physics_process(delta: float) -> void:
+	vault_navigation.advance()
 	cooperation.configure_team_bindings(team_cooperation_bindings)
 	_bind_combat_zone()
 	for player in players_inside:
@@ -90,3 +93,4 @@ func _reset_targets() -> void:
 
 func _exit_tree() -> void:
 	tactical_map.release()
+	vault_navigation.release()

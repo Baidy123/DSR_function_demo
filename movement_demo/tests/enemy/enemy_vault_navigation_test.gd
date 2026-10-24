@@ -6,6 +6,12 @@ var _nav_height := 0.0
 var _opposite_only := false
 var _vault_connection_only := false
 
+func _build_fixture() -> void:
+	super._build_fixture()
+	# Retain coverage of the supported legacy before/vault/after representation.
+	# The native shared graph and full area loop have their own runtime suite.
+	scene.get_node("Arena").set_physics_process(false)
+
 func _run() -> void:
 	_build_fixture()
 	wall.vault_enabled = true

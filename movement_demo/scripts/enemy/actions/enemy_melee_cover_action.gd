@@ -35,7 +35,8 @@ func prepare_command_offers(query: Dictionary, cursor: Dictionary, deadline_usec
 			if stage == &"approach": stage = &"exit"
 			elif stage == &"exit" and query.body.visible: stage = &"contact"
 			else: return {"done": true, "offers": [], "reason": &"advance_finished"}
-		var offer := _command_advance_offer(query, previous.execution_data, stage)
+		var offer := _command_advance_offer(query, previous.execution_data, stage, deadline_usec)
+		if offer.get("route_pending", false): return {"done": false, "offers": [], "next_cursor": cursor}
 		return {"done": true, "offers": [offer] if not offer.is_empty() else []}
 	if query.objective.phase != &"contact" or not _has_recent_target() or context.melee.can_request(query.body.visible):
 		return {"done": true, "offers": [], "reason": &"no_approach_window"}
@@ -49,6 +50,16 @@ func prepare_command_offers(query: Dictionary, cursor: Dictionary, deadline_usec
 		points.sort_custom(func(a, b): return query.body.position.distance_squared_to(a.hide) < query.body.position.distance_squared_to(b.hide))
 		work = {"points": points, "index": 0, "count": 0}
 	var offers: Array[Dictionary] = []
+	if work.has("pending_offer"):
+		var pending_offer := _command_advance_offer(query, work.pending_offer, &"approach", deadline_usec)
+		if pending_offer.get("route_pending", false): return {"done": false, "offers": [], "next_cursor": work}
+		work.erase("pending_offer")
+		if not pending_offer.is_empty():
+			pending_offer.estimate = work.pending_estimate
+			offers.append(pending_offer)
+			work.count += 1
+		work.erase("pending_estimate")
+		return {"done": false, "offers": offers, "next_cursor": work}
 	if not work.has("active") and work.index < work.points.size() and Time.get_ticks_usec() < deadline_usec:
 		var data: Dictionary = work.points[work.index].duplicate(true)
 		work.index += 1
@@ -87,15 +98,18 @@ func prepare_command_offers(query: Dictionary, cursor: Dictionary, deadline_usec
 						data.exit = exit.position
 						data.target = query.objective.position
 						data.plan_key = [action_id, context.memory_generation, data.cover_id, data.hide, context.evidence_elapsed_seconds]
-						var offer := _command_advance_offer(query, data, &"approach")
-						if not offer.is_empty():
+						var offer := _command_advance_offer(query, data, &"approach", deadline_usec)
+						if offer.get("route_pending", false):
+							work.pending_offer = data.duplicate(true)
+							work.pending_estimate = float(candidate.outcome.unavailable_seconds) + float(candidate.outcome.exposed_seconds)
+						elif not offer.is_empty():
 							offer.estimate = float(candidate.outcome.unavailable_seconds) + float(candidate.outcome.exposed_seconds)
 							offers.append(offer)
 							work.count += 1
 				work.erase("active")
-	return {"offers": offers, "next_cursor": work, "done": not work.has("active") and (work.index >= work.points.size() or work.count >= 4)}
+	return {"offers": offers, "next_cursor": work, "done": not work.has("pending_offer") and not work.has("active") and (work.index >= work.points.size() or work.count >= 4)}
 
-func _command_advance_offer(query: Dictionary, data: Dictionary, stage: StringName) -> Dictionary:
+func _command_advance_offer(query: Dictionary, data: Dictionary, stage: StringName, deadline_usec: int = 0) -> Dictionary:
 	var cover = instance_from_id(data.cover_id)
 	if not is_instance_valid(cover) or not context.navigation_region.is_ancestor_of(cover): return {}
 	if stage == &"approach" and not _has_recent_target(): return {}
@@ -107,10 +121,13 @@ func _command_advance_offer(query: Dictionary, data: Dictionary, stage: StringNa
 		point = contact[-1]
 	var site := {"position": point, "role": &"engage", "look_position": context.last_known_position if query.body.visible else data.target,
 		"approach_only": stage != &"contact", "site_key": "advance:%s:%s:%s" % [data.cover_id, stage, point]}
+	context.routes.native_deadline_usec = deadline_usec
 	var offer := preload("res://scripts/enemy/services/enemy_search_formation.gd").candidate(context, query.profile, query.body, site, query.objective, query.previous, action_id)
+	context.routes.native_deadline_usec = 0
+	if offer.get("route_pending", false): return offer
 	if offer.is_empty() or offer.get("retry_detour", false): return {}
 	var speed := _entry_speed() if stage == &"approach" else _exit_speed()
-	var seconds: float = selection._path_length_from_path(offer.route) / maxf(0.1, actor.move_speed * speed)
+	var seconds := command_route_seconds(offer, speed)
 	offer.speed_multiplier = speed
 	offer.travel_seconds = seconds
 	offer.estimate = seconds + float(offer.tactical.get("exposure", 0.0))

@@ -1,8 +1,10 @@
 extends RefCounted
 
-## Read-only one-vault alternatives. No target reads, action state or navigation writes.
+## Budgeted typed routes with legacy single-vault compatibility. No target reads,
+## action ownership or navigation writes.
 const LowCover = preload("res://scripts/world/low_cover_geometry.gd")
 const Geometry = preload("res://scripts/systems/character_geometry.gd")
+const NavigationRoute = preload("res://scripts/enemy/services/enemy_navigation_route.gd")
 # Bounded local adjustment of a generated entry, not a relaxed path tolerance.
 const MAX_ENTRY_PROJECTION := 0.35
 var context
@@ -14,6 +16,10 @@ var _iteration := -1
 var _cached_at := 0
 var _vault_only: Dictionary = {}
 var _ready_position := Vector3.INF
+var _failed_links: Dictionary = {}
+var native_queries: Dictionary = {}
+var native_deadline_usec := 0
+var native_last_units := 0
 
 func alternatives(destination: Vector3, priority: bool = false) -> Array[Dictionary]:
 	var iteration := NavigationServer3D.map_get_iteration_id(context.agent.get_navigation_map())
@@ -47,11 +53,19 @@ func alternatives(destination: Vector3, priority: bool = false) -> Array[Diction
 func has_pending() -> bool:
 	return not _pending.is_empty()
 
-func advance_one() -> void:
-	if _pending.is_empty(): return
+func advance_one(deadline_usec: int = 0) -> int:
+	if _pending.is_empty(): return 0
 	var destination: Vector3 = _priority_pending.pop_front() if not _priority_pending.is_empty() else _pending[0]
 	_pending.erase(destination)
-	_cache[destination] = _evaluate(destination)
+	native_deadline_usec = deadline_usec
+	native_last_units = 0
+	var evaluated := _evaluate(destination)
+	native_deadline_usec = 0
+	if NavigationRoute.pending(context, destination):
+		_pending.append(destination)
+		_priority_pending.append(destination)
+		return maxi(1, native_last_units)
+	_cache[destination] = evaluated
 	# At rest, announce the first usable route and let the ordinary timer consume
 	# the rest of this batch. A moving actor still needs each newly ready route
 	# before leaving its origin tolerance (including a late, shorter vault).
@@ -60,11 +74,18 @@ func advance_one() -> void:
 	if moved and not _cache[destination].is_empty():
 		_ready_position = point
 		context.invalidate_utility()
+	return maxi(1, native_last_units)
 
 func _evaluate(destination: Vector3) -> Array[Dictionary]:
 	var result: Array[Dictionary] = []
 	var actor = context.actor
 	if actor.is_vaulting() or actor.global_position.distance_to(destination) < 1.0: return result
+	if context.vault_navigation != null and context.vault_navigation.ready and not context.vault_navigation.connections().is_empty():
+		var route := NavigationRoute.query(context, destination, Vector3.INF, failed_links())
+		if not route.is_empty():
+			if route.has("vault"): route.vault.cover = instance_from_id(route.vault.cover_id)
+			result.append(route)
+		return result
 	var covers: Array = context.spatial.regions().filter(func(body): return body.is_low_cover() and body.vault_enabled and body.global_position.distance_to(actor.global_position) < 8.0)
 	covers.sort_custom(func(a, b): return a.global_position.distance_squared_to(actor.global_position) < b.global_position.distance_squared_to(actor.global_position))
 	for cover in covers.slice(0, 2):
@@ -106,6 +127,7 @@ func _navigation_entry(nominal: Vector3, collision: CollisionShape3D, axis: int,
 	return projected
 
 func assessment(route: Dictionary, multiplier: float, threat: Vector3, reload_seconds: float) -> Dictionary:
+	if route.has("segments"): return NavigationRoute.assess(context, route, multiplier, threat, reload_seconds)
 	var before: Dictionary = context.spatial.assess_route(context, route.before, threat, multiplier, reload_seconds)
 	var duration: float = route.vault.duration
 	var horizon: float = context.utility_horizon_seconds
@@ -126,6 +148,19 @@ func reset() -> void:
 	_vault_only.clear()
 	_origin = Vector3.INF
 	_iteration = -1
+	_failed_links.clear()
+	native_queries.clear()
+
+func failed_links() -> Array:
+	var now := Time.get_ticks_msec()
+	for key in _failed_links.keys():
+		if now >= _failed_links[key]: _failed_links.erase(key)
+	return _failed_links.keys()
+
+func reject_link(key: String) -> void:
+	_failed_links[key] = Time.get_ticks_msec() + 500
+	_cache.clear()
+	context.invalidate_utility()
 
 func planning_path(from: Vector3, destination: Vector3) -> PackedVector3Array:
 	var walk: PackedVector3Array = context.cover_selection._path_to(from, destination)
@@ -136,6 +171,7 @@ func planning_path(from: Vector3, destination: Vector3) -> PackedVector3Array:
 	if routes.is_empty(): return walk
 	_vault_only[destination] = true
 	# Geometry-only connected path. Candidate expansion removes the nonexistent ordinary route.
+	if routes[0].has("segments"): return routes[0].points.duplicate()
 	var combined: PackedVector3Array = routes[0].before.duplicate()
 	combined.append_array(routes[0].after)
 	return combined

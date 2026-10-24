@@ -17,6 +17,7 @@ var _checked: Dictionary = {}
 var _relations: Dictionary = {}
 var _inspection_reports: Dictionary = {}
 var _reservations: Dictionary = {}
+var _vault_transits: Dictionary = {}
 var _member_serial := 0
 var _teams: Dictionary = {}
 var _team_by_member: Dictionary = {}
@@ -577,6 +578,7 @@ func advance(delta: float) -> void:
 	var started := Time.get_ticks_usec()
 	refresh_squads()
 	elapsed += maxf(0.0, delta)
+	_expire_vault_transits()
 	for id in _members.keys():
 		var context = _context(id)
 		if context == null or not is_instance_valid(context.actor) or not context.actor.is_inside_tree() or context.actor.is_dead:
@@ -597,6 +599,7 @@ func advance(delta: float) -> void:
 	last_advance_usec = Time.get_ticks_usec() - started
 
 func reset() -> void:
+	_vault_transits.clear()
 	generation += 1
 	elapsed = 0.0
 	_reports.clear()
@@ -638,6 +641,9 @@ func unregister(id: int) -> void:
 	revision += 1
 
 func release_member(id: int) -> void:
+	var transit: Dictionary = _vault_transits.get(id, {})
+	var body = transit.get("actor").get_ref() if transit.has("actor") else null
+	if not is_instance_valid(body) or not body.is_vaulting(): _vault_transits.erase(id)
 	var coordinator = coordinator_for(_context(id))
 	if coordinator != null: coordinator.release_member(id)
 	_release_member_reservations(id, true)
@@ -666,6 +672,32 @@ func _context(id: int):
 
 func registered_member_count() -> int:
 	return _members.size()
+
+## Execution-only capsule corridors, separate from destination/task ownership.
+func acquire_vault_transit(context, segment: Dictionary) -> bool:
+	_expire_vault_transits()
+	var id: int = context.actor.get_instance_id()
+	if _vault_transits.has(id): return _vault_transits[id].key == segment.link_key
+	var radius: float = context.actor.get_node("CollisionShape3D").shape.radius
+	for owner in _vault_transits:
+		var other: Dictionary = _vault_transits[owner]
+		var closest := Geometry3D.get_closest_points_between_segments(segment.entry, segment.exit, other.entry, other.exit)
+		if other.key == segment.link_key or Vector2(closest[0].x - closest[1].x, closest[0].z - closest[1].z).length() < radius + float(other.radius) + 0.1: return false
+	_vault_transits[id] = {"actor": weakref(context.actor), "key": segment.link_key, "entry": segment.entry, "exit": segment.exit, "radius": radius, "created": elapsed, "airborne": false}
+	return true
+
+func release_vault_transit(context) -> void:
+	if not context.actor.is_vaulting(): _vault_transits.erase(context.actor.get_instance_id())
+
+func _expire_vault_transits() -> void:
+	for id in _vault_transits.keys():
+		var entry: Dictionary = _vault_transits[id]
+		var body = entry.actor.get_ref()
+		if not is_instance_valid(body) or not body.is_inside_tree():
+			_vault_transits.erase(id)
+		elif body.is_vaulting(): entry.airborne = true
+		elif body.is_dead or entry.airborne or elapsed - float(entry.created) > 0.2:
+			_vault_transits.erase(id)
 
 func _domain(actor) -> String:
 	return JSON.stringify([String(member_faction(actor)), String(member_group(actor))])

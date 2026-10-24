@@ -72,6 +72,8 @@ python movement_demo/tests/run_regressions.py --check
 
 地图维护命令 `tests/bake_levels.gd` 只重烘五张独立地图的导航，已列入维护脚本排除清单，不作为回归运行；用法与实体轮廓排除说明见 [关卡地图](gameplay/LEVEL_MAPS.md)。
 
+翻越定向检查包括 `vault_navigation_world_test`（原生 Bake／静态图）、`enemy_vault_link_contract_test`（增量查询／多段执行／生命周期）和 `enemy_vault_link_runtime_test`（默认0级双近战实战）。运行后者时在 Godot `--script` 参数后追加 `-- --level=1` 或 `-- --level=2` 验证团队，追加 `--all-trained` 装配该兵种全部战术。旧 `enemy_vault_navigation_test` 保留旧单次路线兼容断言；两种表示分别验证，不用旧夹具的单次同步调用代替新分帧流程。
+
 ```powershell
 python movement_demo/tests/run_regressions.py --godot E:/Godot/Godot_v4.7.2-stable_win64_console.exe
 python movement_demo/tests/run_regressions.py --godot E:/Godot/Godot_v4.7.2-stable_win64_console.exe --suite systems

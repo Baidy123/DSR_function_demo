@@ -21,7 +21,7 @@ static func contact_alternatives(context) -> Array[PackedVector3Array]:
 		var point: Vector3 = target + away.normalized().rotated(Vector3.UP, angle) * stopping_distance(context)
 		point.y = origin.y
 		if not contact_position_valid(context, point) or context.is_utility_destination_blocked(point): continue
-		var path: PackedVector3Array = context.cover_selection._path_to(origin, point).duplicate()
+		var path: PackedVector3Array = context.routes.planning_path(origin, point).duplicate()
 		if path.is_empty(): continue
 		for index in path.size(): path[index].y = origin.y
 		if contact_position_valid(context, path[-1]): result.append(path)

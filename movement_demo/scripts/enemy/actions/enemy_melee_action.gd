@@ -21,7 +21,7 @@ func _contact_candidates() -> Array[Dictionary]:
 	# Keep a valid side post while following it instead of rotating the side
 	# with every target update. Reservations remain part of the normal choice.
 	if _running and plan.get("mode") == &"contact_detour" and Approach.contact_position_valid(context, plan.destination.position):
-		var continuing: PackedVector3Array = selection._path_to(actor.global_position, plan.destination.position).duplicate()
+		var continuing: PackedVector3Array = context.routes.planning_path(actor.global_position, plan.destination.position).duplicate()
 		for index in continuing.size(): continuing[index].y = actor.global_position.y
 		if not continuing.is_empty() and _contact_available(continuing[-1]): return [_contact_candidate(continuing, true)]
 	var path: PackedVector3Array = Approach.contact_path(context)

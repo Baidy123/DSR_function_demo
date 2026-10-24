@@ -199,7 +199,11 @@ func prepare_command_offers(query: Dictionary, cursor: Dictionary, deadline_usec
 			continue
 		site.role = role
 		site.detour_variant = int(work.get("detour", 0))
+		context.routes.native_deadline_usec = deadline_usec
 		var offer := command_site_offer(query, site)
+		context.routes.native_deadline_usec = 0
+		if offer.get("route_pending", false):
+			break
 		if offer.get("retry_detour", false):
 			work.detour = site.detour_variant + 1
 		else:
@@ -215,6 +219,12 @@ func prepare_command_offers(query: Dictionary, cursor: Dictionary, deadline_usec
 
 func command_site_offer(query: Dictionary, site: Dictionary) -> Dictionary:
 	return preload("res://scripts/enemy/services/enemy_search_formation.gd").candidate(context, query.profile, query.body, site, query.objective, query.previous, action_id)
+
+func command_route_seconds(offer: Dictionary, speed_multiplier: float) -> float:
+	var speed: float = maxf(0.1, actor.move_speed * speed_multiplier)
+	if offer.has("route_plan"):
+		return preload("res://scripts/enemy/services/enemy_navigation_route.gd").seconds(offer.route_plan, speed)
+	return selection._path_length_from_path(offer.route) / speed
 
 func validate_command_offer(query: Dictionary, offer: Dictionary) -> Dictionary:
 	var valid_offer: bool = is_enabled() and offer.get("action") == action_id and command_roles().has(offer.get("role"))
@@ -255,6 +265,7 @@ var _command_attack_blocked = 0.0
 func begin_command(task: Dictionary) -> bool:
 	if not is_enabled() or not command_roles().has(task.get("role")): return false
 	command = task.duplicate(true)
+	route_motion.begin(task.get("route_plan", {}))
 	plan = {"id": action_id, "plan": &"squad_command", "destination": {"position": task.position, "path": task.route}}
 	_running = true
 	_command_index = 1
@@ -273,9 +284,11 @@ func begin_command(task: Dictionary) -> bool:
 ## Updating the same approved finite step does not restart its action timers.
 func continue_command(task: Dictionary) -> void:
 	var route_changed: bool = command.get("route") != task.get("route")
+	route_changed = route_changed or command.get("route_plan") != task.get("route_plan")
 	command = task.duplicate(true)
 	plan.destination = {"position": task.position, "path": task.route}
 	if route_changed:
+		route_motion.begin(task.get("route_plan", {}))
 		_command_index = 1
 		_command_approach_index = -1
 		for index in task.route.size():
@@ -309,6 +322,26 @@ func execute_command(delta: float, visible: bool) -> Dictionary:
 		context.report_command(command, &"occupied", {"reason": &"body_busy"})
 		return output
 	var permission: Dictionary = context.command_permission(command)
+	if command.has("route_plan") and route_motion.failed:
+		context.report_command(command, &"blocked", {"reason": &"vault_route_failed"})
+		return output
+	if command.has("route_plan") and not route_motion.route.is_empty():
+		if not permission.get("allowed", false):
+			context.report_command(command, &"waiting", {"reason": permission.get("reason", &"passage"), "waiting_for": permission.get("waiting_for", [])})
+			return output
+		output.multiplier = float(command.get("speed_multiplier", 1.0)) * float(permission.get("speed_scale", 1.0))
+		output.merge(command_work(delta, visible, false), true)
+		output = route_motion.apply(context, output, delta)
+		if route_motion.failed:
+			output.running = true
+			context.report_command(command, &"blocked", {"reason": &"vault_route_failed"})
+		elif route_motion.waiting_for_vault:
+			context.report_command(command, &"waiting", {"reason": &"vault_passage"})
+		elif route_motion.completed:
+			_command_index = command.route.size()
+		else:
+			context.report_command(command, &"executing", {"progress": 0.0})
+		return output
 	var path: PackedVector3Array = command.route
 	while _command_index < path.size() and context._horizontal_distance(path[_command_index]) < 0.06: _command_index += 1
 	if not visible: output.facing = command_look_position() - actor.global_position

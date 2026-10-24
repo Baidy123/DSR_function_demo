@@ -233,9 +233,9 @@ func command_roles() -> Array[StringName]:
 func command_site_offer(query: Dictionary, site: Dictionary) -> Dictionary:
 	if not site.has("defense_post"): return {}
 	var offer := super.command_site_offer(query, site)
-	if offer.is_empty() or offer.get("retry_detour", false): return offer
+	if offer.is_empty() or offer.get("retry_detour", false) or offer.get("route_pending", false): return offer
 	var speed: float = _setting(&"peek_speed_multiplier", 0.5) if site.role == &"cover_peek" else _setting(&"run_speed_multiplier", 2.0)
-	var seconds: float = selection._path_length_from_path(offer.route) / maxf(0.1, query.body.move_speed * speed)
+	var seconds := command_route_seconds(offer, speed)
 	offer.speed_multiplier = speed
 	offer.travel_seconds = seconds
 	offer.estimate = seconds + (1.0 if site.get("defense_proactive", false) else 0.0) + (0.0 if site.defense_post.peek.is_finite() else 2.0)

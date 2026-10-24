@@ -149,6 +149,8 @@ route_plan
 
 本轮已检查：两套选择权分流、普通／翻越层隔离、纯值任务、落点占用、共享连接局部失败、多成员通行、原生按钮一致性、区域生命周期与预算均有明确归属。没有把生成连接当作自动执行或放宽实体碰撞。
 
-用户当前待审核的是本书面设计。书面设计确认后再编写可执行实施计划，计划确认后才开始这套导航接口改动。本文件不宣布功能完成，不改写前两次个人模式修复的实际验证范围。
+用户已确认本设计并授权实施，后续明确无需重复编写计划。当前实现与验证记录见 [敌人 AI](../../enemy-ai.md#个人与团队共用的翻越导航2026-10-24)、[敌人测试](../../enemy-tests.md#2026-10-24-共用翻越路线执行)。原方向与验收门槛保持，前两次个人修复的历史验证范围不变。
+
+实施中的引擎兼容处理：Godot 4.7.2 对非空 included/excluded_regions 都会排除链接多边形，带链接查询改为无原生区域过滤、逐点严格验证 region/link 元数据；纯步行替代仍限定本区。区域服务另提供真实地面的 feet_entry/feet_exit，避免把抬升导航面的坐标直接当角色脚底位置。这两项是实测后的实现方式，不改变区域归属和身体预检要求。
 
 参考：Godot [NavigationLink3D](https://docs.godotengine.org/en/latest/classes/class_navigationlink3d.html)、[路径查询元数据](https://docs.godotengine.org/en/stable/tutorials/navigation/navigation_using_navigationpathqueryobjects.html)；具体可用属性已由本工程4.7.2编辑器 ClassDB 核对。

@@ -16,7 +16,10 @@ func _run() -> void:
 	# Prepare genuine one-vault geometry through the existing queue, without
 	# injecting a path or pretending that the gap is an ordinary walk segment.
 	ai.context.routes.alternatives(TARGET)
-	ai.context.routes.advance_one()
+	for frame in 16:
+		await physics_frame
+		ai.context.routes.advance_one()
+		if not ai.context.routes.alternatives(TARGET).is_empty(): break
 	var connected: PackedVector3Array = Contact.contact_path(ai.context)
 	check(not connected.is_empty() and not ai.context.routes.alternatives(TARGET).is_empty(), "a real cached vault connection supplies the planning-only contact path")
 	if connected.is_empty():
@@ -38,6 +41,7 @@ func _run() -> void:
 	engage.expand_route_candidates(direct)
 	for job in 4:
 		if not ai.context.routes.has_pending(): break
+		await physics_frame
 		ai.context.routes.advance_one()
 	var expanded: Array[Dictionary] = engage.expand_route_candidates(engage.collect_candidates(true))
 	check(expanded.any(func(option): return not option.get("route", {}).is_empty()), "rejecting charge preserves the original melee action's explicit vault candidate")

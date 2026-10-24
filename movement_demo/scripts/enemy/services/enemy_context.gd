@@ -30,6 +30,7 @@ var utility_risk_weight := 3.0
 var utility_information_weight := 1.0
 var utility_threat_half_life_seconds := 4.0
 var tactical_map
+var vault_navigation
 var cooperation
 var squad_node: Node
 var squad_coordinator
@@ -135,6 +136,7 @@ func refresh_environment() -> bool:
 		navigation_region = navigation
 		cooperation = environment.get("cooperation")
 		tactical_map = environment.get("tactical_map")
+		vault_navigation = environment.get("vault_navigation")
 		if _spawn_arena == null or _spawn_arena.get_ref() != owner_arena:
 			_spawn_position = actor.global_position
 			_spawn_arena = weakref(owner_arena) if owner_arena != null else null
@@ -170,6 +172,7 @@ func detach_environment() -> void:
 	squad_node = null
 	squad_coordinator = null
 	tactical_map = null
+	vault_navigation = null
 	_shared_visual.clear()
 	_shared_notification_position = Vector3.INF
 	team_visual_contact = false
@@ -1122,6 +1125,7 @@ func validate_command_post(task: Dictionary, profile: Dictionary) -> bool:
 	if not task.get("position", Vector3.INF).is_finite(): return false
 	if task.role in [&"reload", &"support"] and not actor.can_use_firearms(): return false
 	var path: PackedVector3Array = task.get("route", PackedVector3Array())
+	if task.has("route_plan") and not preload("res://scripts/enemy/services/enemy_navigation_route.gd").current(self, task.route_plan): return false
 	return not path.is_empty() and _horizontal_distance_between(path[-1], task.position) <= 0.1
 
 func command_observation_valid(task: Dictionary) -> bool:

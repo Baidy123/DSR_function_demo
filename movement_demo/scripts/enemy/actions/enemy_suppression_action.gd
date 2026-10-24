@@ -274,7 +274,7 @@ func freeze_command_capability() -> Dictionary:
 func command_site_offer(query: Dictionary, site: Dictionary) -> Dictionary:
 	if site.role != &"support": return {}
 	var offer := super.command_site_offer(query, site)
-	if not offer.is_empty() and not offer.get("retry_detour", false): offer.fire_mode = &"support"
+	if not offer.is_empty() and not offer.get("retry_detour", false) and not offer.get("route_pending", false): offer.fire_mode = &"support"
 	return offer
 
 func prepare_command_offers(query: Dictionary, cursor: Dictionary, deadline_usec: int) -> Dictionary:

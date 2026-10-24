@@ -613,10 +613,13 @@ func _member_work(id: int) -> Dictionary:
 		candidates.append(continuing)
 	if defense_role.is_empty() and previous.has("resume_task") and previous.state == &"complete" and _passage_cleared(previous):
 		var resume: Dictionary = previous.resume_task
-		var path = Formation.route(context, resume.position)
+		var description := Formation.route_plan(context, resume.position)
+		var path: PackedVector3Array = description.get("points", PackedVector3Array())
 		if not path.is_empty():
 			resume = resume.duplicate(true)
 			resume.route = path
+			if description.get("geometry_revision", -1) >= 0: resume.route_plan = description
+			else: resume.erase("route_plan")
 			resume.estimate = 0.0
 			candidates.append(resume)
 	return {"candidates": candidates, "sites": sites, "cursor": 0,
@@ -762,7 +765,9 @@ func _repair_traffic(attempted: Dictionary = {}) -> bool:
 						if _barriers.get(table[other].get("barrier_id", 0), {}).get("released", false): table[other].staging_position = _bodies[other].position
 						via = table[other].staging_position
 					var path = Formation.route(_context(other), table[other].position, via)
-					if not path.is_empty(): table[other].route = path
+					if not path.is_empty():
+						table[other].route = path
+						table[other].erase("route_plan")
 				var traffic = Traffic.plan(table, _bodies, _synchronize_search())
 				if traffic.valid and _commit(table, traffic):
 					_last_replan = &"joint_yield"
@@ -779,7 +784,7 @@ func accept(context, token: Dictionary) -> bool:
 	if int(_tasks[id].get("map_revision", context.coordination_search_revision())) != context.coordination_search_revision():
 		# Map preparation can publish another static source after commitment.
 		# Revalidate the actual remaining route; a new revision is not a wall.
-		if not Formation.valid_route(context, Traffic.remaining(context.actor.global_position, _tasks[id].route)): return false
+		if not Formation.valid_route(context, Traffic.remaining(context.actor.global_position, _tasks[id].route), _tasks[id].get("route_plan", {})): return false
 		_tasks[id].map_revision = context.coordination_search_revision()
 	if not context.validate_command_post(_tasks[id], _profiles.get(id, {})): return false
 	_tasks[id].accepted = true

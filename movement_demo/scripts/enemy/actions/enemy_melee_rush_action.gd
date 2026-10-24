@@ -14,10 +14,10 @@ func command_default_assignment() -> bool:
 func command_site_offer(query: Dictionary, site: Dictionary) -> Dictionary:
 	if query.body.get("firearms", true) or not _command_window(query.body, query.objective.position): return {}
 	var offer := super.command_site_offer(query, site)
-	if offer.is_empty() or offer.get("retry_detour", false): return offer
+	if offer.is_empty() or offer.get("retry_detour", false) or offer.get("route_pending", false): return offer
 	var length: float = selection._path_length_from_path(offer.route)
 	var speed: float = _setting(&"rush_speed_multiplier", 2.5)
-	var seconds: float = length / maxf(0.1, query.body.move_speed * speed)
+	var seconds := command_route_seconds(offer, speed)
 	var remaining: float = _burst_remaining if _command_burst_started else float(_setting(&"rush_seconds", 1.0))
 	if length < 0.2 or seconds > remaining: return {}
 	var saved: float = maxf(0.0, float(offer.travel_seconds) - seconds)

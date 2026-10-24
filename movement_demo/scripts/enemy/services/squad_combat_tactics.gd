@@ -13,10 +13,13 @@ static func refresh_contact_post(context, profile: Dictionary, body: Dictionary,
 	if melee_post_valid(context, profile, body.position, target, ARRIVAL_MARGIN): seed_point = body.position
 	var point := melee_position(context, profile, body, seed_point, target)
 	if not point.is_finite(): return false
-	var path := preload("res://scripts/enemy/services/enemy_search_formation.gd").route(context, point)
+	var description: Dictionary = preload("res://scripts/enemy/services/enemy_search_formation.gd").route_plan(context, point)
+	var path: PackedVector3Array = description.get("points", PackedVector3Array())
 	if path.is_empty(): return false
 	task.position = point
 	task.route = path
+	if description.get("geometry_revision", -1) >= 0: task.route_plan = description
+	else: task.erase("route_plan")
 	task.look_position = target
 	return true
 

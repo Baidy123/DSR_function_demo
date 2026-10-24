@@ -112,7 +112,11 @@ Spatial 的路线样本层仅在同步候选比较中复用同路径已实际观
 
 `enemy/services/enemy_local_motion.gd` 是身体私有的局部移动辅助，负责基础友军间距、近距让行，以及实际撞静态墙角且偏离导航走廊后的有限返回。通过原移动入口消费当前方向，使用实际胶囊与所属导航区域检查有限短路段；不接管 AI 目标、任务或动作进度。Context 接入导航区域与关系服务，即使关闭高级“团队协作”也启用基础间距，默认身体间额外余量 `cooperation.spacing_margin=0.45` 米；暂停／复位等由身体清理局部移动意图。间距修正只处理真实附近友军，不承担全队目的地分配。`enemy_navigation_corner_recovery_test.gd` 在内存中复刻现场掩体碰撞体与导航边界，覆盖单近战在协作开关两种情况下从范围外自主恢复并实际命中，不修改用户场景或烘焙资源。压制记忆将调查脚底点与真实可射身体采样分开，出口射击方案已移除；旧资源与脚本保留加载兼容。
 
-个人翻越路线继续由原 `enemy_route_planner.gd` 准备；`alternatives(destination, priority=false)` 默认维持普通候选请求，`planning_path` 在步行断连时提交当前目的地的有界优先请求。请求仍在 Spatial 原预算中执行，不增加独立调度循环，也不生成团队命令。`enemy_melee_action.gd` 在已见目标且接近路线尚不可用时保留本动作的等待意图，面向已知位置，路线就绪后恢复实际接近。团队路线仍按原纯值任务合同维护，翻越连接尚未接入该合同。
+`world/vault_navigation.gd` 由原 `shooting_range.gd` 持有并提供给 Context，增量维护所属区域的原生 NavigationLink3D：步行层1，翻越连接层2。公共 `cover.tscn` 的 `NavigationBakeObstacle` 子节点使用 `world/navigation_bake_obstacle.gd`，按真实碰撞同步原生烘焙轮廓；维护命令复用它，运行时不重烘导航。
+
+个人 `enemy_route_planner.gd` 保留有界优先队列、短时失败连接和原 Spatial 预算，调用 `enemy_navigation_route.gd`。同一查询也供团队提案读取，返回纯值 `route_plan`（版本、几何版本、摘要点列和 walk/vault 分段）。查询游标每次最多一次原生查询、四个验证单位，未完成的验证不会被结果缓存期限清空。普通 `_path_to()` 与 NavigationAgent3D 仍仅使用步行层；摘要点列不证明可步行。
+
+动作各自持有 `enemy_route_motion.gd` 的分段进度，个人与团队共享执行器，原身体独占实际起跳、占位复核与安全落地。团队任务保留原 `route` 摘要并可带 `route_plan`，特化动作等待查询并按实际分段耗时估计；旧 before/vault/after 与纯步行任务继续兼容。通道占用由现有 `enemy_cooperation.gd` 管理，任务取消／死亡／退队不提前释放仍在空中的身体。近战备用接敌点也走同一准备入口。
 
 无法通过友军的持续物理阻塞由本地辅助观察，经身体的 `ally_path_blocked` 信号交给 Context 保存有限期堵点；跨动作的路线过滤位于 `enemy_cover_selection._path_to()`，在原导航缓存之后复核堵点的当前有效性。队友移开即可恢复路线，复位和离场清理记忆；身体仍只报告执行事实，不决定替代战术或目的地。`enemy_ally_route_recovery_test.gd` 使用真实窄口和身体碰撞验证跨终点过滤、原选择器的替代目的地、恢复通行与生命周期。
 

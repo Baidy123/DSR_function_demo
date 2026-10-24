@@ -7,6 +7,7 @@ const CoverGeometry = preload("res://scripts/enemy/services/enemy_cover_inspecti
 const BodyGeometry = preload("res://scripts/systems/character_geometry.gd")
 const Traffic = preload("res://scripts/enemy/services/squad_traffic.gd")
 const Combat = preload("res://scripts/enemy/services/squad_combat_tactics.gd")
+const NavigationRoute = preload("res://scripts/enemy/services/enemy_navigation_route.gd")
 
 static func sites(context, objective: Dictionary, count: int, attempt: int) -> Array[Dictionary]:
 	var result: Array[Dictionary] = []
@@ -99,7 +100,8 @@ static func _cover_sites(geometry: Dictionary, count: int, attempt: int) -> Arra
 		result.append_array(watch)
 	return result
 
-static func valid_route(context, path: PackedVector3Array) -> bool:
+static func valid_route(context, path: PackedVector3Array, description: Dictionary = {}) -> bool:
+	if not description.is_empty(): return NavigationRoute.current(context, description)
 	if path.is_empty(): return false
 	var radius: float = context.coordination_motion_state().radius
 	return CoverGeometry._walkable_path(context, path, radius) and BodyGeometry.can_occupy(context.actor, path[-1], context.actor.get_body_height(), radius, true)
@@ -121,6 +123,20 @@ static func route(context, destination: Vector3, via: Vector3 = Vector3.INF, det
 		if path.is_empty(): return path
 	if not BodyGeometry.can_occupy(context.actor, destination, context.actor.get_body_height(), radius, true): return PackedVector3Array()
 	return path
+
+## A typed alternative stays separate from the strict ordinary walking API.
+static func route_plan(context, destination: Vector3, via: Vector3 = Vector3.INF, detour_variant: int = -1) -> Dictionary:
+	var walking: PackedVector3Array = route(context, destination, via, detour_variant)
+	var description: Dictionary = {}
+	if context.get("vault_navigation") != null and not via.is_finite():
+		description = NavigationRoute.query(context, destination, Vector3.INF, context.routes.failed_links())
+		if NavigationRoute.pending(context, destination): return {}
+	if not description.is_empty():
+		var speed: float = maxf(0.1, context.actor.move_speed)
+		var preference: float = maxf(0.0, float(context.setting(&"selection", &"vault_preference", 6.0)))
+		var walk_seconds: float = context.cover_selection._path_length_from_path(walking) / speed if not walking.is_empty() else INF
+		if NavigationRoute.seconds(description, speed) - preference < walk_seconds: return description
+	return NavigationRoute.walking(walking)
 
 static func _obstacle_detour(context, blocked: PackedVector3Array, radius: float, variant: int = -1) -> PackedVector3Array:
 	# A newly placed wall need not be in the baked navigation mesh. Test four
@@ -229,8 +245,12 @@ static func _candidate(context, profile: Dictionary, body: Dictionary, site: Dic
 			if not point.is_finite(): return {}
 	var detour_variant: int = site.get("detour_variant", -1)
 	var path: PackedVector3Array = site.get("prepared_route", PackedVector3Array())
-	if path.is_empty(): path = route(context, point, site.get("via", Vector3.INF), detour_variant)
+	var description: Dictionary = {}
 	if path.is_empty():
+		description = route_plan(context, point, site.get("via", Vector3.INF), detour_variant)
+		path = description.get("points", PackedVector3Array())
+	if path.is_empty():
+		if NavigationRoute.pending(context, point): return {"route_pending": true}
 		return {"retry_detour": true} if detour_variant >= 0 and detour_variant < 3 and not site.get("via", Vector3.INF).is_finite() else {}
 	if role == &"flank" and profile.firearms and Traffic.distance_to_path(objective.position, path) < 1.5:
 		var approach: Vector3 = body.position - objective.position
@@ -243,12 +263,15 @@ static func _candidate(context, profile: Dictionary, body: Dictionary, site: Dic
 				if detour.is_empty() or context.cover_selection._path_length_from_path(alternative) < context.cover_selection._path_length_from_path(detour): detour = alternative
 		if detour.is_empty(): return {}
 		path = detour
+		description = {}
 	var length: float = context.cover_selection._path_length_from_path(path)
 	var parameters: Dictionary = profile.actions[action].parameters
 	var speed = maxf(0.1, float(parameters.get("focused_search_speed_multiplier", 1.0))) if role == &"search" else 1.0
 	var run_speed: float = profile.get("run_speed_multiplier", 2.0)
 	var travel_speed: float = maxf(speed, run_speed) if role == &"flank" or site.has("overwatch_for") else speed
 	var seconds: float = maxf(0.0, length - 1.4) / maxf(0.1, body.move_speed * travel_speed) + minf(1.4, length) / maxf(0.1, body.move_speed * speed)
+	if not description.is_empty() and description.geometry_revision >= 0:
+		seconds = NavigationRoute.seconds(description, maxf(0.1, body.move_speed * speed))
 	var estimate: float = seconds + (0.0 if previous.get("position", Vector3.INF).distance_to(point) < 0.2 else 0.6)
 	if role == &"guard" and phase != &"patrol": estimate += 8.0
 	if role == &"search" and site.has("coverage_key"):
@@ -295,6 +318,9 @@ static func _candidate(context, profile: Dictionary, body: Dictionary, site: Dic
 		# Hints and arrival cannot renew the original visual evidence timestamp.
 		result.pursuit_until = float(objective.get("captured_at", -INF)) + float(parameters.get("combat_pursuit_seconds", 0.0))
 		result.pursuit_multiplier = float(parameters.get("combat_pursuit_speed_multiplier", speed))
+	if not description.is_empty() and description.geometry_revision >= 0:
+		result.route_plan = description
+		result.estimate -= maxf(0.0, float(context.setting(&"selection", &"vault_preference", 6.0)))
 	return result
 
 static func yield_sites(context, body: Dictionary) -> Array[Dictionary]:
