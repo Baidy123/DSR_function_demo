@@ -217,7 +217,15 @@ func _update_utility_decision(delta: float, visible: bool) -> void:
 		return
 	if valid and action_selector.same_option(best, utility_current): return
 	if valid and not current_action.hold_released():
-		if _utility_elapsed < utility_hold_seconds and not is_equal_approx(_utility_elapsed, utility_hold_seconds):
+		# A newly prepared crossing can refine the current action/destination
+		# before the walk takes us away from its entry. Other action changes
+		# still observe the hold; all refinements keep the cost advantage gate.
+		var route_refinement := false
+		if utility_current.get("route", {}).is_empty() and not best.get("route", {}).is_empty():
+			var walking_equivalent := best.duplicate()
+			walking_equivalent.erase("route")
+			route_refinement = action_selector.same_option(walking_equivalent, utility_current)
+		if not route_refinement and _utility_elapsed < utility_hold_seconds and not is_equal_approx(_utility_elapsed, utility_hold_seconds):
 			if not best.get("route", {}).is_empty() and best.cost + utility_switch_advantage < cost:
 				var remaining := utility_hold_seconds - _utility_elapsed
 				if remaining < _utility_timer:

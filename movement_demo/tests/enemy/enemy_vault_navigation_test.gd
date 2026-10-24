@@ -133,13 +133,21 @@ func _preference_checks() -> void:
 	ai.context.spatial.reset_evaluation()
 	var crossed := false
 	var saw_vault := false
+	var walk_started_at := -1
+	var vault_selected_at := -1
 	for frame in 300:
 		await _tick()
+		if ai.utility_current.get("id") == &"melee_engage":
+			if ai.utility_current.get("route", {}).is_empty() and walk_started_at < 0:
+				walk_started_at = frame
+			elif not ai.utility_current.get("route", {}).is_empty() and vault_selected_at < 0:
+				vault_selected_at = frame
 		saw_vault = saw_vault or enemy.is_vaulting()
 		if saw_vault and not enemy.is_vaulting() and enemy.global_position.z < -0.7:
 			crossed = true
 			break
 	check(saw_vault and crossed, "cold-cache connected pursuit autonomously vaults and lands with the default preference")
+	check(walk_started_at >= 0 and vault_selected_at > walk_started_at and (vault_selected_at - walk_started_at) * STEP < ai.utility_hold_seconds, "a better prepared vault refines the same walking action before its hold expires")
 	# Strong preference must still defer to the body's live character checks.
 	ai._cancel_utility_execution()
 	enemy.global_position = START
