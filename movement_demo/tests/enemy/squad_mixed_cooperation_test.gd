@@ -26,7 +26,7 @@ func _run() -> void:
 	if await _setup_mixed():
 		if not trained_tactic.is_empty():
 			await _trained_tactic_case()
-		elif OS.get_cmdline_user_args().has("--pursuit"):
+		elif OS.get_cmdline_user_args().has("--pursuit") or OS.get_cmdline_user_args().has("--guard-stall"):
 			await _pursuit_case()
 		elif OS.get_cmdline_user_args().has("--support-burst"):
 			await _support_burst_case()
@@ -91,7 +91,7 @@ func _setup_mixed() -> bool:
 		if OS.get_cmdline_user_args().has("--all-trained"):
 			for definition in actor.get_node("UnitType").profile.tactical_actions:
 				if not training.selected_tactics.has(definition.action_id): training.selected_tactics.append(definition.action_id)
-		if close and OS.get_cmdline_user_args().has("--pursuit") and not OS.get_cmdline_user_args().has("--untrained"): training.selected_tactics.append(&"melee_rush")
+		if close and (OS.get_cmdline_user_args().has("--pursuit") or OS.get_cmdline_user_args().has("--guard-stall")) and not OS.get_cmdline_user_args().has("--untrained"): training.selected_tactics.append(&"melee_rush")
 		if index == 0 and OS.get_cmdline_user_args().has("--extension"):
 			var unit = actor.get_node("UnitType").profile.duplicate(true)
 			unit.default_behaviors = unit.default_behaviors.filter(func(item): return item.action_id != &"engage")
@@ -155,7 +155,10 @@ func _setup_mixed() -> bool:
 	var valid := actors.all(func(actor):
 		var ctx = actor.get_node("AI").context
 		var projected := NavigationServer3D.region_get_closest_point(ctx.navigation_region.get_rid(), actor.global_position)
-		return actor.is_on_floor() and absf(actor.global_position.y - player.global_position.y) < 0.1 and Vector2(projected.x - actor.global_position.x, projected.z - actor.global_position.z).length() < 0.4 and ctx.member_capability_snapshot().get("ready", false) and ctx.sees_player and ctx.coordination_assignment().get("accepted", false))
+		# A promptly selected cover approach may already conceal the body by
+		# this frame; it must still have acquired real sight before hiding.
+		var sight: bool = ctx.sees_player or trained_tactic == &"melee_cover" and ctx.has_visual_memory
+		return actor.is_on_floor() and absf(actor.global_position.y - player.global_position.y) < 0.1 and Vector2(projected.x - actor.global_position.x, projected.z - actor.global_position.z).length() < 0.4 and ctx.member_capability_snapshot().get("ready", false) and sight and ctx.coordination_assignment().get("accepted", false))
 	check(valid, "Fixture: grounded, navigable, assembled members obtain real sight and accepted tasks")
 	valid = valid and shooters.all(func(actor): return actor.can_use_firearms() and actor.get_node("AI").context.member_capability_snapshot().firearms) and melee_members.all(func(actor): return not actor.can_use_firearms() and actor.get_node("AI").context.command_melee_enabled())
 	check(valid, "Fixture: runtime weapons and frozen capabilities match intended attack methods")
@@ -247,9 +250,13 @@ func _pursuit_case() -> void:
 	var stalled := {}
 	var maximum := 0
 	var reasons := {}
+	var guard_stops := 0
 	var recovery_stops := 0
 	var saw_hit := false
 	var trained := not OS.get_cmdline_user_args().has("--untrained")
+	# The full-training stall regression allows real action competition. The
+	# original pursuit case still requires actual rush, pause and cooldown.
+	var guard_case := OS.get_cmdline_user_args().has("--guard-stall")
 	var deadlines := {}
 	var per_burst := {}
 	var cooldown_stable := true
@@ -294,15 +301,16 @@ func _pursuit_case() -> void:
 				maximum = maxi(maximum, stalled[id])
 				var key := str(task.get("reason", ""))
 				reasons[key] = int(reasons.get(key, 0)) + 1
+				if task.get("role") == &"guard": guard_stops += 1
 			else: stalled[id] = 0
 			if ctx.melee.phase == ctx.melee.Phase.RECOVERY and speed < 0.1: recovery_stops += 1
 			saw_hit = saw_hit or hits[id] > 0
 		if frame % 120 == 0: print("PURSUIT TRACE ", frame, " ", JSON.stringify(actors.map(_trace)))
-	check(not burst_frames.is_empty() if trained else burst_frames.is_empty(), "Trained command executors actually rush; untrained bodies never gain the burst")
+	if not guard_case: check(not burst_frames.is_empty() if trained else burst_frames.is_empty(), "Trained command executors actually rush; untrained bodies never gain the burst")
 	check(maximum <= 12, "Visible open-ground pursuit has no unexplained stop longer than 0.2 seconds")
 	check(saw_hit, "Pursuit and burst feed into actual melee hits")
-	if trained: check(cooldown_stable and per_burst.values().all(func(frames): return frames <= 61), "Command changes do not refund the burst cooldown or extend its one-second movement window")
-	print("PURSUIT METRICS burst_frames=", burst_frames, " max_open_stop=", maximum, " reasons=", reasons, " recovery_stop_frames=", recovery_stops)
+	if trained and (not guard_case or not burst_frames.is_empty()): check(cooldown_stable and per_burst.values().all(func(frames): return frames <= 61), "Command changes do not refund the burst cooldown or extend its one-second movement window")
+	print("PURSUIT METRICS burst_frames=", burst_frames, " max_open_stop=", maximum, " reasons=", reasons, " guard_stop_frames=", guard_stops, " recovery_stop_frames=", recovery_stops)
 
 func _capture_pursuit() -> void:
 	await RenderingServer.frame_post_draw

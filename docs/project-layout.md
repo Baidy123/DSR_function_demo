@@ -74,7 +74,7 @@ movement_demo/
 | `enemy/services/enemy_command_offers.gd` | AI 持有的统一提案适配器，按共同截止时间轮询已装配动作、保留不同执行器和空间方案；只返回纯值，不提交任务或执行身体。 |
 | `enemy/services/squad_support.gd` | 协调器持有的任务身份关联、实际掩护观察核对、累计等待期限和短段独立恢复建议；清理完成/替换/减员关系，无独立循环或任务提交权。 |
 | `world/squad_controller.gd` | Squad 配置、区域注册、单次区域时钟推进、销毁；不增加独立 AI 循环。 |
-| `enemy/services/squad_coordination.gd` | 本场能力档案、默认模板、持续目标、全员任务表、反馈、逐轮同步与共同续接、原子提交与生命周期。 |
+| `enemy/services/squad_coordination.gd` | 本场能力档案、默认模板、持续目标、全员任务表、反馈、成员轮询准备、接敌提前提交与共同续接、逐轮同步、原子提交与生命周期。 |
 | `enemy/services/squad_contract.gd` | 纯值任务身份、状态、能力角色、观察步骤字段及整队默认模板。 |
 | `enemy/services/enemy_team_planner.gd` | 全成员岗位组合搜索，按模板能力与几何排除不完整方案；限制重复入口、比较检查/掩护组合及侧翼人数。 |
 | `enemy/services/enemy_search_formation.gd` | 根据合法线索生成两端检查、远侧掩护和接敌站位，验证完整路线、观察/枪线；提供入口前后关注点及冻结的任务机动速度。 |

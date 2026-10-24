@@ -396,16 +396,21 @@ func _plan() -> void:
 		var sites = Formation.sites(context, _objective, _bodies.size(), _attempt)
 		if _objective.phase == &"patrol" and not sites.is_empty() and sites.all(func(site): return _patrol_visits.has(site.site_key)):
 			_patrol_visits.clear()
-		_preparation = {"members": _bodies.keys(), "index": 0, "candidates": {}, "sites": sites, "map_revision": map_revision,
+		_preparation = {"members": _bodies.keys(), "index": 0, "candidates": {}, "works": {}, "revision": 0, "solved_revision": -1, "sites": sites, "map_revision": map_revision,
 			"objective_id": _objective.objective_id, "started_at": elapsed}
+	# A slow optional action must not monopolize preparation for the entire
+	# squad. Every member gets the same bounded turn, then resumes its cursor.
+	for skipped in _preparation.members.size():
+		if not _preparation.works.get(_preparation.members[_preparation.index], {}).get("done", false): break
+		_preparation.index = (int(_preparation.index) + 1) % _preparation.members.size()
 	var id = _preparation.members[_preparation.index]
 	if not _bodies.has(id):
 		_preparation.clear()
 		return
 	var deadline = Time.get_ticks_usec() + 2500
-	if not _preparation.has("work"): _preparation.work = _member_work(id)
-	var work: Dictionary = _preparation.work
-	var candidates: Array[Dictionary] = work.candidates
+	_preparation.index = (int(_preparation.index) + 1) % _preparation.members.size()
+	if not _preparation.works.has(id): _preparation.works[id] = _member_work(id)
+	var work: Dictionary = _preparation.works[id]
 	if not work.defense_ready:
 		var defense := _defense.prepare_candidates(_context(id), _profiles[id], _bodies[id], _objective, work.proactive, deadline)
 		if not defense.ready:
@@ -426,9 +431,13 @@ func _plan() -> void:
 		"revision": [generation, _profiles[id].profile_id, _objective.objective_id, map_revision]}
 	var batch: Dictionary = {"done": true, "cursor": {}, "offers": []} if work.get("retain", false) else _context(id).prepare_command_offers(query, work.offer_cursor, deadline)
 	work.offer_cursor = batch.cursor
-	if not batch.done:
+	work.done = batch.done
+	# Search still requires its complete observation/support set. Contact can
+	# publish an already valid whole-team plan while later offers are prepared.
+	if _objective.phase != &"contact" and not batch.done:
 		_due = elapsed
 		return
+	var candidates: Array[Dictionary] = work.candidates.duplicate(true)
 	for candidate: Dictionary in batch.offers:
 		if candidate.has("overwatch_for"):
 			candidate.supported_sites = Support.covered_sites(_context(id), candidate, _preparation.sites)
@@ -436,7 +445,9 @@ func _plan() -> void:
 		if candidate.has("coverage_key"):
 			_search.routes.extend(_context(id), candidate, _search.coverage, work.sites, deadline)
 		candidates.append(candidate)
-	_preparation.erase("work")
+	if work.get("published", []) != candidates or batch.done:
+		_preparation.revision += 1
+	work.published = candidates.duplicate(true)
 	# Every member can keep a validated holding post while a teammate reloads
 	# or completes the remaining search points; one impossible route must not
 	# prevent all other work from being committed.
@@ -444,13 +455,33 @@ func _plan() -> void:
 	hold.estimate = 40.0
 	candidates.append(hold)
 	_preparation.candidates[id] = candidates
-	_preparation.index += 1
-	if _preparation.index < _preparation.members.size():
+	var all_done := _preparation_done()
+	var urgent := _tasks.values().any(func(task): return task.role == &"guard" or task.state in [&"blocked", &"complete"])
+	if _preparation.candidates.size() < _preparation.members.size() or (not all_done and (_objective.phase != &"contact" or not urgent or _preparation.solved_revision == _preparation.revision)):
 		_due = elapsed # Continue bounded preparation on the next area tick.
 		return
-	_preparation.solution = _planner.begin({"members": _bodies, "profiles": _profiles, "template": _template,
-		"objective": _objective, "candidates": _preparation.candidates, "synchronize_search": _synchronize_search()})
+	_preparation.solved_revision = _preparation.revision
+	_preparation.solution = _begin_prepared_plan()
 	_finish_plan(deadline)
+
+func _preparation_done() -> bool:
+	return _preparation.members.all(func(id): return _preparation.works.get(id, {}).get("done", false))
+
+func _begin_prepared_plan() -> Dictionary:
+	var candidates: Dictionary = _preparation.candidates.duplicate(true)
+	if not _preparation_done():
+		# Early repair keeps valid teammates. Their unfinished optional offers
+		# are still evaluated and participate in the final complete comparison.
+		for id in candidates:
+			var previous: Dictionary = _tasks[id]
+			if previous.role == &"guard" or not previous.state in [&"executing", &"occupied", &"waiting"]: continue
+			if previous.expires_at <= elapsed or not _context(id).validate_command_offer(previous, _profiles[id]): continue
+			var continuing := previous.duplicate(true)
+			continuing.route = Traffic.remaining(_bodies[id].position, previous.route)
+			continuing.estimate = 0.0
+			candidates[id].push_front(continuing)
+	return _planner.begin({"members": _bodies, "profiles": _profiles, "template": _template,
+		"objective": _objective, "candidates": candidates, "synchronize_search": _synchronize_search()})
 
 func _recent_inspection(site: Dictionary, map_revision: int) -> bool:
 	if site.has("coverage_key"): return false
@@ -482,13 +513,16 @@ func _finish_plan(deadline: int) -> void:
 					else: removed = true
 				_preparation.candidates[id] = valid
 			if removed:
-				_preparation.solution = _planner.begin({"members": _bodies, "profiles": _profiles, "template": _template,
-					"objective": _objective, "candidates": _preparation.candidates, "synchronize_search": _synchronize_search()})
+				_preparation.solution = _begin_prepared_plan()
 				_due = elapsed
 				return
 			_attempt += 1
 			_due = elapsed
 	else:
+		if not _preparation_done():
+			_preparation.erase("solution")
+			_due = elapsed
+			return
 		_attempt += 1
 		# Exhaust the first bounded geometry alternatives on subsequent area
 		# ticks before backing off; failed preparation is not useful waiting.
@@ -502,7 +536,12 @@ func _finish_plan(deadline: int) -> void:
 			for task in _tasks.values():
 				task.reason = &"retry_other_posts"
 				task.check_at = elapsed + Contract.PERIOD
-	_preparation.clear()
+	if _preparation_done(): _preparation.clear()
+	else:
+		# Committing an early solution cannot discard the remaining trained
+		# actions. Finish their cursors and compare their proposals afterwards.
+		_preparation.erase("solution")
+		_due = elapsed
 
 func _member_work(id: int) -> Dictionary:
 	var candidates: Array[Dictionary] = []

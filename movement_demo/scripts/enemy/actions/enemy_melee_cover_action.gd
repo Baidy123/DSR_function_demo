@@ -49,27 +49,51 @@ func prepare_command_offers(query: Dictionary, cursor: Dictionary, deadline_usec
 		points.sort_custom(func(a, b): return query.body.position.distance_squared_to(a.hide) < query.body.position.distance_squared_to(b.hide))
 		work = {"points": points, "index": 0, "count": 0}
 	var offers: Array[Dictionary] = []
-	if work.index < work.points.size() and Time.get_ticks_usec() < deadline_usec:
+	if not work.has("active") and work.index < work.points.size() and Time.get_ticks_usec() < deadline_usec:
 		var data: Dictionary = work.points[work.index].duplicate(true)
 		work.index += 1
 		var cover = instance_from_id(data.cover_id)
 		if is_instance_valid(cover) and not _recently_advanced(cover):
 			var destination := {"body": cover, "hide": data.hide, "crouch": data.crouch}
-			var incoming: PackedVector3Array = selection._path_to(query.body.position, data.hide)
-			var exit := _choose_exit(_exit_options(destination, incoming, query.body.position))
-			if not exit.is_empty():
-				destination.exit = exit.position
-				var candidate := _advance_candidate(destination, false)
-				if not candidate.is_empty():
-					data.exit = exit.position
-					data.target = query.objective.position
-					data.plan_key = [action_id, context.memory_generation, data.cover_id, data.hide, context.evidence_elapsed_seconds]
-					var offer := _command_advance_offer(query, data, &"approach")
-					if not offer.is_empty():
-						offer.estimate = float(candidate.outcome.unavailable_seconds) + float(candidate.outcome.exposed_seconds)
-						offers.append(offer)
-						work.count += 1
-	return {"offers": offers, "next_cursor": work, "done": work.index >= work.points.size() or work.count >= 4}
+			# Reject non-advancing entries before their expensive exit geometry.
+			var incoming: PackedVector3Array = selection._path_to(query.body.position, data.hide) if _valid_cover(destination) and _entry_progress_valid(destination) else PackedVector3Array()
+			if not incoming.is_empty():
+				work.active = {"data": data, "incoming": incoming, "entry": query.body.position,
+					"exits": _exit_points(destination), "index": 0, "assessments": []}
+	if work.has("active"):
+		var active: Dictionary = work.active
+		var data: Dictionary = active.data
+		var cover = instance_from_id(data.cover_id)
+		if not is_instance_valid(cover): work.erase("active")
+		else:
+			var destination := {"body": cover, "hide": data.hide, "crouch": data.crouch}
+			# Resume between exits. A single candidate used to evaluate every exit
+			# and then repeat the chosen assessment in one uninterruptible call.
+			if active.index < active.exits.size() and Time.get_ticks_usec() < deadline_usec:
+				var point: Vector3 = active.exits[active.index]
+				active.index += 1
+				var assessment := _exit_assessment(destination, point, active.incoming)
+				if not assessment.is_empty():
+					assessment.opposite = _opposite_exit(destination, point, active.exits, active.entry)
+					active.assessments.append(assessment)
+			elif active.index >= active.exits.size() and Time.get_ticks_usec() < deadline_usec:
+				var assessments: Array[Dictionary] = []
+				assessments.assign(active.assessments)
+				var exit := _choose_exit(assessments)
+				if not exit.is_empty():
+					destination.exit = exit.position
+					var candidate := _advance_candidate(destination, false, exit)
+					if not candidate.is_empty():
+						data.exit = exit.position
+						data.target = query.objective.position
+						data.plan_key = [action_id, context.memory_generation, data.cover_id, data.hide, context.evidence_elapsed_seconds]
+						var offer := _command_advance_offer(query, data, &"approach")
+						if not offer.is_empty():
+							offer.estimate = float(candidate.outcome.unavailable_seconds) + float(candidate.outcome.exposed_seconds)
+							offers.append(offer)
+							work.count += 1
+				work.erase("active")
+	return {"offers": offers, "next_cursor": work, "done": not work.has("active") and (work.index >= work.points.size() or work.count >= 4)}
 
 func _command_advance_offer(query: Dictionary, data: Dictionary, stage: StringName) -> Dictionary:
 	var cover = instance_from_id(data.cover_id)
@@ -191,7 +215,7 @@ func _has_recent_target(continuing: bool = false) -> bool:
 	# 不刷新目击时间，不重选出口，也不延长原路线或观察计时。
 	return continuing and _running and transfer.timer > 0.0 and (transfer.phase in [transfer.Phase.PEEK_OUT, transfer.Phase.WATCH] or (_is_low_cover(transfer.active_cover_body) and transfer.phase == transfer.Phase.HIDE))
 
-func _advance_candidate(destination: Dictionary, continuing: bool) -> Dictionary:
+func _advance_candidate(destination: Dictionary, continuing: bool, assessment: Dictionary = {}) -> Dictionary:
 	if not _has_recent_target(continuing) or actor.move_speed <= 0.0 or not _valid_cover(destination): return {}
 	if not continuing and _recently_advanced(destination.body): return {}
 	if continuing and transfer.phase in [transfer.Phase.PEEK_OUT, transfer.Phase.WATCH]:
@@ -201,18 +225,26 @@ func _advance_candidate(destination: Dictionary, continuing: bool) -> Dictionary
 	var minimum := maxf(0.1, float(_setting(&"cover_minimum_progress", 0.6)))
 	var low := _is_low_cover(destination.body)
 	var sheltered_start: bool = context._horizontal_distance(destination.hide) <= 0.6 and selection._center_hidden_by_cover(actor.global_position, actor.get_posture_eye_position(false, target) if low else target + Vector3.UP * 0.8, destination.body, low)
-	if not continuing and progress < minimum and not sheltered_start: return {}
+	if not continuing and not _entry_progress_valid(destination): return {}
 	var path: PackedVector3Array = context.routes.planning_path(actor.global_position, destination.hide)
 	var exit_point: Vector3 = _planned_exit if continuing else destination.get("exit", Vector3.INF)
 	if not exit_point.is_finite(): return {}
 	# 可以从已到达的掩体继续进攻；仍要求出口能推进，不重新跑回原地躲藏。
 	if not continuing and not (low and sheltered_start) and progress < minimum and context._horizontal_distance(target) - context._horizontal_distance_between(exit_point, target) < minimum: return {}
-	var assessment := _exit_assessment(destination, exit_point, path)
+	if assessment.is_empty(): assessment = _exit_assessment(destination, exit_point, path)
 	if assessment.is_empty(): return {}
 	var candidate := option(destination, 0.0, 0.0, 0.0, &"advance")
 	candidate.outcome = assessment.outcome
 	candidate.conceals = true
 	return candidate
+
+func _entry_progress_valid(destination: Dictionary) -> bool:
+	var target: Vector3 = context.last_known_position
+	var progress: float = context._horizontal_distance(target) - context._horizontal_distance_between(destination.hide, target)
+	if progress >= maxf(0.1, float(_setting(&"cover_minimum_progress", 0.6))): return true
+	if context._horizontal_distance(destination.hide) > 0.6: return false
+	var low := _is_low_cover(destination.body)
+	return selection._center_hidden_by_cover(actor.global_position, actor.get_posture_eye_position(false, target) if low else target + Vector3.UP * 0.8, destination.body, low)
 
 func _recently_advanced(body: Object) -> bool:
 	return _advanced_cover != null and _advanced_cover.get_ref() == body and _advance_generation == context.memory_generation and context.evidence_elapsed_seconds < _advance_until and context._horizontal_distance_between(context.last_known_position, _advanced_target) < maxf(0.1, float(_setting(&"cover_minimum_progress", 0.6)))
@@ -328,32 +360,36 @@ func _charge_seconds() -> float:
 func _exit_options(destination: Dictionary, incoming: PackedVector3Array, entry: Vector3) -> Array[Dictionary]:
 	var result: Array[Dictionary] = []
 	if not is_instance_valid(destination.get("body")) or incoming.is_empty(): return result
-	if _is_low_cover(destination.body):
-		var standing := _exit_assessment(destination, destination.hide, incoming)
-		if not standing.is_empty(): result.append(standing)
-		return result
-	var points: Array[Vector3] = []
+	var points := _exit_points(destination)
+	for point in points:
+		var assessment := _exit_assessment(destination, point, incoming)
+		if assessment.is_empty(): continue
+		assessment.opposite = _opposite_exit(destination, point, points, entry)
+		result.append(assessment)
+	return result
+
+func _exit_points(destination: Dictionary) -> PackedVector3Array:
+	if _is_low_cover(destination.body): return PackedVector3Array([destination.hide])
+	var points := PackedVector3Array()
 	var nearest_face := INF
 	for sample in destination.body.get_candidates(context.last_known_position + Vector3.UP * 0.8, destination.hide):
 		var distance: float = context._horizontal_distance_between(sample.hide, destination.hide)
 		if distance < nearest_face:
 			nearest_face = distance
-			points.assign(sample.peeks)
+			points = PackedVector3Array(sample.peeks)
+	return points
+
+func _opposite_exit(destination: Dictionary, point: Vector3, points: PackedVector3Array, entry: Vector3) -> bool:
+	if _is_low_cover(destination.body) or not entry.is_finite(): return false
 	var entrance := Vector3.INF
-	for point in points:
-		if entry.is_finite() and (not entrance.is_finite() or entry.distance_squared_to(point) < entry.distance_squared_to(entrance)):
-			entrance = point
-	for point in points:
-		var assessment := _exit_assessment(destination, point, incoming)
-		if assessment.is_empty(): continue
-		var center: Vector3 = destination.body.get_node("CollisionShape3D").global_position
-		var toward_exit: Vector3 = point - center
-		var toward_entry: Vector3 = entrance - center if entrance.is_finite() else Vector3.ZERO
-		toward_exit.y = 0.0
-		toward_entry.y = 0.0
-		assessment.opposite = entrance.is_finite() and toward_exit.normalized().dot(toward_entry.normalized()) < -0.5
-		result.append(assessment)
-	return result
+	for candidate in points:
+		if not entrance.is_finite() or entry.distance_squared_to(candidate) < entry.distance_squared_to(entrance): entrance = candidate
+	var center: Vector3 = destination.body.get_node("CollisionShape3D").global_position
+	var toward_exit: Vector3 = point - center
+	var toward_entry: Vector3 = entrance - center if entrance.is_finite() else Vector3.ZERO
+	toward_exit.y = 0.0
+	toward_entry.y = 0.0
+	return entrance.is_finite() and toward_exit.normalized().dot(toward_entry.normalized()) < -0.5
 
 func _exit_assessment(destination: Dictionary, point: Vector3, incoming: PackedVector3Array) -> Dictionary:
 	if incoming.is_empty() or context.is_utility_destination_blocked(point) or not context.is_position_free(point) or not selection._peek_has_los(point, context.last_known_position): return {}
