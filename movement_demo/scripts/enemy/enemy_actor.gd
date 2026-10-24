@@ -114,6 +114,7 @@ var death_tween: Tween
 var _hit_push_velocity: Vector3 = Vector3.ZERO
 var _hit_push_remaining: float = 0.0
 var _hit_push_duration: float = 0.0
+var _body_push_direction: Vector3 = Vector3.ZERO
 var _hit_slow_multiplier: float = 1.0
 var _hit_slow_remaining: float = 0.0
 var _last_move_physics_frame: int = -1
@@ -168,6 +169,9 @@ func move_character(direction: Vector3, delta: float, speed_multiplier: float = 
 	if not can_move(): direction = Vector3.ZERO
 	speed_multiplier = get_effective_movement_multiplier(speed_multiplier)
 	_local_movement_velocity = local_motion.resolve(Vector3(direction.x, 0.0, direction.z) * move_speed * speed_multiplier, delta, move_speed * speed_multiplier, stop_position, scheduled_members)
+	# 翻越推开的短暂外力期间，不能用自主接近立即抵消腾出的落地空间。
+	if _hit_push_remaining > 0.0 and not _body_push_direction.is_zero_approx():
+		_local_movement_velocity -= _body_push_direction * minf(0.0, _local_movement_velocity.dot(_body_push_direction))
 	velocity.x = _local_movement_velocity.x
 	velocity.z = _local_movement_velocity.z
 	velocity += _advance_hit_push(delta)
@@ -304,6 +308,26 @@ func receive_melee_hit(damage: float, attacker_position: Vector3, distance: floa
 	direction.y = 0.0
 	if direction.is_zero_approx():
 		direction = Vector3(fallback_direction.x, 0.0, fallback_direction.z)
+	_apply_body_push(direction, distance, duration)
+
+
+## 翻越接触外力，不触发伤害、受击事件、准度打断或减速。
+func can_receive_body_push() -> bool:
+	return not is_dead and not get_tree().paused
+
+
+func receive_body_push(direction: Vector3, distance: float, duration: float) -> bool:
+	if not can_receive_body_push() or not direction.is_finite() or not is_finite(distance) or not is_finite(duration): return false
+	direction.y = 0.0
+	if direction.is_zero_approx() or distance <= 0.0: return false
+	if is_vaulting(): body_motion.interrupt()
+	_apply_body_push(direction, distance, duration)
+	_body_push_direction = direction.normalized()
+	return true
+
+
+func _apply_body_push(direction: Vector3, distance: float, duration: float) -> void:
+	_body_push_direction = Vector3.ZERO
 	_hit_push_duration = maxf(0.05, duration)
 	_hit_push_remaining = _hit_push_duration if distance > 0.0 else 0.0
 	_hit_push_velocity = direction.normalized() * (2.0 * maxf(0.0, distance) / _hit_push_duration)
@@ -321,6 +345,7 @@ func _advance_hit_push(delta: float) -> Vector3:
 
 
 func _clear_hit_push() -> void:
+	_body_push_direction = Vector3.ZERO
 	_hit_push_velocity = Vector3.ZERO
 	_hit_push_remaining = 0.0
 	_hit_push_duration = 0.0

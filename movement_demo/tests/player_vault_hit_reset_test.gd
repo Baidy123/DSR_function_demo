@@ -14,17 +14,93 @@ var zone: Area3D
 var region_resets := 0
 var enemy_resets := 0
 var actual_hits := 0
+var blocker_approaching := false
 
 func _initialize() -> void:
 	_run.call_deferred()
 
 func _run() -> void:
+	if "--blockers" in OS.get_cmdline_user_args():
+		await _vault_blocker(false, false)
+		await _vault_blocker(true, false)
+		await _vault_blocker(true, true)
+		await _vault_blocker(true, false, true)
+		await _vault_solid_blockers()
+		print("PLAYER VAULT BLOCKERS: %d/%d passed" % [checks - failures, checks])
+		quit(1 if failures else 0)
+		return
 	await _hit_during_vault(false, false)
 	await _hit_during_vault(false, true)
 	await _hit_during_vault(true, false)
 	await _real_exit_still_resets()
 	print("PLAYER VAULT HIT RESET: %d/%d passed" % [checks - failures, checks])
 	quit(1 if failures else 0)
+
+func _vault_blocker(late: bool, pinned: bool, approaching: bool = false) -> void:
+	await _build_fixture(Vector3(3.0, 0.0, -2.0) if late else Vector3(0.0, 0.0, -1.8))
+	var label := "approaching" if approaching else ("pinned" if pinned else ("late" if late else "occupied"))
+	if pinned:
+		scene.add_child(_box(Vector3(3, 3, 0.3), Vector3(0, 1.5, -2.32)))
+		await _step(2)
+	var enemy_hp: float = enemy.health
+	var stability: float = enemy.weapon_stability
+	var hit_events := [0]
+	enemy.hit_received.connect(func(_damage, _position): hit_events[0] += 1)
+	var landings := [0]
+	player.vault_landed.connect(func(): landings[0] += 1)
+	var started: bool = player.request_vault(Vector3.FORWARD)
+	_check(label + ": valid static geometry permits the player vault", started)
+	_check(label + ": preflight never pushes a character remotely", enemy._hit_push_remaining == 0.0)
+	if late:
+		await _step(25)
+		enemy.global_position = Vector3(0, 0, -1.8)
+	var before: Vector3 = enemy.global_position
+	blocker_approaching = approaching
+	var pushed := false
+	var largest_push := 0.0
+	var previous_remaining := 0.0
+	var push_starts := 0
+	var pause_checked := false
+	for frame in 180:
+		await _step()
+		if enemy._hit_push_remaining > previous_remaining: push_starts += 1
+		previous_remaining = enemy._hit_push_remaining
+		pushed = pushed or enemy._hit_push_remaining > 0.0
+		if not pause_checked and previous_remaining > 0.15:
+			var frozen_position: Vector3 = enemy.global_position
+			var frozen_remaining: float = enemy._hit_push_remaining
+			paused = true
+			await _step(3)
+			paused = false
+			_check(label + ": pause freezes contact push and physical position", enemy.global_position == frozen_position and enemy._hit_push_remaining == frozen_remaining)
+			pause_checked = true
+		largest_push = maxf(largest_push, enemy._hit_push_velocity.length())
+		if not player.is_vaulting() and player.is_on_floor(): break
+	blocker_approaching = false
+	_check(label + ": actual contact applies a bounded horizontal push", pushed and largest_push > 0.0 and largest_push <= 10.0)
+	_check(label + ": vault lands and emits exactly once instead of staying on the wall", not player.is_vaulting() and player.is_on_floor() and player.global_position.y < 0.02 and landings[0] == 1)
+	_check(label + ": body push causes no damage or hit event", is_equal_approx(enemy.health, enemy_hp) and hit_events[0] == 0)
+	_check(label + ": prolonged contact cannot refresh the push or disrupt accuracy", push_starts == 1 and is_equal_approx(enemy.weapon_stability, stability))
+	if pinned:
+		_check(label + ": blocked enemy stays before the wall and player uses the clear endpoint", enemy.global_position.z > -1.9 and player.global_position.z > -0.4)
+	else:
+		_check(label + ": enemy moves away from the landing through real physics", enemy.global_position.z < before.z - 0.35)
+		_check(label + ": player completes the crossing on the opposite side", player.global_position.z < -1.5)
+	print("VAULT BLOCKER case=", label, " player=", player.global_position, " enemy=", enemy.global_position, " pushed=", pushed)
+	await _dispose_fixture()
+
+func _vault_solid_blockers() -> void:
+	await _build_fixture(Vector3(3, 0, -2))
+	var obstacle := _box(Vector3(0.7, 1.75, 0.7), Vector3(0, 0.875, -1.8))
+	obstacle.add_to_group("combat_target")
+	scene.add_child(obstacle)
+	await _step(2)
+	_check("unpushable target still blocks vault preflight", not player.request_vault(Vector3.FORWARD) and not player.is_vaulting())
+	obstacle.free()
+	scene.add_child(_box(Vector3(4, 0.2, 4), Vector3(0, 1.9, -1)))
+	await _step(2)
+	_check("solid ceiling still blocks the complete capsule arc", not player.request_vault(Vector3.FORWARD) and not player.is_vaulting())
+	await _dispose_fixture()
 
 func _hit_during_vault(descending: bool, invincible: bool) -> void:
 	await _build_fixture(Vector3(-1.0, 0.0, -1.8 if descending else 0.0))
@@ -101,6 +177,10 @@ func _step(count: int = 1) -> void:
 	for frame in count:
 		await physics_frame
 		player._physics_process(STEP)
+		if blocker_approaching:
+			var direction: Vector3 = player.global_position - enemy.global_position
+			direction.y = 0.0
+			enemy.move_character(direction.normalized(), STEP)
 		enemy._physics_process(STEP)
 
 func _build_fixture(enemy_position: Vector3) -> void:
@@ -116,6 +196,8 @@ func _build_fixture(enemy_position: Vector3) -> void:
 	donor.free()
 	player.position = Vector3.ZERO
 	player.vault_duration = 0.8
+	player.vault_push_distance = 1.0
+	player.vault_push_seconds = 0.25
 	player.crouch_height = 1.0
 	player.get_node("Health").max_health = 100.0
 	scene.add_child(player)

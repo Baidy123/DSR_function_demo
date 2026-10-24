@@ -16,6 +16,8 @@ signal vault_landed
 @export_range(0.7, 1.75, 0.01) var standing_muzzle_height: float = 1.30
 @export_range(0.1, 1.5, 0.01) var crouching_muzzle_height: float = 0.72
 @export_range(0.3, 2.0, 0.05) var vault_duration: float = 0.8
+@export_range(0.1, 2.0, 0.05) var vault_push_distance: float = 1.0
+@export_range(0.1, 1.0, 0.05) var vault_push_seconds: float = 0.25
 @export_range(0.5, 2.5, 0.05) var cover_interaction_distance: float = 1.5
 var manual_crouch: bool = false
 var crouch_amount: float = 0.0
@@ -29,6 +31,10 @@ var _vault_elapsed: float = 0.0
 var _vault_falling: bool = false
 var _vault_progress: float = 0.0
 var _vault_region: WeakRef
+var _vault_pushed: Dictionary = {}
+var _vault_landing_target: Vector3 = Vector3.INF
+var _vault_landing_best: float = INF
+var _vault_landing_stalled: float = 0.0
 var _camera_ground_height: float = 0.0
 
 @export_group("移动")
@@ -532,12 +538,16 @@ func _apply_body_posture() -> void:
 func request_vault(direction: Vector3) -> bool:
 	if is_dead() or is_in_dialogue or get_tree().paused or is_vaulting() or not is_on_floor(): return false
 	if combat != null and combat.is_melee_active(): return false
-	var plan: Dictionary = LowCoverGeometry.query_vault(self, direction, cover_interaction_distance, vault_duration)
+	var plan: Dictionary = LowCoverGeometry.query_vault(self, direction, cover_interaction_distance, vault_duration, true)
 	if not plan.get("valid", false): return false
 	_vault_plan = plan
 	_vault_elapsed = 0.0
 	_vault_progress = 0.0
 	_vault_falling = false
+	_vault_pushed.clear()
+	_vault_landing_target = Vector3.INF
+	_vault_landing_best = INF
+	_vault_landing_stalled = 0.0
 	_camera_ground_height = global_position.y
 	_aim_cover.clear()
 	is_sprinting = false
@@ -578,6 +588,7 @@ func _advance_vault(delta: float) -> void:
 	var motion := destination - global_position
 	velocity = motion / maxf(delta, 0.0001)
 	var collision := move_and_collide(motion, false, 0.001)
+	if collision != null: _push_vault_collision(collision)
 	if collision != null or _vault_progress >= 1.0:
 		_begin_vault_fall()
 		_advance_vault_fall(delta)
@@ -596,24 +607,61 @@ func _advance_vault_fall(delta: float) -> void:
 	var own := Vector3.ZERO
 	# 临时停在墙顶不算落地；沿最近合法端点走出后继续重力收尾。
 	if is_on_floor() and global_position.y > ground_height + 0.2:
-		var entry: Vector3 = _vault_plan.entry
-		var finish: Vector3 = _vault_plan.exit
-		var destination := entry if global_position.distance_squared_to(entry) < global_position.distance_squared_to(finish) else finish
-		own = destination - global_position
-		own.y = 0.0
-		own = own.normalized() * move_speed
+		own = _vault_landing_direction(delta)
 	velocity.x = own.x
 	velocity.z = own.z
 	velocity += get_gravity() * delta
 	velocity += _advance_melee_push(delta)
 	move_and_slide()
+	for index in get_slide_collision_count():
+		_push_vault_collision(get_slide_collision(index))
 	if is_on_floor() and global_position.y <= ground_height + 0.2:
 		_finish_vault()
+
+
+func _push_vault_collision(collision: KinematicCollision3D) -> void:
+	var heading: Vector3 = _vault_plan.exit - _vault_plan.entry
+	heading.y = 0.0
+	heading = heading.normalized()
+	var middle: Vector3 = (_vault_plan.entry + _vault_plan.exit) * 0.5
+	for index in collision.get_collision_count():
+		var other := collision.get_collider(index) as CharacterBody3D
+		if other == null or not other.has_method("receive_body_push"): continue
+		if _vault_pushed.has(other.get_instance_id()): continue
+		# 仅推开墙对面的真实接触者，不把入口身后的角色往墙上推。
+		if (other.global_position - middle).dot(heading) < 0.0: continue
+		if other.receive_body_push(heading, vault_push_distance, vault_push_seconds):
+			_vault_pushed[other.get_instance_id()] = true
+
+
+func _vault_landing_direction(delta: float) -> Vector3:
+	var entry: Vector3 = _vault_plan.entry
+	var finish: Vector3 = _vault_plan.exit
+	if not _vault_landing_target.is_finite():
+		_vault_landing_target = entry if global_position.distance_squared_to(entry) < global_position.distance_squared_to(finish) else finish
+	var direction := _vault_landing_target - global_position
+	direction.y = 0.0
+	if direction.length() < _vault_landing_best - 0.02:
+		_vault_landing_best = direction.length()
+		_vault_landing_stalled = 0.0
+	else:
+		_vault_landing_stalled += maxf(0.0, delta)
+	# 给接触推力留出执行时间；推不开时走另一合法端点，不能在墙顶解除占用。
+	if _vault_landing_stalled >= maxf(0.3, vault_push_seconds):
+		var other := finish if _vault_landing_target.is_equal_approx(entry) else entry
+		if CharacterGeometry.can_occupy(self, other, STANDING_HEIGHT, _body_radius()):
+			_vault_landing_target = other
+			_vault_landing_best = INF
+			_vault_landing_stalled = 0.0
+			direction = other - global_position
+			direction.y = 0.0
+	return direction.normalized() * move_speed
 
 
 func _finish_vault() -> void:
 	var was_vaulting := is_vaulting()
 	_vault_plan.clear()
+	_vault_pushed.clear()
 	_vault_elapsed = 0.0
 	_vault_falling = false
 	_vault_progress = 0.0
@@ -634,6 +682,7 @@ func _on_vault_region_reset(region: Node) -> void:
 
 func _on_posture_death() -> void:
 	_vault_plan.clear()
+	_vault_pushed.clear()
 	_posture_presentation_transition = &""
 	_vault_region = null
 	_aim_cover.clear()
