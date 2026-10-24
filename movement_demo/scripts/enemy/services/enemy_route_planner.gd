@@ -8,13 +8,14 @@ const MAX_ENTRY_PROJECTION := 0.35
 var context
 var _cache: Dictionary = {}
 var _pending: Array[Vector3] = []
+var _priority_pending: Array[Vector3] = []
 var _origin := Vector3.INF
 var _iteration := -1
 var _cached_at := 0
 var _vault_only: Dictionary = {}
 var _ready_position := Vector3.INF
 
-func alternatives(destination: Vector3) -> Array[Dictionary]:
+func alternatives(destination: Vector3, priority: bool = false) -> Array[Dictionary]:
 	var iteration := NavigationServer3D.map_get_iteration_id(context.agent.get_navigation_map())
 	if not _origin.is_finite() or _origin.distance_to(context.actor.global_position) > 0.5 or iteration != _iteration or Time.get_ticks_msec() - _cached_at > 1000:
 		_cached_at = Time.get_ticks_msec()
@@ -22,10 +23,25 @@ func alternatives(destination: Vector3) -> Array[Dictionary]:
 		_iteration = iteration
 		_cache.clear()
 		_pending.clear()
+		_priority_pending.clear()
 		_vault_only.clear()
 		_ready_position = Vector3.INF
 	if _cache.has(destination): return _cache[destination]
-	if not _pending.has(destination) and _pending.size() < 32: _pending.append(destination)
+	if priority:
+		# A moving, known objective must not queue behind optional cover points
+		# or all of its own older positions. Only pending work is coalesced;
+		# completed paths still belong to their exact checked destinations.
+		for old in _priority_pending.duplicate():
+			if old != destination and context._horizontal_distance_between(old, destination) <= 0.5 and absf(old.y - destination.y) <= 0.5:
+				_priority_pending.erase(old)
+				_pending.erase(old)
+		if not _priority_pending.has(destination): _priority_pending.append(destination)
+		if _priority_pending.size() > 4: _pending.erase(_priority_pending.pop_front())
+		if not _pending.has(destination):
+			if _pending.size() >= 32: _priority_pending.erase(_pending.pop_back())
+			_pending.append(destination)
+	elif not _pending.has(destination) and _pending.size() < 32:
+		_pending.append(destination)
 	return []
 
 func has_pending() -> bool:
@@ -33,7 +49,8 @@ func has_pending() -> bool:
 
 func advance_one() -> void:
 	if _pending.is_empty(): return
-	var destination: Vector3 = _pending.pop_front()
+	var destination: Vector3 = _priority_pending.pop_front() if not _priority_pending.is_empty() else _pending[0]
+	_pending.erase(destination)
 	_cache[destination] = _evaluate(destination)
 	# At rest, announce the first usable route and let the ordinary timer consume
 	# the rest of this batch. A moving actor still needs each newly ready route
@@ -105,6 +122,7 @@ func reset() -> void:
 	_ready_position = Vector3.INF
 	_cache.clear()
 	_pending.clear()
+	_priority_pending.clear()
 	_vault_only.clear()
 	_origin = Vector3.INF
 	_iteration = -1
@@ -114,7 +132,7 @@ func planning_path(from: Vector3, destination: Vector3) -> PackedVector3Array:
 	if context._horizontal_distance_between(from, context.actor.global_position) > 0.1: return walk
 	_vault_only[destination] = walk.is_empty()
 	if not walk.is_empty(): return walk
-	var routes := alternatives(destination)
+	var routes := alternatives(destination, true)
 	if routes.is_empty(): return walk
 	_vault_only[destination] = true
 	# Geometry-only connected path. Candidate expansion removes the nonexistent ordinary route.

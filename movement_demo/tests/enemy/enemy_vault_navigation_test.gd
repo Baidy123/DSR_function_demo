@@ -33,6 +33,9 @@ func _run() -> void:
 	_vault_connection_only = true
 	await _replace_navigation()
 	check(ai.context.cover_selection._path_to(START, TARGET).is_empty(), "autonomous fixture has two islands joined only by the physical vault")
+	await _priority_checks()
+	await _prepare()
+	player.health.debug_invincible = true
 	var saw_vault := false
 	var landed := false
 	for frame in 300:
@@ -143,6 +146,40 @@ func _preference_checks() -> void:
 	await physics_frame
 	var blocked: Dictionary = LowGeometry.query_vault_at(enemy, wall, enemy.global_position, vault.exit - vault.entry, vault.duration, false)
 	check(blocked.get("reason") == "landing_space" and not enemy.begin_vault(vault) and not enemy.is_vaulting(), "six preference points never permit vaulting into the player's occupied landing space")
+
+func _priority_checks() -> void:
+	ai.context.spatial.reset_evaluation()
+	# Let the genuine navigation/geometry revision invalidate old work before
+	# filling this queue; that invalidation must remain authoritative.
+	await physics_frame
+	ai.context.spatial.advance_evaluation()
+	for index in 32:
+		ai.context.routes.alternatives(Vector3(float(index) - 16.0, 0.0, 6.0))
+	check(ai.context.routes._pending.size() == 32, "optional destinations reproduce a full bounded route queue")
+	var pending_path: PackedVector3Array = ai.context.routes.planning_path(START, TARGET)
+	check(pending_path.is_empty() and ai.context.routes._cache.is_empty() and ai.context.routes._pending.has(TARGET) and ai.context.routes._pending.size() == 32, "current disconnected pursuit enters a full queue without doing geometry synchronously")
+	for frame in 8:
+		await physics_frame
+		ai.context.spatial.advance_evaluation()
+		if ai.context.routes._cache.has(TARGET): break
+	check(ai.context.routes._cache.has(TARGET) and not ai.context.routes._cache[TARGET].is_empty(), "shared frame budget prepares current pursuit before stale optional destinations")
+	ai.context.routes.reset()
+	for index in 12:
+		ai.context.routes.alternatives(TARGET + Vector3.RIGHT * float(index) * 0.01, true)
+	var newest := TARGET + Vector3.RIGHT * 0.11
+	check(ai.context.routes._priority_pending == [newest] and ai.context.routes._pending == [newest], "nearby moving objectives replace pending old positions without reusing checked paths")
+	ai.context.routes.reset()
+	check(ai.context.routes._priority_pending.is_empty() and not ai.context.routes.has_pending(), "route reset removes priority and ordinary pending requests together")
+	ai.training.profile.selected_tactics.clear()
+	ai.refresh_configuration(true)
+	player.global_position = TARGET + Vector3.UP * 1.16
+	var retained_attention := true
+	var saw_waiting := false
+	for frame in 4:
+		await _tick()
+		retained_attention = retained_attention and ai.context.sees_player and ai.current_action != null
+		saw_waiting = saw_waiting or ai.utility_current.get("mode") == &"await_route"
+	check(retained_attention and saw_waiting and enemy.melee_count == 0, "visible airborne target retains combat attention while route preparation continues without a through-wall strike")
 
 func _replace_navigation() -> void:
 	ai.context.navigation_region.navigation_mesh = _navigation_mesh()

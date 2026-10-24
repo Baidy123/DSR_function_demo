@@ -7,6 +7,14 @@ func collect_candidates(visible: bool) -> Array[Dictionary]:
 	var candidates := _contact_candidates()
 	for candidate in candidates:
 		candidate.outcome = Approach.contact_outcome(context, candidate.contact_path)
+	if candidates.is_empty() and actor.weapon != null and actor.weapon.melee_enabled and actor.can_equip_weapon(actor.weapon):
+		# A visible target can be airborne or temporarily lack a prepared path.
+		# Keep combat attention while the bounded route queue catches up. This
+		# option disappears as soon as a real contact route is available.
+		var horizon: float = context.utility_horizon_seconds
+		var waiting := option({}, horizon, context._reload_exposure(actor.global_position, context.last_known_position) * horizon)
+		waiting.mode = &"await_route"
+		candidates.append(waiting)
 	return candidates
 
 func _contact_candidates() -> Array[Dictionary]:
@@ -49,6 +57,8 @@ func tick(_delta: float, visible: bool) -> Dictionary:
 	# 已选中的接近行为只提交基础挥击请求；计时、冷却和命中仍在控制器／身体。
 	if context.melee.is_active_for(action_id) or context.melee.can_request(visible):
 		return motion(Vector3.ZERO, 1.0, Vector3.INF, {}, {"owner": action_id})
+	if plan.get("mode") == &"await_route":
+		return motion(Vector3.ZERO, 1.0, context.last_known_position - actor.global_position)
 	var target: Vector3 = plan.destination.position if plan.get("mode") == &"contact_detour" else context.last_known_position
 	if agent.target_position.distance_to(target) > (0.05 if plan.get("mode") == &"contact_detour" else 0.25):
 		agent.target_position = target
