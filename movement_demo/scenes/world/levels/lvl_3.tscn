@@ -1,5 +1,9 @@
 [gd_scene format=3]
 
+[ext_resource type="PackedScene" path="res://scenes/player/player.tscn" id="player_prefab"]
+
+[ext_resource type="PackedScene" path="res://scenes/player/player_camera_rig.tscn" id="player_camera_prefab"]
+
 [ext_resource type="PackedScene" path="res://scenes/world/cover.tscn" id="1_full"]
 [ext_resource type="PackedScene" path="res://scenes/world/low_cover.tscn" id="2_low"]
 
@@ -271,9 +275,18 @@ mesh = SubResource("Mesh_Ground_Floor")
 [node name="CollisionShape3D" type="CollisionShape3D" parent="NavigationRegion3D/Environment/Ground/Floor"]
 shape = SubResource("Shape_Ground_Floor")
 
+[node name="Player" parent="." unique_id=823025112 instance=ExtResource("player_prefab")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 9.684025, 0, 14.218452)
+
+[node name="Camera3D" parent="." unique_id=1418612164 instance=ExtResource("player_camera_prefab")]
+
 [editable path="NavigationRegion3D/Environment/FullCover/FullCover01"]
 [editable path="NavigationRegion3D/Environment/FullCover/FullCover02"]
 [editable path="NavigationRegion3D/Environment/HalfCover/HalfCover01"]
 [editable path="NavigationRegion3D/Environment/HalfCover/HalfCover02"]
 [editable path="NavigationRegion3D/Environment/HalfCover/HalfCover03"]
 [editable path="NavigationRegion3D/Environment/HalfCover/HalfCover04"]
+
+[editable path="Player"]
+
+[editable path="Camera3D"]

@@ -3,7 +3,8 @@ extends Camera3D
 ## 保留 Phantom Camera 的位置跟随，只消费现有装备通知和处理遮挡外观。
 const Occlusion = preload("res://scripts/systems/camera_occlusion.gd")
 
-@export var player_path: NodePath = ^"../Player"
+## 相对于相机根节点；地面锚点与武器视野共用这一玩家引用。
+@export_node_path("Node3D") var player_path: NodePath = ^"../Player"
 @export_group("遮挡透明")
 ## 只处理 camera_fadeable 组的天花板／装饰；玩法掩体始终排除。
 @export var occlusion_enabled: bool = true
@@ -28,8 +29,20 @@ func _ready() -> void:
 	_base_size = size
 	_from_size = size
 	_target_size = size
-	_actor = get_node_or_null(player_path) as Node3D
+	_actor = get_follow_actor()
 	if _actor == null: return
+	if not _actor.is_node_ready():
+		_actor.ready.connect(_bind_combat, CONNECT_ONE_SHOT)
+	else:
+		_bind_combat()
+
+
+func get_follow_actor() -> Node3D:
+	return get_node_or_null(player_path) as Node3D
+
+
+func _bind_combat() -> void:
+	if not is_instance_valid(_actor): return
 	_combat = _actor.get_node_or_null("Combat")
 	if _combat == null or not _combat.has_signal("weapon_changed"): return
 	_combat.weapon_changed.connect(_on_weapon_changed)
@@ -70,6 +83,8 @@ func _on_weapon_changed(data: WeaponData) -> void:
 
 
 func _exit_tree() -> void:
+	if is_instance_valid(_actor) and _actor.ready.is_connected(_bind_combat):
+		_actor.ready.disconnect(_bind_combat)
 	if is_instance_valid(_combat) and _combat.has_signal("weapon_changed") and _combat.weapon_changed.is_connected(_on_weapon_changed):
 		_combat.weapon_changed.disconnect(_on_weapon_changed)
 	_occlusion.clear()

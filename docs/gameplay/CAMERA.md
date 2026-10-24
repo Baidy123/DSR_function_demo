@@ -1,6 +1,21 @@
 # 玩家相机、武器视野与遮挡透明
 
-更新：2026-10-09。
+更新：2026-10-24。
+
+## 玩家与相机分场景复用（2026-10-24）
+
+按用户要求拆为两个独立实例，武器对视野的影响继续有效：
+
+- `scenes/player/player.tscn`：根为 Player（CharacterBody3D），包含原移动、碰撞、Combat、WeaponSlots、Health／医疗包、HUD、表现与受击组件。
+- `scenes/player/player_camera_rig.tscn`：根为 Camera3D，包含原 PhantomCameraHost、CameraGroundAnchor、PhantomCamera3D、武器视野和遮挡透明。
+
+在关卡中分别拖入两个场景，移动 Player 根节点设置出生位置；选中 Camera3D，在检查器的 **Player Path** 指向该玩家。默认 `../Player` 适用于两者同级且玩家名为 Player 的情况。改名或嵌套时只改这一项，地面锚点和武器视野共用同一引用。保留一套活动相机即可；场景使用本项目既有输入映射、DebugSettings 和 PhantomCameraManager，不包含地面、灯光或战斗区。
+
+在 Player 实例启用“可编辑子节点”后，可以像原来一样修改 WeaponSlots 的武器资源，以及 Health 等配置；修改共享武器前按需要设为唯一。武器里的 `Camera View Size`、`Camera Transition Seconds` 仍由 Combat 的 `weapon_changed` 信号传给相机。无论先加载玩家还是相机，初始装备直接应用正确视野，后续切枪保持平滑过渡；配置0继续回退到相机场景 Size。
+
+Main 与当前本地 lvl3 已使用两个实例并保留各自出生位置和现有参数。`Player/Combat` 等路径以及关卡根下的 `Camera3D` 保持；锚点和虚拟镜头现在分别为 `Camera3D/CameraGroundAnchor`、`Camera3D/PhantomCamera3D`。相机位置仍由原插件控制，锚点和虚拟镜头不继承实际相机移动，避免跟随反馈；朝向、正交 Size、偏移和50／300／400的更新顺序保持。
+
+本轮定向8套通过：新增 `player_scene_reuse_test` 16/16（独立保存重载、玩家改名／嵌套、相机先进入场景、真实切槽15／21视野过渡、实际移动、地面锚点与独立玩家），原相机26/26、遮挡46/46，以及武器槽、生命、换弹接续、武器表现和半身表现。当前 lvl3 真实玩家翻越及全员强配合追击仍通过。未运行完整项目回归或多视口／多人相机矩阵。
 
 2026-10-15：项目开启物理插值，平滑显示物理帧之间的移动。现有 Phantom Camera Host 会据此切换到物理更新；仍沿用 Player → CameraGroundAnchor（优先级50）→ Host（300）→ Camera3D 遮挡（400）的顺序，地面锚点继续过滤翻越抬升。相机插件和节点路径不变。`player_camera_test` 增加真实移动时玩家及相机在同一物理帧间显示中间位置的回归。
 
@@ -63,7 +78,7 @@
 - `scripts/weapons/weapon_data.gd`：新增两项静态视野配置；敌人不读取它们。
 - `scripts/systems/player_camera.gd`：挂在原 Camera3D，订阅已有 `Combat.weapon_changed`，处理 Size 过渡并驱动遮挡查询。更新优先级400，在现有优先级300的相机 Host 之后。
 - `scripts/systems/camera_occlusion.gd`：相机私有辅助对象，只做标记模型的几何查询、材质副本和还原；无输入、伤害、AI 或角色动作职责。
-- `CameraGroundAnchor` 与第三方插件保持原样，仍过滤翻越的额外抬升。
+- `CameraGroundAnchor` 共用所属相机的玩家引用，仍过滤翻越的额外抬升；第三方插件源码保持原样。
 
 专项测试：`player_camera_test` 覆盖真实槽位输入、初始装备、过渡中重切、暂停、资源回退／保存重载、死亡重开及原锚点；`camera_occlusion_test` 覆盖明确标记、纯视觉装饰、父容器／排除优先级、显示层、误标记的真实高低掩体、旋转缩放与镂空模型，并保留正交投影、多重遮挡、蹲姿、共享材质隔离、内部模型、原碰撞及生命周期验证。后者还加载真实 Main，使用原移动输入走进天花板测试区，再检查悬挂方块与离开后的还原。两项已注册在原玩家战斗回归运行器。
 

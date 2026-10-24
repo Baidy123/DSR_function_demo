@@ -36,10 +36,10 @@ func _run() -> void:
 	current_scene = scene
 	actor.set_physics_process(false)
 	_check("birth reads already-equipped secondary weapon without an opening zoom", is_equal_approx(camera.size, 17.0))
-	_check("existing camera host and ground anchor remain connected", camera.has_node("PhantomCameraHost") and scene.get_node("PhantomCamera3D").follow_target == scene.get_node("CameraGroundAnchor"))
+	_check("existing camera host and ground anchor remain connected", camera.has_node("PhantomCameraHost") and camera.get_node("PhantomCamera3D").follow_target == camera.get_node("CameraGroundAnchor"))
 	_check("camera projection stays orthogonal", camera.projection == Camera3D.PROJECTION_ORTHOGONAL)
-	_check("third-party camera only follows the transform without a competing lens override", scene.get_node("PhantomCamera3D").camera_3d_resource == null)
-	var follow_offset: Vector3 = scene.get_node("PhantomCamera3D").follow_offset
+	_check("third-party camera only follows the transform without a competing lens override", camera.get_node("PhantomCamera3D").camera_3d_resource == null)
+	var follow_offset: Vector3 = camera.get_node("PhantomCamera3D").follow_offset
 	await _frames(3)
 	_key(KEY_1)
 	_check("real slot input changes weapon without snapping the camera", combat.weapon == pistol and is_equal_approx(camera.size, 17.0))
@@ -58,7 +58,7 @@ func _run() -> void:
 	_key(KEY_1)
 	await _frames(24)
 	_check("switching back restores the pistol view", is_equal_approx(camera.size, 13.0))
-	_check("weapon view does not change camera tilt or follow offset", scene.get_node("PhantomCamera3D").follow_offset == follow_offset)
+	_check("weapon view does not change camera tilt or follow offset", camera.get_node("PhantomCamera3D").follow_offset == follow_offset)
 	var fire_range: float = pistol.fire_range
 	var aim_range: float = pistol.aim_range
 	var magazine: int = combat.ammo.magazine_rounds
@@ -90,7 +90,7 @@ func _run() -> void:
 	# 原锚点仍消费身体公开的地面高度，相机扩展不跟随翻越的额外抬升。
 	actor.global_position += Vector3(2, 0, 1)
 	await _frames(3)
-	_check("the original anchor follows player ground position", scene.get_node("CameraGroundAnchor").global_position.is_equal_approx(Vector3(actor.global_position.x, actor.get_camera_ground_height(), actor.global_position.z)))
+	_check("the original anchor follows player ground position", camera.get_node("CameraGroundAnchor").global_position.is_equal_approx(Vector3(actor.global_position.x, actor.get_camera_ground_height(), actor.global_position.z)))
 	await _check_movement_interpolation(actor, camera)
 	await _check_reticle_interpolation(actor, camera)
 	actor.get_node("Health").debug_mode = false

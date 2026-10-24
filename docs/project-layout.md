@@ -15,7 +15,7 @@ movement_demo/
 │   ├── main.tscn          主场景，F5 默认入口
 │   ├── arena.tscn         战斗区域与敌人实例
 │   ├── enemy/             可直接拖入竞技场的 enemy.tscn
-│   ├── player/            玩家战斗、生命与武器槽场景
+│   ├── player/            独立 player.tscn、player_camera_rig.tscn 与战斗／生命／武器槽子场景
 │   ├── world/             掩体、训练区域、墙体、交互物与门禁通道场景
 │   │   ├── levels/        Lvl_1–5 独立地图，含区域、导航、空 Squad 及地图实体
 │   │   └── objects/       具体交互物：门禁卡、酒杯、终端、唱片机
@@ -136,7 +136,11 @@ Spatial 的路线样本层仅在同步候选比较中复用同路径已实际观
 
 半身掩体沿用 `scripts/world/cover_region.gd` 与原掩体节点，预设为 `scenes/world/low_cover.tscn`。`world/low_cover_geometry.gd` 提供低墙、翻越轨迹及近距关系的只读查询；`systems/character_geometry.gd` 只校验假定胶囊的占位与扫掠，不管理玩家或敌人的动作、攻击、生命和计时。角色各自身体执行及适配器消费这些查询和共享表现快照。对应设计与实施记录在 `docs/superpowers/`。
 
-主场景保留原相机节点，通过新增的 `CameraGroundAnchor`（`systems/camera_ground_anchor.gd`）跟随玩家地面高度，过滤翻越抬升；不修改第三方相机插件。Arena 增加一个独立低掩体实例，原高掩体和行为资源保留。玩家、敌人、NPC 与示例胶囊站高为 1.75 米，导航资源同步这一尺度。
+按用户后续要求，玩家和相机分为两个独立预制：`scenes/player/player.tscn` 的根仍是原 CharacterBody3D，保留 Combat、WeaponSlots、Health、Visual 与表现／受击子节点；`scenes/player/player_camera_rig.tscn` 以原 Camera3D 为根，包含 PhantomCameraHost、CameraGroundAnchor、PhantomCamera3D。Main 与 lvl3 引用这两个实例，保留 Player、Camera3D 根路径与出生位置；地面锚点／虚拟镜头路径改为 Camera3D 的子路径，不新增角色总控或修改插件。
+
+相机根脚本 `get_follow_actor()` 按唯一的 `player_path` 解析玩家，地面锚点共用该引用；相机先就绪时等待玩家 ready 后再读取初始装备，避免漏掉武器视野或出生缩放。锚点与虚拟镜头保持 top_level，在原50／300／400的物理更新顺序下过滤翻越抬升。独立组件仍使用项目既有输入与 autoload，单视口配置一套活动相机。玩家、敌人、NPC 与示例胶囊站高仍为1.75米。
+
+半身掩体阶段在 Arena 增加一个独立低掩体实例，原高掩体和行为资源保留。
 
 原 `Camera3D` 挂 `systems/player_camera.gd`，只订阅现有 Combat 装备通知，将 WeaponData 中的视野大小／过渡时间应用到正交 Size；`systems/camera_occlusion.gd` 是该相机私有的模型遮挡查询与材质还原辅助对象，仅处理 `camera_fadeable` 标记的天花板／装饰，保留掩体不透明。主场景增加 `scenes/world/camera_occlusion_demo.tscn` 纯视觉试玩实例，不增加物理或导航几何。位置仍由 Phantom Camera 和原地面锚点控制，不把视野或透明状态放进武器槽、角色动作或 AI。共享材质、物理与导航资源保持独立，配置与限制见 [相机说明](gameplay/CAMERA.md)。
 

@@ -70,6 +70,8 @@ python movement_demo/tests/run_regressions.py --check
 
 ## 运行游戏回归
 
+玩家／相机分场景复用的定向入口为 `player_scene_reuse_test`，已登记在 combat。它保存重载一个另建关卡，使用改名、嵌套的玩家与先就绪的独立相机，通过真实武器槽输入验证武器视野与跟随绑定；原 `player_camera_test`、`camera_occlusion_test` 保留视野／遮挡及死亡重开断言，仅更新移入相机场景的两个子节点路径。验证记录见 [相机说明](gameplay/CAMERA.md#玩家与相机分场景复用2026-10-24)。
+
 地图维护命令 `tests/bake_levels.gd` 只重烘五张独立地图的导航，已列入维护脚本排除清单，不作为回归运行；用法与实体轮廓排除说明见 [关卡地图](gameplay/LEVEL_MAPS.md)。
 
 翻越定向检查包括 `vault_navigation_world_test`（原生 Bake／静态图）、`enemy_vault_link_contract_test`（增量查询／多段执行／生命周期）和 `enemy_vault_link_runtime_test`（默认0级双近战实战）。运行后者时在 Godot `--script` 参数后追加 `-- --level=1` 或 `-- --level=2` 验证团队，追加 `--all-trained` 装配该兵种全部战术。旧 `enemy_vault_navigation_test` 保留旧单次路线兼容断言；两种表示分别验证，不用旧夹具的单次同步调用代替新分帧流程。

@@ -1,0 +1,42 @@
+[gd_scene format=3 uid="uid://cwypieei7ftdf"]
+
+[ext_resource type="Script" uid="uid://bd046eokvcnu2" path="res://addons/phantom_camera/scripts/phantom_camera_host/phantom_camera_host.gd" id="3_lquwl"]
+[ext_resource type="Script" uid="uid://csjccrhj5wnx7" path="res://addons/phantom_camera/scripts/phantom_camera/phantom_camera_3d.gd" id="4_7mycd"]
+[ext_resource type="Script" uid="uid://8umksf8e80fw" path="res://addons/phantom_camera/scripts/resources/tween_resource.gd" id="5_272bh"]
+[ext_resource type="Script" uid="uid://ysrwqnuajh23" path="res://scripts/systems/camera_ground_anchor.gd" id="camera_anchor"]
+[ext_resource type="Script" uid="uid://cypj32pnm40gy" path="res://scripts/systems/player_camera.gd" id="player_camera"]
+[sub_resource type="Resource" id="Resource_5vw27"]
+script = ExtResource("5_272bh")
+
+[node name="Camera3D" type="Camera3D" unique_id=1669516944]
+process_priority = 400
+process_physics_priority = 400
+transform = Transform3D(1, 0, 0, 0, 0.348572, 0.937282, 0, -0.937282, 0.348572, 0.29, 5.29, 3.06)
+top_level = true
+projection = 1
+current = true
+size = 12.928184
+script = ExtResource("player_camera")
+
+[node name="PhantomCameraHost" type="Node" parent="." unique_id=1759746251]
+process_priority = 300
+process_physics_priority = 300
+script = ExtResource("3_lquwl")
+metadata/_custom_type_script = "uid://bd046eokvcnu2"
+
+[node name="CameraGroundAnchor" type="Node3D" parent="." unique_id=1764330766]
+process_physics_priority = 50
+top_level = true
+script = ExtResource("camera_anchor")
+
+[node name="PhantomCamera3D" type="Node3D" parent="." unique_id=1547481604 node_paths=PackedStringArray("follow_target")]
+transform = Transform3D(1, 0, 0, 0, 0.348572, 0.937282, 0, -0.937282, 0.348572, 0.29, 5.29, 3.06)
+top_level = true
+script = ExtResource("4_7mycd")
+follow_mode = 2
+follow_target = NodePath("../CameraGroundAnchor")
+tween_resource = SubResource("Resource_5vw27")
+follow_offset = Vector3(0.29, 5.29, 3.06)
+align_transform_with_view = Callable()
+align_position_with_view = Callable()
+metadata/_custom_type_script = "uid://csjccrhj5wnx7"
