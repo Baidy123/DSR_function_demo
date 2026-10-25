@@ -62,6 +62,14 @@ const ShotgunConfig = preload("res://scripts/weapons/shotgun_settings.gd")
 ## 两次射击的最短间隔（秒）。
 @export_range(0.05, 3.0, 0.05) var shot_interval: float = 0.2
 
+@export_group("精准爆头（仅玩家）")
+## 玩家开火前达到最准精度时，实际命中才判定概率爆头；不分身体部位，不额外等待。敌人和近战不使用。
+@export var headshot_enabled: bool = true
+## 最准时每次实际命中的爆头概率；霰弹每颗命中弹丸独立判定，再按目标合并伤害。0关闭，1表示100%。
+@export_range(0.0, 1.0, 0.01) var headshot_chance: float = 0.5
+## 爆头的总伤害倍率，2.5表示普通伤害的250%，不是额外加250%；只放大伤害，不放大命中干扰或减速。
+@export_range(1.0, 10.0, 0.05, "suffix:×") var headshot_damage_multiplier: float = 2.5
+
 @export_group("对目标命中与压制效果")
 ## 命中目标时扣除的基础精度；按百分点扣减。20%×受方倍率0.5=扣10个百分点，80%变70%；0关闭。
 ## 这是给目标的干扰，不是持枪者自己的后坐力；射击命中时冻结本次值。
@@ -215,6 +223,17 @@ func get_aim_settings(use_spread: bool) -> Dictionary:
 ## 正常由 Fire Mode 创建配置；外部代码清空时只读使用默认值，不写回共享资源。
 func get_shotgun_settings() -> ShotgunSettings:
 	return shotgun if shotgun != null else ShotgunConfig.new()
+
+
+## 只返回配置与精度资格；是否实际命中、掷概率及伤害由玩家原射击流程负责。
+func get_headshot_chance(stability: float) -> float:
+	if not headshot_enabled or fire_mode == FireMode.MELEE or not is_finite(stability) or stability < 1.0 - 0.000001:
+		return 0.0
+	return _valid_fraction(headshot_chance)
+
+
+func get_headshot_damage_multiplier() -> float:
+	return maxf(1.0, headshot_damage_multiplier) if is_finite(headshot_damage_multiplier) else 1.0
 
 
 func _angle_to_stability(angle: float, minimum: float, span: float) -> float:

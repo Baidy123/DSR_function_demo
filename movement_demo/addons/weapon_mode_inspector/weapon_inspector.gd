@@ -34,6 +34,7 @@ const SPREAD_FIELDS := {
 	"spread_target_move_fast_speed": "高速目标速度",
 }
 const COMMON_FIELDS := {
+	"headshot_chance": "爆头概率", "headshot_damage_multiplier": "爆头伤害倍率",
 	"hit_accuracy_loss": "命中精度损失", "suppression_accuracy_loss": "被压制精度损失",
 	"near_miss_radius": "擦过检测范围（米）", "hit_speed_loss": "击中速度损失",
 	"hit_speed_loss_seconds": "击中减速时长（秒）", "melee_accuracy_loss": "近战命中精度损失",
@@ -51,6 +52,7 @@ const COMMON_FIELDS := {
 	"melee_slow_multiplier": "命中后移动速度", "melee_slow_seconds": "命中减速时长（秒）",
 }
 const PERCENT_FIELDS := [
+	"headshot_chance",
 	"hit_accuracy_loss", "suppression_accuracy_loss", "hit_speed_loss", "melee_accuracy_loss",
 	"initial_accuracy", "moving_accuracy_cap", "shot_accuracy_penalty", "minimum_accuracy",
 	"target_move_accuracy_loss_per_meter_slow", "target_move_accuracy_loss_per_meter_fast",
@@ -58,6 +60,7 @@ const PERCENT_FIELDS := [
 	"melee_slow_multiplier",
 ]
 const FIREARM_FIELDS := [
+	"headshot_enabled", "headshot_chance", "headshot_damage_multiplier",
 	"hit_accuracy_loss", "suppression_accuracy_loss", "near_miss_radius", "hit_speed_loss", "hit_speed_loss_seconds",
 	"ammo_type", "magazine_capacity", "reload_seconds", "shot_noise", "shot_noise_radius",
 	"damage", "aim_range", "fire_range", "cone_angle_degrees", "locked_move_multiplier",
@@ -66,6 +69,8 @@ const FIREARM_FIELDS := [
 
 ## 自定义数值控件也提供直接提示；脚本的 ## 属性文档同时保留原生检查器帮助。
 const EFFECT_HELP := {
+	"headshot_chance": "仅玩家开火前达到最准时，实际命中才掷概率；50%不是保证命中。霰弹每颗命中弹丸独立判定，最后按目标合并伤害。0关闭。",
+	"headshot_damage_multiplier": "爆头总伤害倍率：2.5表示普通伤害的250%，不是额外增加250%。只放大触发弹丸的伤害，不放大干扰、减速或击退。",
 	"target_move_accuracy_loss_per_meter_slow": "慢速目标每米降低的概率。玩家按平行容差处理后的有效横向距离计算；前后移动不扣这一项。敌人仍按原目标位移。",
 	"target_move_accuracy_loss_per_meter_fast": "高速目标每米降低的概率。玩家按有效横向距离和速度计算；径向速度不加重惩罚。敌人规则保留。",
 	"target_move_fast_speed": "达到该速度时采用高速每米惩罚。玩家使用有效横向速度，敌人使用原目标速度（米/秒）。",

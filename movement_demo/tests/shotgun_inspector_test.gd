@@ -15,6 +15,12 @@ func _run() -> void:
 	EditorInterface.edit_resource(gun)
 	for frame in 20: await process_frame
 	check(_fields(gun).has("damage") and not _fields(gun).has("shotgun"), "Legacy weapon inspector stays unchanged")
+	var critical_fields := _fields(gun)
+	check(critical_fields.has("headshot_enabled") and critical_fields.has("headshot_chance") and critical_fields.has("headshot_damage_multiplier"), "Headshot settings are exposed on the original weapon resource")
+	for property in _descendants(EditorInterface.get_inspector(), "EditorProperty"):
+		if property.get_edited_object() == gun and property.get_edited_property() == "headshot_chance":
+			var spin: SpinBox = _descendants(property, "SpinBox")[0]
+			check(spin.value == 50 and not spin.tooltip_text.is_empty(), "Headshot chance displays 50 percent with hover help")
 	var option: OptionButton
 	for property in _descendants(EditorInterface.get_inspector(), "EditorProperty"):
 		if property.get_edited_object() == gun and property.get_edited_property() == "fire_mode":
@@ -26,6 +32,7 @@ func _run() -> void:
 	var fields := _fields(gun)
 	check(gun.fire_mode == WeaponData.FireMode.SHOTGUN and gun.shotgun != null and gun.shotgun.get_pattern_points().size() == 9, "Choosing 霰弹 initializes a usable nine-pellet configuration")
 	check(fields.has("shotgun") and fields.has("magazine_capacity") and fields.has("fire_mode"), "Shotgun mode keeps common controls and exposes its settings")
+	check(fields.has("headshot_chance") and fields.has("headshot_damage_multiplier"), "Shotgun retains the same headshot settings")
 	check(not fields.has("damage") and not fields.has("initial_accuracy") and not fields.has("min_spread_angle_degrees"), "Shotgun mode hides unused single-projectile parameters")
 	gun.shotgun.pellet_damage = 11
 	var saved_settings = gun.shotgun

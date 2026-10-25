@@ -257,6 +257,8 @@ func _target(parent: Node3D, at: Vector3) -> Target:
 
 func _test_gun(points: PackedVector2Array) -> WeaponData:
 	var gun := Data.new()
+	# 本专项核对原弹丸基础伤害；概率爆头由 headshot_test 单独覆盖。
+	gun.headshot_enabled = false
 	gun.fire_mode = WeaponData.FireMode.SHOTGUN
 	gun.ammo_type = WeaponData.AmmoType.SHOTGUN
 	gun.magazine_capacity = 6

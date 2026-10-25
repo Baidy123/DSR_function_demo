@@ -6,33 +6,79 @@ extends Control
 @export var maximum_radius: float = 52.0
 var radius: float = 52.0
 var tint: Color = Color.WHITE
+var _draw_aim := false
+var _headshot_ready := false
+var _headshot_markers: Array[Dictionary] = []
+const HEADSHOT_COLOR := Color(1.0, 0.8, 0.25)
+const HEADSHOT_SECONDS := 0.65
 
 @onready var combat = get_parent().get_parent()
 
 
-func _process(_delta: float) -> void:
-	var target = combat.locked_target
-	var camera := get_viewport().get_camera_3d()
-	visible = combat.is_aiming and is_instance_valid(target) and camera != null and not combat.player.is_in_dialogue
-	if not visible:
-		return
-	var point: Vector3 = combat.get_locked_aim_point()
-	# UI follows the same interpolated body that is drawn between physics ticks.
-	# Combat retains the physical point for visibility and actual ballistics.
-	point = target.get_global_transform_interpolated() * target.to_local(point)
-	if camera.is_position_behind(point):
+func _ready() -> void:
+	combat.headshot_hit.connect(_on_headshot_hit)
+	combat.weapon_changed.connect(func(_weapon): _headshot_markers.clear())
+
+
+func _on_headshot_hit(point: Vector3, pellets: int, shotgun: bool) -> void:
+	_headshot_markers.append({"point": point, "remaining": HEADSHOT_SECONDS,
+		"text": "爆头弹丸 ×%d" % pellets if shotgun else "爆头", "screen": Vector2.ZERO})
+	# 只保留最近的少量表现，不持有死亡目标或为每颗弹丸创建节点。
+	if _headshot_markers.size() > 12: _headshot_markers.pop_front()
+
+
+func _process(delta: float) -> void:
+	if combat.player.is_in_dialogue or combat.player.is_dead():
+		_headshot_markers.clear()
 		hide()
 		return
-	# 两种模式共用原圆形准星，大小提示稳定度，不代表实际弹道范围。
-	position = camera.unproject_position(point)
-	var stability: float = combat.get_effective_accuracy()
-	radius = lerpf(maximum_radius, minimum_radius, stability)
-	tint = Color(1.0, 0.55, 0.2).lerp(Color(0.35, 1.0, 0.55), stability)
+	var target = combat.locked_target
+	var camera := get_viewport().get_camera_3d()
+	if camera == null:
+		_headshot_markers.clear()
+		hide()
+		return
+	for index in range(_headshot_markers.size() - 1, -1, -1):
+		var marker := _headshot_markers[index]
+		marker.remaining -= delta
+		if marker.remaining <= 0.0 or camera.is_position_behind(marker.point):
+			_headshot_markers.remove_at(index)
+		else:
+			marker.screen = camera.unproject_position(marker.point)
+	_draw_aim = combat.is_aiming and is_instance_valid(target)
+	_headshot_ready = false
+	if _draw_aim:
+		var point: Vector3 = combat.get_locked_aim_point()
+		# UI 跟随渲染插值；弹道仍使用物理位置。
+		point = target.get_global_transform_interpolated() * target.to_local(point)
+		_draw_aim = not camera.is_position_behind(point)
+		if _draw_aim:
+			position = camera.unproject_position(point)
+			var stability: float = combat.get_effective_accuracy()
+			radius = lerpf(maximum_radius, minimum_radius, stability)
+			tint = Color(1.0, 0.55, 0.2).lerp(Color(0.35, 1.0, 0.55), stability)
+			_headshot_ready = combat.weapon != null and combat.weapon.get_headshot_chance(stability) > 0.0
+	visible = _draw_aim or not _headshot_markers.is_empty()
 	queue_redraw()
 
 
 func _draw() -> void:
-	draw_arc(Vector2.ZERO, radius, 0.0, TAU, 64, Color(0.0, 0.0, 0.0, 0.8), 4.0, true)
-	draw_arc(Vector2.ZERO, radius, 0.0, TAU, 64, tint, 2.0, true)
-	for direction in [Vector2.LEFT, Vector2.RIGHT, Vector2.UP, Vector2.DOWN]:
-		draw_line(direction * (radius - 5.0), direction * (radius + 6.0), tint, 2.0, true)
+	if _draw_aim:
+		# 原圆形准星继续只表示精度，不代表实际散布范围。
+		draw_arc(Vector2.ZERO, radius, 0.0, TAU, 64, Color(0.0, 0.0, 0.0, 0.8), 4.0, true)
+		draw_arc(Vector2.ZERO, radius, 0.0, TAU, 64, tint, 2.0, true)
+		for direction in [Vector2.LEFT, Vector2.RIGHT, Vector2.UP, Vector2.DOWN]:
+			draw_line(direction * (radius - 5.0), direction * (radius + 6.0), tint, 2.0, true)
+		if _headshot_ready:
+			var top := Vector2(0, -radius - 13)
+			draw_polyline(PackedVector2Array([top + Vector2(0, -4), top + Vector2(4, 0), top + Vector2(0, 4), top + Vector2(-4, 0), top + Vector2(0, -4)]), HEADSHOT_COLOR, 2.0, true)
+	for marker in _headshot_markers:
+		var center: Vector2 = marker.screen - position
+		var color := HEADSHOT_COLOR
+		color.a = minf(1.0, marker.remaining / 0.2)
+		for direction in [Vector2(-1, -1), Vector2(1, -1), Vector2(-1, 1), Vector2(1, 1)]:
+			draw_line(center + direction * 5, center + direction * 10, Color(0, 0, 0, color.a), 5.0, true)
+			draw_line(center + direction * 5, center + direction * 10, color, 2.0, true)
+		var label_position := center + Vector2(-70, -22)
+		draw_string_outline(get_theme_default_font(), label_position, marker.text, HORIZONTAL_ALIGNMENT_CENTER, 140, 18, 4, Color(0, 0, 0, color.a))
+		draw_string(get_theme_default_font(), label_position, marker.text, HORIZONTAL_ALIGNMENT_CENTER, 140, 18, color)
