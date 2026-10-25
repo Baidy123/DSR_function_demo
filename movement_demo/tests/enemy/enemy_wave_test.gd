@@ -76,7 +76,7 @@ func _templates() -> void:
 	var copies: Array[Dictionary] = controller._instantiate_wave(0)
 	check(copies.size() == 1 and copies[0].members.size() == 1, "保留关卡拥有的手工成员")
 	var enemy = copies[0].members[0]
-	check(enemy.max_health == 173.0 and enemy.transform == transform_before and enemy.get_child_count() == 11, "完整保留生命、部署朝向及公共组件")
+	check(enemy.max_health == 173.0 and enemy.transform == transform_before and enemy.get_child_count() == 12 and enemy.has_node("HealthBar"), "完整保留生命、部署朝向及包含血条的公共组件")
 	check(enemy.weapon == weapon and enemy.get_node("Training").profile == training and copies[0].root.profile == profile, "普通武器、嵌套训练与小队 Profile 保持共享引用")
 	check(enemy.get_node("Body").material_override != material and enemy.get_node("Body").material_override.albedo_color == Color.BLUE, "实例覆盖的 local_to_scene 资源独立且值保留")
 	region.add_child(copies[0].root)
@@ -201,6 +201,10 @@ func _runtime_waves() -> void:
 		await _settle()
 		return
 	check(region.enemies.size() == 3 and controller.debug_snapshot().alive == 3 and region.get_node("EnemyWaves/Wave2").get_child_count() == 0, "同波两个小队全部计数，下一波尚无运行实例")
+	var health_bar = region.enemies[0].get_node("HealthBar")
+	var health_before: float = region.enemies[0].health
+	region.enemies[0].receive_hit(health_before * 0.25)
+	check(is_equal_approx(health_bar.ratio, 0.75) and health_bar.visible, "真实受伤更新无数字血条，正常游戏可见")
 	var original_positions := {}
 	for enemy in region.enemies: original_positions[enemy.get_instance_id()] = enemy.global_position
 	for frame in 480:
@@ -224,7 +228,12 @@ func _runtime_waves() -> void:
 	first_members[2].receive_hit(10000.0)
 	check(await _await_state(controller, "BLOCKED"), "同帧全灭后第二波遇到真实玩家占位而等待")
 	check(events.cleared == [1] and events.completed == 0 and controller.debug_snapshot().pending == 2 and region.enemies.is_empty(), "旧波完成注销，受阻整波保留两名待生成成员")
+	check(is_instance_valid(controller._corpse_root) and controller._corpse_root.get_child_count() == 3 and _only_corpse_visuals(controller._corpse_root), "首波只留下三具静态尸体，没有AI、血条或碰撞")
+	var last_body = controller._corpse_root.get_child(2).get_child(0)
+	var falling_angle: float = last_body.rotation.x
+	check(falling_angle >= 0.0 and falling_angle < PI * 0.5 - 0.01, "最后一人回收后接续倒地中间姿态，不瞬间躺平")
 	await _settle(35)
+	check(is_equal_approx(last_body.rotation.x, PI * 0.5) and is_equal_approx(last_body.position.y, 0.35), "轻量尸体完成剩余倒地过程并停在原终点")
 	check(events.started == [1] and region.enemies.is_empty(), "持续占位不跳波、不部分生成、不强刷")
 	var remaining: float = controller.debug_snapshot().remaining_seconds
 	player.is_in_dialogue = true
@@ -244,9 +253,11 @@ func _runtime_waves() -> void:
 	controller.start_encounter()
 	await _settle(20)
 	check(events.cleared == [1, 2] and events.completed == 1 and region.enemies.is_empty(), "完成信号一次，重复启动不自动循环")
+	check(controller._corpse_root.get_child_count() == 5, "最终完成保留两波全部尸体")
 	player.global_position = Vector3(30, 0, 0)
 	await _settle()
 	check(controller.debug_snapshot().state == "WAITING", "最后玩家离场恢复等待首波")
+	check(controller._corpse_root == null, "离场重开清理本轮尸体")
 	player.global_position = Vector3(0, 0, 5)
 	check(await _await_state(controller, "ACTIVE") and controller.debug_snapshot().wave == 1, "重新入场从完整首波重新生成")
 	var reset_events := [0]
@@ -258,6 +269,12 @@ func _runtime_waves() -> void:
 	region.queue_free()
 	await _settle()
 	check(get_nodes_in_group("shot_listener").is_empty(), "卸载关卡清除全部近弹监听和运行实例")
+
+func _only_corpse_visuals(node: Node) -> bool:
+	if not node is Node3D or node.get_script() != null or node is CollisionObject3D or node is CollisionShape3D: return false
+	for child in node.get_children():
+		if not _only_corpse_visuals(child): return false
+	return true
 
 func _await_wave(controller: Node, index: int, frames: int = 90) -> bool:
 	for frame in frames:
@@ -474,6 +491,11 @@ func _actual_levels() -> void:
 	check(await _await_state(controller, "COMPLETED"), "第一关两波完整结束")
 	# 只改另一张地图的内存实例，旋转/平移整个区域后沿同一流程部署。
 	var other = load("res://scenes/world/levels/lvl_2.tscn").instantiate()
+	# 跨区用例由第一关同一个玩家移动过去；用户可独立给第二关配置试玩玩家／相机。
+	for path in ["Player", "Camera3D", "EnemyWaves"]:
+		var standalone = other.get_node_or_null(path)
+		if standalone != null: standalone.free()
+	for authored_member in other.get_node("Squad").get_children(): authored_member.free()
 	other.position = Vector3(60, 0, 0)
 	other.rotation.y = PI * 0.5
 	var waves = load("res://scenes/world/enemy_waves.tscn").instantiate()

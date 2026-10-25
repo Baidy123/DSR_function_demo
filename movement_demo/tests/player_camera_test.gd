@@ -25,6 +25,9 @@ func _run() -> void:
 	var base_size: float = camera.size
 	var pistol: WeaponData = slots.primary_weapon.duplicate()
 	var rifle: WeaponData = slots.secondary_weapon.duplicate()
+	# 保留手动Size模式的原合同；范围联动另由 combat_view_test 验证。
+	pistol.camera_follows_aim_range = false
+	rifle.camera_follows_aim_range = false
 	pistol.camera_view_size = 13.0
 	pistol.camera_transition_seconds = 0.3
 	rifle.camera_view_size = 17.0
@@ -70,6 +73,7 @@ func _run() -> void:
 	_check("zero duration applies the equipped view immediately", is_equal_approx(camera.size, 20.0))
 	_check("camera configuration preserves weapon ranges and ammo configuration", pistol.fire_range == fire_range and pistol.aim_range == aim_range and combat.ammo.magazine_rounds == magazine)
 	var fallback := WeaponData.new()
+	fallback.camera_follows_aim_range = false
 	combat.equip_weapon(fallback)
 	await _frames(22)
 	_check("an unconfigured resource restores the scene default", is_equal_approx(camera.size, base_size))
@@ -78,6 +82,7 @@ func _run() -> void:
 	await _frames(22)
 	_check("unequipping also restores the scene default", is_equal_approx(camera.size, base_size))
 	var invalid := WeaponData.new()
+	invalid.camera_follows_aim_range = false
 	invalid.camera_view_size = NAN
 	invalid.camera_transition_seconds = NAN
 	combat.equip_weapon(invalid)
@@ -100,7 +105,9 @@ func _run() -> void:
 	for frame in 12: await process_frame
 	var restarted = current_scene
 	var restored_weapon = restarted.get_node("Player/Combat").weapon
-	_check("death restart restores the configured initial weapon view", not paused and is_equal_approx(restarted.get_node("Camera3D").size, restored_weapon.camera_view_size))
+	var restarted_camera = restarted.get_node("Camera3D")
+	var expected_size: float = restarted_camera._size_for_lock_range(restored_weapon.aim_range) if restored_weapon.camera_follows_aim_range else restored_weapon.camera_view_size
+	_check("death restart restores the configured initial weapon view", not paused and is_equal_approx(restarted_camera.size, expected_size))
 	restarted.queue_free()
 	await process_frame
 	print("Player camera: %d/%d passed" % [checks - failed, checks])

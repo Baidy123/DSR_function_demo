@@ -6,6 +6,7 @@ const Wave = preload("res://scripts/world/enemy_wave_definition.gd")
 const Squad = preload("res://scripts/world/squad_controller.gd")
 const Actor = preload("res://scripts/enemy/enemy_actor.gd")
 const SpawnCheck = preload("res://scripts/world/enemy_wave_spawn_check.gd")
+const CorpseVisual = preload("res://scripts/enemy/enemy_corpse_visual.gd")
 
 ## 信号中的波次编号从1开始，与检查器中的出场顺序一致。
 signal wave_started(index: int)
@@ -38,6 +39,7 @@ var _spawned := 0
 var _retiring: Array[Node] = []
 var _owned: Dictionary = {}
 var _alive: Dictionary = {}
+var _corpse_root: Node3D
 
 func _ready() -> void:
 	if Engine.is_editor_hint(): child_order_changed.connect(_refresh_editor_warnings)
@@ -212,6 +214,7 @@ func _clear_finished_waves() -> bool:
 		if not wave.alive.is_empty(): continue
 		if not wave.retiring:
 			wave.retiring = true
+			_preserve_corpses(wave.deployments)
 			_retire_deployments(wave.deployments)
 			continue
 		var exited := true
@@ -283,6 +286,7 @@ func reset_encounter() -> void:
 	_generation += 1
 	_retire_runtime()
 	_free_pending()
+	_clear_corpses()
 	_index = -1
 	_spawned = 0
 	_cleared.clear()
@@ -294,6 +298,20 @@ func _retire_runtime() -> void:
 	for wave in _runtime.values(): _retire_deployments(wave.deployments)
 	_runtime.clear()
 	_alive.clear()
+
+func _preserve_corpses(deployments: Array[Dictionary]) -> void:
+	if not is_instance_valid(_corpse_root):
+		_corpse_root = Node3D.new()
+		_corpse_root.name = "Corpses"
+		add_child(_corpse_root, false, Node.INTERNAL_MODE_BACK)
+	for deployment in deployments:
+		for enemy in deployment.members:
+			if is_instance_valid(enemy) and enemy.is_inside_tree() and enemy.is_dead:
+				CorpseVisual.create(enemy, _corpse_root)
+
+func _clear_corpses() -> void:
+	if is_instance_valid(_corpse_root): _corpse_root.queue_free()
+	_corpse_root = null
 
 func _retire_deployments(deployments: Array[Dictionary]) -> void:
 	for deployment in deployments:

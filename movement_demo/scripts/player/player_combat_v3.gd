@@ -439,6 +439,8 @@ func _target_visible(target: Node3D) -> bool:
 func _visible_target_point(target: Node3D) -> Vector3:
 	if not target.is_inside_tree() or not target.is_in_group("combat_target"):
 		return Vector3.INF
+	if not preload("res://scripts/systems/combat_view.gd").contains_actor(target):
+		return Vector3.INF
 	var offset: Vector3 = target.global_position - player.global_position
 	if offset.length() > weapon.aim_range:
 		return Vector3.INF

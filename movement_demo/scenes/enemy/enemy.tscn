@@ -12,6 +12,7 @@
 [ext_resource type="Script" uid="uid://bxfli5ujmf35g" path="res://scripts/systems/presentation/visual_presentation.gd" id="presentation"]
 [ext_resource type="Resource" uid="uid://dpp6fjr8paihk" path="res://resources/enemy/training/arena.tres" id="training_profile"]
 [ext_resource type="Resource" uid="uid://cauhlj43ul1uy" path="res://resources/enemy/units/ranged.tres" id="unit_profile"]
+[ext_resource type="Script" path="res://scripts/enemy/enemy_health_bar.gd" id="health_bar"]
 
 [sub_resource type="StandardMaterial3D" id="EnemyMaterial"]
 albedo_color = Color(0.85, 0.16, 0.3, 1)
@@ -88,3 +89,6 @@ script = ExtResource("enemy_presentation")
 
 [node name="ImpactReceiver" type="Node" parent="." unique_id=2099540290]
 script = ExtResource("impact_receiver")
+
+[node name="HealthBar" type="Node3D" parent="."]
+script = ExtResource("health_bar")

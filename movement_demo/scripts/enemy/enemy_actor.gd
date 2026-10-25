@@ -23,6 +23,7 @@ const standing_height := 1.75
 
 const Ammo = preload("res://scripts/weapons/weapon_ammo.gd")
 const ImpactEffects = preload("res://scripts/systems/effects/impact_effects.gd")
+const CombatView = preload("res://scripts/systems/combat_view.gd")
 var ammo = Ammo.new()
 ## 身体执行层不读取玩家位置，也不决定追踪、搜索或掩体策略。
 signal hit_received(damage: float, attacker_position: Vector3)
@@ -586,6 +587,7 @@ func can_use_firearms() -> bool:
 ## 纯查询执行条件；让评分只在枪械确实能发射时积累主动等待时间。
 func can_fire() -> bool:
 	if is_vaulting(): return false
+	if not CombatView.contains_actor(self, 8.0): return false
 	if get_tree().paused or melee_active or not can_use_firearms() or not ammo.can_fire():
 		return false
 	if not has_aim or not aim_acquired or shot_cooldown > 0.0:

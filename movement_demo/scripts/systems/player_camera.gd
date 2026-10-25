@@ -22,6 +22,7 @@ var _from_size: float
 var _target_size: float
 var _transition_seconds: float = 0.0
 var _elapsed: float = 0.0
+var _weapon: WeaponData
 var _occlusion = Occlusion.new()
 
 
@@ -29,6 +30,7 @@ func _ready() -> void:
 	_base_size = size
 	_from_size = size
 	_target_size = size
+	get_viewport().size_changed.connect(_on_viewport_resized)
 	_actor = get_follow_actor()
 	if _actor == null: return
 	if not _actor.is_node_ready():
@@ -68,21 +70,57 @@ func _physics_process(delta: float) -> void:
 
 
 func _on_weapon_changed(data: WeaponData) -> void:
+	_weapon = data
 	_from_size = size
 	_target_size = _base_size
 	_transition_seconds = 0.25
 	if data != null:
-		if is_finite(data.camera_view_size) and data.camera_view_size > 0.0:
+		if data.camera_follows_aim_range and projection == Camera3D.PROJECTION_ORTHOGONAL and is_finite(data.aim_range) and data.aim_range > 0.0:
+			_target_size = _size_for_lock_range(data.aim_range)
+		elif not data.camera_follows_aim_range and is_finite(data.camera_view_size) and data.camera_view_size > 0.0:
 			_target_size = maxf(0.1, data.camera_view_size)
 		if is_finite(data.camera_transition_seconds):
 			_transition_seconds = maxf(0.0, data.camera_transition_seconds)
 	_elapsed = 0.0
+	# 两个方向都从当前显示大小平滑过渡；快速切换也不跳回上一目标值。
 	if is_zero_approx(_transition_seconds):
-		_transition_seconds = 0.0
 		size = _target_size
+
+func _on_viewport_resized() -> void:
+	if _weapon != null and _weapon.camera_follows_aim_range: _on_weapon_changed(_weapon)
+
+## 以玩家为圆心，让地面至站立角色高度的画面四角落入锁定圆，并留0.5米身体边缘余量。
+## 使用原跟随偏移，不改 Phantom Camera 的位置、倾角或翻越地面锚点。
+func _size_for_lock_range(distance: float) -> float:
+	var viewport_size := get_viewport().get_visible_rect().size
+	if viewport_size.y <= 0.0: return _base_size
+	var forward := -global_basis.z.normalized()
+	if forward.y >= -0.1: return _base_size
+	var phantom := get_node_or_null("PhantomCamera3D")
+	var offset: Vector3 = phantom.follow_offset if phantom != null else global_position - _actor.global_position
+	var aspect := viewport_size.x / viewport_size.y
+	var low := 0.1
+	var high := maxf(low, distance * 2.0)
+	var limit := maxf(0.1, distance - 0.5)
+	for iteration in 24:
+		var candidate := (low + high) * 0.5
+		var width := candidate * aspect if keep_aspect == Camera3D.KEEP_HEIGHT else candidate
+		var height := candidate if keep_aspect == Camera3D.KEEP_HEIGHT else candidate / aspect
+		var fits := true
+		for x in [-1.0, 1.0]:
+			for y in [-1.0, 1.0]:
+				var origin: Vector3 = offset + global_basis.x * (x * width * 0.5 + h_offset) + global_basis.y * (y * height * 0.5 + v_offset)
+				for elevation in [0.0, 1.75]:
+					var point: Vector3 = origin + forward * ((elevation - origin.y) / forward.y)
+					if Vector2(point.x, point.z).length() > limit: fits = false
+		if fits: low = candidate
+		else: high = candidate
+	return low
 
 
 func _exit_tree() -> void:
+	if get_viewport().size_changed.is_connected(_on_viewport_resized):
+		get_viewport().size_changed.disconnect(_on_viewport_resized)
 	if is_instance_valid(_actor) and _actor.ready.is_connected(_bind_combat):
 		_actor.ready.disconnect(_bind_combat)
 	if is_instance_valid(_combat) and _combat.has_signal("weapon_changed") and _combat.weapon_changed.is_connected(_on_weapon_changed):

@@ -2,9 +2,12 @@ extends Node
 
 # 感知：判断真实视线与一次性声源；不持续获取隐藏目标位置。
 signal noise_heard(position: Vector3)
-## 普通视觉感知的最大距离（米）；仍受视角、墙壁和竞技场范围限制。
+## 远程默认取自身武器锁定距离加训练余量；近战与无武器保持训练视距。
 var sight_distance: float:
-	get: return _training_setting(&"sight_distance", 10.0)
+	get:
+		if is_instance_valid(actor) and actor.weapon != null and actor.weapon.fire_mode != WeaponData.FireMode.MELEE and _training_setting(&"use_weapon_sight_range", true):
+			return maxf(0.0, actor.weapon.aim_range) + maxf(0.0, _training_setting(&"weapon_sight_extra_distance", 2.0))
+		return _training_setting(&"sight_distance", 10.0)
 	set(value): _set_training_setting(&"sight_distance", value)
 ## 普通视野的水平总角度（度）；左右各占一半，近身警戒不受此角度限制。
 var sight_angle_degrees: float:

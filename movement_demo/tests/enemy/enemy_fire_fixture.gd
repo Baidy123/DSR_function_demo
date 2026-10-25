@@ -108,6 +108,13 @@ static func configure_timing(enemy: Node) -> void:
 	weapon.target_move_accuracy_loss_per_meter_fast = 0.0
 	enemy.equip_weapon(weapon)
 
+## 固定射击夹具会把玩家传送到竞技场；先让真实跟随镜头入位，再测机械计时。
+static func wait_for_camera(member: Node3D) -> bool:
+	for frame in 120:
+		if preload("res://scripts/systems/combat_view.gd").contains_actor(member, 8.0): return true
+		await member.get_tree().physics_frame
+	return false
+
 
 # 决策测试主动制造低于70%的跟枪状态，检查等待压力能否让AI继续开火。
 static func configure_decision(enemy: Node) -> void:

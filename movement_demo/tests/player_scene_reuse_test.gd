@@ -14,10 +14,13 @@ func check(ok: bool, label: String) -> void:
 	print("PASS " if ok else "FAIL ", label)
 
 func _run() -> void:
+	DirAccess.make_dir_recursive_absolute("res://logs/player_prefab_work")
 	# An authored level uses normal editable-child overrides, rather than
 	# changing ownership of nested CanvasLayers while packing runtime nodes.
 	var pistol = load("res://resources/weapons/test_pistol.tres").duplicate(true)
 	var rifle = load("res://resources/weapons/test_sidearm.tres").duplicate(true)
+	pistol.camera_follows_aim_range = false
+	rifle.camera_follows_aim_range = false
 	pistol.camera_view_size = 15.0
 	rifle.camera_view_size = 21.0
 	pistol.camera_transition_seconds = 0.2

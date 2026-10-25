@@ -6,7 +6,9 @@ enum FireMode { SEMI_AUTO, AUTOMATIC, MELEE }
 enum AmmoType { RIFLE, PISTOL, SMG, SHOTGUN }
 
 @export_group("相机视野（仅玩家）")
-## 正交相机 Size，越大看得越广；0沿用场景原视野，不改变锁定距离或弹道射程。
+## 开启后按 Aim Range、相机倾角及实际窗口比例计算视野；调整锁定距离即可同步调整画面范围。
+@export var camera_follows_aim_range: bool = true
+## 关闭范围联动时手动指定正交 Size；0沿用场景原视野。开启联动时不使用此值。
 @export_range(0.0, 60.0, 0.1, "suffix:m") var camera_view_size: float = 0.0
 ## 切换到这把枪时的视野过渡秒数；0立即切换，出生直接使用初始武器视野。
 @export_range(0.0, 3.0, 0.05, "suffix:s") var camera_transition_seconds: float = 0.25
@@ -36,7 +38,7 @@ enum AmmoType { RIFLE, PISTOL, SMG, SHOTGUN }
 @export_range(0.0, 100.0, 0.5) var shot_noise_radius: float = 14.0
 ## 实际射线命中后的单发伤害。
 @export_range(1.0, 1000.0, 1.0) var damage: float = 25.0
-## 玩家锁定目标的最大距离（米）；敌人视野仍由 Perception 决定。
+## 锁定距离（米）：玩家相机默认据此计算；远程敌人默认以此距离加训练中的感知余量作为视距。
 @export_range(0.5, 50.0, 0.5) var aim_range: float = 8.0
 ## 子弹射线的最大距离（米）。
 @export_range(0.5, 200.0, 0.5) var fire_range: float = 30.0

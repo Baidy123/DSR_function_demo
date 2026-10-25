@@ -1,5 +1,7 @@
 extends RefCounted
 
+const CombatView = preload("res://scripts/systems/combat_view.gd")
+
 signal shot_fired
 var context
 var request: Dictionary = {}
@@ -52,6 +54,12 @@ func update_shooting(delta: float, sees_player: bool, movement_requested: bool) 
 	if fire_burst_shots >= burst_limit(request.get("support_intent", false)):
 		_finish_burst()
 	if not _has_authorized_fire_action():
+		fire_reaction_elapsed = 0.0
+		fire_decision.reset()
+		actor.update_weapon(delta)
+		return
+	# 普通与记忆压制共用画面资格；屏幕外不积累开火反应，回到画面后重新准备。
+	if not CombatView.contains_actor(actor, 8.0):
 		fire_reaction_elapsed = 0.0
 		fire_decision.reset()
 		actor.update_weapon(delta)

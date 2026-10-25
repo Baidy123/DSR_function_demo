@@ -22,8 +22,10 @@ func run(scene: Node) -> Dictionary:
 	var direction: Vector3 = c._random_direction_in_spread_cone(Vector3.FORWARD, 20.0)
 	b.position = p.position + direction * 2.8
 	for i in range(5): await tree.physics_frame
+	# 玩家已传送到固定弹道位置，等待真实镜头包含目标后再检查锁定。
+	var target_in_view := await preload("res://tests/enemy/enemy_fire_fixture.gd").wait_for_camera(a)
 	c.begin_frame(0.0, true)
-	var checks := {"locked_a": c.locked_target == a}
+	var checks := {"target_in_view": target_in_view, "locked_a": c.locked_target == a}
 	var a_hits: int = a.hit_count
 	var b_hits: int = b.hit_count
 	# 稳定度100%仍用武器最小散布，不会强制直指 A。

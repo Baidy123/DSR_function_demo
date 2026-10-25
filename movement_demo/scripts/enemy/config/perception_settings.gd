@@ -9,7 +9,17 @@ func _init() -> void:
 	set(value):
 		hearing_enabled = value
 		mark_override(&"hearing_enabled")
-## 普通视觉感知的最大距离（米）；仍受视角、墙壁和竞技场范围限制。
+## 远程敌人开启后使用自身武器 Aim Range 加额外感知距离；近战／无武器仍使用 Sight Distance。
+@export var use_weapon_sight_range: bool = true:
+	set(value):
+		use_weapon_sight_range = value
+		mark_override(&"use_weapon_sight_range")
+## 远程武器锁定距离之外额外看多远（米）；只扩展感知，屏幕外仍不允许开枪。
+@export_range(0.0, 20.0, 0.5, "suffix:m") var weapon_sight_extra_distance: float = 2.0:
+	set(value):
+		weapon_sight_extra_distance = value
+		mark_override(&"weapon_sight_extra_distance")
+## 近战／无武器或关闭武器联动时的视距（米）；仍受视角、墙壁和竞技场范围限制。
 @export var sight_distance: float = 10.0:
 	set(value):
 		sight_distance = value
