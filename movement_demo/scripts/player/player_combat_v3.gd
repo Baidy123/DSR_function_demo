@@ -1,6 +1,8 @@
 extends Node
 
 const ImpactEffects = preload("res://scripts/systems/effects/impact_effects.gd")
+const ShotgunBallistics = preload("res://scripts/weapons/shotgun_ballistics.gd")
+var _shotgun_rng := RandomNumberGenerator.new()
 
 @onready var debug_settings = get_node("/root/DebugSettings")
 
@@ -483,6 +485,9 @@ func shoot() -> void:
 	if has_lock:
 		direction = (get_locked_aim_point() - origin).normalized()
 
+	if weapon.fire_mode == WeaponData.FireMode.SHOTGUN:
+		_shoot_shotgun(origin, direction, stability, attack_effects)
+		return
 	if is_using_spread_cone():
 		# 有无锁定都在整个三维锥内取样，稳定度只控制锥的半角。
 		direction = _random_direction_in_spread_cone(direction, get_spread_half_angle_degrees())
@@ -517,6 +522,39 @@ func shoot() -> void:
 	_draw_shot(origin, endpoint, target_hit)
 	if effects != null: effects.dispatch_impact(impact)
 	shot_fired.emit(target_hit, stability)
+	_update_status()
+
+
+func _shoot_shotgun(origin: Vector3, direction: Vector3, stability: float, attack_effects: Dictionary) -> void:
+	var shotgun := weapon.get_shotgun_settings()
+	var pellet_damage := maxf(0.0, shotgun.pellet_damage)
+	var pellets := ShotgunBallistics.trace(player, weapon, origin, direction, stability, _shotgun_rng)
+	var hits := ShotgunBallistics.count_hits(pellets, &"combat_target")
+	var effects := ImpactEffects.find_for(player)
+	last_shot_collider = hits.keys()[0] if not hits.is_empty() else pellets[0].collider
+	for target in hits:
+		if not is_instance_valid(target): continue
+		var total_damage: float = pellet_damage * hits[target]
+		if target.has_method("receive_weapon_hit"):
+			target.receive_weapon_hit(total_damage, player.global_position, attack_effects)
+		elif target.has_method("receive_hit"):
+			target.receive_hit(total_damage, player.global_position)
+	if locked_target != null and (not is_instance_valid(locked_target) or not locked_target.is_in_group("combat_target")):
+		clear_target_lock()
+		$HUD/Reticle.hide()
+	for listener in get_tree().get_nodes_in_group("shot_listener"):
+		var receiver := listener.get_parent()
+		if not receiver is Node3D or receiver == player or receiver.is_in_group("player") or hits.has(receiver): continue
+		var endpoint := ShotgunBallistics.near_miss_endpoint(receiver, origin, pellets, attack_effects.near_miss_radius)
+		if endpoint.is_finite(): listener.notice_shot(origin, endpoint, attack_effects)
+	var settings := shotgun.get_aim_settings(is_using_spread_cone())
+	accuracy = maxf(minf(accuracy, settings.shot_floor), accuracy - settings.shot_penalty)
+	accuracy_recovery_timer = settings.delay
+	last_result = "命中" if not hits.is_empty() else "未命中"
+	for pellet in pellets:
+		_draw_shot(origin, pellet.endpoint, hits.has(pellet.collider))
+		if effects != null: effects.dispatch_impact(pellet.impact)
+	shot_fired.emit(not hits.is_empty(), stability)
 	_update_status()
 
 
@@ -565,6 +603,11 @@ func get_effective_accuracy() -> float:
 func get_spread_half_angle_degrees() -> float:
 	if weapon == null:
 		return 0.0
+	if weapon.fire_mode == WeaponData.FireMode.SHOTGUN:
+		var shotgun := weapon.get_shotgun_settings()
+		var extent := 0.0
+		for point in shotgun.get_pattern_points(): extent = maxf(extent, point.length())
+		return extent * shotgun.pattern_angle_degrees + shotgun.get_jitter_degrees(get_effective_accuracy())
 	var minimum: float = clampf(weapon.min_spread_angle_degrees, 0.0, 45.0)
 	var maximum: float = clampf(weapon.max_spread_angle_degrees, minimum, 45.0)
 	return lerpf(maximum, minimum, get_effective_accuracy())

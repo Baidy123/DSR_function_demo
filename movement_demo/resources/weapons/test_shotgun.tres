@@ -1,0 +1,23 @@
+[gd_resource type="Resource" script_class="WeaponData" load_steps=6 format=3]
+
+[ext_resource type="Script" path="res://scripts/weapons/weapon_data.gd" id="1"]
+[ext_resource type="Script" path="res://scripts/weapons/shotgun_settings.gd" id="2"]
+[ext_resource type="Resource" path="res://resources/weapons/patterns/balanced.tres" id="3"]
+[ext_resource type="PackedScene" path="res://scenes/presentation/weapon_placeholder.tscn" id="4"]
+
+[sub_resource type="Resource" id="Shotgun"]
+script = ExtResource("2")
+pattern = ExtResource("3")
+
+[resource]
+script = ExtResource("1")
+display_name = "九点霰弹枪（示例）"
+fire_mode = 3
+shotgun = SubResource("Shotgun")
+ammo_type = 3
+magazine_capacity = 6
+reload_seconds = 2.4
+aim_range = 18.0
+fire_range = 30.0
+shot_interval = 0.35
+visual_model = ExtResource("4")

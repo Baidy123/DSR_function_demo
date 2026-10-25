@@ -90,6 +90,10 @@ func _parse_property(object: Object, type: Variant.Type, path: String, hint: Pro
 		editor.configure(hint_text, int(object.fire_mode))
 		add_property_editor(path, editor)
 		return true
+	if path == "shotgun":
+		return object.fire_mode != WeaponData.FireMode.SHOTGUN
+	if object.fire_mode == WeaponData.FireMode.SHOTGUN and (path == "damage" or PROBABILITY_FIELDS.has(path) or SPREAD_FIELDS.has(path)):
+		return true
 	if object.fire_mode == WeaponData.FireMode.MELEE and (path in FIREARM_FIELDS or PROBABILITY_FIELDS.has(path) or SPREAD_FIELDS.has(path)):
 		return true
 	var mode: int = _context_mode(object)

@@ -30,6 +30,7 @@ TIMEOUTS = {"squad_command_runtime_test": 180}
 
 # These entries need their documented harness; never glob-run every .gd file.
 SPECIAL = {
+    "shotgun_inspector_test.gd": "standalone --headless --editor --script",
     "bake_arena.gd": "maintenance command: writes navigation; never a regression",
     "bake_levels.gd": "maintenance command: writes level navigation; never a regression",
     "presentation_fixture.gd": "fixture used by presentation tests",

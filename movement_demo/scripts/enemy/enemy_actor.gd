@@ -1,5 +1,7 @@
 extends CharacterBody3D
 
+const ShotgunBallistics = preload("res://scripts/weapons/shotgun_ballistics.gd")
+
 @onready var debug_settings = get_node("/root/DebugSettings")
 
 const BodyMotion = preload("res://scripts/enemy/services/enemy_body_motion.gd")
@@ -655,6 +657,8 @@ func execute_melee(target: Node3D, settings: Dictionary, direction: Vector3) -> 
 func try_fire() -> bool:
 	if not can_fire():
 		return false
+	if weapon.fire_mode == WeaponData.FireMode.SHOTGUN:
+		return _try_fire_shotgun()
 	ammo.consume_round()
 	var attack_effects := weapon.get_attack_effects()
 	var probability: float = get_center_probability()
@@ -690,6 +694,39 @@ func try_fire() -> bool:
 		print("[敌人][开火] ", "命中玩家" if hit_player else ("被物体挡住" if not hit.is_empty() else "未命中"), "；中心概率=", roundi(probability * 100.0), "%")
 	_draw_shot(origin, endpoint, hit_player)
 	if effects != null: effects.dispatch_impact(impact)
+	shot_fired.emit()
+	return true
+
+
+func _try_fire_shotgun() -> bool:
+	if not ammo.consume_round(): return false
+	var shotgun := weapon.get_shotgun_settings()
+	var pellet_damage := maxf(0.0, shotgun.pellet_damage)
+	var attack_effects := weapon.get_attack_effects()
+	var origin := get_shot_origin()
+	var pellets := ShotgunBallistics.trace(self, weapon, origin, aim_direction, get_center_probability(), _shot_rng)
+	var hits := ShotgunBallistics.count_hits(pellets, &"player")
+	var effects := ImpactEffects.find_for(self)
+	last_shot_direction = aim_direction
+	last_shot_collider = hits.keys()[0] if not hits.is_empty() else pellets[0].collider
+	shot_count += 1
+	if weapon.shot_noise != null: weapon.shot_noise.emit_from(self, weapon.shot_noise_radius)
+	shot_cooldown = maxf(0.05, weapon.shot_interval)
+	var settings := shotgun.get_aim_settings(false)
+	if weapon_stability > settings.shot_floor:
+		weapon_stability = maxf(settings.shot_floor, weapon_stability - settings.shot_penalty)
+	weapon_recovery_timer = settings.delay
+	for target in hits:
+		if is_instance_valid(target) and target.has_method("receive_weapon_hit"):
+			target.receive_weapon_hit(pellet_damage * hits[target], global_position, attack_effects)
+	for listener in get_tree().get_nodes_in_group("shot_listener"):
+		var receiver := listener.get_parent()
+		if not receiver is Node3D or not receiver.is_in_group("player") or hits.has(receiver): continue
+		var endpoint := ShotgunBallistics.near_miss_endpoint(receiver, origin, pellets, attack_effects.near_miss_radius)
+		if endpoint.is_finite(): listener.notice_shot(origin, endpoint, attack_effects)
+	for pellet in pellets:
+		_draw_shot(origin, pellet.endpoint, hits.has(pellet.collider))
+		if effects != null: effects.dispatch_impact(pellet.impact)
 	shot_fired.emit()
 	return true
 

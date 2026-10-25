@@ -2,8 +2,10 @@
 class_name WeaponData
 extends Resource
 
-enum FireMode { SEMI_AUTO, AUTOMATIC, MELEE }
+enum FireMode { SEMI_AUTO, AUTOMATIC, MELEE, SHOTGUN }
 enum AmmoType { RIFLE, PISTOL, SMG, SHOTGUN }
+
+const ShotgunConfig = preload("res://scripts/weapons/shotgun_settings.gd")
 
 @export_group("相机视野（仅玩家）")
 ## 开启后按 Aim Range、相机倾角及实际窗口比例计算视野；调整锁定距离即可同步调整画面范围。
@@ -47,11 +49,16 @@ enum AmmoType { RIFLE, PISTOL, SMG, SHOTGUN }
 ## 玩家锁定时的走路速度倍率，锁定期间禁跑；敌人移动由 AI 决定。
 @export_range(0.1, 1.0, 0.05) var locked_move_multiplier: float = 0.5
 ## 单发每次按下一枪，自动按住持续射击；近战仅允许近战兵装备，不使用枪械参数。
-## 单发0、自动1保留原编号；敌人射击节奏仍由 AI 控制。
-@export_enum("单发:0", "自动:1", "近战:2") var fire_mode: int = FireMode.SEMI_AUTO:
+## 单发0、自动1、近战2保留原编号；霰弹3为半自动，每按一次打一组弹丸。
+## 调大射击间隔可模拟泵动节奏；敌人的射击请求仍由原 AI 控制。
+@export_enum("单发:0", "自动:1", "近战:2", "霰弹:3") var fire_mode: int = FireMode.SEMI_AUTO:
 	set(value):
 		fire_mode = value
+		if value == FireMode.SHOTGUN and shotgun == null: shotgun = ShotgunConfig.new()
 		notify_property_list_changed()
+## Fire Mode 选霰弹后自动提供默认九点图样；展开配置每颗伤害、图样与稳定度。
+## 切回原模式时保留此配置但不使用，不修改原单发／自动参数或弹药类型。
+@export var shotgun: ShotgunSettings
 ## 两次射击的最短间隔（秒）。
 @export_range(0.05, 3.0, 0.05) var shot_interval: float = 0.2
 
@@ -160,6 +167,8 @@ enum AmmoType { RIFLE, PISTOL, SMG, SHOTGUN }
 
 ## 两套输入在这里换算，战斗脚本继续共用惩罚、等待、恢复流程。
 func get_aim_settings(use_spread: bool) -> Dictionary:
+	if fire_mode == FireMode.SHOTGUN:
+		return get_shotgun_settings().get_aim_settings(use_spread)
 	if not use_spread:
 		# 初始100%也会因换弹/受伤下降，恢复速度不能因此永久变成零。
 		var recovery_span := 1.0 - clampf(initial_accuracy, 0.0, 1.0)
@@ -195,6 +204,11 @@ func get_aim_settings(use_spread: bool) -> Dictionary:
 		"target_floor": _angle_to_stability(target_move_max_spread_angle_degrees, minimum, span),
 		"fast_speed": spread_target_move_fast_speed,
 	}
+
+
+## 正常由 Fire Mode 创建配置；外部代码清空时只读使用默认值，不写回共享资源。
+func get_shotgun_settings() -> ShotgunSettings:
+	return shotgun if shotgun != null else ShotgunConfig.new()
 
 
 func _angle_to_stability(angle: float, minimum: float, span: float) -> float:

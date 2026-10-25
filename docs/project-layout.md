@@ -1,5 +1,7 @@
 # 项目目录结构
 
+霰弹扩展（2026-10-25）：沿用 `WeaponData` 和原 `Fire Mode`，追加霰弹选项；可选 `ShotgunSettings` 与 `ShotgunPattern` 分别位于 `scripts/weapons/shotgun_settings.gd`、`shotgun_pattern.gd`。`shotgun_ballistics.gd` 仅提供弹丸采样／物理射线／近弹几何，双方原射击脚本各自结算。图样与示例放在原 `resources/weapons/` 下，预览脚本位于 `scripts/debug/`，两个独立预览场景位于 `scenes/presentation/`。不迁移原资源、不改变玩家／敌人节点或 AI 接口，见[霰弹说明](gameplay/SHOTGUN.md)。
+
 战斗可读性（2026-10-25）：`enemy/enemy_health_bar.gd` 挂在公共敌人的 `HealthBar`，仅显示原身体生命比例；`enemy/enemy_corpse_visual.gd` 由波次控制器在整波回收前创建静态网格快照，内部 `Corpses` 容器随本轮复位／卸载清理，不保留身体与AI。`systems/combat_view.gd` 是无状态的实际相机画面查询，玩家锁定及敌人火控／身体执行共用；原射线继续负责遮挡。`systems/player_camera.gd` 通过已有装备信号按武器锁定距离计算正交 Size，保留手动视野模式与跟随链。感知服务读取自身远程武器范围和原训练资源，不增加独立感知循环。入口见[相机](gameplay/CAMERA.md)、[敌人](enemy-ai.md)和[表现](gameplay/PRESENTATION.md)。
 
 波次系统（2026-10-25）：`world/enemy_wave_controller.gd` 在区域子树入树前捕获小队为内存场景快照，按波分别持有出场、死亡集合与清理状态，支持多波同时在场；`enemy_wave_definition.gd` 保存等待上一波全灭开关、等待秒数和可选已有小队引用；私有无循环辅助 `enemy_wave_spawn_check.gd` 只读检查本区导航、实际胶囊与同波占位。对应 `scenes/world/enemy_waves.tscn`／`enemy_wave.tscn` 提供编辑入口，第一关保留原 `Squad` 为首波并新增第二波示例。区域仍独占玩家进出检测和物理时钟，不改变 Squad、身体或 AI 职责。见[波次实施记录](superpowers/plans/2026-10-25-level-enemy-waves.md)。
