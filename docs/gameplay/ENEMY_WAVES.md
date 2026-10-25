@@ -155,3 +155,7 @@ print(status.status, status.wave, status.alive, status.pending, status.reason)
 多波同场时，`wave_cleared` 可以先报告第二波、后报告第一波。`debug_snapshot().alive` 是所有受管波次的总存活人数，`active_waves` 是仍有活人的波次编号数组；`wave` 是当前等待出场或最近出场的波次，不能当作唯一在场波次。
 
 普通地图接入只需要场景配置，不需要调用这些接口。区域负责推进波次，其他脚本不要每帧再调用 `advance_from_region()`。
+
+## 后续设计：通用事件触发（尚未实现）
+
+用户希望把拾取、到达地点、机关或普通脚本信号都作为波次触发来源，常用接线通过检查器配置，避免每个事件另写刷怪脚本；上一波全灭和定时加入也归入同一触发模型。当前仅整理[事件触发设计草案](../superpowers/specs/2026-10-25-enemy-wave-event-triggers-design.md)，没有增加这些运行功能；现有操作仍以上文为准。
