@@ -64,6 +64,12 @@ const FIREARM_FIELDS := [
 
 ## 自定义数值控件也提供直接提示；脚本的 ## 属性文档同时保留原生检查器帮助。
 const EFFECT_HELP := {
+	"target_move_accuracy_loss_per_meter_slow": "慢速目标每米降低的概率。玩家按平行容差处理后的有效横向距离计算；前后移动不扣这一项。敌人仍按原目标位移。",
+	"target_move_accuracy_loss_per_meter_fast": "高速目标每米降低的概率。玩家按有效横向距离和速度计算；径向速度不加重惩罚。敌人规则保留。",
+	"target_move_fast_speed": "达到该速度时采用高速每米惩罚。玩家使用有效横向速度，敌人使用原目标速度（米/秒）。",
+	"target_move_spread_degrees_per_meter_slow": "慢速目标每米扩大的散布半角。玩家按平行容差处理后的有效横向距离计算；前后移动不扣这一项。敌人规则保留。",
+	"target_move_spread_degrees_per_meter_fast": "高速目标每米扩大的散布半角。玩家按有效横向距离和速度计算；径向速度不加重惩罚。敌人规则保留。",
+	"spread_target_move_fast_speed": "达到该速度时采用高速每米扩散。玩家使用有效横向速度，敌人使用原目标速度（米/秒）。",
 	"hit_accuracy_loss": "攻击武器命中后扣目标的精度，按百分点计算。20%×受方倍率0.5=扣10个百分点，80%变70%；0关闭。不影响自己的后坐力。",
 	"suppression_accuracy_loss": "敌方子弹擦过时扣目标的精度，再乘受方压制精度倍率；0只关闭精度损失，仍保留真实近弹警戒。",
 	"near_miss_radius": "目标胸部到实际弹道线段的最大距离（米）；0关闭擦过检测。弹道在第一碰撞截断，墙后延长线无效；与枪声范围无关。",

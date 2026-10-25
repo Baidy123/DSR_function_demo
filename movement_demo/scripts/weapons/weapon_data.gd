@@ -126,12 +126,15 @@ const ShotgunConfig = preload("res://scripts/weapons/shotgun_settings.gd")
 ## 新的精度损失后等多久开始恢复中心概率（秒）；低于移动下限时，继续走路不会反复刷新等待。
 @export_range(0.0, 3.0, 0.05) var accuracy_recovery_delay: float = 0.6
 ## 目标慢速移动时，每米扣除的中心概率：0.03表示每米3个百分点。
+## 玩家按平行容差处理后的有效横向距离计算；敌人沿用原目标位移。
 @export_range(0.0, 0.5, 0.005) var target_move_accuracy_loss_per_meter_slow: float = 0.03
 ## 目标高速移动时，每米扣除的中心概率：0.10表示每米10个百分点。
+## 玩家按有效横向距离和速度计算；敌人沿用原目标位移和速度。
 @export_range(0.0, 0.5, 0.005) var target_move_accuracy_loss_per_meter_fast: float = 0.10
 ## 跟枪惩罚的概率下限，至少比射击下限高1个百分点，最高100%。
 @export_range(0.0, 1.0, 0.01) var target_move_minimum_accuracy: float = 0.30
 ## 目标达到此速度（米/秒）时使用高速惩罚，较慢时在两种每米惩罚间插值。
+## 玩家使用有效横向速度，迎面／背离的径向速度不增加惩罚；敌人规则保留。
 @export_range(0.1, 30.0, 0.1) var target_move_fast_speed: float = 6.0
 
 @export_group("散布锥模式参数（角度）")
@@ -156,12 +159,15 @@ const ShotgunConfig = preload("res://scripts/weapons/shotgun_settings.gd")
 ## 新的精度损失后等多久开始收拢（秒）；比移动最大散布更散时，继续走路不会反复刷新等待。
 @export_range(0.0, 3.0, 0.05) var spread_recovery_delay: float = 0.6
 ## 目标慢速移动时，每米扩大多少度。
+## 玩家按平行容差处理后的有效横向距离计算；敌人沿用原目标位移。
 @export_range(0.0, 45.0, 0.01, "suffix:°/m") var target_move_spread_degrees_per_meter_slow: float = 0.36
 ## 目标高速移动时，每米扩大多少度。
+## 玩家按有效横向距离和速度计算；敌人沿用原目标位移和速度。
 @export_range(0.0, 45.0, 0.01, "suffix:°/m") var target_move_spread_degrees_per_meter_fast: float = 1.2
 ## 仅跟枪惩罚最多把半角扩大到多少度；不会把其他原因造成的更大散布继续扩大。
 @export_range(0.0, 45.0, 0.1, "suffix:°") var target_move_max_spread_angle_degrees: float = 8.4
 ## 目标达到此速度（米/秒）时使用高速每米扩散；较慢时在慢/高速扩散之间插值。
+## 玩家使用有效横向速度，迎面／背离的径向速度不增加惩罚；敌人规则保留。
 @export_range(0.1, 30.0, 0.1) var spread_target_move_fast_speed: float = 6.0
 
 

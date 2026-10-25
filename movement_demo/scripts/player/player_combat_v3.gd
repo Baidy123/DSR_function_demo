@@ -15,6 +15,11 @@ enum AimMode { PROBABILITY, SPREAD_CONE }
 ## 选择本节点的射击算法；两种模式共用锁定、碰撞和伤害结算。
 @export_enum("旧概率模式:0", "新散布锥模式:1") var aim_mode: int = AimMode.SPREAD_CONE
 
+@export_group("目标跟枪精度")
+## 目标沿瞄准连线靠近／远离时的免罚夹角（度），前后对称；默认5°容纳轻微路径偏差。
+## 超出后按有效横向位移逐渐增加惩罚；0使用纯横向投影。只影响玩家，三种瞄准分支共用。
+@export_range(0.0, 45.0, 0.5, "suffix:°") var tracking_parallel_tolerance_degrees: float = 5.0
+
 @export_group("蹲姿精度")
 ## 仅玩家完成蹲伏时增加的0～1稳定度；0关闭，不改写武器或基础精度。
 @export_range(0.0, 1.0, 0.01) var crouch_accuracy_bonus: float = 0.25
@@ -83,6 +88,11 @@ func _ready() -> void:
 	add_to_group("shot_listener")
 	equip_weapon(weapon)
 	_apply_debug_mode(debug_settings.enabled)
+
+
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_PAUSED or what == NOTIFICATION_UNPAUSED:
+		_reset_target_movement_tracking()
 
 
 func _apply_debug_mode(enabled: bool) -> void:
@@ -264,6 +274,7 @@ func can_combat() -> bool:
 
 # Player 在移动前调用：检查锁定，再由 Player 应用朝向。
 func begin_frame(delta: float, aim_pressed: bool) -> void:
+	if get_tree().paused: return
 	if weapon != null and weapon.fire_mode == WeaponData.FireMode.MELEE:
 		equip_weapon(null) # 共享资源运行时被改成近战时，玩家也不能继续使用。
 	_advance_melee(delta)
@@ -297,6 +308,7 @@ func begin_frame(delta: float, aim_pressed: bool) -> void:
 
 # Player 移动后调用，以实际位移判断移动惩罚，射击使用本帧的视线。
 func end_frame(delta: float, moving: bool) -> void:
+	if get_tree().paused: return
 	var was_reloading: bool = ammo.is_reloading or ammo.reload_checkpoint > 0.0
 	if player.is_dead() or player.is_in_dialogue:
 		cancel_reload()
@@ -314,9 +326,8 @@ func end_frame(delta: float, moving: bool) -> void:
 	if is_instance_valid(locked_target) and not _target_visible(locked_target):
 		clear_target_lock()
 	if weapon != null:
-		# 目标自身的位移会增加跟枪难度。这里只在已经锁定目标时计算，
-		# 新锁定的第一帧只记录位置，不产生瞬间惩罚。
-		var target_moving: bool = _apply_target_movement_accuracy_penalty(delta)
+		# 只有有效的横向跟枪影响才限制恢复；前后移动／免罚范围内仍可逐渐瞄准到最准。
+		var tracking_limited: bool = _apply_target_movement_accuracy_penalty(delta)
 
 		var settings: Dictionary = weapon.get_aim_settings(is_using_spread_cone())
 		var recovery: float = settings.recovery
@@ -335,14 +346,14 @@ func end_frame(delta: float, moving: bool) -> void:
 			else:
 				# 受击等造成的额外损失允许边走边恢复；走路不能每帧续期这段等待。
 				var movement_limit: float = minf(settings.moving_cap, 1.0 if is_aiming else settings.initial)
-				if target_moving:
+				if tracking_limited:
 					movement_limit = minf(movement_limit, _get_target_move_accuracy_floor())
 				if accuracy < movement_limit:
 					_recover_accuracy(delta, recovery, movement_limit)
 				else:
 					accuracy_recovery_timer = settings.delay
-		elif target_moving:
-			# 目标移动时，若当前稳定度已经低于“移动目标最低稳定度”，
+		elif tracking_limited:
+			# 目标有效横向移动时，若当前稳定度已经低于“移动目标最低稳定度”，
 			# 仍允许按正常稳定速度恢复，但最多只恢复到这个下限。
 			# 若当前稳定度已经达到/高于该下限，则只承受目标移动惩罚，不再额外恢复，
 			# 避免移动惩罚被稳定恢复抵消。
@@ -390,25 +401,40 @@ func _apply_target_movement_accuracy_penalty(delta: float) -> bool:
 		return false
 
 	var current_position: Vector3 = locked_target.global_position
+	if not current_position.is_finite():
+		_reset_target_movement_tracking()
+		return false
+	var previous_position := last_target_position
+	last_target_position = current_position
 	if not has_last_target_position:
-		last_target_position = current_position
 		has_last_target_position = true
 		return false
+	if get_tree().paused or not is_finite(delta) or delta <= 0.0: return false
 
-	var moved_distance: float = current_position.distance_to(last_target_position)
-	last_target_position = current_position
-	if moved_distance <= 0.0001:
-		return false
+	# 地面位移相对玩家→目标中点投影；玩家自身移动仍由原独立分支处理。
+	var offset := current_position - previous_position
+	var displacement := Vector2(offset.x, offset.z)
+	var moved_distance := displacement.length()
+	var relative_midpoint: Vector3 = (previous_position + current_position) * 0.5 - player.global_position
+	var axis := Vector2(relative_midpoint.x, relative_midpoint.z)
+	if moved_distance <= 0.000001 or not axis.is_finite() or axis.length_squared() <= 0.000001: return false
+	var lateral_ratio := clampf(absf(displacement.cross(axis.normalized())) / moved_distance, 0.0, 1.0)
+	var tolerance := sin(deg_to_rad(clampf(tracking_parallel_tolerance_degrees, 0.0, 45.0)))
+	var lateral_weight := clampf((lateral_ratio - tolerance) / (1.0 - tolerance), 0.0, 1.0)
+	var tracking_distance := moved_distance * lateral_weight
+	if tracking_distance <= 0.000001: return false
 
 	var settings: Dictionary = weapon.get_aim_settings(is_using_spread_cone())
-	var target_speed: float = moved_distance / maxf(delta, 0.0001)
+	var target_speed: float = tracking_distance / delta
 	var speed_factor: float = clampf(target_speed / maxf(settings.fast_speed, 0.01), 0.0, 1.0)
 	var loss_per_meter: float = lerpf(
 		settings.slow,
 		settings.fast,
 		speed_factor
 	)
-	var movement_penalty: float = moved_distance * loss_per_meter
+	var movement_penalty: float = tracking_distance * loss_per_meter
+	# 关闭跟枪损失也必须解除恢复限制；更低的精度仍由原有来源／下限控制。
+	if movement_penalty <= 0.0: return false
 
 	# “目标移动”只允许把稳定度压到自己的下限；它不会覆盖其他来源已经造成的更低稳定度。
 	var movement_floor: float = _get_target_move_accuracy_floor()

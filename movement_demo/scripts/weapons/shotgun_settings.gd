@@ -40,10 +40,12 @@ extends Resource
 ## 新的稳定度损失后，等待多久开始恢复。
 @export_range(0.0, 3.0, 0.05, "suffix:s") var stability_recovery_delay: float = 0.35
 ## 目标慢速／快速移动时，每米造成的跟枪稳定度损失。
+## 玩家只按平行容差处理后的有效横向距离计算；敌人沿用原目标位移。
 @export var tracking_loss_per_meter: Vector2 = Vector2(0.03, 0.1)
 ## 跟枪造成的损失最多降到此值。
 @export_range(0.0, 1.0, 0.01) var tracking_stability_floor: float = 0.3
 ## 目标达到此速度时使用快速跟枪损失。
+## 玩家读取有效横向速度；径向速度不增加损失。敌人保留原目标速度计算。
 @export_range(0.1, 30.0, 0.1, "suffix:m/s") var tracking_fast_speed: float = 6.0
 
 
