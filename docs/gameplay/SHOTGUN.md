@@ -20,14 +20,30 @@
 3. **左键点空白处加一颗、拖动已有点移动、右键点已有点删除**。支持原生撤销／重做；拖动中按 Esc 取消这次移动。“清空”清除当前点。按用户要求已移除“载入图样…”下拉框，避免把其他图样的点写进当前资源后误保存覆盖；需要更换图样时，将目标 `.tres` 拖到武器的 **Shotgun → Pattern**。
 4. 点 **保存当前**，再把新的 `.tres` 拖到武器的 **Shotgun → Pattern**。内嵌或未保存的资源先用“另存副本”；直接修改共享图样会影响所有引用它的武器。
 
-画板中心是瞄准方向，X 向右、Y 向上；点数就是弹丸数，最多 64 颗。画板只编辑固定图样，实际覆盖大小还由 **Pattern Angle Degrees** 和目标距离决定，各颗随机偏差仍由稳定度参数决定。清空后运行时会回退为中心一颗，检查器会明确提示。
+画板中心是瞄准方向，X 向右、Y 向上；点数就是弹丸数，最多 64 颗。画板只编辑固定图样，整体大小在同一武器的 **Shotgun → 霰弹图样 → 图样覆盖范围** 调整；各颗随机偏差仍由原稳定度参数决定。清空后运行时会回退为中心一颗，检查器会明确提示。
 
 画板属于项目原有 **武器模式参数** 插件（`weapon_mode_inspector`）。若只看到普通 Points 数组，先在“项目设置 → 插件”确认该插件启用。
 
+## 用距离与面积标定枪械散布
+
+展开武器的 **Shotgun → 霰弹图样 → 图样覆盖范围**：
+
+- **散布标定距离（m）**：规定这把枪到多远才扩散到下方的面积。修改距离时面积保持不变，距离越远，固定弹道越集中。
+- **标定覆盖面积（m²）**：该距离处整个正方形落点画板的面积，包含没有弹丸的空白。修改面积时距离保持不变，面积越小，固定弹道越集中。
+- 下方显示画板宽高、当前固定落点的宽高／包围矩形面积，以及实际角度尺度。固定落点读数不包含随机偏移，包围矩形也不表示内部所有位置都能被弹丸覆盖。
+
+例如“4 m、1 m²”表示 4 米处画板为 1 × 1 米；只把距离改为 8 米，面积仍为 1 m²，枪在 4 米处的画板就缩为 0.5 × 0.5 米。两个输入都调整枪械散布，不是临时预览距离。它们不改变武器的锁定距离或最大射程。
+
+距离和对应角度随当前 Shotgun 配置保存，修改可原生撤销／重做；面积由二者换算，不另存第二份尺度。修改覆盖不会改动共享图样点位，也不会改动另一把使用相同图样的枪。旧资源首次显示默认标定距离 4 米，面积由原角度计算，已有弹道保持不变；原默认 3°对应约 0.176 m²。
+
+距离必须大于零、面积不能为负，组合后的角度尺度沿用原 0～15°限制；不合法时提示“未修改”并恢复原数值。面积为零只合拢固定落点，原随机偏移仍可生效。原 **Stable Jitter Degrees／Unstable Jitter Degrees** 的位置、数值和算法保持不变。
+
 ## 两个独立预览场景
 
-- 打开 `scenes/presentation/shotgun_pattern_preview.tscn`，切到 **2D** 就能看到三种图样；它是 Control 界面，3D 视图没有模型。若画面显示不全，可缩小 2D 编辑器缩放。旧版本只在运行时创建界面，因此编辑器里是空的；现在已支持编辑器预览。
-- 按 **F6** 后可滑动稳定度、修改距离，点击“试射”或按空格重新采样。空心圆是固定落点，实心点是这次的实际弹丸。预览调用与真实射击相同的采样函数。实验台比较三种内置图样；自定义落点在上述 Pattern 检查器编辑，并通过实际武器试玩。
+- 打开 `scenes/presentation/shotgun_pattern_preview.tscn`，切到 **2D**，选中根节点 **ShotgunPatternPreview**。在“预览图样”分组的 **Pattern 1／2／3** 拖入 `ShotgunPattern.tres`，分别对应左／中／右面板；空槽显示“未指定图样”。替换槽位只是替换引用，不会把点复制进原图样文件。
+- 在根节点“独立预览参数”中修改 **Preview Stable Jitter Degrees／Preview Unstable Jitter Degrees**（稳定／不稳定时最大偏移）、**Preview Pattern Angle Degrees**（固定图样尺度）、**Preview Initial Stability**（初始稳定度）和 **Preview Distance M**（观察距离）。三栏共用这些数值，保存场景后保持；默认初值为 0.08°／0.55°、3°、100% 和 10 米。它们完全独立于实际武器 `.tres`，预览不再读取 `test_shotgun.tres`。
+- 检查器修改后 2D 预览自动更新。按 **F6** 后可滑动稳定度、修改观察距离，点击“试射”或按空格重新采样；运行时调整只影响本次试验，不自动保存回场景。空心圆是固定落点，实心点是本枪弹丸；算法仍与真实射击共用。观察距离仅决定显示哪个截面，与上文会改变枪械性能的“散布标定距离”分开。
+- 预览是 Control 界面，3D 视图没有模型。若编辑器画面显示不全，可缩小 2D 编辑器缩放。自定义点位仍在图样资源的画板编辑；预览调参和采样不写入武器或图样文件。
 - 打开 `scenes/presentation/shotgun_range.tscn` 按 **F6**：原玩家、相机和靶场的独立组合。右键瞄准、左键射击、R 换弹；1 是霰弹示例，2 是原副武器。训练靶的“命中次数”按整枪计，测试靶按实际命中弹丸累计扣血。离开靶区再进入可复位靶场。
 
 ![三种图样的实际预览](images/shotgun-patterns.png)
@@ -44,7 +60,7 @@
 
 **Pattern → 弹丸落点画板** 对应资源的 `points` 数组，格式仍为 `PackedVector2Array`，原图样可直接复制和复用。每个二维点对应一颗弹丸：X 向右，Y 向上，`(0, 0)` 对应瞄准中心。点数就是弹丸数，无需另填一个可能不一致的数量。
 
-坐标通常在 `-1～1`；乘 **Pattern Angle Degrees** 得到水平／垂直角偏移。例如尺度 3°、点 `(1, 0)`，在垂直瞄准轴的 10 米平面上约向右偏 0.52 米。距离增加，实际覆盖自然扩大。保存新的 `ShotgunPattern` 资源并拖入 Pattern 即可复用。运行时忽略非有限坐标、限制坐标范围，最多使用 64 点；空图样回退到一颗中心弹丸。
+坐标通常在 `-1～1`；乘原 `pattern_angle_degrees` 得到水平／垂直角偏移，现在该尺度可由“图样覆盖范围”的距离和面积标定。例如尺度 3°、点 `(1, 0)`，在垂直瞄准轴的 10 米平面上约向右偏 0.52 米。距离增加，实际覆盖自然扩大。保存新的 `ShotgunPattern` 资源并拖入 Pattern 即可复用。运行时忽略非有限坐标、限制坐标范围，最多使用 64 点；空图样回退到一颗中心弹丸。
 
 ## 瞄准如何影响霰弹
 
@@ -52,7 +68,7 @@
 
 | Shotgun 字段 | 初值 | 含义 |
 | --- | --- | --- |
-| Pattern Angle Degrees | 3° | 图样自身的固定尺度，决定基本覆盖。 |
+| 图样覆盖范围（原 Pattern Angle Degrees） | 原尺度 3°、标定距离 4 m | 距离与面积共同决定固定尺度，显示实际角度；不改变已有默认弹道。 |
 | Stable Jitter Degrees | 0.08° | 完全稳定时，每颗随机偏差的最大角度；设为 0 可以精确复现图样。 |
 | Unstable Jitter Degrees | 0.55° | 稳定度为 0 时，每颗随机偏差的最大角度；在两端之间连续插值。 |
 | Starting Stability | 0.65 | 初始稳定度；0 最不稳定，1 最稳定。 |
@@ -88,17 +104,20 @@
 ## 维护与验证
 
 - `weapon_data.gd` 保留原资源类型，追加 Fire Mode 和可选 Shotgun 配置；只有霰弹读取新的稳定度设置。
-- `shotgun_settings.gd` 保存霰弹配置，`shotgun_pattern.gd` 保存图样，`shotgun_ballistics.gd` 负责采样、真实射线和近弹几何。它不消费弹药、不管理身体、AI 或受伤。
+- `shotgun_settings.gd` 保存霰弹配置及标定距离，提供 `get_pattern_coverage_area()`、`calibration_angle_degrees(distance, area)` 和 `set_pattern_calibration(distance, area)`，统一换算、校验与原角度写入；无效组合不产生部分修改。`shotgun_pattern.gd` 保存图样，`shotgun_ballistics.gd` 负责采样、真实射线和近弹几何。它不消费弹药、不管理身体、AI 或受伤。
 - 原 `weapon_ammo.gd` 负责逐发计时／扣备弹，并提供只读 `reload_remaining_seconds()` 给 UI 和 AI；玩家 Combat 决定右键、射击、奔跑及切枪中断。
-- 原 `addons/weapon_mode_inspector/weapon_inspector.gd` 注册图样编辑器；同目录 `shotgun_pattern_property.gd` 负责检查器、撤销和保存，`shotgun_pattern_canvas.gd` 只负责画点与鼠标交互。插件关闭不影响运行时资源读取。
+- 原 `addons/weapon_mode_inspector/weapon_inspector.gd` 注册图样编辑器和覆盖控件；同目录 `shotgun_pattern_property.gd` 负责图样撤销和保存，`shotgun_pattern_canvas.gd` 只负责画点与鼠标交互，`shotgun_coverage_property.gd` 负责两个性能输入、原生整体撤销和尺寸显示。覆盖控件监听当前配置与图样的变更；替换 Pattern 发出配置通知，并解除旧图样监听。插件关闭不影响运行时资源读取。
+- `scripts/debug/shotgun_pattern_preview.gd` 保存三个导出资源槽与独立数值，在内存构造专用 ShotgunSettings 并调用原采样；原场景只保存根节点的图样引用／参数，生成 UI 不序列化。图样替换时解除旧信号，同图样多槽只监听一次。
 - 玩家与敌人在各自原射击入口增加霰弹分支，伤害和通知仍由各自执行。旧单弹分支保留。
 - `tests/shotgun_test.gd` 覆盖图样不缩放、各颗独立偏差、三维方向、序列化、遮挡、多目标、死亡前统一查询、一次结算、双边射击、切枪、换弹、半自动扳机与较长间隔。
 - `tests/shotgun_inspector_test.gd` 验证真实检查器的霰弹选项、参数显示、旧值保留和原生撤销／重做；以 `--headless --editor --script` 单独运行。
 - `tests/shotgun_reload_test.gd` 覆盖逐发弹药守恒、备弹不足、长帧、共享池、玩家右键与射击中断、切枪、快慢装填、暂停／对话和敌人身体／规划耗时。
-- `tests/shotgun_pattern_editor_test.gd` 验证真实检查器画板的点击、拖动、原生撤销、清空后重新绘制、只读、保存／另存副本及编辑器 2D 预览；用 `--editor --max-fps 60 --script res://tests/shotgun_pattern_editor_test.gd` 运行。
+- `tests/shotgun_pattern_editor_test.gd` 验证真实检查器画板、标定实际投影、撤销／重做、非法输入、共享资源隔离、三个图样槽及独立预览保存；用 `--editor --max-fps 60 --script res://tests/shotgun_pattern_editor_test.gd` 运行。使用 `--headless --script res://tests/shotgun_pattern_editor_test.gd -- --preview-runtime` 可独立验证与 F6 相同场景的运行时采样和保存重载。
 
 运行专项：`python movement_demo/tests/run_combat_regressions.py --godot E:/Godot/Godot_v4.7.2-stable_win64_console.exe shotgun_test shotgun_reload_test`。完整目录检查：`python movement_demo/tests/run_regressions.py --check`。
 
 本轮霰弹专项本地与独立副本均为 43/43，霰弹检查器功能断言 10/10。旧武器兼容、弹药、槽位、自动射击、换弹检查点、相机范围，以及三项敌人火控／压制专项通过。旧受击干扰测试有 4 项在修改前后同样失败；无头编辑器退出有已有资源占用诊断。完整范围和基线对照见[敌人测试记录](../enemy-tests.md#霰弹模式2026-10-25)。
 
 2026-10-25 移除“载入图样”后的定向验证：以当前本地工程的独立副本运行图样编辑器专项，20/20 功能断言通过，覆盖画板、撤销、清空后绘制、保存、另存隔离及预览；三个原图样文件内容保持不变。无头编辑器退出仍有资源占用诊断，功能断言通过不代表退出日志无错误。
+
+2026-10-25 散布标定与独立预览：当前本地工程的隔离副本中，编辑器专项 59/59、预览运行时 12/12、原检查器兼容 10/10，测试目录检查通过。验证包含真实弹道投影、原生撤销、保存重载、图样替换／编辑后的自动刷新及资源隔离；原三个图样和示例武器文件哈希保持不变。渲染编辑器的启动 `current_window` 诊断及退出资源占用／泄漏诊断在修改前对照中同样出现；运行时专项无上述诊断。未跑全量 AI／战斗回归。实现边界及记录见[修改计划](../superpowers/plans/2026-10-25-shotgun-coverage-editor.md)。

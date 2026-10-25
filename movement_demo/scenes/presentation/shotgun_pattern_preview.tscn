@@ -1,6 +1,9 @@
-[gd_scene load_steps=2 format=3]
+[gd_scene load_steps=5 format=3]
 
 [ext_resource type="Script" path="res://scripts/debug/shotgun_pattern_preview.gd" id="1"]
+[ext_resource type="Resource" path="res://resources/weapons/patterns/balanced.tres" id="2"]
+[ext_resource type="Resource" path="res://resources/weapons/patterns/horizontal.tres" id="3"]
+[ext_resource type="Resource" path="res://resources/weapons/patterns/vertical.tres" id="4"]
 
 [node name="ShotgunPatternPreview" type="Control"]
 custom_minimum_size = Vector2(1152, 700)
@@ -11,3 +14,6 @@ anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
 script = ExtResource("1")
+pattern_1 = ExtResource("2")
+pattern_2 = ExtResource("3")
+pattern_3 = ExtResource("4")

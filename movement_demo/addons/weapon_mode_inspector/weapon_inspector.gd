@@ -2,6 +2,7 @@
 extends EditorInspectorPlugin
 
 const PatternProperty = preload("res://addons/weapon_mode_inspector/shotgun_pattern_property.gd")
+const CoverageProperty = preload("res://addons/weapon_mode_inspector/shotgun_coverage_property.gd")
 
 const PROBABILITY_FIELDS := {
 	"initial_accuracy": "初始中心概率",
@@ -87,11 +88,16 @@ const EFFECT_HELP := {
 
 
 func _can_handle(object: Object) -> bool:
-	return object is WeaponData or object is ShotgunPattern
+	return object is WeaponData or object is ShotgunPattern or object is ShotgunSettings
 
 
 func _parse_property(object: Object, type: Variant.Type, path: String, hint: PropertyHint,
 		hint_text: String, _usage: int, _wide: bool) -> bool:
+	if object is ShotgunSettings:
+		if path == "pattern_angle_degrees":
+			add_property_editor(path, CoverageProperty.new(), false, "图样覆盖范围")
+			return true
+		return false
 	if object is ShotgunPattern:
 		if path == "points":
 			add_property_editor(path, PatternProperty.new(), false, "弹丸落点画板")

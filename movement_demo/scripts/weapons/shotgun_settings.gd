@@ -2,6 +2,11 @@
 class_name ShotgunSettings
 extends Resource
 
+const MAX_PATTERN_ANGLE_DEGREES := 15.0
+
+# 与原角度一起保存。加载时不运行标定换算，避免资源字段顺序改变旧枪性能。
+@export_storage var pattern_calibration_distance_m: float = 4.0
+
 @export_group("逐发装填")
 ## 开启后按每发时间逐发补入弹匣，装好一发才扣一发备弹；关闭保持原整匣换弹。
 ## 玩家新按右键瞄准即可中断，已有余弹时瞄准扣扳机也可中断；按住右键再按 R 仍能装填。
@@ -13,7 +18,12 @@ extends Resource
 
 @export_group("霰弹图样")
 ## 每个图样点对应一颗弹丸；拖入独立 ShotgunPattern 资源。留空为中心一颗。
-@export var pattern: ShotgunPattern = preload("res://resources/weapons/patterns/balanced.tres")
+@export var pattern: ShotgunPattern = preload("res://resources/weapons/patterns/balanced.tres"):
+	set(value):
+		if pattern == value: return
+		pattern = value
+		# 通知依赖当前图样的覆盖读数；只替换引用，不复制或修改点位。
+		emit_changed()
 ## 每颗实际命中弹丸的伤害；同一枪命中同一目标时合计伤害，只施加一次命中干扰。
 @export_range(0.0, 1000.0, 0.5) var pellet_damage: float = 8.0
 ## 固定图样的角度尺度；坐标为 1 的点在此角度。精度不会改变此值。
@@ -74,3 +84,28 @@ func get_jitter_degrees(stability: float) -> float:
 
 func get_pattern_points() -> PackedVector2Array:
 	return pattern.valid_points() if pattern != null else PackedVector2Array([Vector2.ZERO])
+
+
+## 标定距离处整个正方形画板的面积，含空白，不包含随机偏移。
+func get_pattern_coverage_area() -> float:
+	var side := 2.0 * pattern_calibration_distance_m * tan(deg_to_rad(clampf(pattern_angle_degrees, 0.0, MAX_PATTERN_ANGLE_DEGREES)))
+	return side * side
+
+
+## 距离和面积共同定义散布。非法组合返回 NAN，调用者必须拒绝整次修改。
+static func calibration_angle_degrees(distance_m: float, area_m2: float) -> float:
+	if not is_finite(distance_m) or distance_m <= 0.0 or not is_finite(area_m2) or area_m2 < 0.0:
+		return NAN
+	var angle := rad_to_deg(atan(sqrt(area_m2) / (2.0 * distance_m)))
+	if angle > MAX_PATTERN_ANGLE_DEGREES + 0.000001: return NAN
+	return minf(angle, MAX_PATTERN_ANGLE_DEGREES)
+
+
+## 修改距离时传入原面积；修改面积时传入原距离。成功才一起写入，不修改图样。
+func set_pattern_calibration(distance_m: float, area_m2: float) -> bool:
+	var angle := calibration_angle_degrees(distance_m, area_m2)
+	if not is_finite(angle): return false
+	pattern_calibration_distance_m = distance_m
+	pattern_angle_degrees = angle
+	emit_changed()
+	return true
