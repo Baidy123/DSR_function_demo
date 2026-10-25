@@ -2,6 +2,9 @@ extends Node3D
 
 signal presentation_reset(region: Node)
 
+const EnemyWaves = preload("res://scripts/world/enemy_wave_controller.gd")
+var _enemy_waves: Node
+
 ## Match members by faction and communication group; only team awareness is shared.
 @export var team_cooperation_bindings: Array[EnemyTeamCooperationBinding] = []
 
@@ -30,6 +33,15 @@ func register_enemy(enemy: CharacterBody3D) -> void:
 func unregister_enemy(enemy: CharacterBody3D) -> void:
 	enemies.erase(enemy)
 	cooperation.unregister(enemy.get_instance_id())
+
+
+func _enter_tree() -> void:
+	# 父节点先入树：部署模板不能先执行敌人/小队的注册、碰撞或 AI 就绪。
+	var controllers: Array[Node] = []
+	for child in get_children():
+		if child is EnemyWaves: controllers.append(child)
+	if not controllers.is_empty(): _enemy_waves = controllers[0]
+	for controller in controllers: controller.capture_templates(self)
 
 
 func _ready() -> void:

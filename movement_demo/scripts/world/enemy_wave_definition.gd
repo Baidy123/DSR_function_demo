@@ -1,0 +1,40 @@
+@tool
+extends Node3D
+
+## 一波的部署容器。把 squad.tscn 拖到下面，再在小队里摆敌人；复制本节点即可增加一波。
+const Squad = preload("res://scripts/world/squad_controller.gd")
+
+## 本波生成前等待的秒数；0表示上一波清空后尽快生成。暂停或对话不扣时间。
+@export_range(0.0, 120.0, 0.1, "or_greater", "suffix:s") var start_delay_seconds: float = 0.0
+@export_group("兼容已有场景")
+## 可选：相对此波节点的已有小队路径。仅用于保留原地图路径；普通新波次直接放子小队即可。
+## 一个小队只能属于一波；留空不额外引用任何小队，不需要逐个登记敌人。
+@export var existing_squads: Array[NodePath] = []:
+	set(value):
+		existing_squads = value
+		update_configuration_warnings()
+
+func deployment_configuration() -> Dictionary:
+	var squads: Array[Node3D] = []
+	var errors: PackedStringArray = []
+	for child in get_children():
+		if child is Squad: squads.append(child)
+		else: errors.append("%s：波次下面请放 Squad 小队，敌人放到小队下面。" % child.name)
+	for path in existing_squads:
+		var squad = get_node_or_null(path) if not path.is_empty() else null
+		if not squad is Squad:
+			errors.append("已有小队路径无效：%s" % path)
+		elif squads.has(squad):
+			errors.append("重复引用小队：%s" % path)
+		else:
+			squads.append(squad)
+	if squads.is_empty(): errors.append("本波还没有小队：拖入 squad.tscn，再把敌人放到小队下。")
+	if not is_finite(start_delay_seconds) or start_delay_seconds < 0.0:
+		errors.append("波前等待必须是大于或等于0的秒数。")
+	return {"squads": squads, "errors": errors}
+
+func _get_configuration_warnings() -> PackedStringArray:
+	var errors: PackedStringArray = deployment_configuration().errors
+	if get_parent() == null or not get_parent().has_method("capture_templates"):
+		errors.append("请把本波放在 EnemyWaves 控制器下面；按场景树顺序出场。")
+	return errors

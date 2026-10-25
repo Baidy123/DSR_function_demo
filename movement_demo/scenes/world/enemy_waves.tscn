@@ -1,0 +1,11 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://scripts/world/enemy_wave_controller.gd" id="controller"]
+[ext_resource type="PackedScene" path="res://scenes/world/enemy_wave.tscn" id="wave"]
+
+[node name="EnemyWaves" type="Node3D"]
+script = ExtResource("controller")
+
+[node name="Wave1" parent="." instance=ExtResource("wave")]
+
+[editable path="Wave1"]

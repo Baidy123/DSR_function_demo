@@ -1,5 +1,7 @@
 # 项目目录结构
 
+波次系统阶段1（2026-10-25）：`world/enemy_wave_controller.gd` 在区域子树入树前捕获小队并保存内存场景快照，`enemy_wave_definition.gd` 保存波前延迟和可选已有小队引用；对应 `scenes/world/enemy_waves.tscn`／`enemy_wave.tscn` 提供编辑入口。当前仅模板基础通过验证，尚未接入保存关卡，推进及占位检查仍待后续阶段；不改变 Squad、身体或 AI 职责。见[波次实施记录](superpowers/plans/2026-10-25-level-enemy-waves.md)。
+
 协调器现按 [2026-10-23 完整重写计划](superpowers/plans/2026-10-23-squad-coordinator-rewrite.md)维护。旧调度器、个人选优中的团队耦合及其专用检查已退出；路径和被场景引用的 UID 保留。当前接口见 [敌人 AI](enemy-ai.md)。
 
 ## 文档维护约束
