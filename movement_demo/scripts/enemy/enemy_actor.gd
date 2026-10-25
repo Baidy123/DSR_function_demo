@@ -422,8 +422,8 @@ func _refresh_status_label() -> void:
 	var reload_text := ""
 	# 换弹属于武器状态，与当前战术动作并行；动作改名不能隐藏真实进度。
 	if weapon != null and ammo.is_reloading:
-		var remaining: float = maxf(0.1, weapon.reload_seconds) * (1.0 - ammo.reload_progress)
-		reload_text = "换弹 %d%% · 剩余 %.1f 秒" % [floori(ammo.reload_progress * 100.0), remaining]
+		var remaining: float = ammo.reload_remaining_seconds()
+		reload_text = ("逐发装填 · 本发 %d%% · 剩余 %.1f 秒" if ammo.reloads_one_shell_at_a_time() else "换弹 %d%% · 剩余 %.1f 秒") % [floori(ammo.reload_progress * 100.0), remaining]
 	$Label.visible = debug_settings.enabled or not reload_text.is_empty()
 	$Label.text = _status_text + ("\n" + reload_text if not reload_text.is_empty() else "") if debug_settings.enabled else reload_text
 

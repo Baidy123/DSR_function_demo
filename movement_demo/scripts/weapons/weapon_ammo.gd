@@ -22,6 +22,21 @@ func _uses_ammo() -> bool:
 	return weapon != null and weapon.fire_mode != WeaponData.FireMode.MELEE
 
 
+func reloads_one_shell_at_a_time() -> bool:
+	return weapon != null and weapon.fire_mode == WeaponData.FireMode.SHOTGUN and weapon.get_shotgun_settings().shell_by_shell_reload
+
+
+## 完整换弹预计剩余秒数；逐发模式按缺口／备弹和本发进度计算，供 UI 与原 AI 读值。
+## include_progress=false 用于评估打断后重新开始的完整耗时，不推进实际状态。
+func reload_remaining_seconds(include_progress: bool = true) -> float:
+	if not _uses_ammo(): return 0.0
+	var progress := reload_progress if include_progress else 0.0
+	if not reloads_one_shell_at_a_time(): return maxf(0.1, weapon.reload_seconds) * (1.0 - progress)
+	var available := maxi(0, weapon.magazine_capacity - magazine_rounds)
+	if not infinite_reserve: available = mini(available, reserve_count())
+	return maxf(0.1, weapon.get_shotgun_settings().shell_reload_seconds) * maxf(0.0, available - progress)
+
+
 func reserve_count() -> int:
 	return maxi(0, int(_reserve_pool.get(weapon.ammo_type, 0))) if _uses_ammo() else 0
 
@@ -67,6 +82,9 @@ func advance_reload(delta: float, speed_multiplier: float = 1.0) -> void:
 		return
 	if not is_reloading:
 		return
+	if reloads_one_shell_at_a_time():
+		_advance_shell_reload(delta, speed_multiplier)
+		return
 	reload_progress = minf(1.0, reload_progress + maxf(0.0, delta) * maxf(0.0, speed_multiplier) / maxf(0.1, weapon.reload_seconds))
 	if reload_progress < 1.0 and not is_equal_approx(reload_progress, 1.0):
 		return
@@ -76,6 +94,22 @@ func advance_reload(delta: float, speed_multiplier: float = 1.0) -> void:
 	if not infinite_reserve:
 		_reserve_pool[weapon.ammo_type] = reserve_count() - loaded
 	cancel_reload()
+
+
+func _advance_shell_reload(delta: float, speed_multiplier: float) -> void:
+	var available := maxi(0, weapon.magazine_capacity - magazine_rounds)
+	if not infinite_reserve: available = mini(available, reserve_count())
+	if available == 0:
+		cancel_reload()
+		return
+	var seconds := maxf(0.1, weapon.get_shotgun_settings().shell_reload_seconds)
+	var progress := reload_progress + maxf(0.0, delta) * maxf(0.0, speed_multiplier) / seconds
+	# 用缺口限制换算量，长帧可跨多发，但不超装、不超扣备弹，也不循环追帧。
+	var completed := mini(available, floori(minf(progress + 0.000001, float(available))))
+	magazine_rounds += completed
+	if not infinite_reserve: _reserve_pool[weapon.ammo_type] = reserve_count() - completed
+	reload_progress = maxf(0.0, progress - completed)
+	if completed == available: cancel_reload()
 
 
 func cancel_reload() -> void:

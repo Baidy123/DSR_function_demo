@@ -374,7 +374,7 @@ func _reload_seconds(ai) -> float:
 		return 0.0
 	if ai.actor.ammo.magazine_rounds > 0 and not ai.actor.ammo.is_reloading:
 		return 0.0
-	return maxf(0.1, ai.actor.weapon.reload_seconds) * (1.0 - ai.actor.ammo.reload_progress)
+	return ai.actor.ammo.reload_remaining_seconds()
 
 func _ammo_wait(ai) -> float:
 	if not ai.actor.can_use_firearms():

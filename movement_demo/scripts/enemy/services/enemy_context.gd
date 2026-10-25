@@ -888,7 +888,7 @@ func coordination_debug_snapshot() -> Dictionary:
 	result.cooperation_level = cooperation_level()
 	result.moving = not actor.get_local_movement_velocity().is_zero_approx() or Vector2(actor.velocity.x, actor.velocity.z).length_squared() > 0.0025
 	result.reloading = actor.ammo.is_reloading
-	result.reload_remaining = maxf(0.1, actor.weapon.reload_seconds) * (1.0 - actor.ammo.reload_progress) if actor.weapon != null and actor.ammo.is_reloading else 0.0
+	result.reload_remaining = actor.ammo.reload_remaining_seconds() if actor.weapon != null and actor.ammo.is_reloading else 0.0
 	var availability := coordination_motion_state()
 	result.available_in = availability.available_in
 	if availability.available_in > 0.0: result.reason = availability.availability_reason
@@ -1084,7 +1084,7 @@ func cooperation_publish_execution(output: Dictionary) -> void:
 		"magazine_capacity": actor.weapon.magazine_capacity if firearms else 0, "can_move": actor.can_move(), "lane_id": &"target",
 		"position_lane_id": task.get("lane_id", &""),
 		"beneficiary_id": task.get("beneficiary_id", 0), "request_id": task.get("request_id", 0),
-		"reload_seconds": actor.weapon.reload_seconds * (1.0 - actor.ammo.reload_progress) if firearms and actor.ammo.is_reloading else 0.0})
+		"reload_seconds": actor.ammo.reload_remaining_seconds() if firearms and actor.ammo.is_reloading else 0.0})
 
 
 var _battle_capabilities: Dictionary = {}
@@ -1126,7 +1126,7 @@ func member_runtime_snapshot() -> Dictionary:
 		"fire_lane_valid": sees_player and last_seen_aim_position.is_finite(),
 		"pressure": recent_damage_pressure + nearby_shot_pressure,
 		"rounds": actor.ammo.magazine_rounds, "can_reload": actor.can_use_firearms() and actor.ammo.can_reload(),
-		"reloading": actor.ammo.is_reloading, "reload_remaining": actor.weapon.reload_seconds * (1.0 - actor.ammo.reload_progress) if actor.weapon != null and actor.ammo.is_reloading else 0.0,
+		"reloading": actor.ammo.is_reloading, "reload_remaining": actor.ammo.reload_remaining_seconds() if actor.weapon != null and actor.ammo.is_reloading else 0.0,
 		"occupied": actor.is_vaulting() or actor.melee_active or not actor.can_move(),
 		"firearms": actor.can_use_firearms(), "can_attack": actor.shooting_enabled and not actor.is_vaulting() and not actor.melee_active,
 		"blocked_paths": _blocked_ally_paths.size()}, true)

@@ -13,7 +13,7 @@ func _can_offer_reload() -> bool:
 func _reload_seconds() -> float:
 	# 公共 _reload_seconds 表示当前开火被换弹阻止的时间；余弹主动方案另算其真实耗时。
 	if _running and not actor.ammo.is_reloading and _reload_completed(): return 0.0
-	return maxf(0.1, actor.weapon.reload_seconds) * (1.0 - actor.ammo.reload_progress)
+	return actor.ammo.reload_remaining_seconds()
 
 func _reload_completed() -> bool:
 	return actor.ammo.magazine_rounds > 0

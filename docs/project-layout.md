@@ -1,5 +1,7 @@
 # 项目目录结构
 
+霰弹编辑与装填补充（2026-10-25）：原 `addons/weapon_mode_inspector/` 插件增加 `shotgun_pattern_property.gd`（检查器、原生撤销、保存／另存）和 `shotgun_pattern_canvas.gd`（点选／拖动画板），仍写入原 `ShotgunPattern.points`，运行时不依赖编辑插件。原图样预览脚本使用 `@tool`，其生成的界面不序列化到场景。逐发开关和每发耗时归 `ShotgunSettings`；原 `weapon_ammo.gd` 统一计时与弹量守恒，并提供只读 `reload_remaining_seconds()` 供 UI、原 AI 估时及协调快照使用。玩家输入中断仍归 Combat，敌人选择权仍归原 AI。旧资源、节点路径和 UID 保留。
+
 霰弹扩展（2026-10-25）：沿用 `WeaponData` 和原 `Fire Mode`，追加霰弹选项；可选 `ShotgunSettings` 与 `ShotgunPattern` 分别位于 `scripts/weapons/shotgun_settings.gd`、`shotgun_pattern.gd`。`shotgun_ballistics.gd` 仅提供弹丸采样／物理射线／近弹几何，双方原射击脚本各自结算。图样与示例放在原 `resources/weapons/` 下，预览脚本位于 `scripts/debug/`，两个独立预览场景位于 `scenes/presentation/`。不迁移原资源、不改变玩家／敌人节点或 AI 接口，见[霰弹说明](gameplay/SHOTGUN.md)。
 
 战斗可读性（2026-10-25）：`enemy/enemy_health_bar.gd` 挂在公共敌人的 `HealthBar`，仅显示原身体生命比例；`enemy/enemy_corpse_visual.gd` 由波次控制器在整波回收前创建静态网格快照，内部 `Corpses` 容器随本轮复位／卸载清理，不保留身体与AI。`systems/combat_view.gd` 是无状态的实际相机画面查询，玩家锁定及敌人火控／身体执行共用；原射线继续负责遮挡。`systems/player_camera.gd` 通过已有装备信号按武器锁定距离计算正交 Size，保留手动视野模式与跟随链。感知服务读取自身远程武器范围和原训练资源，不增加独立感知循环。入口见[相机](gameplay/CAMERA.md)、[敌人](enemy-ai.md)和[表现](gameplay/PRESENTATION.md)。

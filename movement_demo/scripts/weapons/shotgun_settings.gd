@@ -2,6 +2,15 @@
 class_name ShotgunSettings
 extends Resource
 
+@export_group("逐发装填")
+## 开启后按每发时间逐发补入弹匣，装好一发才扣一发备弹；关闭保持原整匣换弹。
+## 玩家新按右键瞄准即可中断，已有余弹时瞄准扣扳机也可中断；按住右键再按 R 仍能装填。
+## 切枪／快速换弹被奔跑打断同样保留已装弹量，未完成的一发清零且不扣备弹。
+@export var shell_by_shell_reload: bool = false
+## 每装入一发需要的秒数，仅逐发装填开启时使用；奔跑中开始的慢速装填仍乘原换弹速度倍率。
+## 容量仍用武器 Magazine Capacity；开启后不使用武器的整匣 Reload Seconds。
+@export_range(0.1, 5.0, 0.05, "suffix:s") var shell_reload_seconds: float = 0.6
+
 @export_group("霰弹图样")
 ## 每个图样点对应一颗弹丸；拖入独立 ShotgunPattern 资源。留空为中心一颗。
 @export var pattern: ShotgunPattern = preload("res://resources/weapons/patterns/balanced.tres")

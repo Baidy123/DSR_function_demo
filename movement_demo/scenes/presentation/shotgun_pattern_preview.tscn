@@ -3,6 +3,7 @@
 [ext_resource type="Script" path="res://scripts/debug/shotgun_pattern_preview.gd" id="1"]
 
 [node name="ShotgunPatternPreview" type="Control"]
+custom_minimum_size = Vector2(1152, 700)
 layout_mode = 3
 anchors_preset = 15
 anchor_right = 1.0

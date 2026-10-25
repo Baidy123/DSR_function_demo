@@ -151,6 +151,9 @@ func _update_display() -> void:
 		$Panel/Content/Hint.text = "近战出手中 · 暂停射击、换弹与切枪"
 	elif combat.ammo.is_reloading:
 		var progress: int = floori(combat.ammo.reload_progress * 100.0)
-		$Panel/Content/Hint.text = ("慢速换弹中 %d%% · 可跑" if combat.is_slow_reload() else "快速换弹中 %d%% · 奔跑会中断") % progress
+		if combat.ammo.reloads_one_shell_at_a_time():
+			$Panel/Content/Hint.text = ("慢速逐发装填 · 本发 %d%% · 可跑 · 右键中断" if combat.is_slow_reload() else "逐发装填 · 本发 %d%% · 右键或奔跑中断") % progress
+		else:
+			$Panel/Content/Hint.text = ("慢速换弹中 %d%% · 可跑" if combat.is_slow_reload() else "快速换弹中 %d%% · 奔跑会中断") % progress
 	elif combat.ammo.reload_checkpoint > 0.0:
 		$Panel/Content/Hint.text = "换弹暂停 50% · 停跑后继续"

@@ -1,3 +1,4 @@
+@tool
 extends Control
 
 const Ballistics = preload("res://scripts/weapons/shotgun_ballistics.gd")
@@ -18,7 +19,7 @@ func _ready() -> void:
 	title.add_theme_font_size_override("font_size", 28)
 	add_child(title)
 	var hint := Label.new()
-	hint.text = "空心圆：固定落点   实心点：本枪弹丸   |   三种图样均为 9 颗，预览共用实际射击采样代码"
+	hint.text = "空心圆：固定落点 · 实心点：本枪弹丸 · F6 运行后可调参数；编辑落点请打开 Pattern 资源的检查器画板"
 	hint.position = Vector2(32, 66)
 	add_child(hint)
 	var controls := HBoxContainer.new()
@@ -56,6 +57,7 @@ func _ready() -> void:
 
 
 func _unhandled_key_input(event: InputEvent) -> void:
+	if Engine.is_editor_hint(): return
 	if event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_SPACE:
 		fire()
 		accept_event()

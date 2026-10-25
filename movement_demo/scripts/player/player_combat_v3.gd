@@ -126,8 +126,14 @@ func _unhandled_input(event: InputEvent) -> void:
 		request_reload()
 		get_viewport().set_input_as_handled()
 		return
-	if is_melee_active() or is_waiting_for_melee_stand() or player.is_vaulting() or ammo.is_reloading or ammo.reload_checkpoint > 0.0:
+	if is_melee_active() or is_waiting_for_melee_stand() or player.is_vaulting():
 		return
+	if ammo.is_reloading and ammo.reloads_one_shell_at_a_time() and not player.is_dead() and not player.is_in_dialogue and not get_tree().paused:
+		# 只响应新按下的瞄准键；按住右键再按 R 仍可装填。射击中断需已有余弹。
+		var aimed_trigger: bool = event.is_action_pressed("fire") and Input.is_action_pressed("aim") and ammo.magazine_rounds > 0 and can_combat()
+		if event.is_action_pressed("aim") or aimed_trigger:
+			cancel_reload()
+	if ammo.is_reloading or ammo.reload_checkpoint > 0.0: return
 	if player.is_in_dialogue or weapon == null or not can_combat():
 		return
 	if event.is_action_pressed("fire") and Input.is_action_pressed("aim"):
@@ -156,11 +162,14 @@ func cancel_reload() -> void:
 	ammo.cancel_reload()
 	_reload_started_sprinting = false
 
-## 奔跑或切枪只退回已经完成的半程；前半程取消后允许使用匣内余弹。
+## 整匣换弹保留已完成的半程；逐发装填仅保留已入匣弹药，取消未完成的本发。
 func interrupt_reload() -> void:
 	if not ammo.is_reloading: return
-	var committed: bool = ammo.reload_checkpoint > 0.0 or ammo.reload_progress >= 0.5 or is_equal_approx(ammo.reload_progress, 0.5)
-	ammo.suspend_reload(0.5 if committed else 0.0)
+	if ammo.reloads_one_shell_at_a_time():
+		cancel_reload() # 已装好的弹药保留，未完成的本发不保留半程，也不强制续换。
+	else:
+		var committed: bool = ammo.reload_checkpoint > 0.0 or ammo.reload_progress >= 0.5 or is_equal_approx(ammo.reload_progress, 0.5)
+		ammo.suspend_reload(0.5 if committed else 0.0)
 	shot_requested = false
 	fire_held = false
 

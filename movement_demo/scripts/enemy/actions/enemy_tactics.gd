@@ -382,7 +382,7 @@ func _melee_facts() -> Dictionary:
 	# It cancels reload progress: only an empty magazine needs a new full reload.
 	var resume: float = occupied
 	if actor.ammo.magazine_rounds == 0 and actor.weapon != null:
-		resume += maxf(0.1, actor.weapon.reload_seconds)
+		resume += actor.ammo.reload_remaining_seconds(false)
 	var ready: float = maxf(resume + maxf(0.0, context.fire.fire_reaction_seconds),
 		maxf(context.fire.pause_after_no_fire_seconds(), context.fire.shot_wait_seconds())) + context.fire.estimated_reset_steady_wait()
 	if not actor.can_use_firearms(): ready = horizon
