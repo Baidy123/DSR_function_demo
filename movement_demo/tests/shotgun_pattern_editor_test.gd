@@ -54,8 +54,10 @@ func _run() -> void:
 	check(pattern.points.size() == 1, "Right click removes one pellet")
 	property.clear_button.pressed.emit()
 	check(pattern.points.is_empty() and property.counter.text.contains("回退"), "Clear exposes the existing empty-pattern fallback explicitly")
-	property.presets.item_selected.emit(2)
-	check(pattern.points == load("res://resources/weapons/patterns/horizontal.tres").points, "Loading a preset copies its actual pellet positions")
+	for point in [Vector2.ZERO, Vector2(0.5, 0.5)]:
+		_mouse(canvas, MOUSE_BUTTON_LEFT, true, canvas.point_to_pixel(point))
+		_mouse(canvas, MOUSE_BUTTON_LEFT, false, canvas.point_to_pixel(point))
+	check(pattern.points == PackedVector2Array([Vector2.ZERO, Vector2(0.5, 0.5)]), "Drawing after clearing creates reusable custom pellet positions")
 	property._set_read_only(true)
 	before = pattern.points.duplicate()
 	_mouse(canvas, MOUSE_BUTTON_LEFT, true, canvas.point_to_pixel(Vector2(0, 0.8)))
@@ -79,10 +81,12 @@ func _run() -> void:
 	check(copy is ShotgunPattern and copy != pattern and copy.resource_path == "res://logs/shotgun_pattern_editor/copy.tres" and copy.points == pattern.points, "Save copy switches the inspector to an independent saved pattern")
 	var copy_property := _find_property(EditorInterface.get_inspector(), copy)
 	if copy_property != null and copy_property.get_script() == Property:
-		copy_property.presets.item_selected.emit(1)
+		var copy_position: Vector2 = copy_property.canvas.point_to_pixel(Vector2(-0.5, 0.5))
+		_mouse(copy_property.canvas, MOUSE_BUTTON_LEFT, true, copy_position)
+		_mouse(copy_property.canvas, MOUSE_BUTTON_LEFT, false, copy_position)
 		copy_property.save_button.pressed.emit()
 		var saved_copy = ResourceLoader.load(copy.resource_path, "", ResourceLoader.CACHE_MODE_IGNORE)
-		check(saved_copy.points == source_points and pattern.points == reloaded.points and source.points == source_points, "Editing and saving the new copy preserves both original resources")
+		check(saved_copy.points == copy.points and saved_copy.points.size() == pattern.points.size() + 1 and pattern.points == reloaded.points and source.points == source_points, "Editing and saving the new copy preserves both original resources")
 	else:
 		check(false, "New copy still has the native drawing board")
 	EditorInterface.open_scene_from_path("res://scenes/presentation/shotgun_pattern_preview.tscn")

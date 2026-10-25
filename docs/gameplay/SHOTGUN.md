@@ -17,7 +17,7 @@
 
 1. 在文件系统双击 `resources/weapons/patterns/balanced.tres`，或展开武器的 **Shotgun → Pattern**。检查器里的 **弹丸落点画板** 就是编辑入口，不需要写坐标数组。
 2. 要保留原图样，**先点“另存副本…”**，选择自己的 `.tres` 文件名。保存后检查器自动切到新副本；它不会自动替换武器的 Pattern 引用。
-3. **左键点空白处加一颗、拖动已有点移动、右键点已有点删除**。支持原生撤销／重做；拖动中按 Esc 取消这次移动。“载入图样…”可复制三种预设的点，“清空”清除当前点。
+3. **左键点空白处加一颗、拖动已有点移动、右键点已有点删除**。支持原生撤销／重做；拖动中按 Esc 取消这次移动。“清空”清除当前点。按用户要求已移除“载入图样…”下拉框，避免把其他图样的点写进当前资源后误保存覆盖；需要更换图样时，将目标 `.tres` 拖到武器的 **Shotgun → Pattern**。
 4. 点 **保存当前**，再把新的 `.tres` 拖到武器的 **Shotgun → Pattern**。内嵌或未保存的资源先用“另存副本”；直接修改共享图样会影响所有引用它的武器。
 
 画板中心是瞄准方向，X 向右、Y 向上；点数就是弹丸数，最多 64 颗。画板只编辑固定图样，实际覆盖大小还由 **Pattern Angle Degrees** 和目标距离决定，各颗随机偏差仍由稳定度参数决定。清空后运行时会回退为中心一颗，检查器会明确提示。
@@ -95,8 +95,10 @@
 - `tests/shotgun_test.gd` 覆盖图样不缩放、各颗独立偏差、三维方向、序列化、遮挡、多目标、死亡前统一查询、一次结算、双边射击、切枪、换弹、半自动扳机与较长间隔。
 - `tests/shotgun_inspector_test.gd` 验证真实检查器的霰弹选项、参数显示、旧值保留和原生撤销／重做；以 `--headless --editor --script` 单独运行。
 - `tests/shotgun_reload_test.gd` 覆盖逐发弹药守恒、备弹不足、长帧、共享池、玩家右键与射击中断、切枪、快慢装填、暂停／对话和敌人身体／规划耗时。
-- `tests/shotgun_pattern_editor_test.gd` 验证真实检查器画板的点击、拖动、原生撤销、预设、只读、保存／另存副本及编辑器 2D 预览；用 `--editor --max-fps 60 --script res://tests/shotgun_pattern_editor_test.gd` 运行。
+- `tests/shotgun_pattern_editor_test.gd` 验证真实检查器画板的点击、拖动、原生撤销、清空后重新绘制、只读、保存／另存副本及编辑器 2D 预览；用 `--editor --max-fps 60 --script res://tests/shotgun_pattern_editor_test.gd` 运行。
 
 运行专项：`python movement_demo/tests/run_combat_regressions.py --godot E:/Godot/Godot_v4.7.2-stable_win64_console.exe shotgun_test shotgun_reload_test`。完整目录检查：`python movement_demo/tests/run_regressions.py --check`。
 
 本轮霰弹专项本地与独立副本均为 43/43，霰弹检查器功能断言 10/10。旧武器兼容、弹药、槽位、自动射击、换弹检查点、相机范围，以及三项敌人火控／压制专项通过。旧受击干扰测试有 4 项在修改前后同样失败；无头编辑器退出有已有资源占用诊断。完整范围和基线对照见[敌人测试记录](../enemy-tests.md#霰弹模式2026-10-25)。
+
+2026-10-25 移除“载入图样”后的定向验证：以当前本地工程的独立副本运行图样编辑器专项，20/20 功能断言通过，覆盖画板、撤销、清空后绘制、保存、另存隔离及预览；三个原图样文件内容保持不变。无头编辑器退出仍有资源占用诊断，功能断言通过不代表退出日志无错误。

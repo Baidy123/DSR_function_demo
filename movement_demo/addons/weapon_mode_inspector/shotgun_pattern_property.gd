@@ -2,11 +2,8 @@
 extends EditorProperty
 
 const Canvas = preload("res://addons/weapon_mode_inspector/shotgun_pattern_canvas.gd")
-const PRESETS = [preload("res://resources/weapons/patterns/balanced.tres"),
-	preload("res://resources/weapons/patterns/horizontal.tres"), preload("res://resources/weapons/patterns/vertical.tres")]
 var canvas := Canvas.new()
 var counter := Label.new()
-var presets := OptionButton.new()
 var clear_button := Button.new()
 var save_button := Button.new()
 var copy_button := Button.new()
@@ -33,16 +30,9 @@ func _init() -> void:
 	canvas.points_edited.connect(_commit_points)
 	add_focusable(canvas)
 	content.add_child(counter)
-	var tools := HBoxContainer.new()
-	content.add_child(tools)
-	presets.add_item("载入图样…")
-	for preset in PRESETS: presets.add_item(preset.display_name)
-	presets.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	presets.item_selected.connect(_select_preset)
-	tools.add_child(presets)
 	clear_button.text = "清空"
 	clear_button.pressed.connect(func(): _commit_points(PackedVector2Array()))
-	tools.add_child(clear_button)
+	content.add_child(clear_button)
 	var saving := HBoxContainer.new()
 	content.add_child(saving)
 	save_button.text = "保存当前"
@@ -87,11 +77,6 @@ func _commit_points(value: PackedVector2Array) -> void:
 	_update_property()
 
 
-func _select_preset(index: int) -> void:
-	if index > 0: _commit_points(PRESETS[index - 1].points.duplicate())
-	presets.select(0)
-
-
 func _save_current() -> void:
 	var pattern := get_edited_object() as ShotgunPattern
 	if canvas.read_only or pattern == null or pattern.resource_path.is_empty() or pattern.is_built_in(): return
@@ -127,6 +112,5 @@ func _save_copy_to_path(path: String) -> void:
 
 func _set_read_only(value: bool) -> void:
 	canvas.read_only = value
-	presets.disabled = value
 	clear_button.disabled = value
 	_update_property()
