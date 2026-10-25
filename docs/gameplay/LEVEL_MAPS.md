@@ -4,14 +4,14 @@
 
 完整步骤、第一波引用位置和排错表见[敌人波次使用说明](ENEMY_WAVES.md)。
 
-第一关已经配置两波，直接打开 `scenes/world/levels/lvl_1.tscn` 按 F6 试玩。第一波引用原来的 `Lvl1/Squad`；第二波在 `EnemyWaves/Wave2/Squad`。用户移入一名成员并调整摆放后，当前保存人数为2／3，可以继续修改，不代表最终难度。修改第一波仍选原 Squad／Enemy，位置、朝向、血量、武器和 Training 都沿用原检查器。
+第一关已经配置两波，直接打开 `scenes/world/levels/lvl_1.tscn` 按 F6 试玩。第一波引用原来的 `Lvl1/Squad`；第二波在 `EnemyWaves/Wave2/Squad`。人数以你保存的小队成员为准，可以继续修改，不代表最终难度。修改第一波仍选原 Squad／Enemy，位置、朝向、血量、武器和 Training 都沿用原检查器。
 
 给其他战斗场景加波次：
 
 1. 把 `scenes/world/enemy_waves.tscn` 拖到带 `shooting_range.gd` 的区域根节点下，再把 `scenes/world/enemy_wave.tscn` 拖到它下面并命名为 Wave1。
 2. 把 `scenes/world/squad.tscn` 拖到 `EnemyWaves/Wave1` 下，再把敌人／兵种预制拖到这个小队下，在地图中摆位置和朝向。同一波可以放多个小队。
-3. 复制整个 Wave1 增加波次，也可拖入 `scenes/world/enemy_wave.tscn` 新建空波。调整这些波次在场景树里的上下顺序就是出场顺序；名称可自由修改。选波次的 **Start Delay Seconds** 设置出场前等待，默认0秒。
-4. 保存并运行：玩家入区启动，全灭后推进；刷新点被玩家或可移动物体占用时自动等候，让开后出场。最后玩家离场重置为首波。
+3. 复制整个 Wave1 增加波次，也可拖入 `scenes/world/enemy_wave.tscn` 新建空波。EnemyWaves 下同一层 Wave 从上到下就是出场顺序，名称不决定编号。选波次的 **Wait For Previous Clear** 决定是否等相邻上一波全灭，**Start Delay Seconds** 设置等待秒数：勾选则全灭后计时，取消则上一波实际出场后计时。默认勾选、0秒；首波从本轮开始计时。
+4. 保存并运行：玩家入区启动，按各波条件推进，允许定时加入的多波同时存在；刷新点被玩家或可移动物体占用时自动等候，让开后出场。全部波次生成且全灭才算完成，最后玩家离场重置为首波。
 
 已有地图不想移动小队时，在波次的 **兼容已有场景 → Existing Squads** 数组增加一项，将现有 Squad 拖入。它须在同一区域且只能引用一次；新地图优先直接把小队放在波次下。节点上的黄色配置提示会指出空波、缺敌人、重复／跨区引用等问题。摆在墙内或导航外的刷新点需手动改位置；系统不自动挪点或强刷。
 

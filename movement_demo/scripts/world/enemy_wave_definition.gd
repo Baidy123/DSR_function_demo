@@ -4,7 +4,11 @@ extends Node3D
 ## 一波的部署容器。把 squad.tscn 拖到下面，再在小队里摆敌人；复制本节点即可增加一波。
 const Squad = preload("res://scripts/world/squad_controller.gd")
 
-## 本波生成前等待的秒数；0表示上一波清空后尽快生成。暂停或对话不扣时间。
+## 开启：上一波全灭后开始等待；关闭：上一波实际出场后开始等待，允许多波同时作战。
+## 第一波没有上一波，始终从本轮战斗开始计时。
+@export var wait_for_previous_clear: bool = true
+## 按上面的条件开始计时，经过这些秒数后本波加入。0表示条件满足后尽快加入。
+## 暂停、对话或玩家死亡时不扣时间；刷新点被占用时仍需等待原位置空出。
 @export_range(0.0, 120.0, 0.1, "or_greater", "suffix:s") var start_delay_seconds: float = 0.0
 @export_group("兼容已有场景")
 ## 可选：相对此波节点的已有小队路径。仅用于保留原地图路径；普通新波次直接放子小队即可。

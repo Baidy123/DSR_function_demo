@@ -1,7 +1,7 @@
 @tool
 extends Node3D
 
-## 区域可选的波次组件。编辑时保留全部部署；运行时只让当前波进入场景树。
+## 区域可选的波次组件。编辑时保留全部部署；运行时按各波条件生成，可同时存在多波。
 const Wave = preload("res://scripts/world/enemy_wave_definition.gd")
 const Squad = preload("res://scripts/world/squad_controller.gd")
 const Actor = preload("res://scripts/enemy/enemy_actor.gd")
@@ -31,7 +31,10 @@ var _remaining := 0.0
 var _generation := 0
 var _reason := ""
 var _pending: Array[Dictionary] = []
-var _runtime: Array[Dictionary] = []
+## 波次编号 -> 独立的小队、存活身份和清理状态；后出的波允许先清空。
+var _runtime: Dictionary = {}
+var _cleared: Dictionary = {}
+var _spawned := 0
 var _retiring: Array[Node] = []
 var _owned: Dictionary = {}
 var _alive: Dictionary = {}
@@ -76,7 +79,8 @@ func capture_templates(region: Node3D) -> void:
 				deployments.append({"scene": packed, "parent": weakref(parent), "name": label, "order": order})
 			snapshot.free()
 			squad.free()
-		_waves.append({"name": wave.name, "delay": wave.delay, "deployments": deployments, "member_count": wave.member_count})
+		_waves.append({"name": wave.name, "delay": wave.delay, "wait_for_previous_clear": wave.wait_for_previous_clear,
+			"deployments": deployments, "member_count": wave.member_count})
 	if not _configuration_errors.is_empty(): _fail("; ".join(_configuration_errors))
 
 func _collect_configuration(region: Node) -> Dictionary:
@@ -115,7 +119,8 @@ func _collect_configuration(region: Node) -> Dictionary:
 			member_count += members.size()
 			if members.is_empty(): errors.append("%s：小队内还没有敌人。" % squad.name)
 			squads.append(squad)
-		waves.append({"name": child.name, "delay": child.start_delay_seconds, "squads": squads, "member_count": member_count})
+		waves.append({"name": child.name, "delay": child.start_delay_seconds, "wait_for_previous_clear": child.wait_for_previous_clear,
+			"squads": squads, "member_count": member_count})
 	if waves.is_empty(): errors.append("请添加 enemy_wave.tscn；波次按场景树从上到下排列。")
 	return {"waves": waves, "errors": errors, "invalid_roots": invalid_roots}
 
@@ -164,20 +169,21 @@ func _begin_wave(index: int) -> void:
 func advance_from_region(delta: float) -> void:
 	if not _can_advance(): return
 	_collect_retired()
-	if not _retiring.is_empty(): return
-	if _state == State.ACTIVE:
-		if _alive.is_empty():
-			_state = State.CLEARING
-			_retire_runtime()
+	if _state in [State.WAITING, State.COMPLETED, State.ERROR]: return
+	# 复位后的新轮次必须等旧轮次全部退树；正常清波不暂停其他波的计时。
+	if _spawned == 0 and not _retiring.is_empty(): return
+	if not _clear_finished_waves(): return
+	if _spawned == _waves.size() and _runtime.is_empty():
+		_state = State.COMPLETED
+		encounter_completed.emit()
 		return
-	if _state == State.CLEARING:
-		var generation := _generation
-		wave_cleared.emit(_index + 1)
-		if generation != _generation or _state != State.CLEARING: return
-		if _index + 1 == _waves.size():
-			_state = State.COMPLETED
-			encounter_completed.emit()
-		else: _begin_wave(_index + 1)
+	if _state == State.ACTIVE or _state == State.CLEARING:
+		if _index + 1 < _waves.size() and (not _waves[_index + 1].wait_for_previous_clear or _cleared.has(_index)):
+			_begin_wave(_index + 1)
+		elif _runtime.has(_index) and _runtime[_index].retiring:
+			_state = State.CLEARING
+		else:
+			_state = State.ACTIVE
 		return
 	if _state != State.DELAY and _state != State.BLOCKED: return
 	_remaining = maxf(0.0, _remaining - maxf(delta, 0.0))
@@ -199,27 +205,49 @@ func advance_from_region(delta: float) -> void:
 	else:
 		_commit_wave()
 
+func _clear_finished_waves() -> bool:
+	var generation := _generation
+	for index in _runtime.keys():
+		var wave: Dictionary = _runtime[index]
+		if not wave.alive.is_empty(): continue
+		if not wave.retiring:
+			wave.retiring = true
+			_retire_deployments(wave.deployments)
+			continue
+		var exited := true
+		for deployment in wave.deployments:
+			if is_instance_valid(deployment.root): exited = false
+		if not exited: continue
+		_runtime.erase(index)
+		_cleared[index] = true
+		wave_cleared.emit(index + 1)
+		if generation != _generation or _state == State.ERROR or not _can_advance(): return false
+	return true
+
 func _can_advance() -> bool:
-	return is_inside_tree() and is_instance_valid(_region) and _region.is_inside_tree() and not get_tree().paused and _region.has_active_player()
+	return is_inside_tree() and is_instance_valid(_region) and _region.is_inside_tree() and not _region.is_queued_for_deletion() and not get_tree().paused and _region.has_active_player()
 
 func _commit_wave() -> void:
 	if not _can_advance(): return
 	_state = State.SPAWNING
 	_reason = ""
 	var generation := _generation
-	_runtime = _pending
+	var deployments := _pending
 	_pending = []
+	var wave := {"deployments": deployments, "alive": {}, "retiring": false}
+	_runtime[_index] = wave
 	# 所有身份和订阅先就位，任一成员在 ready 中死亡也不能提前清波。
-	for deployment in _runtime:
+	for deployment in deployments:
 		for enemy in deployment.members:
 			var id: int = enemy.get_instance_id()
 			var death := _on_member_died.bind(id, generation)
 			var leaving := _on_member_exiting.bind(id, generation)
-			_owned[id] = {"ref": weakref(enemy), "death": death, "leaving": leaving}
+			_owned[id] = {"ref": weakref(enemy), "death": death, "leaving": leaving, "wave": _index}
 			_alive[id] = true
+			wave.alive[id] = true
 			enemy.died.connect(death)
 			enemy.tree_exiting.connect(leaving)
-	for deployment in _runtime.duplicate():
+	for deployment in deployments:
 		if generation != _generation: return
 		var parent: Node = deployment.parent.get_ref()
 		if not is_instance_valid(parent) or not parent.is_inside_tree():
@@ -233,13 +261,19 @@ func _commit_wave() -> void:
 			_retire_runtime()
 			return
 		parent.move_child(deployment.root, mini(deployment.order, parent.get_child_count() - 1))
+	_spawned = _index + 1
 	_state = State.ACTIVE
 	wave_started.emit(_index + 1)
+	if generation != _generation or _state != State.ACTIVE: return
+	if _index + 1 < _waves.size() and not _waves[_index + 1].wait_for_previous_clear:
+		_begin_wave(_index + 1)
 
 func _on_member_died(id: int, generation: int) -> void:
 	if generation != _generation or not _alive.has(id): return
 	var enemy = _owned[id].ref.get_ref()
-	if is_instance_valid(enemy) and enemy.is_dead: _alive.erase(id)
+	if is_instance_valid(enemy) and enemy.is_dead:
+		_alive.erase(id)
+		_runtime[_owned[id].wave].alive.erase(id)
 
 func _on_member_exiting(id: int, generation: int) -> void:
 	if generation == _generation and _alive.has(id) and not _region.is_queued_for_deletion():
@@ -250,24 +284,30 @@ func reset_encounter() -> void:
 	_retire_runtime()
 	_free_pending()
 	_index = -1
+	_spawned = 0
+	_cleared.clear()
 	_remaining = 0.0
 	_reason = "; ".join(_configuration_errors)
 	_state = State.WAITING if _configuration_errors.is_empty() else State.ERROR
 
 func _retire_runtime() -> void:
-	for deployment in _runtime:
+	for wave in _runtime.values(): _retire_deployments(wave.deployments)
+	_runtime.clear()
+	_alive.clear()
+
+func _retire_deployments(deployments: Array[Dictionary]) -> void:
+	for deployment in deployments:
 		for enemy in deployment.members:
 			if not is_instance_valid(enemy): continue
 			var entry: Dictionary = _owned.get(enemy.get_instance_id(), {})
 			if entry.is_empty(): continue
 			if enemy.died.is_connected(entry.death): enemy.died.disconnect(entry.death)
 			if enemy.tree_exiting.is_connected(entry.leaving): enemy.tree_exiting.disconnect(entry.leaving)
+			_alive.erase(enemy.get_instance_id())
 		var instance: Node = deployment.root
-		if not is_instance_valid(instance): continue
+		if not is_instance_valid(instance) or instance.is_queued_for_deletion(): continue
 		_retiring.append(instance)
 		instance.queue_free()
-	_runtime.clear()
-	_alive.clear()
 
 func _collect_retired() -> void:
 	_retiring = _retiring.filter(func(node): return is_instance_valid(node))
@@ -291,9 +331,12 @@ func debug_snapshot() -> Dictionary:
 	var pending_count := 0
 	for deployment in _pending: pending_count += deployment.members.size()
 	if _state == State.DELAY or _state == State.BLOCKED: pending_count = _waves[_index].member_count
+	var active_waves: Array[int] = []
+	for index in _runtime:
+		if not _runtime[index].alive.is_empty(): active_waves.append(index + 1)
 	return {"captured": _captured, "wave_count": _waves.size(), "errors": _configuration_errors.duplicate(),
 		"state": State.keys()[_state], "status": STATE_NAMES[_state], "wave": _index + 1,
-		"alive": _alive.size(), "pending": pending_count, "remaining_seconds": _remaining, "reason": _reason}
+		"alive": _alive.size(), "active_waves": active_waves, "pending": pending_count, "remaining_seconds": _remaining, "reason": _reason}
 
 func _get_configuration_warnings() -> PackedStringArray:
 	var region := _nearest_region(self)

@@ -1,6 +1,6 @@
 # 项目目录结构
 
-波次系统（2026-10-25）：`world/enemy_wave_controller.gd` 在区域子树入树前捕获小队为内存场景快照，持有出场、死亡集合与清理状态；`enemy_wave_definition.gd` 保存波前延迟和可选已有小队引用；私有无循环辅助 `enemy_wave_spawn_check.gd` 只读检查本区导航、实际胶囊与同波占位。对应 `scenes/world/enemy_waves.tscn`／`enemy_wave.tscn` 提供编辑入口，第一关保留原 `Squad` 为首波并新增第二波示例。区域仍独占玩家进出检测和物理时钟，不改变 Squad、身体或 AI 职责。见[波次实施记录](superpowers/plans/2026-10-25-level-enemy-waves.md)。
+波次系统（2026-10-25）：`world/enemy_wave_controller.gd` 在区域子树入树前捕获小队为内存场景快照，按波分别持有出场、死亡集合与清理状态，支持多波同时在场；`enemy_wave_definition.gd` 保存等待上一波全灭开关、等待秒数和可选已有小队引用；私有无循环辅助 `enemy_wave_spawn_check.gd` 只读检查本区导航、实际胶囊与同波占位。对应 `scenes/world/enemy_waves.tscn`／`enemy_wave.tscn` 提供编辑入口，第一关保留原 `Squad` 为首波并新增第二波示例。区域仍独占玩家进出检测和物理时钟，不改变 Squad、身体或 AI 职责。见[波次实施记录](superpowers/plans/2026-10-25-level-enemy-waves.md)。
 
 协调器现按 [2026-10-23 完整重写计划](superpowers/plans/2026-10-23-squad-coordinator-rewrite.md)维护。旧调度器、个人选优中的团队耦合及其专用检查已退出；路径和被场景引用的 UID 保留。当前接口见 [敌人 AI](enemy-ai.md)。
 

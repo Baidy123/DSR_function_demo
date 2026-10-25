@@ -20,6 +20,8 @@ func _run() -> void:
 	root.get_node("DebugSettings").enabled = false
 	await _templates()
 	await _runtime_waves()
+	await _overlapping_waves()
+	await _mixed_wave_conditions()
 	await _safety_and_lifecycle()
 	await _actual_levels()
 	print("ENEMY WAVES: %d/%d passed" % [checks - failures, checks])
@@ -257,6 +259,106 @@ func _runtime_waves() -> void:
 	await _settle()
 	check(get_nodes_in_group("shot_listener").is_empty(), "卸载关卡清除全部近弹监听和运行实例")
 
+func _await_wave(controller: Node, index: int, frames: int = 90) -> bool:
+	for frame in frames:
+		if controller.debug_snapshot().active_waves.has(index): return true
+		if controller.debug_snapshot().state == "ERROR": return false
+		await _settle(1)
+	return controller.debug_snapshot().active_waves.has(index)
+
+func _overlapping_waves() -> void:
+	var region = _fixture()
+	var controller = region.get_node("EnemyWaves")
+	controller.get_node("Wave2").wait_for_previous_clear = false
+	controller.get_node("Wave2").start_delay_seconds = 0.4
+	var events := {"started": [], "cleared": [], "completed": 0}
+	controller.wave_started.connect(func(index):
+		events.started.append(index)
+		# 此用例验证调度；固定真实敌人位置，避免 AI 行走偶然占据下一波刷新点。
+		for enemy in region.enemies: enemy.set_physics_process(false))
+	controller.wave_cleared.connect(func(index): events.cleared.append(index))
+	controller.encounter_completed.connect(func(): events.completed += 1)
+	root.add_child(region)
+	current_scene = region
+	var player = region.get_node("Player")
+	player.set_physics_process(false)
+	player.get_node("Health").debug_invincible = true
+	check(await _await_wave(controller, 1) and controller.debug_snapshot().state == "DELAY", "定时模式从上一波实际出场开始计时")
+	await _settle(6)
+	check(events.started == [1] and controller.debug_snapshot().alive == 3 and controller.debug_snapshot().remaining_seconds > 0.0, "定时未到不提前生成，首波存活不阻止倒计时")
+	var remaining: float = controller.debug_snapshot().remaining_seconds
+	player.is_in_dialogue = true
+	await _settle(25)
+	check(is_equal_approx(remaining, controller.debug_snapshot().remaining_seconds) and events.started == [1], "对话冻结多波加入倒计时")
+	player.is_in_dialogue = false
+	paused = true
+	await _settle(5)
+	check(is_equal_approx(remaining, controller.debug_snapshot().remaining_seconds), "暂停冻结多波加入倒计时")
+	paused = false
+	check(await _await_wave(controller, 2) and controller.debug_snapshot().alive == 5 and controller.debug_snapshot().active_waves == [1, 2], "时间到后两波共五名敌人同时存在并各自计数")
+	for enemy in controller.get_node("Wave2/Squad").get_children(): enemy.receive_hit(10000.0)
+	await _settle(5)
+	check(events.cleared == [2] and events.completed == 0 and controller.debug_snapshot().alive == 3, "第二波先全灭只清理第二波，首波仍存活不能完成战斗")
+	for enemy in region.enemies.duplicate(): enemy.receive_hit(10000.0)
+	check(await _await_state(controller, "COMPLETED") and events.cleared == [2, 1] and events.completed == 1, "允许乱序清波，所有波次全灭后只完成一次")
+	controller.reset_encounter()
+	controller.start_encounter()
+	await _await_wave(controller, 1)
+	controller.reset_encounter()
+	await _settle(35)
+	check(controller.debug_snapshot().state == "WAITING" and region.enemies.is_empty() and events.started == [1, 2, 1], "倒计时期间复位取消尚未加入的波次")
+	controller.start_encounter()
+	await _await_wave(controller, 2)
+	var resets := [0]
+	for enemy in region.enemies: enemy.reset_completed.connect(func(): resets[0] += 1)
+	player.global_position = Vector3(30, 0, 0)
+	await _settle()
+	check(controller.debug_snapshot().state == "WAITING" and region.enemies.is_empty() and resets[0] == 0, "多波同时存在时离场统一回收，不复活任何旧成员")
+	region.queue_free()
+	await _settle()
+	check(get_nodes_in_group("shot_listener").is_empty(), "重叠波次卸载后没有遗留监听")
+
+func _mixed_wave_conditions() -> void:
+	var region = _fixture()
+	var controller = region.get_node("EnemyWaves")
+	controller.get_node("Wave1").start_delay_seconds = 0.15
+	controller.get_node("Wave1").wait_for_previous_clear = false
+	controller.get_node("Wave2").wait_for_previous_clear = false
+	var third = Wave.new()
+	third.name = "Wave3"
+	third.start_delay_seconds = 0.2
+	controller.add_child(third)
+	var squad = SquadScene.instantiate()
+	third.add_child(squad)
+	_add_member(squad, "Enemy", Vector3(6, 0, -5))
+	var started: Array = []
+	controller.wave_started.connect(func(index):
+		started.append(index)
+		for enemy in region.enemies: enemy.set_physics_process(false))
+	root.add_child(region)
+	current_scene = region
+	var player = region.get_node("Player")
+	player.set_physics_process(false)
+	player.get_node("Health").debug_invincible = true
+	await _settle(3)
+	check(started.is_empty(), "首波无上一波时仍遵守本轮开始后的等待秒数")
+	# 首波不占用后续刷新点，玩家占位会让0秒的第二波等待而非强刷。
+	player.global_position = Vector3(-2, 0, 3)
+	check(await _await_state(controller, "BLOCKED") and started == [1] and controller.debug_snapshot().alive == 3, "定时0秒允许尽快加入，但仍服从原位置的真实占位检查")
+	await _settle(20)
+	check(started == [1], "后续波不会越过尚未实际出场的受阻波次")
+	player.global_position = Vector3(0, 0, 7)
+	check(await _await_wave(controller, 2), "刷新点让开后定时波完整加入")
+	await _settle(20)
+	check(started == [1, 2], "等待全灭的第三波不会从第二波出场时提前计时")
+	for enemy in controller.get_node("Wave2/Squad").get_children(): enemy.receive_hit(10000.0)
+	await _settle(5)
+	check(started == [1, 2] and controller.debug_snapshot().state == "DELAY" and controller.debug_snapshot().remaining_seconds > 0.0, "上一波全灭后才开始第三波的等待秒数")
+	check(await _await_wave(controller, 3) and controller.debug_snapshot().active_waves == [1, 3], "等待上一波仅指相邻第二波，允许更早的首波仍存活")
+	region.queue_free()
+	await _settle()
+	check(get_nodes_in_group("shot_listener").is_empty(), "混合条件战斗中卸载清理所有存活波次")
+
 func _safety_and_lifecycle() -> void:
 	# 重叠、墙内、空波及重复引用均保持错误，不能偷偷跳过或宣布完成。
 	for problem in ["overlap", "wall", "empty", "duplicate", "loose_enemy"]:
@@ -413,7 +515,8 @@ func _editor_roundtrip() -> void:
 	EditorInterface.get_inspector().edit(wave)
 	for frame in 20: await process_frame
 	fields = _inspector_fields(EditorInterface.get_inspector(), wave)
-	check(fields.has("start_delay_seconds") and fields.has("existing_squads"), "波次检查器显示等待与可选已有小队引用")
+	check(fields.has("wait_for_previous_clear") and fields.has("start_delay_seconds") and fields.has("existing_squads"), "波次检查器显示全灭开关、等待秒数与可选已有小队引用")
+	wave.wait_for_previous_clear = false
 	wave.start_delay_seconds = 0.7
 	var enemy = wave.get_node("Squad/Enemy")
 	enemy.position += Vector3(0.4, 0, 0)
@@ -434,6 +537,7 @@ func _editor_roundtrip() -> void:
 		print("Saved wave order: ", waves.get_children().map(func(node): return str(node.name)))
 		check(waves.get_child_count() == 3 and waves.get_child(0).name == "CopiedWave", "保存重开保留复制出的波次与树顺序")
 		check(waves.get_node("Wave2/Squad/Enemy").transform.is_equal_approx(expected_pose) and is_equal_approx(waves.get_node("Wave2").start_delay_seconds, 0.7), "保存重开保留移动、朝向和等待参数")
+		check(not waves.get_node("Wave2").wait_for_previous_clear and not waves.get_node("CopiedWave").wait_for_previous_clear and waves.get_node("Wave1").wait_for_previous_clear, "保存、复制和重开保留定时加入选项，原有波次默认等全灭")
 		check(waves.get_node("Wave1").existing_squads == [NodePath("../../Squad")] and reopened.has_node("Squad/Enemy"), "保存重开保留兼容引用及原小队路径")
 		reopened.free()
 	EditorInterface.get_inspector().edit(null)
