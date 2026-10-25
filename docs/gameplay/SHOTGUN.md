@@ -41,7 +41,9 @@
 ## 两个独立预览场景
 
 - 打开 `scenes/presentation/shotgun_pattern_preview.tscn`，切到 **2D**，选中根节点 **ShotgunPatternPreview**。在“预览图样”分组的 **Pattern 1／2／3** 拖入 `ShotgunPattern.tres`，分别对应左／中／右面板；空槽显示“未指定图样”。替换槽位只是替换引用，不会把点复制进原图样文件。
-- 在根节点“独立预览参数”中修改 **Preview Stable Jitter Degrees／Preview Unstable Jitter Degrees**（稳定／不稳定时最大偏移）、**Preview Pattern Angle Degrees**（固定图样尺度）、**Preview Initial Stability**（初始稳定度）和 **Preview Distance M**（观察距离）。三栏共用这些数值，保存场景后保持；默认初值为 0.08°／0.55°、3°、100% 和 10 米。它们完全独立于实际武器 `.tres`，预览不再读取 `test_shotgun.tres`。
+- 在根节点“独立预览参数 → **预览图样覆盖范围**”中调整预览自己的**散布标定距离＋标定覆盖面积**，规则与武器相同：改距离保持面积，改面积保持距离，两者都改变固定散布。此控件替代原 `Preview Pattern Angle Degrees` 数值输入；下方显示三栏各自的固定落点尺寸。初始标定距离 4 米，面积沿用预览原角度计算，旧场景不自动改变散布。
+- 同一分组中的 **Preview Stable Jitter Degrees／Preview Unstable Jitter Degrees**（稳定／不稳定时最大偏移）、**Preview Initial Stability**（初始稳定度）和 **Preview Distance M**（观察距离）也由预览自己保存。默认偏移 0.08°／0.55°、角度 3°、稳定度 100%、观察距离 10 米。三个面板共用这些数值；保存／重开场景及原生撤销均保留预览自己的配置，所有参数都不读取或同步实际武器 `.tres`，只有图样槽引用落点资源。
+- **Preview Distance M** 和 F6 后的“预览观察距离”都支持输入 **1000 米及更大值**，最小为 0.1 米，不按武器的 `Fire Range` 截断。旧版的 30 米上限来自预览控件本身；它已解除。远距离落点超出原视野时，三个面板同时扩大米制比例尺，查看网格上的米数判断实际覆盖大小。
 - 检查器修改后 2D 预览自动更新。按 **F6** 后可滑动稳定度、修改观察距离，点击“试射”或按空格重新采样；运行时调整只影响本次试验，不自动保存回场景。空心圆是固定落点，实心点是本枪弹丸；算法仍与真实射击共用。观察距离仅决定显示哪个截面，与上文会改变枪械性能的“散布标定距离”分开。
 - 预览是 Control 界面，3D 视图没有模型。若编辑器画面显示不全，可缩小 2D 编辑器缩放。自定义点位仍在图样资源的画板编辑；预览调参和采样不写入武器或图样文件。
 - 打开 `scenes/presentation/shotgun_range.tscn` 按 **F6**：原玩家、相机和靶场的独立组合。右键瞄准、左键射击、R 换弹；1 是霰弹示例，2 是原副武器。训练靶的“命中次数”按整枪计，测试靶按实际命中弹丸累计扣血。离开靶区再进入可复位靶场。
@@ -104,10 +106,10 @@
 ## 维护与验证
 
 - `weapon_data.gd` 保留原资源类型，追加 Fire Mode 和可选 Shotgun 配置；只有霰弹读取新的稳定度设置。
-- `shotgun_settings.gd` 保存霰弹配置及标定距离，提供 `get_pattern_coverage_area()`、`calibration_angle_degrees(distance, area)` 和 `set_pattern_calibration(distance, area)`，统一换算、校验与原角度写入；无效组合不产生部分修改。`shotgun_pattern.gd` 保存图样，`shotgun_ballistics.gd` 负责采样、真实射线和近弹几何。它不消费弹药、不管理身体、AI 或受伤。
+- `shotgun_settings.gd` 保存霰弹配置及标定距离，提供 `get_pattern_coverage_area()`、`calibration_angle_degrees(distance, area)` 和 `set_pattern_calibration(distance, area)`，统一换算、校验与原角度写入；无效组合不产生部分修改。静态 `coverage_area_at(distance, angle)` 供预览复用无状态面积换算。`shotgun_pattern.gd` 保存图样，`shotgun_ballistics.gd` 负责采样、真实射线和近弹几何。它不消费弹药、不管理身体、AI 或受伤。
 - 原 `weapon_ammo.gd` 负责逐发计时／扣备弹，并提供只读 `reload_remaining_seconds()` 给 UI 和 AI；玩家 Combat 决定右键、射击、奔跑及切枪中断。
 - 原 `addons/weapon_mode_inspector/weapon_inspector.gd` 注册图样编辑器和覆盖控件；同目录 `shotgun_pattern_property.gd` 负责图样撤销和保存，`shotgun_pattern_canvas.gd` 只负责画点与鼠标交互，`shotgun_coverage_property.gd` 负责两个性能输入、原生整体撤销和尺寸显示。覆盖控件监听当前配置与图样的变更；替换 Pattern 发出配置通知，并解除旧图样监听。插件关闭不影响运行时资源读取。
-- `scripts/debug/shotgun_pattern_preview.gd` 保存三个导出资源槽与独立数值，在内存构造专用 ShotgunSettings 并调用原采样；原场景只保存根节点的图样引用／参数，生成 UI 不序列化。图样替换时解除旧信号，同图样多槽只监听一次。
+- `scripts/debug/shotgun_pattern_preview.gd` 保存三个导出资源槽与独立数值，在内存构造专用 ShotgunSettings 并调用原采样；标定距离 `preview_calibration_distance_m` 与原 `preview_pattern_angle_degrees` 持久化，面积由二者推导，加载时不重新标定。节点实现与武器配置同名的面积读取／标定接口，由原覆盖控件编辑并将一组操作加入场景撤销历史；共用算法不代表共享武器配置。原场景只保存根节点的图样引用／参数，生成 UI 不序列化。图样替换时解除旧信号，同图样多槽只监听一次。
 - 玩家与敌人在各自原射击入口增加霰弹分支，伤害和通知仍由各自执行。旧单弹分支保留。
 - `tests/shotgun_test.gd` 覆盖图样不缩放、各颗独立偏差、三维方向、序列化、遮挡、多目标、死亡前统一查询、一次结算、双边射击、切枪、换弹、半自动扳机与较长间隔。
 - `tests/shotgun_inspector_test.gd` 验证真实检查器的霰弹选项、参数显示、旧值保留和原生撤销／重做；以 `--headless --editor --script` 单独运行。
@@ -121,3 +123,5 @@
 2026-10-25 移除“载入图样”后的定向验证：以当前本地工程的独立副本运行图样编辑器专项，20/20 功能断言通过，覆盖画板、撤销、清空后绘制、保存、另存隔离及预览；三个原图样文件内容保持不变。无头编辑器退出仍有资源占用诊断，功能断言通过不代表退出日志无错误。
 
 2026-10-25 散布标定与独立预览：当前本地工程的隔离副本中，编辑器专项 59/59、预览运行时 12/12、原检查器兼容 10/10，测试目录检查通过。验证包含真实弹道投影、原生撤销、保存重载、图样替换／编辑后的自动刷新及资源隔离；原三个图样和示例武器文件哈希保持不变。渲染编辑器的启动 `current_window` 诊断及退出资源占用／泄漏诊断在修改前对照中同样出现；运行时专项无上述诊断。未跑全量 AI／战斗回归。实现边界及记录见[修改计划](../superpowers/plans/2026-10-25-shotgun-coverage-editor.md)。
+
+2026-10-25 预览独立标定与远距离补充：编辑器专项 **76/76**、预览运行时 **21/21**、旧武器检查器 **10/10**，测试目录检查通过。实际验证了预览启动不加载武器 `.tres`、距离／面积整组撤销、非默认场景配置保留、保存重载，以及武器射程改为 1 米时仍可查看 1000／2000 米落点。渲染界面确认了独立控件和远距离比例尺；保留前述编辑器启动／退出诊断，运行时专项无错误。提交仅含代码、测试和文档，保留本地另行保存的资源／场景参数。

@@ -99,6 +99,8 @@ func _run() -> void:
 	var preview = EditorInterface.get_edited_scene_root()
 	check(preview is Control and preview.size.x >= 1152 and preview.shots.size() == 3, "Preview scene draws its three panels in the editor without running F6")
 	check(preview.get_child_count() >= 4 and preview.status != null and not preview.status.text.is_empty(), "Editor preview contains visible labels and controls")
+	var saved_preview_angle: float = preview.preview_pattern_angle_degrees
+	var saved_preview_distance: float = preview.preview_calibration_distance_m
 	EditorInterface.edit_node(preview)
 	for frame in 20: await process_frame
 	for field in ["pattern_1", "pattern_2", "pattern_3", "preview_stable_jitter_degrees", "preview_unstable_jitter_degrees", "preview_pattern_angle_degrees"]:
@@ -110,7 +112,9 @@ func _run() -> void:
 	var scene_history = manager.get_history_undo_redo(manager.get_object_history_id(preview))
 	check(is_equal_approx(preview.preview_unstable_jitter_degrees, 0.9) and scene_history.undo() and is_equal_approx(preview.preview_unstable_jitter_degrees, initial_jitter), "Preview parameters use native scene undo")
 	check(scene_history.redo() and is_equal_approx(preview.preview_unstable_jitter_degrees, 0.9), "Preview parameters use native scene redo")
+	await _check_preview_calibration_controls(preview, manager, saved_preview_angle, saved_preview_distance)
 	await _check_preview(preview)
+	await _check_preview_calibration(preview)
 	var packed := PackedScene.new()
 	packed.pack(preview)
 	check(packed.get_state().get_node_count() == 1, "Tool preview does not serialize generated UI into the user's scene")
@@ -202,14 +206,92 @@ func _check_coverage(manager: EditorUndoRedoManager) -> void:
 	EditorInterface.get_inspector().edit(null)
 
 func _projected_extent(settings: ShotgunSettings, distance_m: float) -> Vector2:
+	return _offset_extent(Ballistics.sample_offsets(settings, 1, RandomNumberGenerator.new()), distance_m)
+
+func _offset_extent(offsets: PackedVector2Array, distance_m: float) -> Vector2:
 	var minimum := Vector2(INF, INF)
 	var maximum := Vector2(-INF, -INF)
-	var offsets := Ballistics.sample_offsets(settings, 1, RandomNumberGenerator.new())
 	for direction in Ballistics.directions(Vector3.FORWARD, offsets):
 		var projected := Vector2(direction.x, direction.y) * distance_m / -direction.z
 		minimum = minimum.min(projected)
 		maximum = maximum.max(projected)
 	return maximum - minimum
+
+func _check_preview_calibration_controls(preview, manager: EditorUndoRedoManager, saved_angle: float, saved_distance: float) -> void:
+	var control := _find_property(EditorInterface.get_inspector(), preview, "preview_pattern_angle_degrees")
+	check(control != null and control.get_script() == CoverageProperty, "Preview inspector exposes its own distance and area controls")
+	if control == null or control.get_script() != CoverageProperty: return
+	check(preview.preview_calibration_distance_m == saved_distance and preview.preview_pattern_angle_degrees == saved_angle, "Opening an existing preview preserves its saved independent calibration")
+	# 用户场景可以已调过参数；验证操作在隔离实例准备的四米基准上进行。
+	preview.set_pattern_calibration(4, ShotgunSettings.coverage_area_at(4, saved_angle))
+	var angle_before_edit: float = preview.preview_pattern_angle_degrees
+	control.area.value = 1
+	var angle_at_four: float = preview.preview_pattern_angle_degrees
+	check(preview.preview_calibration_distance_m == 4 and is_equal_approx(preview.get_pattern_coverage_area(), 1), "Preview area input keeps its calibration distance")
+	control.distance.value = 8
+	check(preview.preview_calibration_distance_m == 8 and is_equal_approx(preview.get_pattern_coverage_area(), 1) and preview.preview_pattern_angle_degrees < angle_at_four, "Preview distance input preserves area and tightens spread")
+	var history = manager.get_history_undo_redo(manager.get_object_history_id(preview))
+	check(history.undo() and preview.preview_calibration_distance_m == 4 and preview.preview_pattern_angle_degrees == angle_at_four, "Scene undo restores preview distance and angle as one operation")
+	check(history.undo() and preview.preview_calibration_distance_m == 4 and preview.preview_pattern_angle_degrees == angle_before_edit, "Scene undo also restores the previous preview area")
+	check(history.redo() and history.redo() and preview.preview_calibration_distance_m == 8 and is_equal_approx(preview.get_pattern_coverage_area(), 1), "Scene redo restores both independent calibration operations")
+	control.distance.value = 0.1
+	check(preview.preview_calibration_distance_m == 8 and control.status.visible, "Preview rejects an invalid calibration without changing saved values")
+	control._set_read_only(true)
+	control.area.value = 0
+	check(is_equal_approx(preview.get_pattern_coverage_area(), 1) and not control.area.editable and not control.distance.editable, "Read-only preview blocks both calibration inputs")
+	control._set_read_only(false)
+	control._update_property()
+	await process_frame
+
+func _check_preview_calibration(preview) -> void:
+	var pattern := ShotgunPattern.new()
+	pattern.points = PackedVector2Array([Vector2(-1, -1), Vector2(1, 1)])
+	ResourceSaver.save(pattern, "res://logs/shotgun_pattern_editor/calibration_pattern.tres", ResourceSaver.FLAG_CHANGE_PATH)
+	pattern.take_over_path("res://logs/shotgun_pattern_editor/calibration_pattern.tres")
+	preview.pattern_1 = pattern
+	preview.pattern_2 = null
+	preview.pattern_3 = pattern
+	preview.preview_stable_jitter_degrees = 0
+	preview.preview_unstable_jitter_degrees = 0
+	preview.preview_initial_stability = 1
+	preview.set_pattern_calibration(4, 1)
+	for frame in 3: await process_frame
+	check(_offset_extent(preview.shots[0], 4).is_equal_approx(Vector2.ONE), "Preview calibration changes sampled directions to one square meter at four meters")
+	preview.set_pattern_calibration(8, preview.get_pattern_coverage_area())
+	for frame in 3: await process_frame
+	check(_offset_extent(preview.shots[0], 4).is_equal_approx(Vector2.ONE * 0.5), "Independent preview distance changes the actual fixed spread")
+	var angle: float = preview.preview_pattern_angle_degrees
+	check(not preview.set_pattern_calibration(0, 1) and not preview.set_pattern_calibration(4, INF) and preview.preview_calibration_distance_m == 8 and preview.preview_pattern_angle_degrees == angle, "Preview calibration API rejects invalid pairs atomically")
+	var source_gun = load("res://resources/weapons/test_shotgun.tres")
+	var original_range: float = source_gun.fire_range
+	var original_angle: float = source_gun.shotgun.pattern_angle_degrees
+	var original_distance: float = source_gun.shotgun.pattern_calibration_distance_m
+	source_gun.fire_range = 1
+	preview.preview_distance_m = 1000
+	for frame in 3: await process_frame
+	check(preview.distance_m == 1000 and preview._distance_spin.value == 1000 and _offset_extent(preview.shots[0], preview.distance_m).is_equal_approx(Vector2.ONE * 125), "Thousand-meter preview ignores the actual weapon firing range")
+	preview._distance_spin.value = 2000
+	check(preview.distance_m == 2000 and preview.preview_distance_m == 1000, "Runtime distance input accepts values above one thousand meters without saving them")
+	preview.preview_distance_m = 2000
+	for frame in 3: await process_frame
+	var view_radius: float = preview.get_view_radius_m()
+	var fits := true
+	for offsets in preview.shots:
+		for offset in offsets:
+			var projected: Vector2 = preview._project(offset).abs()
+			fits = fits and maxf(projected.x, projected.y) < view_radius
+	check(view_radius > 1.8 and fits, "Far-distance panels use one expanded metric scale that contains every pellet")
+	check(source_gun.shotgun.pattern_angle_degrees == original_angle and source_gun.shotgun.pattern_calibration_distance_m == original_distance and pattern.points == PackedVector2Array([Vector2(-1, -1), Vector2(1, 1)]), "Preview calibration leaves weapon settings and shared pattern points unchanged")
+	source_gun.fire_range = original_range
+	var packed := PackedScene.new()
+	packed.pack(preview)
+	ResourceSaver.save(packed, "res://logs/shotgun_pattern_editor/calibrated_preview.tscn")
+	var restored = ResourceLoader.load("res://logs/shotgun_pattern_editor/calibrated_preview.tscn", "", ResourceLoader.CACHE_MODE_IGNORE).instantiate()
+	root.add_child(restored)
+	for frame in 3: await process_frame
+	check(restored.preview_calibration_distance_m == 8 and is_equal_approx(restored.get_pattern_coverage_area(), 1) and restored.distance_m == 2000 and _offset_extent(restored.shots[0], 4).is_equal_approx(Vector2.ONE * 0.5), "Scene reload preserves independent calibration and unrestricted observation distance")
+	restored.queue_free()
+	await process_frame
 
 func _check_preview(preview) -> void:
 	var child_count: int = preview.get_child_count()
@@ -284,7 +366,13 @@ func _run_preview_runtime() -> void:
 	DirAccess.make_dir_recursive_absolute("res://logs/shotgun_pattern_editor")
 	var preview = load("res://scenes/presentation/shotgun_pattern_preview.tscn").instantiate()
 	root.add_child(preview)
+	var loaded_weapon := false
+	for file in DirAccess.get_files_at("res://resources/weapons"):
+		if file.ends_with(".tres"):
+			loaded_weapon = loaded_weapon or ResourceLoader.has_cached("res://resources/weapons/" + file)
+	check(not loaded_weapon, "Starting the standalone preview loads no weapon resource files")
 	await _check_preview(preview)
+	await _check_preview_calibration(preview)
 	preview.queue_free()
 	await process_frame
 	print("SHOTGUN PREVIEW RUNTIME: %d/%d passed" % [checks - failed, checks])

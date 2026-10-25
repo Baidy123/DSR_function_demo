@@ -1,7 +1,12 @@
 @tool
 extends Control
 
+signal changed
+
 const Ballistics = preload("res://scripts/weapons/shotgun_ballistics.gd")
+
+# 与预览原角度一起保存。加载只恢复值，不因字段顺序重新标定。
+@export_storage var preview_calibration_distance_m: float = 4.0
 
 @export_group("预览图样（三个独立槽位）")
 ## 左侧图样。拖入 ShotgunPattern .tres；留空显示空面板，不会覆盖图样文件。
@@ -31,7 +36,7 @@ const Ballistics = preload("res://scripts/weapons/shotgun_ballistics.gd")
 	set(value):
 		preview_unstable_jitter_degrees = clampf(value, 0.0, 5.0)
 		_queue_refresh()
-## 三栏共用的固定图样尺度，独立于所有武器资源；不随稳定度变化。
+## 三栏共用的固定图样尺度；检查器用独立距离／面积标定，保存时保留原角度。
 @export_range(0.0, 15.0, 0.05, "suffix:°") var preview_pattern_angle_degrees: float = 3.0:
 	set(value):
 		preview_pattern_angle_degrees = clampf(value, 0.0, 15.0)
@@ -43,9 +48,10 @@ const Ballistics = preload("res://scripts/weapons/shotgun_ballistics.gd")
 		if is_node_ready(): stability = preview_initial_stability
 		_queue_refresh()
 ## 观察同一弹道在此距离的截面。只改变显示，不是枪械的散布标定距离。
-@export_range(0.1, 100.0, 0.1, "suffix:m") var preview_distance_m: float = 10.0:
+@export_range(0.1, 1000.0, 0.1, "or_greater", "suffix:m") var preview_distance_m: float = 10.0:
 	set(value):
-		preview_distance_m = clampf(value, 0.1, 100.0)
+		if not is_finite(value): return
+		preview_distance_m = maxf(0.1, value)
 		if is_node_ready(): distance_m = preview_distance_m
 		_queue_refresh()
 
@@ -70,7 +76,7 @@ func _ready() -> void:
 	title.add_theme_font_size_override("font_size", 28)
 	add_child(title)
 	var hint := Label.new()
-	hint.text = "空心圆：固定落点 · 实心点：本枪弹丸 · 选中预览根节点可拖入三个图样，并调整独立偏移参数"
+	hint.text = "空心圆：固定落点 · 实心点：本枪弹丸 · 选中预览根节点可拖入三个图样，调整独立覆盖与偏移参数"
 	hint.position = Vector2(32, 66)
 	add_child(hint)
 	var controls := HBoxContainer.new()
@@ -94,7 +100,8 @@ func _ready() -> void:
 	var distance := SpinBox.new()
 	_distance_spin = distance
 	distance.min_value = 0.1
-	distance.max_value = 100
+	distance.max_value = 1000
+	distance.allow_greater = true
 	distance.step = 0.1
 	distance.value = distance_m
 	controls.add_child(distance)
@@ -114,7 +121,20 @@ func get_patterns() -> Array[ShotgunPattern]:
 	return [pattern_1, pattern_2, pattern_3]
 
 
+func get_pattern_coverage_area() -> float:
+	return ShotgunSettings.coverage_area_at(preview_calibration_distance_m, preview_pattern_angle_degrees)
+
+
+func set_pattern_calibration(distance_meters: float, area_m2: float) -> bool:
+	var angle := ShotgunSettings.calibration_angle_degrees(distance_meters, area_m2)
+	if not is_finite(angle): return false
+	preview_calibration_distance_m = distance_meters
+	preview_pattern_angle_degrees = angle
+	return true
+
+
 func _queue_refresh() -> void:
+	changed.emit()
 	if not is_inside_tree() or not is_node_ready() or _refresh_queued: return
 	_refresh_queued = true
 	_refresh.call_deferred()
@@ -171,8 +191,9 @@ func _draw() -> void:
 	var width := (size.x - 80.0) / 3.0
 	var panel_height := maxf(240.0, size.y - 244.0)
 	var radius := minf(width - 28, panel_height - 70) * 0.5
-	# 每个图恒定显示左右各 1.8 米，调距离会真实扩大覆盖，而调精度不会缩放固定点。
-	var scale_m := radius / 1.8
+	# 三栏使用同一米制比例尺；远距离时扩大可视范围，不裁掉测试落点。
+	var view_radius := get_view_radius_m()
+	var scale_m := radius / view_radius
 	var patterns := get_patterns()
 	for index in patterns.size():
 		var rect := Rect2(24 + index * (width + 16), 208, width, panel_height)
@@ -181,7 +202,8 @@ func _draw() -> void:
 		var pattern := patterns[index]
 		draw_string(font, rect.position + Vector2(16, 30), pattern.display_name if pattern != null else "未指定图样", HORIZONTAL_ALIGNMENT_LEFT, -1, 21, Color("e8eef5"))
 		if pattern == null: continue
-		for ring in [0.5, 1.0, 1.5]:
+		for fraction in [0.5, 1.0, 1.5]:
+			var ring: float = fraction * view_radius / 1.8
 			draw_arc(center, ring * scale_m, 0, TAU, 64, Color("304052"), 1, true)
 			draw_string(font, center + Vector2(4, -ring * scale_m + 14), "%.1fm" % ring, HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color("8296ac"))
 		draw_line(center - Vector2(radius, 0), center + Vector2(radius, 0), Color("304052"))
@@ -191,12 +213,27 @@ func _draw() -> void:
 			draw_arc(position_2d, 7, 0, TAU, 24, Color("6f879d"), 1.5, true)
 		for offset in shots[index]:
 			draw_circle(center + _project(offset) * scale_m, 4, Color("5de0ba"), true, -1, true)
-	var footer := "越远覆盖越大；稳定度只改变每颗弹丸的偏差。实际开枪试玩：shotgun_range.tscn"
+	var footer := "观察截面 %.1f m · 标定 %.1f m / %.3f m² · 三栏同一比例尺，远距离自动扩大视野" % [distance_m, preview_calibration_distance_m, get_pattern_coverage_area()]
 	draw_string(font, Vector2(32, size.y - 16), footer, HORIZONTAL_ALIGNMENT_LEFT, -1, 16, Color("9db0c4"))
 
 
 func _project(offset: Vector2) -> Vector2:
 	return Vector2(tan(deg_to_rad(offset.x)), -tan(deg_to_rad(offset.y))) * distance_m
+
+
+func get_view_radius_m() -> float:
+	var required := 1.8
+	for pattern in get_patterns():
+		if pattern == null: continue
+		for point in pattern.valid_points():
+			var projected := _project(point * preview_pattern_angle_degrees).abs()
+			required = maxf(required, maxf(projected.x, projected.y) * 1.15)
+	for offsets in shots:
+		for offset in offsets:
+			var projected := _project(offset).abs()
+			required = maxf(required, maxf(projected.x, projected.y) * 1.15)
+	# 按倍数扩展，减少微小随机偏移引起的比例尺变动。
+	return 1.8 * pow(2.0, ceil(log(required / 1.8) / log(2.0)))
 
 
 func _panel_style() -> StyleBoxFlat:

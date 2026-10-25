@@ -1,6 +1,6 @@
 # 项目目录结构
 
-霰弹标定与独立预览（2026-10-25）：原 `ShotgunSettings` 保存标定距离并集中换算／校验，继续用原角度驱动弹道；`addons/weapon_mode_inspector/shotgun_coverage_property.gd` 接入原检查器，负责距离、面积和整体撤销，不另建插件入口。原 `scripts/debug/shotgun_pattern_preview.gd` 导出三个图样槽及独立数值，内部构造专用配置并调用原采样；同名场景只保存根节点的引用和参数，不保存生成的 UI。武器随机偏移、图样格式、运行时射击和原 UID 保留，见[霰弹说明](gameplay/SHOTGUN.md)。
+霰弹标定与独立预览（2026-10-25）：原 `ShotgunSettings` 保存标定距离并集中换算／校验，继续用原角度驱动弹道；`addons/weapon_mode_inspector/shotgun_coverage_property.gd` 在原检查器中供武器配置与预览节点复用，负责距离、面积和整体撤销，不另建插件入口。原 `scripts/debug/shotgun_pattern_preview.gd` 保存三个图样槽、独立标定距离／角度及偏移等数值，内部构造专用配置并调用原采样；观察距离可超过 1000 米，三栏共用可自动扩展的米制比例尺。同名场景只保存根节点的引用和参数，不保存生成的 UI；除图样引用外不读取武器 `.tres`。武器随机偏移、图样格式、运行时射击和原 UID 保留，见[霰弹说明](gameplay/SHOTGUN.md)。
 
 方向跟枪（2026-10-25）：原 `scripts/player/player_combat_v3.gd` 内部按目标水平位移相对瞄准连线计算有效横向距离／速度，同时决定跟枪损失和恢复限制；`tracking_parallel_tolerance_degrees` 只在玩家 Combat 配置。继续读取原 `WeaponData.get_aim_settings()`，不增加跟枪组件、不修改节点／资源引用或敌人 AI。暂停／恢复清理位置样本，真实玩家帧流程由 `tests/directional_tracking_test.gd` 验证。完成记录见[方向跟枪设计](superpowers/specs/2026-10-25-directional-tracking-accuracy-design.md)。
 

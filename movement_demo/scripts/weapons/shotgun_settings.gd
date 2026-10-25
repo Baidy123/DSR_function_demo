@@ -88,7 +88,12 @@ func get_pattern_points() -> PackedVector2Array:
 
 ## 标定距离处整个正方形画板的面积，含空白，不包含随机偏移。
 func get_pattern_coverage_area() -> float:
-	var side := 2.0 * pattern_calibration_distance_m * tan(deg_to_rad(clampf(pattern_angle_degrees, 0.0, MAX_PATTERN_ANGLE_DEGREES)))
+	return coverage_area_at(pattern_calibration_distance_m, pattern_angle_degrees)
+
+
+## 无状态换算，预览可复用算法而不读取任何武器资源。
+static func coverage_area_at(distance_m: float, angle_degrees: float) -> float:
+	var side := 2.0 * distance_m * tan(deg_to_rad(clampf(angle_degrees, 0.0, MAX_PATTERN_ANGLE_DEGREES)))
 	return side * side
 
 
