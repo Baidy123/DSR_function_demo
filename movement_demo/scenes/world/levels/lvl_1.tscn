@@ -1,73 +1,91 @@
-[gd_scene format=3]
+[gd_scene format=3 uid="uid://leinulq0tqt6"]
 
 [ext_resource type="PackedScene" path="res://scenes/world/cover.tscn" id="1_full"]
-[ext_resource type="PackedScene" path="res://scenes/world/low_cover.tscn" id="2_low"]
-
-[ext_resource type="Script" path="res://scripts/world/shooting_range.gd" id="area"]
-[ext_resource type="Script" path="res://scripts/world/zone_volume.gd" id="zone"]
+[ext_resource type="PackedScene" uid="uid://cwypieei7ftdf" path="res://scenes/player/player_camera_rig.tscn" id="2_4utna"]
+[ext_resource type="PackedScene" uid="uid://ruy4wd5vjpqt" path="res://scenes/world/low_cover.tscn" id="2_low"]
+[ext_resource type="Script" uid="uid://diiq6ykcwp66s" path="res://scripts/player/player.gd" id="3_te51n"]
+[ext_resource type="Script" uid="uid://bxfli5ujmf35g" path="res://scripts/systems/presentation/visual_presentation.gd" id="4_xeexr"]
+[ext_resource type="PackedScene" uid="uid://bo1umuc15khr4" path="res://scenes/player/combat.tscn" id="5_jjvc5"]
+[ext_resource type="PackedScene" path="res://scenes/player/player_weapon_slots.tscn" id="6_0l8lu"]
+[ext_resource type="Resource" path="res://resources/enemy/cooperation/intel_only.tres" id="6_rjb0k"]
+[ext_resource type="PackedScene" path="res://scenes/player/player_health.tscn" id="7_gui0x"]
+[ext_resource type="PackedScene" uid="uid://dlqqj3q00vsu3" path="res://scenes/enemy/levels/lvl_1/melee.tscn" id="7_rjb0k"]
+[ext_resource type="Script" uid="uid://k0q37ja4h4tl" path="res://scripts/player/player_presentation.gd" id="8_l44ss"]
+[ext_resource type="Script" uid="uid://dw52opl8k324b" path="res://scripts/systems/effects/impact_receiver.gd" id="9_4h0md"]
+[ext_resource type="Script" uid="uid://cqdvipxtj05rx" path="res://scripts/enemy/config/cooperation_settings.gd" id="19_0l8lu"]
+[ext_resource type="Script" uid="uid://dcc2vkow4q8cl" path="res://scripts/world/shooting_range.gd" id="area"]
+[ext_resource type="PackedScene" path="res://scenes/world/enemy_wave.tscn" id="enemy_wave"]
+[ext_resource type="PackedScene" path="res://scenes/world/enemy_waves.tscn" id="enemy_waves"]
+[ext_resource type="NavigationMesh" uid="uid://btxb3k7w6l2on" path="res://resources/navigation/lvl_1_navigation.tres" id="navigation"]
 [ext_resource type="PackedScene" path="res://scenes/world/squad.tscn" id="squad"]
-[ext_resource type="Script" path="res://scripts/enemy/config/cooperation_settings.gd" id="profile"]
-[ext_resource type="NavigationMesh" path="res://resources/navigation/lvl_1_navigation.tres" id="navigation"]
+[ext_resource type="Script" uid="uid://by7iy6ibrwkth" path="res://scripts/world/zone_volume.gd" id="zone"]
+
+[sub_resource type="CapsuleShape3D" id="PlayerShape"]
+radius = 0.35
+height = 1.75
+
+[sub_resource type="StandardMaterial3D" id="PlayerMaterial"]
+albedo_color = Color(0.15, 0.65, 0.8, 1)
+
+[sub_resource type="CapsuleMesh" id="PlayerMesh"]
+material = SubResource("PlayerMaterial")
+radius = 0.35
+height = 1.75
+
+[sub_resource type="StandardMaterial3D" id="FrontMaterial"]
+albedo_color = Color(1, 0.75, 0.12, 1)
+
+[sub_resource type="BoxMesh" id="FrontMesh"]
+material = SubResource("FrontMaterial")
+size = Vector3(0.2, 0.2, 0.55)
 
 [sub_resource type="BoxShape3D" id="CombatZoneShape"]
 size = Vector3(13.875, 3, 13.875)
 
-[sub_resource type="Resource" id="SquadProfile"]
-resource_local_to_scene = true
-script = ExtResource("profile")
-level = 0
-
 [sub_resource type="StandardMaterial3D" id="Material_FullCover"]
 albedo_color = Color(0.423529, 0.462745, 0.498039, 1)
-roughness = 1.0
+
+[sub_resource type="BoxMesh" id="BoxMesh_gui0x"]
+resource_local_to_scene = true
+material = SubResource("Material_FullCover")
+size = Vector3(3.3, 2.2, 5.55)
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_l44ss"]
+resource_local_to_scene = true
+size = Vector3(3.3, 2.2, 5.55)
+
+[sub_resource type="BoxMesh" id="BoxMesh_4h0md"]
+resource_local_to_scene = true
+material = SubResource("Material_FullCover")
+size = Vector3(4.1625, 2.2, 2.325)
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_aj3c5"]
+resource_local_to_scene = true
+size = Vector3(4.1625, 2.2, 2.325)
 
 [sub_resource type="StandardMaterial3D" id="Material_HalfCover"]
 albedo_color = Color(0.752941, 0.796078, 0.823529, 1)
-roughness = 1.0
+
+[sub_resource type="BoxMesh" id="BoxMesh_miwfg"]
+resource_local_to_scene = true
+material = SubResource("Material_HalfCover")
+size = Vector3(2.4, 1.1, 0.4875)
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_8km40"]
+resource_local_to_scene = true
+size = Vector3(2.4, 1.1, 0.4875)
+
+[sub_resource type="BoxMesh" id="BoxMesh_qriv1"]
+resource_local_to_scene = true
+material = SubResource("Material_HalfCover")
+size = Vector3(1.9875, 1.1, 0.4875)
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_k23dc"]
+resource_local_to_scene = true
+size = Vector3(1.9875, 1.1, 0.4875)
 
 [sub_resource type="StandardMaterial3D" id="Material_Boundary"]
 albedo_color = Color(0.313725, 0.360784, 0.4, 1)
-roughness = 1.0
-
-[sub_resource type="StandardMaterial3D" id="Material_Ground"]
-albedo_color = Color(0.898039, 0.894118, 0.870588, 1)
-roughness = 1.0
-
-[sub_resource type="BoxMesh" id="Mesh_FullCover_FullCover01"]
-resource_local_to_scene = true
-material = SubResource("Material_FullCover")
-size = Vector3(3.3, 2.2, 5.55)
-
-[sub_resource type="BoxShape3D" id="Shape_FullCover_FullCover01"]
-resource_local_to_scene = true
-size = Vector3(3.3, 2.2, 5.55)
-
-[sub_resource type="BoxMesh" id="Mesh_FullCover_FullCover02"]
-resource_local_to_scene = true
-material = SubResource("Material_FullCover")
-size = Vector3(4.1625, 2.2, 2.325)
-
-[sub_resource type="BoxShape3D" id="Shape_FullCover_FullCover02"]
-resource_local_to_scene = true
-size = Vector3(4.1625, 2.2, 2.325)
-
-[sub_resource type="BoxMesh" id="Mesh_HalfCover_HalfCover01"]
-resource_local_to_scene = true
-material = SubResource("Material_HalfCover")
-size = Vector3(2.4, 1.1, 0.4875)
-
-[sub_resource type="BoxShape3D" id="Shape_HalfCover_HalfCover01"]
-resource_local_to_scene = true
-size = Vector3(2.4, 1.1, 0.4875)
-
-[sub_resource type="BoxMesh" id="Mesh_HalfCover_HalfCover02"]
-resource_local_to_scene = true
-material = SubResource("Material_HalfCover")
-size = Vector3(1.9875, 1.1, 0.4875)
-
-[sub_resource type="BoxShape3D" id="Shape_HalfCover_HalfCover02"]
-resource_local_to_scene = true
-size = Vector3(1.9875, 1.1, 0.4875)
 
 [sub_resource type="BoxMesh" id="Mesh_Boundary_North"]
 resource_local_to_scene = true
@@ -105,6 +123,9 @@ size = Vector3(0.225, 2.2, 13.875)
 resource_local_to_scene = true
 size = Vector3(0.225, 2.2, 13.875)
 
+[sub_resource type="StandardMaterial3D" id="Material_Ground"]
+albedo_color = Color(0.898039, 0.894118, 0.870588, 1)
+
 [sub_resource type="BoxMesh" id="Mesh_Ground_Floor"]
 resource_local_to_scene = true
 material = SubResource("Material_Ground")
@@ -114,126 +135,229 @@ size = Vector3(14.325, 0.2, 14.325)
 resource_local_to_scene = true
 size = Vector3(14.325, 0.2, 14.325)
 
-[node name="Lvl1" type="Node3D"]
+[sub_resource type="Resource" id="Resource_psy3o"]
+script = ExtResource("19_0l8lu")
+overridden = PackedStringArray()
+
+[node name="Lvl1" type="Node3D" unique_id=1185950665]
 script = ExtResource("area")
 metadata/source_svg = "res://scenes/Lvl_1.svg"
 metadata/meters_per_svg_unit = 0.0375
 metadata/interior_size = Vector2(13.875, 13.875)
 
-[node name="CombatZone" type="Area3D" parent="." groups=["combat_zone"]]
-position = Vector3(0, 1, 0)
+[node name="Camera3D" parent="." unique_id=1669516944 instance=ExtResource("2_4utna")]
+
+[node name="Player" type="CharacterBody3D" parent="." unique_id=670735899 groups=["player"]]
+transform = Transform3D(0.9985905, 0, -0.053075872, 0, 1, 0, 0.053075872, 0, 0.9985905, -0.04336703, 0, 5.884724)
+script = ExtResource("3_te51n")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="Player" unique_id=687756893]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.875, 0)
+shape = SubResource("PlayerShape")
+
+[node name="Visual" type="Node3D" parent="Player" unique_id=848791692]
+
+[node name="Body" type="MeshInstance3D" parent="Player/Visual" unique_id=1697539159]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.875, 0)
+mesh = SubResource("PlayerMesh")
+
+[node name="FrontMarker" type="MeshInstance3D" parent="Player/Visual" unique_id=787181665]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.35, -0.4)
+mesh = SubResource("FrontMesh")
+
+[node name="Presentation" type="Node3D" parent="Player/Visual" unique_id=598926847]
+script = ExtResource("4_xeexr")
+placeholder_paths = Array[NodePath]([NodePath("../Body"), NodePath("../FrontMarker")])
+death_during_pause = true
+
+[node name="Combat" parent="Player" unique_id=943451104 instance=ExtResource("5_jjvc5")]
+sprint_reload_speed_multiplier = 0.7999999999999999
+
+[node name="Equipment" parent="Player" unique_id=1929872714 instance=ExtResource("6_0l8lu")]
+secondary_weapon = null
+starting_rifle_ammo = 90
+starting_pistol_ammo = 24
+starting_smg_ammo = 120
+starting_shotgun_ammo = 24
+
+[node name="Health" parent="Player" unique_id=550391103 instance=ExtResource("7_gui0x")]
+
+[node name="PlayerPresentation" type="Node" parent="Player" unique_id=564109252]
+script = ExtResource("8_l44ss")
+
+[node name="ImpactReceiver" type="Node" parent="Player" unique_id=149231679]
+script = ExtResource("9_4h0md")
+
+[node name="CombatZone" type="Area3D" parent="." unique_id=1926276360 groups=["combat_zone"]]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1, 0)
 collision_layer = 0
-collision_mask = 1
 script = ExtResource("zone")
 zone_id = &"lvl_1"
 
-[node name="CollisionShape3D" type="CollisionShape3D" parent="CombatZone"]
+[node name="CollisionShape3D" type="CollisionShape3D" parent="CombatZone" unique_id=505208801]
 shape = SubResource("CombatZoneShape")
 
-[node name="Squad" parent="." instance=ExtResource("squad")]
-profile = SubResource("SquadProfile")
+[node name="Squad" parent="." unique_id=710703115 instance=ExtResource("squad")]
+profile = ExtResource("6_rjb0k")
 
-[node name="NavigationRegion3D" type="NavigationRegion3D" parent="."]
+[node name="Enemy" parent="Squad" unique_id=134263749 instance=ExtResource("7_rjb0k")]
+transform = Transform3D(-0.9659258, 0, 0.25881907, 0, 1, 0, -0.25881907, 0, -0.9659258, -5.5312824, 0, -5.0484543)
+
+[node name="Enemy2" parent="Squad" unique_id=819321781 instance=ExtResource("7_rjb0k")]
+transform = Transform3D(-0.8660254, 0, 0.50000006, 0, 1, 0, -0.50000006, 0, -0.8660254, 3.8644714, 0, -4.411445)
+
+[node name="NavigationRegion3D" type="NavigationRegion3D" parent="." unique_id=1413573754]
+transform = Transform3D(-1, 0, -8.742278e-08, 0, 1, 0, 8.742278e-08, 0, -1, 0, 0, 0)
 navigation_mesh = ExtResource("navigation")
 
-[node name="Environment" type="Node3D" parent="NavigationRegion3D"]
+[node name="Environment" type="Node3D" parent="NavigationRegion3D" unique_id=568010096]
 
-[node name="FullCover" type="Node3D" parent="NavigationRegion3D/Environment"]
+[node name="FullCover" type="Node3D" parent="NavigationRegion3D/Environment" unique_id=84752858]
 
-[node name="FullCover01" parent="NavigationRegion3D/Environment/FullCover" instance=ExtResource("1_full")]
-position = Vector3(-2.1, 1.1, -0.675)
+[node name="FullCover01" parent="NavigationRegion3D/Environment/FullCover" unique_id=2100242945 instance=ExtResource("1_full")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -2.1, 1.1, -0.675)
 metadata/source_rect = Rect2(100, 108, 88, 148)
 
 [node name="Mesh" parent="NavigationRegion3D/Environment/FullCover/FullCover01" index="0"]
-mesh = SubResource("Mesh_FullCover_FullCover01")
+mesh = SubResource("BoxMesh_gui0x")
 
 [node name="CollisionShape3D" parent="NavigationRegion3D/Environment/FullCover/FullCover01" index="1"]
-shape = SubResource("Shape_FullCover_FullCover01")
+shape = SubResource("BoxShape3D_l44ss")
 
-[node name="FullCover02" parent="NavigationRegion3D/Environment/FullCover" instance=ExtResource("1_full")]
-position = Vector3(3.46875, 1.1, 0.3)
+[node name="NavigationBakeObstacle" parent="NavigationRegion3D/Environment/FullCover/FullCover01" index="4"]
+transform = Transform3D(1.0000043, 0, 1.7881393e-07, 0, 1, 0, -1.7881393e-07, 0, 1.0000043, 0, -1.6, 0)
+height = 3.2
+vertices = PackedVector3Array(-1.6499922, 0, -2.7749887, 1.6499933, 0, -2.7749882, 1.6499922, 0, 2.7749882, -1.6499934, 0, 2.7749877)
+
+[node name="FullCover02" parent="NavigationRegion3D/Environment/FullCover" unique_id=450071025 instance=ExtResource("1_full")]
+transform = Transform3D(0.4999999, 0, 0.8660253, 0, 1, 0, -0.8660253, 0, 0.4999999, 3.5061505, 1.1, -0.6764204)
 metadata/source_rect = Rect2(237, 177, 111, 62)
 
 [node name="Mesh" parent="NavigationRegion3D/Environment/FullCover/FullCover02" index="0"]
-mesh = SubResource("Mesh_FullCover_FullCover02")
+mesh = SubResource("BoxMesh_4h0md")
 
 [node name="CollisionShape3D" parent="NavigationRegion3D/Environment/FullCover/FullCover02" index="1"]
-shape = SubResource("Shape_FullCover_FullCover02")
+shape = SubResource("BoxShape3D_aj3c5")
 
-[node name="HalfCover" type="Node3D" parent="NavigationRegion3D/Environment"]
+[node name="NavigationBakeObstacle" parent="NavigationRegion3D/Environment/FullCover/FullCover02" index="4"]
+transform = Transform3D(1.0000043, 0, 2.682209e-07, 0, 1, 0, -2.682209e-07, 0, 1.0000043, 0, -1.6, 0)
+height = 3.2
+vertices = PackedVector3Array(-2.0812407, 0, -1.1624955, 2.0812411, 0, -1.1624945, 2.0812407, 0, 1.1624956, -2.0812414, 0, 1.1624944)
 
-[node name="HalfCover01" parent="NavigationRegion3D/Environment/HalfCover" instance=ExtResource("2_low")]
-position = Vector3(-4.05, 0.55, 3.65625)
+[node name="HalfCover" type="Node3D" parent="NavigationRegion3D/Environment" unique_id=1639875686]
+
+[node name="HalfCover01" parent="NavigationRegion3D/Environment/HalfCover" unique_id=1809943969 instance=ExtResource("2_low")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -5.407842, 0.55, -1.1270483)
 metadata/source_rect = Rect2(60, 291, 64, 13)
 
 [node name="Mesh" parent="NavigationRegion3D/Environment/HalfCover/HalfCover01" index="0"]
-mesh = SubResource("Mesh_HalfCover_HalfCover01")
+mesh = SubResource("BoxMesh_miwfg")
 
 [node name="CollisionShape3D" parent="NavigationRegion3D/Environment/HalfCover/HalfCover01" index="1"]
-shape = SubResource("Shape_HalfCover_HalfCover01")
+shape = SubResource("BoxShape3D_8km40")
 
-[node name="HalfCover02" parent="NavigationRegion3D/Environment/HalfCover" instance=ExtResource("2_low")]
-position = Vector3(3.20625, 0.55, 3.58125)
+[node name="NavigationBakeObstacle" parent="NavigationRegion3D/Environment/HalfCover/HalfCover01" index="4"]
+transform = Transform3D(1.0000043, 0, 1.7881393e-07, 0, 1, 0, -1.7881393e-07, 0, 1.0000043, 0, -1.05, 0)
+height = 2.1
+vertices = PackedVector3Array(-1.1999955, 0, -0.24374926, 1.199995, 0, -0.24374878, 1.1999946, 0, 0.24374914, -1.199996, 0, 0.24374866)
+
+[node name="HalfCover02" parent="NavigationRegion3D/Environment/HalfCover" unique_id=854074041 instance=ExtResource("2_low")]
+transform = Transform3D(-4.371139e-08, 0, 1, 0, 1, 0, -1, 0, -4.371139e-08, 3.8773463, 0.55, 4.206644)
 metadata/source_rect = Rect2(259, 289, 53, 13)
 
 [node name="Mesh" parent="NavigationRegion3D/Environment/HalfCover/HalfCover02" index="0"]
-mesh = SubResource("Mesh_HalfCover_HalfCover02")
+mesh = SubResource("BoxMesh_qriv1")
 
 [node name="CollisionShape3D" parent="NavigationRegion3D/Environment/HalfCover/HalfCover02" index="1"]
-shape = SubResource("Shape_HalfCover_HalfCover02")
+shape = SubResource("BoxShape3D_k23dc")
 
-[node name="Walls" type="Node3D" parent="NavigationRegion3D/Environment"]
+[node name="NavigationBakeObstacle" parent="NavigationRegion3D/Environment/HalfCover/HalfCover02" index="4"]
+transform = Transform3D(1.0000049, 0, -5.066395e-07, 0, 1, 0, 5.066395e-07, 0, 1.0000049, 0, -1.05, 0)
+height = 2.1
+vertices = PackedVector3Array(-0.9937453, 0, -0.24374843, 0.9937451, 0, -0.24374938, 0.9937453, 0, 0.24374843, -0.9937453, 0, 0.24374938)
 
-[node name="Boundary" type="Node3D" parent="NavigationRegion3D/Environment"]
+[node name="Walls" type="Node3D" parent="NavigationRegion3D/Environment" unique_id=1378968302]
 
-[node name="North" type="StaticBody3D" parent="NavigationRegion3D/Environment/Boundary"]
-position = Vector3(0, 1.1, -7.05)
+[node name="Boundary" type="Node3D" parent="NavigationRegion3D/Environment" unique_id=440324307]
 
-[node name="Mesh" type="MeshInstance3D" parent="NavigationRegion3D/Environment/Boundary/North"]
+[node name="North" type="StaticBody3D" parent="NavigationRegion3D/Environment/Boundary" unique_id=1248115343]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.1, -7.05)
+
+[node name="Mesh" type="MeshInstance3D" parent="NavigationRegion3D/Environment/Boundary/North" unique_id=923615558]
 mesh = SubResource("Mesh_Boundary_North")
 
-[node name="CollisionShape3D" type="CollisionShape3D" parent="NavigationRegion3D/Environment/Boundary/North"]
+[node name="CollisionShape3D" type="CollisionShape3D" parent="NavigationRegion3D/Environment/Boundary/North" unique_id=1637445023]
 shape = SubResource("Shape_Boundary_North")
 
-[node name="South" type="StaticBody3D" parent="NavigationRegion3D/Environment/Boundary"]
-position = Vector3(0, 1.1, 7.05)
+[node name="South" type="StaticBody3D" parent="NavigationRegion3D/Environment/Boundary" unique_id=246171429]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.1, 7.05)
 
-[node name="Mesh" type="MeshInstance3D" parent="NavigationRegion3D/Environment/Boundary/South"]
+[node name="Mesh" type="MeshInstance3D" parent="NavigationRegion3D/Environment/Boundary/South" unique_id=311408062]
 mesh = SubResource("Mesh_Boundary_South")
 
-[node name="CollisionShape3D" type="CollisionShape3D" parent="NavigationRegion3D/Environment/Boundary/South"]
+[node name="CollisionShape3D" type="CollisionShape3D" parent="NavigationRegion3D/Environment/Boundary/South" unique_id=2118669636]
 shape = SubResource("Shape_Boundary_South")
 
-[node name="West" type="StaticBody3D" parent="NavigationRegion3D/Environment/Boundary"]
-position = Vector3(-7.05, 1.1, 0)
+[node name="West" type="StaticBody3D" parent="NavigationRegion3D/Environment/Boundary" unique_id=1688080019]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -7.05, 1.1, 0)
 
-[node name="Mesh" type="MeshInstance3D" parent="NavigationRegion3D/Environment/Boundary/West"]
+[node name="Mesh" type="MeshInstance3D" parent="NavigationRegion3D/Environment/Boundary/West" unique_id=987365615]
 mesh = SubResource("Mesh_Boundary_West")
 
-[node name="CollisionShape3D" type="CollisionShape3D" parent="NavigationRegion3D/Environment/Boundary/West"]
+[node name="CollisionShape3D" type="CollisionShape3D" parent="NavigationRegion3D/Environment/Boundary/West" unique_id=548368255]
 shape = SubResource("Shape_Boundary_West")
 
-[node name="East" type="StaticBody3D" parent="NavigationRegion3D/Environment/Boundary"]
-position = Vector3(7.05, 1.1, 0)
+[node name="East" type="StaticBody3D" parent="NavigationRegion3D/Environment/Boundary" unique_id=1131380989]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 7.05, 1.1, 0)
 
-[node name="Mesh" type="MeshInstance3D" parent="NavigationRegion3D/Environment/Boundary/East"]
+[node name="Mesh" type="MeshInstance3D" parent="NavigationRegion3D/Environment/Boundary/East" unique_id=710767959]
 mesh = SubResource("Mesh_Boundary_East")
 
-[node name="CollisionShape3D" type="CollisionShape3D" parent="NavigationRegion3D/Environment/Boundary/East"]
+[node name="CollisionShape3D" type="CollisionShape3D" parent="NavigationRegion3D/Environment/Boundary/East" unique_id=1500269872]
 shape = SubResource("Shape_Boundary_East")
 
-[node name="Ground" type="Node3D" parent="NavigationRegion3D/Environment"]
+[node name="Ground" type="Node3D" parent="NavigationRegion3D/Environment" unique_id=89858840]
 
-[node name="Floor" type="StaticBody3D" parent="NavigationRegion3D/Environment/Ground"]
-position = Vector3(0, -0.1, 0)
+[node name="Floor" type="StaticBody3D" parent="NavigationRegion3D/Environment/Ground" unique_id=1176652815]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.1, 0)
 
-[node name="Mesh" type="MeshInstance3D" parent="NavigationRegion3D/Environment/Ground/Floor"]
+[node name="Mesh" type="MeshInstance3D" parent="NavigationRegion3D/Environment/Ground/Floor" unique_id=991839421]
 mesh = SubResource("Mesh_Ground_Floor")
 
-[node name="CollisionShape3D" type="CollisionShape3D" parent="NavigationRegion3D/Environment/Ground/Floor"]
+[node name="CollisionShape3D" type="CollisionShape3D" parent="NavigationRegion3D/Environment/Ground/Floor" unique_id=1059309899]
 shape = SubResource("Shape_Ground_Floor")
 
+[node name="Light" type="DirectionalLight3D" parent="." unique_id=259961226]
+transform = Transform3D(0.9063078, 0.38302225, -0.1786062, 0, 0.42261824, 0.9063078, 0.4226183, -0.8213938, 0.38302222, 0, 6.8664002, 0)
+light_energy = 1.2
+shadow_enabled = true
+
+[node name="EnemyWaves" parent="." unique_id=1358056580 instance=ExtResource("enemy_waves")]
+
+[node name="Wave1" parent="EnemyWaves" instance=ExtResource("enemy_wave")]
+editor_description = "第一波引用关卡根目录的 Squad，所以这里没有子小队。请到 Lvl1/Squad 修改第一波敌人；引用在 Existing Squads 中。"
+existing_squads = Array[NodePath]([NodePath("../../Squad")])
+
+[node name="Wave2" parent="EnemyWaves" unique_id=1773581671 instance=ExtResource("enemy_wave")]
+editor_description = "第二波为可调示例：直接移动、替换或删除下方小队与敌人。"
+
+[node name="Squad" parent="EnemyWaves/Wave2" unique_id=1473184881 instance=ExtResource("squad")]
+profile = SubResource("Resource_psy3o")
+
+[node name="Enemy" parent="EnemyWaves/Wave2/Squad" unique_id=49567852 instance=ExtResource("7_rjb0k")]
+transform = Transform3D(1, 0, 1.7484555e-07, 0, 1, 0, -1.7484555e-07, 0, 1, -1.3228133, 0, 5.8238573)
+
+[node name="Enemy2" parent="EnemyWaves/Wave2/Squad" unique_id=1859977113 instance=ExtResource("7_rjb0k")]
+transform = Transform3D(0.9659258, 0, 0.25881922, 0, 1, 0, -0.25881922, 0, 0.9659258, 1.526789, 0, 5.8921547)
+
+[node name="Enemy3" parent="EnemyWaves/Wave2/Squad" unique_id=2025682997 instance=ExtResource("7_rjb0k")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -3.1135986, 0, 6.1574516)
+
+[editable path="Camera3D"]
+[editable path="Squad/Enemy"]
 [editable path="NavigationRegion3D/Environment/FullCover/FullCover01"]
 [editable path="NavigationRegion3D/Environment/FullCover/FullCover02"]
 [editable path="NavigationRegion3D/Environment/HalfCover/HalfCover01"]
 [editable path="NavigationRegion3D/Environment/HalfCover/HalfCover02"]
+[editable path="EnemyWaves"]
+[editable path="EnemyWaves/Wave1"]

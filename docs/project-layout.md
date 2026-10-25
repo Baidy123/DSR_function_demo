@@ -1,6 +1,6 @@
 # 项目目录结构
 
-波次系统阶段1（2026-10-25）：`world/enemy_wave_controller.gd` 在区域子树入树前捕获小队并保存内存场景快照，`enemy_wave_definition.gd` 保存波前延迟和可选已有小队引用；对应 `scenes/world/enemy_waves.tscn`／`enemy_wave.tscn` 提供编辑入口。当前仅模板基础通过验证，尚未接入保存关卡，推进及占位检查仍待后续阶段；不改变 Squad、身体或 AI 职责。见[波次实施记录](superpowers/plans/2026-10-25-level-enemy-waves.md)。
+波次系统（2026-10-25）：`world/enemy_wave_controller.gd` 在区域子树入树前捕获小队为内存场景快照，持有出场、死亡集合与清理状态；`enemy_wave_definition.gd` 保存波前延迟和可选已有小队引用；私有无循环辅助 `enemy_wave_spawn_check.gd` 只读检查本区导航、实际胶囊与同波占位。对应 `scenes/world/enemy_waves.tscn`／`enemy_wave.tscn` 提供编辑入口，第一关保留原 `Squad` 为首波并新增第二波示例。区域仍独占玩家进出检测和物理时钟，不改变 Squad、身体或 AI 职责。见[波次实施记录](superpowers/plans/2026-10-25-level-enemy-waves.md)。
 
 协调器现按 [2026-10-23 完整重写计划](superpowers/plans/2026-10-23-squad-coordinator-rewrite.md)维护。旧调度器、个人选优中的团队耦合及其专用检查已退出；路径和被场景引用的 UID 保留。当前接口见 [敌人 AI](enemy-ai.md)。
 
@@ -137,6 +137,8 @@ Spatial 的路线样本层仅在同步候选比较中复用同路径已实际观
 空间评估的重复物理查询由 Context、Selection、Fire 各自管理同步只读批次缓存：选择器和空间扫描成对开启／结束，嵌套批次共用结果，最外层返回即清除。动作提交、身体移动及实际开火恢复实时查询，不用整帧缓存代替执行检查。团队服务的友军射线检查只读取必要的成员位置，不构建完整任务快照。
 
 `docs/enemy-ai.md` 是敌人结构、维护和使用部署说明；`docs/gameplay/` 保留移动、武器、掩体等专项说明，`docs/TODO.md` 记录后续方向，`docs/superpowers/` 保存仍有价值的设计与验收记录。第三方插件自带文档留在插件目录，以保留其使用说明和许可。
+
+`docs/gameplay/ENEMY_WAVES.md` 是波次的独立中文使用说明，包含第一关原路径引用、跨波移动成员、复制排序、其他地图接入与排错。共用 `enemy_waves.tscn` 只提供控制器空容器，每个 `enemy_wave.tscn` 在关卡中独立实例化，避免继承默认首波导致保存排序受限。
 
 敌人配置与扩展见 [敌人 AI](enemy-ai.md)，统一清单和运行方式见 [测试维护](testing.md)，敌人验收结果见 [敌人测试](enemy-tests.md)，未完成方向见 [待办](TODO.md)。`tests/` 中的编辑器脚本、场景辅助与导航写入工具按清单区分；日志副本由 `logs/.gdignore` 排除，Dialogue Manager 的本地扫描补丁见 [插件维护记录](../movement_demo/addons/dialogue_manager/LOCAL_CHANGES.md)。
 

@@ -7,12 +7,11 @@
 [ext_resource type="Resource" uid="uid://kayehxxh8jes" path="res://resources/weapons/enemy_test_pistol.tres" id="12_weapon"]
 [ext_resource type="Script" uid="uid://bnmfescbn8pk6" path="res://scripts/enemy/enemy_unit_type.gd" id="17_unit_type"]
 [ext_resource type="Script" uid="uid://daiu2qlnmqmsi" path="res://scripts/enemy/enemy_training.gd" id="18_training"]
+[ext_resource type="Script" uid="uid://b7vxbfqy1vd54" path="res://scripts/enemy/enemy_presentation.gd" id="enemy_presentation"]
+[ext_resource type="Script" uid="uid://dw52opl8k324b" path="res://scripts/systems/effects/impact_receiver.gd" id="impact_receiver"]
+[ext_resource type="Script" uid="uid://bxfli5ujmf35g" path="res://scripts/systems/presentation/visual_presentation.gd" id="presentation"]
 [ext_resource type="Resource" uid="uid://dpp6fjr8paihk" path="res://resources/enemy/training/arena.tres" id="training_profile"]
 [ext_resource type="Resource" uid="uid://cauhlj43ul1uy" path="res://resources/enemy/units/ranged.tres" id="unit_profile"]
-
-[ext_resource type="Script" path="res://scripts/systems/presentation/visual_presentation.gd" id="presentation"]
-[ext_resource type="Script" path="res://scripts/enemy/enemy_presentation.gd" id="enemy_presentation"]
-[ext_resource type="Script" path="res://scripts/systems/effects/impact_receiver.gd" id="impact_receiver"]
 
 [sub_resource type="StandardMaterial3D" id="EnemyMaterial"]
 albedo_color = Color(0.85, 0.16, 0.3, 1)
@@ -80,12 +79,12 @@ path_max_distance = 1.01
 height = 1.75
 radius = 0.35
 
-[node name="Presentation" type="Node3D" parent="."]
+[node name="Presentation" type="Node3D" parent="." unique_id=66210877]
 script = ExtResource("presentation")
 placeholder_paths = Array[NodePath]([NodePath("../Body"), NodePath("../FrontMarker")])
 
-[node name="EnemyPresentation" type="Node" parent="."]
+[node name="EnemyPresentation" type="Node" parent="." unique_id=832912043]
 script = ExtResource("enemy_presentation")
 
-[node name="ImpactReceiver" type="Node" parent="."]
+[node name="ImpactReceiver" type="Node" parent="." unique_id=2099540290]
 script = ExtResource("impact_receiver")

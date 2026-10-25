@@ -1,20 +1,19 @@
-[gd_resource type="Resource" script_class="EnemyActionDefinition" format=3]
+[gd_resource type="Resource" script_class="EnemyActionDefinition" format=3 uid="uid://c3pl775r88yeh"]
 
-[ext_resource type="Script" path="res://scripts/enemy/config/enemy_action_definition.gd" id="definition"]
-[ext_resource type="Script" path="res://scripts/enemy/actions/enemy_melee_intercept_action.gd" id="implementation"]
+[ext_resource type="Script" uid="uid://c006j0dqgxqyj" path="res://scripts/enemy/config/enemy_action_definition.gd" id="definition"]
+[ext_resource type="Script" uid="uid://c8vkrk2knmix4" path="res://scripts/enemy/actions/enemy_melee_intercept_action.gd" id="implementation"]
 
 [resource]
 script = ExtResource("definition")
 action_id = &"melee_intercept"
 display_name = "近战堵截"
-category = 1
 implementation = ExtResource("implementation")
+required_capabilities = Array[StringName]([&"locomotion", &"melee_weapons"])
 config_section = &"melee_tactics"
 parameters = {
 &"intercept_horizon_seconds": 1.8,
 &"intercept_max_distance": 6.0,
 &"intercept_memory_seconds": 0.6,
-&"intercept_speed_multiplier": 2.0,
-&"intercept_min_gain_seconds": 0.25
+&"intercept_min_gain_seconds": 0.25,
+&"intercept_speed_multiplier": 2.0
 }
-required_capabilities = Array[StringName]([&"locomotion", &"melee_weapons"])

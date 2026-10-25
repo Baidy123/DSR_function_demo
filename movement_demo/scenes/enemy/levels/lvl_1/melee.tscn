@@ -1,10 +1,11 @@
 [gd_scene format=3 uid="uid://dlqqj3q00vsu3"]
 
-[ext_resource type="PackedScene" path="res://scenes/enemy/types/melee.tscn" id="1_melee"]
-[ext_resource type="Resource" path="res://resources/enemy/training/levels/lvl_1/melee.tres" id="2_training"]
+[ext_resource type="PackedScene" uid="uid://7t37opdrvjss" path="res://scenes/enemy/types/melee.tscn" id="1_melee"]
+[ext_resource type="Resource" uid="uid://dmha1hmkune0c" path="res://resources/enemy/training/levels/lvl_1/melee.tres" id="2_training"]
 
-[node name="Enemy" instance=ExtResource("1_melee")]
+[node name="Enemy" unique_id=134263749 instance=ExtResource("1_melee")]
+move_speed = 1.5
 max_health = 80.0
 
-[node name="Training" parent="." index="1"]
+[node name="Training" parent="." index="1" unique_id=740728946]
 profile = ExtResource("2_training")

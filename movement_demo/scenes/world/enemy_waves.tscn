@@ -1,11 +1,7 @@
-[gd_scene load_steps=3 format=3]
+[gd_scene load_steps=2 format=3]
 
 [ext_resource type="Script" path="res://scripts/world/enemy_wave_controller.gd" id="controller"]
-[ext_resource type="PackedScene" path="res://scenes/world/enemy_wave.tscn" id="wave"]
 
 [node name="EnemyWaves" type="Node3D"]
 script = ExtResource("controller")
-
-[node name="Wave1" parent="." instance=ExtResource("wave")]
-
-[editable path="Wave1"]
+editor_description = "放在战斗区域根节点下，再拖入 enemy_wave.tscn 添加波次。在各波下摆小队与敌人；从上到下出场，全灭后推进，被占位时原地等待。"

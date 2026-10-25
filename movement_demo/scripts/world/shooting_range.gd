@@ -52,10 +52,16 @@ func _physics_process(delta: float) -> void:
 	vault_navigation.advance()
 	cooperation.configure_team_bindings(team_cooperation_bindings)
 	_bind_combat_zone()
+	if has_active_player():
+		if is_instance_valid(_enemy_waves): _enemy_waves.advance_from_region(delta)
+		cooperation.advance(delta)
+
+
+func has_active_player() -> bool:
 	for player in players_inside:
-		if is_instance_valid(player) and not player.is_dead() and not player.is_in_dialogue:
-			cooperation.advance(delta)
-			break
+		if is_instance_valid(player) and player.is_inside_tree() and not player.is_dead() and not player.is_in_dialogue:
+			return true
+	return false
 
 
 func _bind_combat_zone() -> void:
@@ -77,6 +83,8 @@ func _bind_combat_zone() -> void:
 func _on_player_entered(body: Node3D) -> void:
 	if body.is_in_group("player") and not players_inside.has(body):
 		players_inside.append(body)
+		if is_instance_valid(_enemy_waves) and _enemy_waves.auto_start_on_enter:
+			_enemy_waves.start_encounter()
 
 
 func _on_player_exited(body: Node3D) -> void:
@@ -88,6 +96,8 @@ func _on_player_exited(body: Node3D) -> void:
 
 
 func _reset_targets() -> void:
+	# 先取消波次；queue_free 尚未退树的成员也必须排除，不能复活旧波。
+	if is_instance_valid(_enemy_waves): _enemy_waves.reset_encounter()
 	cooperation.reset()
 	tactical_map.reset()
 	presentation_reset.emit(self)
@@ -98,6 +108,7 @@ func _reset_targets() -> void:
 		if is_instance_valid(enemy) and not targets.has(enemy):
 			targets.append(enemy)
 	for target in targets:
+		if is_instance_valid(_enemy_waves) and _enemy_waves.owns_runtime_enemy(target): continue
 		# 重开卸载场景也会发出离场信号；已出树的目标无需刷新。
 		if target.is_inside_tree() and target.has_method("reset_target"):
 			target.reset_target()

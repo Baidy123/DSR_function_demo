@@ -7,3 +7,12 @@
 script = ExtResource("weapon")
 display_name = "近战测试武器"
 fire_mode = 2
+hit_accuracy_loss = null
+suppression_accuracy_loss = null
+near_miss_radius = null
+hit_speed_loss = null
+hit_speed_loss_seconds = null
+melee_damage = 15.0
+melee_range = 2.4
+melee_windup_seconds = 0.06
+melee_recovery_seconds = 0.75

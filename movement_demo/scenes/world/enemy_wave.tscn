@@ -4,3 +4,4 @@
 
 [node name="Wave" type="Node3D"]
 script = ExtResource("wave")
+editor_description = "一波可以放多个小队。拖入 squad.tscn，再把敌人放到小队下；复制整波、调整树中顺序即可增加和排序。"
