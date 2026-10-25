@@ -20,7 +20,7 @@ func _run() -> void:
 	for property in _descendants(EditorInterface.get_inspector(), "EditorProperty"):
 		if property.get_edited_object() == gun and property.get_edited_property() == "headshot_chance":
 			var spin: SpinBox = _descendants(property, "SpinBox")[0]
-			check(spin.value == 50 and not spin.tooltip_text.is_empty(), "Headshot chance displays 50 percent with hover help")
+			check(spin.value == 10 and not spin.tooltip_text.is_empty(), "Headshot chance displays 10 percent with hover help")
 	var option: OptionButton
 	for property in _descendants(EditorInterface.get_inspector(), "EditorProperty"):
 		if property.get_edited_object() == gun and property.get_edited_property() == "fire_mode":
@@ -51,6 +51,35 @@ func _run() -> void:
 	var history = manager.get_history_undo_redo(manager.get_object_history_id(gun))
 	check(history.undo() and gun.fire_mode == WeaponData.FireMode.SEMI_AUTO, "Native inspector undo restores original Fire Mode")
 	check(history.redo() and gun.fire_mode == WeaponData.FireMode.SHOTGUN, "Native inspector redo restores shotgun mode")
+	EditorInterface.edit_resource(gun)
+	for frame in 20: await process_frame
+	fields = _fields(gun)
+	check(fields.has("headshot_instant_kill_enabled") and fields.has("headshot_stagger_seconds") and fields.has("headshot_stagger_refresh_mode"), "All execution and stagger options are editable in the original weapon resource")
+	check(fields.has("headshot_movement_multiplier") and fields.has("headshot_accuracy_cap"), "Movement and accuracy effects are exposed on the attacking weapon")
+	for entry in [["headshot_movement_multiplier", 40.0], ["headshot_accuracy_cap", 20.0]]:
+		var effect_property = _property(gun, entry[0])
+		if effect_property != null:
+			var spin: SpinBox = _descendants(effect_property, "SpinBox")[0]
+			spin.value = entry[1]
+			for frame in 5: await process_frame
+			check(is_equal_approx(gun.get(entry[0]), entry[1] / 100.0) and not spin.tooltip_text.is_empty(), "Weapon effect percentage editor writes normalized data: " + entry[0])
+	var training := EnemyTrainingProfile.new()
+	EditorInterface.edit_resource(training)
+	for frame in 20: await process_frame
+	var tactics_property = _property(training, "tactics")
+	check(tactics_property != null and tactics_property.label == "作战能力", "Original tactics resource uses the combat-capabilities display label")
+	var tactics = training.tactics
+	EditorInterface.edit_resource(tactics)
+	for frame in 20: await process_frame
+	var protection = _property(tactics, "headshot_protection")
+	check(protection != null and protection.label == "爆头防护" and protection.get_edited_object() == tactics, "Protection is a direct boolean property without a nested resource or inverse switch")
+	if protection != null:
+		protection.emit_changed(&"headshot_protection", true)
+		for frame in 5: await process_frame
+		check(tactics.headshot_protection and tactics.overridden.has("headshot_protection"), "Inspector edit applies protection and preserves explicit training overrides")
+		var protection_history = manager.get_history_undo_redo(manager.get_object_history_id(tactics))
+		check(protection_history.undo() and not tactics.headshot_protection, "Native undo restores the protection value")
+		check(protection_history.redo() and tactics.headshot_protection, "Native redo enables protection again")
 	EditorInterface.get_inspector().edit(null)
 	bridge.free()
 	for frame in 5: await process_frame
@@ -62,6 +91,11 @@ func _fields(gun: Resource) -> Array:
 	for property in _descendants(EditorInterface.get_inspector(), "EditorProperty"):
 		if property.get_edited_object() == gun: fields.append(property.get_edited_property())
 	return fields
+
+func _property(resource: Resource, path: String):
+	for property in _descendants(EditorInterface.get_inspector(), "EditorProperty"):
+		if property.get_edited_object() == resource and property.get_edited_property() == path: return property
+	return null
 
 func _descendants(node: Node, type: String) -> Array:
 	var result := []

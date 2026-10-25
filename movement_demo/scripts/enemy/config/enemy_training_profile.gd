@@ -7,6 +7,7 @@ class_name EnemyTrainingProfile
 @export_storage var selected_tactics: Array[StringName] = []
 @export_group("训练参数")
 @export var ai: Resource = preload("res://scripts/enemy/config/ai_settings.gd").new()
+## 作战能力：移动开火、反应、受击倍率和被动防护。内部tactics资源键保留，以兼容已有配置和外部接口。
 @export var tactics: Resource = preload("res://scripts/enemy/config/tactics_settings.gd").new()
 @export var search: Resource = preload("res://scripts/enemy/config/search_settings.gd").new()
 @export var cover: Resource = preload("res://scripts/enemy/config/cover_settings.gd").new()

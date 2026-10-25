@@ -1,6 +1,8 @@
 # 项目目录结构
 
-概率爆头（2026-10-25）：原 `scripts/weapons/weapon_data.gd` 增加启用、概率、伤害倍率及纯配置查询；原武器检查器提供百分比和悬停说明。`scripts/player/player_combat_v3.gd` 用开火前有效精度和独立随机流，在原实际命中结果上结算；霰弹全部射线与逐颗判定完成后才按目标合并受击。原 `shot_fired(hit, stability)` 和伤害接口保留，新增 `headshot_hit(world_position, pellets, shotgun)` 只通知表现。原 `scripts/ui/lock_reticle.gd` 绘制资格菱形及限量、限时命中反馈，不持有死亡目标。没有新节点、资源类型、敌人判定分支或额外物理查询；用法见[射击说明](gameplay/COMBAT.md)。
+爆头结算与被爆头状态（2026-10-25）：原 `scripts/weapons/weapon_data.gd` 导出开关、概率、秒杀选项、兜底倍率、状态时长及刷新规则。`scripts/weapons/headshot_resolver.gd` 仅处理已完成射线的命中统计，每枪每目标一次抽样，在受击回调前冻结本枪所有结果；`player_combat_v3.gd` 仍拥有弹药、后坐与实际射击。原 `headshot_hit(world_position, pellets, shotgun)` 保留，新增 `headshot_resolved(world_position, outcome)` 通知准星显示实际结果。
+
+敌人身体拥有独立 `scripts/enemy/services/enemy_headshot_state.gd` 状态，保存本次攻击武器的效果快照与剩余时间；不加节点／Timer／AI循环。复用近战／枪击的 `apply_aim_penalty()` 与 `get_hit_movement_multiplier()` 出口执行精度和减速，不禁止射击，不取消AI动作、不新增协调器占用。`EnemyContext` 只沿原训练查询注入爆头防护，`tactics_settings.gd` 直接保存布尔字段，检查器仅将原 `Profile.tactics` 显示为“作战能力”。原资源键、场景路径和UID保留。`enemy_ai.gd`、火控决策和协调器逻辑未因本状态修改。设计与接口见[爆头设计](superpowers/specs/2026-10-25-headshot-stagger-execution-design.md)。
 
 霰弹标定与独立预览（2026-10-25）：原 `ShotgunSettings` 保存标定距离并集中换算／校验，继续用原角度驱动弹道；`addons/weapon_mode_inspector/shotgun_coverage_property.gd` 在原检查器中供武器配置与预览节点复用，负责距离、面积和整体撤销，不另建插件入口。原 `scripts/debug/shotgun_pattern_preview.gd` 保存三个图样槽、独立标定距离／角度及偏移等数值，内部构造专用配置并调用原采样；观察距离可超过 1000 米，三栏共用可自动扩展的米制比例尺。同名场景只保存根节点的引用和参数，不保存生成的 UI；除图样引用外不读取武器 `.tres`。武器随机偏移、图样格式、运行时射击和原 UID 保留，见[霰弹说明](gameplay/SHOTGUN.md)。
 

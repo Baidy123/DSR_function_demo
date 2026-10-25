@@ -55,6 +55,8 @@ func _run() -> void:
 	gun.damage = 25
 	gun.magazine_capacity = 300
 	gun.headshot_chance = 1
+	# 保留旧显式倍率的兼容用例；新默认与秒杀／硬直另行验证。
+	gun.headshot_damage_multiplier = 2.5
 	combat.equip_weapon(gun)
 	target = _target(Vector3(0, 0.9, -5))
 	for frame in 4: await physics_frame
@@ -150,7 +152,7 @@ func _additional_checks() -> void:
 	await _enemy_checks()
 	await _feedback_checks()
 	var defaults := WeaponData.new()
-	check(defaults.headshot_enabled and defaults.headshot_chance == 0.5 and defaults.headshot_damage_multiplier == 2.5, "Existing resources inherit 50 percent and 2.5x without rewriting tres files")
+	check(defaults.headshot_enabled and defaults.headshot_chance == 0.1 and defaults.headshot_damage_multiplier == 3 and defaults.headshot_instant_kill_enabled and defaults.headshot_stagger_seconds == 1.0, "Existing resources inherit the latest headshot defaults without rewriting tres files")
 	gun.headshot_chance = 0.37
 	gun.headshot_damage_multiplier = 3.25
 	DirAccess.make_dir_recursive_absolute("res://logs/headshot")
@@ -183,7 +185,7 @@ func _shotgun_checks() -> void:
 	var rounds_before: int = combat.ammo.magazine_rounds
 	check(is_equal_approx(_shoot(1), 52.5) and target.hit_events == hits_before + 1 and behind.hit_events == 0, "All three pellet rays resolve before target death, with one combined 2.5x hit")
 	check(fired == signals_before + 1 and combat.ammo.magazine_rounds == rounds_before - 1 and is_equal_approx(combat.accuracy, 0.8), "Shotgun headshots keep one signal, round and recoil per shell")
-	check(headshots.back()[1] == 3 and headshots.back()[2], "Shotgun feedback reports critical pellet count rather than whole-shell critical damage")
+	check(headshots.back()[1] == 3 and headshots.back()[2], "Legacy signal reports all pellets affected by the target's single roll")
 	check(target.effects_received == gun.get_attack_effects(), "Damage multiplier leaves accuracy and movement effects unchanged")
 	target.retire_on_hit = false
 	target.collision_layer = 1
@@ -200,12 +202,12 @@ func _shotgun_checks() -> void:
 	var reference := RandomNumberGenerator.new()
 	reference.seed = 138
 	var expected := [0.0, 0.0, 0.0]
-	for index in [0, 0, 1, 2]: expected[index] += 17.5 if reference.randf() < 0.5 else 7.0
+	for index in 3: expected[index] = (17.5 if reference.randf() < 0.5 else 7.0) * (2 if index == 0 else 1)
 	hits_before = target.hit_events
 	var center_damage := _shoot(1)
-	check(is_equal_approx(center_damage, expected[0]) and is_equal_approx(left.damage_received, expected[1]) and is_equal_approx(right.damage_received, expected[2]), "Each actual pellet rolls independently before per-target damage aggregation")
+	check(is_equal_approx(center_damage, expected[0]) and is_equal_approx(left.damage_received, expected[1]) and is_equal_approx(right.damage_received, expected[2]), "Each actually hit target rolls once, multiplying only the pellets that hit it")
 	check(target.hit_events == hits_before + 1 and left.hit_events == 1 and right.hit_events == 1, "Multi-target shotgun still calls each receiver only once")
-	check(combat._headshot_rng.state == reference.state, "Exactly one random sample per actual pellet hit")
+	check(combat._headshot_rng.state == reference.state, "Exactly one random sample per actual target hit")
 	gun.headshot_chance = 1
 	check(is_equal_approx(_shoot(0.99), 14), "Shotgun below full precision applies no critical pellet damage")
 	var wall := _target(Vector3(0, 0.9, -2))
@@ -224,14 +226,13 @@ func _shotgun_checks() -> void:
 	gun.headshot_chance = 0.5
 	combat._headshot_rng.seed = 914
 	reference.seed = 914
-	var expected_damage := 0.0
-	for pellet in 64: expected_damage += 17.5 if reference.randf() < 0.5 else 7
+	var expected_damage: float = (17.5 if reference.randf() < 0.5 else 7.0) * 64
 	hits_before = target.hit_events
 	signals_before = headshots.size()
 	var started := Time.get_ticks_usec()
 	var damage := _shoot(1)
 	print("64-pellet whole shot (including rays/effects): %d us" % (Time.get_ticks_usec() - started))
-	check(is_equal_approx(damage, expected_damage) and target.hit_events == hits_before + 1 and headshots.size() == signals_before + 1, "64-pellet limit preserves independent rolls, one damage call and one feedback event")
+	check(is_equal_approx(damage, expected_damage) and target.hit_events == hits_before + 1 and headshots.size() == signals_before + (1 if expected_damage > 448 else 0) and combat._headshot_rng.state == reference.state, "64 pellets on one target still use one roll, one damage call and at most one feedback event")
 	# Same pattern RNG seed yields the same stream whether headshots are enabled or disabled.
 	combat._shotgun_rng.seed = 92
 	_shoot(1)
@@ -254,6 +255,8 @@ func _enemy_checks() -> void:
 	gun.headshot_damage_multiplier = 2.5
 	gun.shotgun.pattern.points = PackedVector2Array([Vector2.ZERO, Vector2.ZERO, Vector2.ZERO])
 	gun.fire_mode = WeaponData.FireMode.SEMI_AUTO
+	gun.headshot_instant_kill_enabled = false
+	gun.headshot_stagger_seconds = 0
 	for frame in 3: await physics_frame
 	var enemy_health: float = enemy.health
 	_shoot(1)

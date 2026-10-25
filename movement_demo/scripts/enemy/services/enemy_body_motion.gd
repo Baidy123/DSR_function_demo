@@ -81,7 +81,7 @@ func active() -> bool:
 	return not vault.is_empty()
 
 func begin(plan: Dictionary) -> bool:
-	if active() or actor.is_dead or actor.melee_active or actor.get_tree().paused: return false
+	if active() or actor.is_dead or actor.get_hit_movement_multiplier() <= 0.0 or actor.melee_active or actor.get_tree().paused: return false
 	if not plan.get("valid", false) or not is_instance_valid(plan.get("cover")): return false
 	var direction: Vector3 = plan.exit - plan.entry
 	var checked := LowCover.query_vault_at(actor, plan.cover, actor.global_position, direction, plan.duration, false)

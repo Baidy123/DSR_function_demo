@@ -2,6 +2,7 @@ extends Node
 
 const ImpactEffects = preload("res://scripts/systems/effects/impact_effects.gd")
 const ShotgunBallistics = preload("res://scripts/weapons/shotgun_ballistics.gd")
+const Headshots = preload("res://scripts/weapons/headshot_resolver.gd")
 var _shotgun_rng := RandomNumberGenerator.new()
 # 独立随机流，不改变普通散布或霰弹图样采样。
 var _headshot_rng := RandomNumberGenerator.new()
@@ -41,6 +42,8 @@ signal weapon_changed(data: WeaponData)
 signal shot_fired(hit: bool, stability: float)
 ## 每个实际命中的目标最多通知一次；pellets 是本枪对它触发爆头的弹丸数。
 signal headshot_hit(world_position: Vector3, pellets: int, shotgun: bool)
+## 实际结算结果：headshot、staggered 或 killed；新反馈不再按触发弹丸数显示。
+signal headshot_resolved(world_position: Vector3, outcome: StringName)
 signal melee_started
 signal melee_struck(target: Node3D)
 signal melee_finished
@@ -513,11 +516,14 @@ func shoot() -> void:
 	if is_instance_valid(locked_target) and not _target_visible(locked_target):
 		clear_target_lock()
 	shot_count += 1
+	var stability: float = get_effective_accuracy()
+	var headshot_settings := weapon.get_headshot_settings(stability)
+	var aim_settings := weapon.get_aim_settings(is_using_spread_cone())
+	var base_damage := weapon.damage
 	var attack_effects := weapon.get_attack_effects()
 	if weapon.shot_noise != null:
 		weapon.shot_noise.emit_from(player, weapon.shot_noise_radius)
 	shot_cooldown = weapon.shot_interval
-	var stability: float = get_effective_accuracy()
 	var origin: Vector3 = player.get_muzzle_position()
 	var direction: Vector3 = -player.visual.global_basis.z
 	var has_lock: bool = is_instance_valid(locked_target)
@@ -525,7 +531,7 @@ func shoot() -> void:
 		direction = (get_locked_aim_point() - origin).normalized()
 
 	if weapon.fire_mode == WeaponData.FireMode.SHOTGUN:
-		_shoot_shotgun(origin, direction, stability, attack_effects)
+		_shoot_shotgun(origin, direction, stability, attack_effects, headshot_settings)
 		return
 	if is_using_spread_cone():
 		# 有无锁定都在整个三维锥内取样，稳定度只控制锥的半角。
@@ -543,14 +549,14 @@ func shoot() -> void:
 	if not hit.is_empty():
 		endpoint = hit.position
 		if hit.collider.is_in_group("combat_target"):
-			headshot = _roll_headshot(weapon.get_headshot_chance(stability))
-			var hit_damage := weapon.damage * (weapon.get_headshot_damage_multiplier() if headshot else 1.0)
-			if hit.collider.has_method("receive_weapon_hit"):
-				hit.collider.receive_weapon_hit(hit_damage, player.global_position, attack_effects)
-			else:
-				hit.collider.receive_hit(hit_damage, player.global_position)
+			var hits := {hit.collider: 1}
+			var result: Dictionary = Headshots.resolve(hits, base_damage, headshot_settings, _headshot_rng)[0]
+			headshot = result.critical
+			var outcome := Headshots.apply(result, player.global_position, attack_effects)
 			target_hit = true
-			if headshot: headshot_hit.emit(endpoint, 1, false)
+			if headshot:
+				headshot_hit.emit(endpoint, 1, false)
+				headshot_resolved.emit(endpoint, outcome)
 			if locked_target == hit.collider and (not is_instance_valid(hit.collider) or not hit.collider.is_in_group("combat_target")):
 				clear_target_lock()
 				$HUD/Reticle.hide()
@@ -558,9 +564,8 @@ func shoot() -> void:
 	for listener in get_tree().get_nodes_in_group("shot_listener"):
 		if listener.get_parent() != player and listener.get_parent() != last_shot_collider and not listener.get_parent().is_in_group("player"):
 			listener.notice_shot(origin, endpoint, attack_effects)
-	var settings: Dictionary = weapon.get_aim_settings(is_using_spread_cone())
-	accuracy = maxf(minf(accuracy, settings.shot_floor), accuracy - settings.shot_penalty)
-	accuracy_recovery_timer = settings.delay
+	accuracy = maxf(minf(accuracy, aim_settings.shot_floor), accuracy - aim_settings.shot_penalty)
+	accuracy_recovery_timer = aim_settings.delay
 	last_result = "爆头" if headshot else ("命中" if target_hit else "未命中")
 	_draw_shot(origin, endpoint, target_hit)
 	if effects != null: effects.dispatch_impact(impact)
@@ -568,33 +573,27 @@ func shoot() -> void:
 	_update_status()
 
 
-func _shoot_shotgun(origin: Vector3, direction: Vector3, stability: float, attack_effects: Dictionary) -> void:
+func _shoot_shotgun(origin: Vector3, direction: Vector3, stability: float, attack_effects: Dictionary, headshot_settings: Dictionary) -> void:
 	var shotgun := weapon.get_shotgun_settings()
 	var pellet_damage := maxf(0.0, shotgun.pellet_damage)
-	var headshot_chance := weapon.get_headshot_chance(stability)
-	var headshot_multiplier := weapon.get_headshot_damage_multiplier()
+	var aim_settings := shotgun.get_aim_settings(is_using_spread_cone())
 	var pellets := ShotgunBallistics.trace(player, weapon, origin, direction, stability, _shotgun_rng)
 	var hits := ShotgunBallistics.count_hits(pellets, &"combat_target")
-	# 所有射线完成后，只对实际命中弹丸掷概率；任何受击回调之前冻结整枪结果。
-	var headshots := {}
-	var headshot_positions := {}
+	# 全部射线和每目标一次判定完成后才调用受击，死亡／回调不改变本枪其余结果。
+	var results := Headshots.resolve(hits, pellet_damage, headshot_settings, _headshot_rng)
+	var hit_positions := {}
 	var headshot_count := 0
 	for pellet in pellets:
-		if hits.has(pellet.collider) and _roll_headshot(headshot_chance):
-			headshots[pellet.collider] = int(headshots.get(pellet.collider, 0)) + 1
-			headshot_positions[pellet.collider] = pellet.endpoint
-			headshot_count += 1
+		if hits.has(pellet.collider) and not hit_positions.has(pellet.collider):
+			hit_positions[pellet.collider] = pellet.endpoint
 	var effects := ImpactEffects.find_for(player)
 	last_shot_collider = hits.keys()[0] if not hits.is_empty() else pellets[0].collider
-	for target in hits:
-		if not is_instance_valid(target): continue
-		var critical_pellets: int = headshots.get(target, 0)
-		var total_damage: float = pellet_damage * (int(hits[target]) + critical_pellets * (headshot_multiplier - 1.0))
-		if target.has_method("receive_weapon_hit"):
-			target.receive_weapon_hit(total_damage, player.global_position, attack_effects)
-		elif target.has_method("receive_hit"):
-			target.receive_hit(total_damage, player.global_position)
-		if critical_pellets > 0: headshot_hit.emit(headshot_positions[target], critical_pellets, true)
+	for result in results:
+		var outcome := Headshots.apply(result, player.global_position, attack_effects)
+		if not outcome.is_empty():
+			headshot_count += 1
+			headshot_hit.emit(hit_positions[result.target], result.pellets, true)
+			headshot_resolved.emit(hit_positions[result.target], outcome)
 	if locked_target != null and (not is_instance_valid(locked_target) or not locked_target.is_in_group("combat_target")):
 		clear_target_lock()
 		$HUD/Reticle.hide()
@@ -603,19 +602,14 @@ func _shoot_shotgun(origin: Vector3, direction: Vector3, stability: float, attac
 		if not receiver is Node3D or receiver == player or receiver.is_in_group("player") or hits.has(receiver): continue
 		var endpoint := ShotgunBallistics.near_miss_endpoint(receiver, origin, pellets, attack_effects.near_miss_radius)
 		if endpoint.is_finite(): listener.notice_shot(origin, endpoint, attack_effects)
-	var settings := shotgun.get_aim_settings(is_using_spread_cone())
-	accuracy = maxf(minf(accuracy, settings.shot_floor), accuracy - settings.shot_penalty)
-	accuracy_recovery_timer = settings.delay
-	last_result = "爆头弹丸 %d" % headshot_count if headshot_count > 0 else ("命中" if not hits.is_empty() else "未命中")
+	accuracy = maxf(minf(accuracy, aim_settings.shot_floor), accuracy - aim_settings.shot_penalty)
+	accuracy_recovery_timer = aim_settings.delay
+	last_result = "爆头目标 %d" % headshot_count if headshot_count > 0 else ("命中" if not hits.is_empty() else "未命中")
 	for pellet in pellets:
 		_draw_shot(origin, pellet.endpoint, hits.has(pellet.collider))
 		if effects != null: effects.dispatch_impact(pellet.impact)
 	shot_fired.emit(not hits.is_empty(), stability)
 	_update_status()
-
-
-func _roll_headshot(chance: float) -> bool:
-	return chance > 0.0 and (chance >= 1.0 or _headshot_rng.randf() < chance)
 
 
 ## Combat 检查器选择算法；不重置锁定、稳定度或冷却。

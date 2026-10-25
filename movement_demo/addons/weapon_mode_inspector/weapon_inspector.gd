@@ -1,6 +1,8 @@
 @tool
 extends EditorInspectorPlugin
 
+var _creating_native_property := false
+
 const PatternProperty = preload("res://addons/weapon_mode_inspector/shotgun_pattern_property.gd")
 const CoverageProperty = preload("res://addons/weapon_mode_inspector/shotgun_coverage_property.gd")
 const PatternPreview = preload("res://scripts/debug/shotgun_pattern_preview.gd")
@@ -34,7 +36,8 @@ const SPREAD_FIELDS := {
 	"spread_target_move_fast_speed": "高速目标速度",
 }
 const COMMON_FIELDS := {
-	"headshot_chance": "爆头概率", "headshot_damage_multiplier": "爆头伤害倍率",
+	"headshot_chance": "爆头概率", "headshot_damage_multiplier": "未秒杀时伤害倍率", "headshot_stagger_seconds": "被爆头状态时长",
+	"headshot_movement_multiplier": "被爆头时保留移速", "headshot_accuracy_cap": "被爆头期间精度上限",
 	"hit_accuracy_loss": "命中精度损失", "suppression_accuracy_loss": "被压制精度损失",
 	"near_miss_radius": "擦过检测范围（米）", "hit_speed_loss": "击中速度损失",
 	"hit_speed_loss_seconds": "击中减速时长（秒）", "melee_accuracy_loss": "近战命中精度损失",
@@ -53,6 +56,7 @@ const COMMON_FIELDS := {
 }
 const PERCENT_FIELDS := [
 	"headshot_chance",
+	"headshot_movement_multiplier", "headshot_accuracy_cap",
 	"hit_accuracy_loss", "suppression_accuracy_loss", "hit_speed_loss", "melee_accuracy_loss",
 	"initial_accuracy", "moving_accuracy_cap", "shot_accuracy_penalty", "minimum_accuracy",
 	"target_move_accuracy_loss_per_meter_slow", "target_move_accuracy_loss_per_meter_fast",
@@ -61,6 +65,8 @@ const PERCENT_FIELDS := [
 ]
 const FIREARM_FIELDS := [
 	"headshot_enabled", "headshot_chance", "headshot_damage_multiplier",
+	"headshot_instant_kill_enabled", "headshot_stagger_seconds", "headshot_stagger_refresh_mode",
+	"headshot_movement_multiplier", "headshot_accuracy_cap",
 	"hit_accuracy_loss", "suppression_accuracy_loss", "near_miss_radius", "hit_speed_loss", "hit_speed_loss_seconds",
 	"ammo_type", "magazine_capacity", "reload_seconds", "shot_noise", "shot_noise_radius",
 	"damage", "aim_range", "fire_range", "cone_angle_degrees", "locked_move_multiplier",
@@ -69,8 +75,11 @@ const FIREARM_FIELDS := [
 
 ## 自定义数值控件也提供直接提示；脚本的 ## 属性文档同时保留原生检查器帮助。
 const EFFECT_HELP := {
-	"headshot_chance": "仅玩家开火前达到最准时，实际命中才掷概率；50%不是保证命中。霰弹每颗命中弹丸独立判定，最后按目标合并伤害。0关闭。",
-	"headshot_damage_multiplier": "爆头总伤害倍率：2.5表示普通伤害的250%，不是额外增加250%。只放大触发弹丸的伤害，不放大干扰、减速或击退。",
+	"headshot_chance": "仅玩家开火前达到最准时，实际命中才掷概率。普通枪和霰弹都每枪每目标判定一次，不保证命中；0关闭，100%必定触发合格命中。",
+	"headshot_damage_multiplier": "武器不启用秒杀或敌人开启爆头防护时使用。默认3倍；霰弹乘实际命中该目标的弹丸总伤害，不放大干扰、减速或击退。",
+	"headshot_stagger_seconds": "存活敌人应用本武器移速与精度限制的秒数；默认1秒，0关闭。复用原受击效果，不禁止开枪或取消AI动作；转向、换弹、近战、重力和碰撞继续。",
+	"headshot_movement_multiplier": "状态期间保留多少自主移速；默认0%不能走动，100%不减速。与普通受击减速取较强者，不影响重力或击退；不取消AI动作。",
+	"headshot_accuracy_cap": "状态期间的最高精度；默认0%。不会抬高本来更差的精度，不禁止开枪；状态结束后沿原武器规则恢复。",
 	"target_move_accuracy_loss_per_meter_slow": "慢速目标每米降低的概率。玩家按平行容差处理后的有效横向距离计算；前后移动不扣这一项。敌人仍按原目标位移。",
 	"target_move_accuracy_loss_per_meter_fast": "高速目标每米降低的概率。玩家按有效横向距离和速度计算；径向速度不加重惩罚。敌人规则保留。",
 	"target_move_fast_speed": "达到该速度时采用高速每米惩罚。玩家使用有效横向速度，敌人使用原目标速度（米/秒）。",
@@ -94,11 +103,12 @@ const EFFECT_HELP := {
 
 
 func _can_handle(object: Object) -> bool:
+	if _creating_native_property: return false
 	return object is WeaponData or object is ShotgunPattern or object is ShotgunSettings or object is PatternPreview
 
 
 func _parse_property(object: Object, type: Variant.Type, path: String, hint: PropertyHint,
-		hint_text: String, _usage: int, _wide: bool) -> bool:
+		hint_text: String, usage: int, wide: bool) -> bool:
 	if object is PatternPreview:
 		if path == "preview_pattern_angle_degrees":
 			add_property_editor(path, CoverageProperty.new(true), false, "预览图样覆盖范围")
@@ -124,6 +134,14 @@ func _parse_property(object: Object, type: Variant.Type, path: String, hint: Pro
 	if object.fire_mode == WeaponData.FireMode.SHOTGUN and (path == "damage" or PROBABILITY_FIELDS.has(path) or SPREAD_FIELDS.has(path)):
 		return true
 	if object.fire_mode == WeaponData.FireMode.MELEE and (path in FIREARM_FIELDS or PROBABILITY_FIELDS.has(path) or SPREAD_FIELDS.has(path)):
+		return true
+	var headshot_labels := {"headshot_enabled": "启用爆头", "headshot_instant_kill_enabled": "启用爆头秒杀", "headshot_stagger_refresh_mode": "连续硬直刷新方式"}
+	if headshot_labels.has(path):
+		_creating_native_property = true
+		var native := EditorInspector.instantiate_property_editor(object, type, path, hint, hint_text, usage, wide)
+		_creating_native_property = false
+		if native == null: return false
+		add_property_editor(path, native, false, headshot_labels[path])
 		return true
 	var mode: int = _context_mode(object)
 	if (mode == 0 and SPREAD_FIELDS.has(path)) or (mode == 1 and PROBABILITY_FIELDS.has(path)):

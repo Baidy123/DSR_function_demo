@@ -16,13 +16,15 @@ const HEADSHOT_SECONDS := 0.65
 
 
 func _ready() -> void:
-	combat.headshot_hit.connect(_on_headshot_hit)
+	combat.headshot_resolved.connect(_on_headshot_resolved)
 	combat.weapon_changed.connect(func(_weapon): _headshot_markers.clear())
 
 
-func _on_headshot_hit(point: Vector3, pellets: int, shotgun: bool) -> void:
+func _on_headshot_resolved(point: Vector3, outcome: StringName) -> void:
+	if outcome.is_empty(): return
+	var label := "爆头击杀" if outcome == &"killed" else ("爆头 · 硬直" if outcome == &"staggered" else "爆头")
 	_headshot_markers.append({"point": point, "remaining": HEADSHOT_SECONDS,
-		"text": "爆头弹丸 ×%d" % pellets if shotgun else "爆头", "screen": Vector2.ZERO})
+		"text": label, "screen": Vector2.ZERO})
 	# 只保留最近的少量表现，不持有死亡目标或为每颗弹丸创建节点。
 	if _headshot_markers.size() > 12: _headshot_markers.pop_front()
 

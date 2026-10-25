@@ -4,6 +4,7 @@ extends Resource
 
 enum FireMode { SEMI_AUTO, AUTOMATIC, MELEE, SHOTGUN }
 enum AmmoType { RIFLE, PISTOL, SMG, SHOTGUN }
+enum StaggerRefresh { KEEP_LONGER, RESTART }
 
 const ShotgunConfig = preload("res://scripts/weapons/shotgun_settings.gd")
 
@@ -65,10 +66,20 @@ const ShotgunConfig = preload("res://scripts/weapons/shotgun_settings.gd")
 @export_group("精准爆头（仅玩家）")
 ## 玩家开火前达到最准精度时，实际命中才判定概率爆头；不分身体部位，不额外等待。敌人和近战不使用。
 @export var headshot_enabled: bool = true
-## 最准时每次实际命中的爆头概率；霰弹每颗命中弹丸独立判定，再按目标合并伤害。0关闭，1表示100%。
-@export_range(0.0, 1.0, 0.01) var headshot_chance: float = 0.5
-## 爆头的总伤害倍率，2.5表示普通伤害的250%，不是额外加250%；只放大伤害，不放大命中干扰或减速。
-@export_range(1.0, 10.0, 0.05, "suffix:×") var headshot_damage_multiplier: float = 2.5
+## 最准时每枪对每个实际命中目标判定一次，霰弹也只判定一次。0关闭，1表示100%。
+@export_range(0.0, 1.0, 0.01) var headshot_chance: float = 0.1
+## 开启且敌人没有训练“爆头防护”时，爆头走原死亡流程。关闭仍使用倍率伤害和被爆头状态。
+@export var headshot_instant_kill_enabled: bool = true
+## 未秒杀时的总伤害倍率，3表示普通伤害的300%；霰弹乘实际命中弹丸总伤害。旧资源显式保存的倍率保留。
+@export_range(1.0, 10.0, 0.05, "suffix:×") var headshot_damage_multiplier: float = 3.0
+## 存活敌人的被爆头状态秒数，默认1秒：通过原受击流程应用下方移速与精度限制；不禁射、不取消AI动作。0关闭。
+@export_range(0.0, 10.0, 0.05, "or_greater", "suffix:s") var headshot_stagger_seconds: float = 1.0
+## 被爆头状态内保留的自主移速比例，默认0即不能走动；1不减速。与已有受击减速取较强者，不限制重力或击退。
+@export_range(0.0, 1.0, 0.01) var headshot_movement_multiplier: float = 0.0
+## 被爆头状态内的精度上限，默认0%；不会抬高更差的精度，不禁止开枪，结束后按原规则恢复。
+@export_range(0.0, 1.0, 0.01) var headshot_accuracy_cap: float = 0.0
+## 连续爆头时保留较长剩余时间，或从本次秒数重新计时；均不累加，每目标每枪只处理一次。
+@export_enum("保留较长剩余时间:0", "按本次时长重新计时:1") var headshot_stagger_refresh_mode: int = StaggerRefresh.KEEP_LONGER
 
 @export_group("对目标命中与压制效果")
 ## 命中目标时扣除的基础精度；按百分点扣减。20%×受方倍率0.5=扣10个百分点，80%变70%；0关闭。
@@ -234,6 +245,15 @@ func get_headshot_chance(stability: float) -> float:
 
 func get_headshot_damage_multiplier() -> float:
 	return maxf(1.0, headshot_damage_multiplier) if is_finite(headshot_damage_multiplier) else 1.0
+
+
+## 一枪一次的纯值快照；外部修改资源从下一枪生效，不改变本枪后续目标。
+func get_headshot_settings(stability: float) -> Dictionary:
+	return {"chance": get_headshot_chance(stability), "instant_kill": headshot_instant_kill_enabled,
+		"multiplier": get_headshot_damage_multiplier(), "stagger_seconds": _valid_seconds(headshot_stagger_seconds),
+		"movement_multiplier": clampf(headshot_movement_multiplier, 0.0, 1.0) if is_finite(headshot_movement_multiplier) else 0.0,
+		"accuracy_cap": clampf(headshot_accuracy_cap, 0.0, 1.0) if is_finite(headshot_accuracy_cap) else 0.0,
+		"stagger_refresh_mode": StaggerRefresh.RESTART if headshot_stagger_refresh_mode == StaggerRefresh.RESTART else StaggerRefresh.KEEP_LONGER}
 
 
 func _angle_to_stability(angle: float, minimum: float, span: float) -> float:

@@ -75,6 +75,7 @@ func setup(body: CharacterBody3D, perception_node: Node, selection_node: Node) -
 	if body.has_signal(&"ally_path_blocked") and not body.is_connected(&"ally_path_blocked", _on_ally_path_blocked):
 		body.connect(&"ally_path_blocked", _on_ally_path_blocked)
 	actor = body
+	actor.headshot_protection_query = has_headshot_protection
 	routes.context = self
 	agent = body.get_node("NavigationAgent3D")
 	refresh_environment()
@@ -88,6 +89,10 @@ func setting(section: StringName, key: StringName, fallback: Variant = null, uni
 	if section == &"cooperation" and cooperation != null and cooperation.has_team_binding(self):
 		return cooperation.team_setting(self, key, fallback, unit_defaults)
 	return training.setting(section, key, fallback, unit_defaults) if training != null else unit_defaults.get(key, fallback)
+
+func has_headshot_protection() -> bool:
+	return bool(setting(&"tactics", &"headshot_protection", false))
+
 
 func team_cooperation_abilities() -> Dictionary:
 	return cooperation.team_abilities(self) if cooperation != null else {}

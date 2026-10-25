@@ -4,6 +4,13 @@ extends "res://scripts/enemy/config/module_settings.gd"
 func _init() -> void:
 	section = &"tactics"
 
+## 开启后免于爆头秒杀，仍承受攻击武器配置的倍率伤害和存活硬直；关闭允许秒杀。
+## 属于训练的被动防护，个人和团队均生效，不依赖当前战术。团队配置改动在重新加载战斗后生效。
+@export var headshot_protection: bool = false:
+	set(value):
+		headshot_protection = value
+		mark_override(&"headshot_protection")
+
 ## 团队指挥下的抗压阈值；越低越早请求避险。压力来自实际受击与近弹，
 ## 默认0.4，单次受击约增加0.5；两类压力每秒各衰减0.5。只使用已训练掩体能力。
 @export_range(0.0, 4.0, 0.05) var stress_tolerance: float = 0.4:

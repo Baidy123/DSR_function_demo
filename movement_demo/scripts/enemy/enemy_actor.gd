@@ -7,6 +7,9 @@ const ShotgunBallistics = preload("res://scripts/weapons/shotgun_ballistics.gd")
 const BodyMotion = preload("res://scripts/enemy/services/enemy_body_motion.gd")
 var body_motion = BodyMotion.new()
 var local_motion = preload("res://scripts/enemy/services/enemy_local_motion.gd").new()
+var _headshot_state = preload("res://scripts/enemy/services/enemy_headshot_state.gd").new()
+## 由原训练Context注入查询，身体不读取AI私有状态或复制训练配置。
+var headshot_protection_query: Callable
 var _local_movement_velocity := Vector3.ZERO
 @export_group("协作分组")
 ## 同战斗区且通信资格匹配的友军共享真实观察。新阵营需通过关系接口配置。
@@ -34,6 +37,8 @@ signal weapon_effects_received(effects: Dictionary)
 signal reset_completed
 signal shot_fired
 signal died
+signal stagger_started(seconds: float)
+signal stagger_finished
 signal vault_landed
 signal melee_started
 signal melee_struck(target: Node3D, settings: Dictionary, direction: Vector3)
@@ -153,11 +158,12 @@ func _physics_process(delta: float) -> void:
 	melee_cooldown = maxf(0.0, melee_cooldown - maxf(0.0, delta))
 	if is_zero_approx(melee_cooldown): melee_cooldown = 0.0
 	# 未激活或暂停 AI 时仍能承受物理击退；正常移动过的帧不会重复移动。
-	if not is_dead and _hit_push_remaining > 0.0 and _last_move_physics_frame != Engine.get_physics_frames():
+	if not is_dead and (_hit_push_remaining > 0.0 or is_staggered()) and _last_move_physics_frame != Engine.get_physics_frames():
 		move_character(Vector3.ZERO, delta)
 	# 身体每帧只推进一次，行为切换、停步或 AI 停用不冻结减速期限。
 	_hit_slow_remaining = maxf(0.0, _hit_slow_remaining - maxf(0.0, delta))
 	if is_zero_approx(_hit_slow_remaining): _hit_slow_remaining = 0.0
+	if _headshot_state.advance(delta): stagger_finished.emit()
 
 
 ## 执行方向与速度；调用者负责决定目的地。
@@ -173,7 +179,11 @@ func move_character(direction: Vector3, delta: float, speed_multiplier: float = 
 	# 自主移动与受击外力分开：任何行为都不能绕过前摇限制。
 	if not can_move(): direction = Vector3.ZERO
 	speed_multiplier = get_effective_movement_multiplier(speed_multiplier)
-	_local_movement_velocity = local_motion.resolve(Vector3(direction.x, 0.0, direction.z) * move_speed * speed_multiplier, delta, move_speed * speed_multiplier, stop_position, scheduled_members)
+	# 共用受击减速出口；零速时也禁止局部避让产生自主位移。
+	if speed_multiplier <= 0.0:
+		clear_local_movement()
+	else:
+		_local_movement_velocity = local_motion.resolve(Vector3(direction.x, 0.0, direction.z) * move_speed * speed_multiplier, delta, move_speed * speed_multiplier, stop_position, scheduled_members)
 	# 翻越推开的短暂外力期间，不能用自主接近立即抵消腾出的落地空间。
 	if _hit_push_remaining > 0.0 and not _body_push_direction.is_zero_approx():
 		_local_movement_velocity -= _body_push_direction * minf(0.0, _local_movement_velocity.dot(_body_push_direction))
@@ -208,6 +218,7 @@ func configure_local_spacing(enabled: bool, margin: float = 0.45) -> void:
 	local_motion.configure_spacing(enabled, margin)
 
 func _exit_tree() -> void:
+	_headshot_state.clear()
 	var area := _parent_combat_area()
 	if is_node_ready() and area != null:
 		_spawn_world_before_reparent = global_transform * transform.affine_inverse() * initial_transform
@@ -269,9 +280,14 @@ func face_direction(direction: Vector3, delta: float) -> void:
 
 
 func receive_hit(damage: float, attacker_position: Vector3 = Vector3.INF) -> void:
+	_apply_damage(damage, attacker_position)
+
+
+## 普通伤害和爆头秒杀共享同一个死亡出口；不伪造巨额伤害、不直接删节点。
+func _apply_damage(damage: float, attacker_position: Vector3, execution: bool = false) -> void:
 	if is_dead:
 		return
-	health = maxf(0.0, health - maxf(damage, 0.0))
+	health = 0.0 if execution else maxf(0.0, health - maxf(damage, 0.0))
 	if health <= 0.0:
 		is_dead = true
 		local_motion.reset()
@@ -299,6 +315,62 @@ func receive_weapon_hit(damage: float, attacker_position: Vector3, effects: Dict
 	if is_dead or not is_finite(damage) or damage <= 0.0: return
 	receive_hit(damage, attacker_position)
 	if not is_dead: weapon_effects_received.emit(effects)
+
+
+func is_headshot_protected() -> bool:
+	return bool(headshot_protection_query.call()) if headshot_protection_query.is_valid() else false
+
+
+## 玩家已完成本枪判定，reaction只含冻结的结果；不重新抽签或读取当前武器。
+func receive_headshot_hit(damage: float, attacker_position: Vector3, effects: Dictionary, reaction: Dictionary) -> StringName:
+	if is_dead or get_tree().paused or not is_finite(damage) or damage < 0.0: return &""
+	if reaction.get("execution", false):
+		_apply_damage(health, attacker_position, true)
+		return &"killed"
+	receive_weapon_hit(damage, attacker_position, effects)
+	if is_dead: return &"killed"
+	apply_stagger(float(reaction.get("stagger_seconds", 0.0)), int(reaction.get("stagger_refresh_mode", 0)),
+		float(reaction.get("movement_multiplier", 0.0)), float(reaction.get("accuracy_cap", 0.0)))
+	return &"staggered" if is_staggered() else &"headshot"
+
+
+func is_staggered() -> bool:
+	return _headshot_state.active()
+
+
+func get_stagger_remaining_seconds() -> float:
+	return _headshot_state.remaining
+
+
+## 外部和未来动画可读取；动画不拥有计时或恢复动作权限。
+func get_hit_reaction_state() -> Dictionary:
+	return {"kind": &"headshot" if is_staggered() else &"none", "staggered": is_staggered(),
+		"remaining_seconds": get_stagger_remaining_seconds(),
+		"movement_multiplier": _headshot_state.movement_multiplier if is_staggered() else 1.0,
+		"accuracy_cap": _headshot_state.accuracy_cap if is_staggered() else 1.0}
+
+
+func apply_stagger(seconds: float, refresh_mode: int = WeaponData.StaggerRefresh.KEEP_LONGER,
+		movement_multiplier: float = 0.0, accuracy_cap: float = 0.0) -> void:
+	if is_dead or get_tree().paused: return
+	var was_active := is_staggered()
+	if not _headshot_state.apply(seconds, refresh_mode, movement_multiplier, accuracy_cap): return
+	# 复用近战／枪击的精度损失入口，状态仅额外维持持续时间。
+	apply_aim_penalty(maxf(0.0, weapon_stability - _headshot_state.accuracy_cap), true)
+	if _headshot_state.movement_multiplier <= 0.0:
+		clear_local_movement()
+		velocity.x = 0.0
+		velocity.z = 0.0
+		body_motion.interrupt()
+	if was_active: return
+	stagger_started.emit(_headshot_state.remaining)
+	_refresh_status_label()
+
+
+func clear_stagger() -> void:
+	var was_active := is_staggered()
+	_headshot_state.clear()
+	if was_active: stagger_finished.emit()
 
 
 ## 唯一身体减速状态；损失已乘训练倍率，只影响自主移动，不缩放击退和重力。
@@ -366,10 +438,13 @@ func _clear_hit_push() -> void:
 
 
 func get_hit_movement_multiplier() -> float:
-	return _hit_slow_multiplier if _hit_slow_remaining > 0.0 else 1.0
+	# 与近战共用最终减速出口；普通命中不能提前覆盖被爆头状态。
+	var ordinary := _hit_slow_multiplier if _hit_slow_remaining > 0.0 else 1.0
+	return minf(ordinary, _headshot_state.movement_multiplier) if is_staggered() else ordinary
 
 
 func clear_hit_effects() -> void:
+	clear_stagger()
 	_clear_hit_push()
 	_hit_slow_remaining = 0.0
 	_hit_slow_multiplier = 1.0
@@ -482,6 +557,7 @@ func clear_aim() -> void:
 	_last_visible_point = Vector3.INF
 	if weapon != null:
 		weapon_stability = minf(weapon_stability, weapon.get_aim_settings(false).initial)
+	if is_staggered(): weapon_stability = minf(weapon_stability, _headshot_state.accuracy_cap)
 
 
 ## 不修改共享资源，也不通过换枪清掉尚未结束的开火冷却。
@@ -537,7 +613,8 @@ func cancel_reload() -> void:
 
 
 func get_center_probability() -> float:
-	return clampf(weapon_stability, 0.0, 1.0) if weapon != null else 0.0
+	var cap: float = _headshot_state.accuracy_cap if is_staggered() else 1.0
+	return clampf(weapon_stability, 0.0, cap) if weapon != null else 0.0
 
 
 func get_max_shot_deviation_degrees() -> float:
@@ -571,6 +648,7 @@ func _update_weapon_stability(delta: float, visible_point: Vector3) -> void:
 		var recovery_delta: float = maxf(0.0, delta - weapon_recovery_timer)
 		weapon_recovery_timer = maxf(0.0, weapon_recovery_timer - delta)
 		weapon_stability = minf(settings.target_floor if target_moving else 1.0, weapon_stability + settings.recovery * recovery_delta)
+	if is_staggered(): weapon_stability = minf(weapon_stability, _headshot_state.accuracy_cap)
 
 
 func get_shot_origin() -> Vector3:
