@@ -16,9 +16,9 @@ enum AimMode { PROBABILITY, SPREAD_CONE }
 @export_enum("旧概率模式:0", "新散布锥模式:1") var aim_mode: int = AimMode.SPREAD_CONE
 
 @export_group("目标跟枪精度")
-## 目标沿瞄准连线靠近／远离时的免罚夹角（度），前后对称；默认5°容纳轻微路径偏差。
+## 目标沿瞄准连线靠近／远离时的免罚半角（度），前后对称；默认两侧各15°，合计30°。
 ## 超出后按有效横向位移逐渐增加惩罚；0使用纯横向投影。只影响玩家，三种瞄准分支共用。
-@export_range(0.0, 45.0, 0.5, "suffix:°") var tracking_parallel_tolerance_degrees: float = 5.0
+@export_range(0.0, 45.0, 0.5, "suffix:°") var tracking_parallel_tolerance_degrees: float = 15.0
 
 @export_group("蹲姿精度")
 ## 仅玩家完成蹲伏时增加的0～1稳定度；0关闭，不改写武器或基础精度。
