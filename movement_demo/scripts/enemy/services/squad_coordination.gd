@@ -7,10 +7,12 @@ const Planner = preload("res://scripts/enemy/services/enemy_team_planner.gd")
 const Formation = preload("res://scripts/enemy/services/enemy_search_formation.gd")
 const Traffic = preload("res://scripts/enemy/services/squad_traffic.gd")
 const Search = preload("res://scripts/enemy/services/squad_search.gd")
+const Patrol = preload("res://scripts/enemy/services/squad_patrol.gd")
 const Combat = preload("res://scripts/enemy/services/squad_combat_tactics.gd")
 const Support = preload("res://scripts/enemy/services/squad_support.gd")
 var _support = Support.new()
 var _search = Search.new()
+var _patrol = Patrol.new()
 const Defense = preload("res://scripts/enemy/services/squad_defense.gd")
 var _defense = Defense.new()
 var _environment: WeakRef
@@ -20,7 +22,6 @@ var _template: Dictionary = {}
 var _tasks: Dictionary = {}
 var _objective: Dictionary = {}
 var _covered: Dictionary = {}
-var _patrol_visits: Dictionary = {}
 var _feedback: Dictionary = {}
 var _bodies: Dictionary = {}
 var _progress: Dictionary = {}
@@ -81,7 +82,7 @@ func reset() -> void:
 	_template.clear()
 	_objective.clear()
 	_covered.clear()
-	_patrol_visits.clear()
+	_patrol.reset()
 	_feedback.clear()
 	_progress.clear()
 	_preparation.clear()
@@ -100,6 +101,7 @@ func reset() -> void:
 	if environment != null: environment.release_squad_reservations(self)
 
 func release_member(id: int) -> void:
+	_patrol.release(id)
 	_search.coverage.release(id)
 	_observations.erase(id)
 	_defense.release(id)
@@ -312,7 +314,6 @@ func _update_objective() -> void:
 		"position": _objective.get("position", _bodies.values()[0].position),
 		"target_id": _objective.get("target_id", 0), "uncertainty": 0.0}, true)
 	_covered.clear()
-	_patrol_visits.clear()
 	_failed_sites.clear()
 	_barriers.clear()
 	_attempt = 0
@@ -394,8 +395,6 @@ func _plan() -> void:
 		return
 	if _preparation.is_empty():
 		var sites = Formation.sites(context, _objective, _bodies.size(), _attempt)
-		if _objective.phase == &"patrol" and not sites.is_empty() and sites.all(func(site): return _patrol_visits.has(site.site_key)):
-			_patrol_visits.clear()
 		_preparation = {"members": _bodies.keys(), "index": 0, "candidates": {}, "works": {}, "revision": 0, "solved_revision": -1, "sites": sites, "map_revision": map_revision,
 			"objective_id": _objective.objective_id, "started_at": elapsed}
 	# A slow optional action must not monopolize preparation for the entire
@@ -422,7 +421,6 @@ func _plan() -> void:
 		var eligible: Array = []
 		for site: Dictionary in work.sites:
 			if _recent_inspection(site, map_revision) or _failed_sites.get([id, site.site_key], -INF) > elapsed: continue
-			if _objective.phase == &"patrol" and _patrol_visits.has(site.site_key): continue
 			eligible.append(site)
 		work.sites = eligible
 		work.offer_cursor = {}
@@ -527,9 +525,12 @@ func _finish_plan(deadline: int) -> void:
 		# Exhaust the first bounded geometry alternatives on subsequent area
 		# ticks before backing off; failed preparation is not useful waiting.
 		if _attempt <= 3: _due = elapsed
-		# Unreachable remaining sites do not prevent the next patrol round.
-		# Clearing visits never marks those sites as physically visited.
-		if _objective.phase == &"patrol": _patrol_visits.clear()
+		# Try subsequent ordered posts after a failed layout, retaining each
+		# member's recent arrivals instead of restarting the whole patrol.
+		if _objective.phase == &"patrol":
+			for id in _preparation.candidates:
+				for offer: Dictionary in _preparation.candidates[id]:
+					if offer.role == &"patrol": _failed_sites[[id, offer.site_key]] = elapsed + 4.0
 		_last_replan = result.reason
 		frame_costs.stage = &"repair"
 		if not _repair_traffic(result.get("attempted", {})):
@@ -548,6 +549,7 @@ func _member_work(id: int) -> Dictionary:
 	var body: Dictionary = _bodies[id]
 	var context = _context(id)
 	var sites: Array = _preparation.sites.duplicate(true)
+	if _objective.phase == &"patrol": sites = _patrol.sites(context, float(configuration.get("values", {}).get("patrol_radius", 3.0)), elapsed)
 	if _objective.phase == &"contact": sites = Combat.sites(context, _profiles[id], body, _objective, _bodies, _profiles)
 	if _objective.phase == &"search":
 		# A completed route can continue into its prepared future, after checking
@@ -611,6 +613,8 @@ func _member_work(id: int) -> Dictionary:
 		if previous.role == &"search" and Traffic.approach(continuing).is_empty(): continuing.staging_position = body.position
 		continuing.estimate = 0.0
 		candidates.append(continuing)
+		if previous.role == &"patrol" and _objective.phase == &"patrol":
+			return {"candidates": candidates, "sites": [], "cursor": 0, "defense_ready": true, "proactive": false, "retain": true}
 	if defense_role.is_empty() and previous.has("resume_task") and previous.state == &"complete" and _passage_cleared(previous):
 		var resume: Dictionary = previous.resume_task
 		var description := Formation.route_plan(context, resume.position)
@@ -817,7 +821,7 @@ func report(context, report: Dictionary) -> bool:
 				"map_revision": context.coordination_search_revision()}
 			if _waiting_for_search_peers(id): task.reason = &"search_peers"
 		elif task.role == &"patrol":
-			_patrol_visits[task.site_key] = {"position": task.position, "visited_at": elapsed, "member_id": id}
+			_patrol.complete(id, task, elapsed)
 		_due = 0.0
 	elif report.state == &"blocked":
 		# An executor window expiring says nothing about the physical post.
@@ -909,7 +913,8 @@ func debug_member_snapshot(context) -> Dictionary:
 		"waiting_for": _feedback.get(context.actor.get_instance_id(), {}).get("waiting_for", []).duplicate(),
 		"phase": _objective.get("phase", &"patrol"), "state": task.get("state", &"pending"),
 		"reason": task.get("reason", _reason), "planning_reason": _reason, "last_replan": _last_replan,
-		"plan_version": _version, "covered": _covered.duplicate(true), "search": _search.snapshot(elapsed), "patrol_visits": _patrol_visits.duplicate(true), "barriers": _barriers.duplicate(true)}
+		"plan_version": _version, "covered": _covered.duplicate(true), "search": _search.snapshot(elapsed),
+		"patrol_visits": _patrol.visits(), "patrol": _patrol.snapshot(context.actor.get_instance_id()), "barriers": _barriers.duplicate(true)}
 
 func coverage_debug_snapshot() -> Dictionary:
 	return _search.snapshot(elapsed, true)

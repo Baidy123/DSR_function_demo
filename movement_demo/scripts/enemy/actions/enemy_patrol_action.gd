@@ -1,5 +1,7 @@
 extends "res://scripts/enemy/actions/enemy_action.gd"
 
+const Patrol = preload("res://scripts/enemy/services/squad_patrol.gd")
+
 # 原巡逻算法，由AI更新。
 func start() -> void:
 	if not is_enabled():
@@ -81,3 +83,20 @@ func tick(delta: float, _visible: bool) -> Dictionary:
 
 func command_roles() -> Array[StringName]:
 	return [&"patrol", &"guard", &"move"]
+
+
+## The squad supplies route order. Validate its first reachable local post;
+## do not let a later short route reorder this member's patrol circuit.
+func prepare_command_offers(query: Dictionary, cursor: Dictionary, deadline_usec: int) -> Dictionary:
+	var batch := super.prepare_command_offers(query, cursor, deadline_usec)
+	if query.objective.phase == &"patrol" and batch.offers.any(func(offer): return offer.role == &"patrol"):
+		batch.done = true
+	return batch
+
+
+func command_site_offer(query: Dictionary, site: Dictionary) -> Dictionary:
+	var offer := super.command_site_offer(query, site)
+	if offer.get("role") == &"patrol" and site.has("patrol_center"):
+		if not Patrol.route_within(offer.route, site.patrol_center, site.patrol_radius): return {}
+		for key in ["patrol_index", "patrol_center", "patrol_radius"]: offer[key] = site[key]
+	return offer

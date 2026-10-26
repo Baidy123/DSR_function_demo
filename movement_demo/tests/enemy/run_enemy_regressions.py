@@ -10,6 +10,7 @@ TESTS = [
     "enemy_wave_test",
     "squad_mixed_cooperation_test",
     "squad_command_runtime_test",
+    "squad_patrol_test",
     "squad_command_contract_test",
     "squad_map_observation_test",
     "enemy_route_evaluation_batch_test",
@@ -108,7 +109,7 @@ TESTS = [
 def main():
     directory = Path(__file__).resolve().parent
     return suite_main(directory, directory.parents[1], TESTS, "enemy_regressions",
-                      "Enemy regressions", {"squad_command_runtime_test": 180})
+                      "Enemy regressions", {"squad_command_runtime_test": 180, "squad_patrol_test": 120})
 
 if __name__ == "__main__":
     raise SystemExit(main())

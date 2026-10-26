@@ -13,6 +13,8 @@ static func sites(context, objective: Dictionary, count: int, attempt: int) -> A
 	var result: Array[Dictionary] = []
 	var center: Vector3 = objective.get("search_center", objective.get("position", context.actor.global_position))
 	var phase: StringName = objective.get("phase", &"patrol")
+	# Patrol posts belong to each member's home circuit in SquadPatrol.
+	if phase == &"patrol": return result
 	if phase == &"search":
 		var clue = objective.duplicate(true)
 		clue.position = center
@@ -44,14 +46,11 @@ static func sites(context, objective: Dictionary, count: int, attempt: int) -> A
 				if Contract.horizontal(point, projected) < 0.4:
 					result.append({"position": projected, "look_position": center, "site_key": "clue:%s:%s" % [objective.get("objective_id", 0), angle_offset]})
 		return result
-	if phase == &"patrol": center = context._spawn_position
 	var radial: Vector3 = context.actor.global_position - center
 	radial.y = 0.0
 	if radial.is_zero_approx(): radial = Vector3.BACK
 	var angle = atan2(radial.z, radial.x)
-	if phase == &"patrol": angle = 0.0
 	var radius = 5.0 if phase == &"contact" else 2.0 + float(attempt / 3) * 1.5
-	if phase == &"patrol": radius = 3.0
 	for i in 12:
 		var direction = Vector3(cos(angle + TAU * i / 12.0), 0, sin(angle + TAU * i / 12.0))
 		var point = center + direction * radius
@@ -59,7 +58,7 @@ static func sites(context, objective: Dictionary, count: int, attempt: int) -> A
 		if Contract.horizontal(point, projected) > 0.4: continue
 		projected.y = context.actor.global_position.y
 		result.append({"position": projected, "look_position": center if phase == &"contact" else projected + direction,
-			"site_key": "%s:%s:%s" % [phase, 0 if phase == &"patrol" else attempt / 3, i]})
+			"site_key": "%s:%s:%s" % [phase, attempt / 3, i]})
 	return result
 
 static func _cover_sites(geometry: Dictionary, count: int, attempt: int) -> Array[Dictionary]:

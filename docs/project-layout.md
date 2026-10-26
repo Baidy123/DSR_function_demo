@@ -109,6 +109,7 @@ movement_demo/
 | `enemy/services/enemy_team_planner.gd` | 全成员岗位组合搜索，按模板能力与几何排除不完整方案；限制重复入口、比较检查/掩护组合及侧翼人数。 |
 | `enemy/services/enemy_search_formation.gd` | 根据合法线索生成两端检查、远侧掩护和接敌站位，验证完整路线、观察/枪线；提供入口前后关注点及冻结的任务机动速度。 |
 | `enemy/services/squad_traffic.gd` | 全队通行顺序、准备点占位与离开顺序、观察线互挡、当前阻挡者与剩余路线计算。 |
+| `enemy/services/squad_patrol.gd` | 原协调器持有的各成员出生点巡逻中心、顺序、近期到达记录、候选与只读快照；无独立循环、任务提交或身体控制。 |
 | `enemy/services/squad_search.gd` | 编排合法线索、地图覆盖和多段路线；hint 改变优先级，不清空观察历史。 |
 | `enemy/services/squad_map_coverage.gd` | 各小队独立的地图/楼层面积样本、观察时长与来源、当前监视、复查及局部几何失效；不控制身体或下达任务。 |
 | `enemy/services/squad_search_route.gd` | 从未查/待复查面积准备有限观察路线与未来步骤，导航和预计收益不算实际覆盖。 |

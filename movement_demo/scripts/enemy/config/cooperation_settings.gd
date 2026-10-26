@@ -37,3 +37,11 @@ func _init() -> void:
 	set(value):
 		run_speed_multiplier = value
 		mark_override(&"run_speed_multiplier")
+
+@export_group("巡逻（普通／强配合）")
+## 每名成员围绕自己的出生点巡逻，不向首个队友集合。只影响未警戒巡逻。
+## 小队统一分配有序目的地；导航与身体通行仍需合法，路径额外允许0.5米余量。
+@export_range(1.0, 20.0, 0.5, "suffix:m") var patrol_radius := 3.0:
+	set(value):
+		patrol_radius = clampf(value, 1.0, 20.0) if is_finite(value) else 3.0
+		mark_override(&"patrol_radius")
