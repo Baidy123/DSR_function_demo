@@ -6,7 +6,8 @@ func _initialize() -> void:
 	_run.call_deferred()
 
 func _run() -> void:
-	var scene = preload("res://tests/enemy/enemy_fire_fixture.gd").unbound_scene()
+	var scene = preload("res://tests/enemy/enemy_fire_fixture.gd").single_member_scene()
+	var saved_weapon: WeaponData = preload("res://tests/enemy/enemy_fire_fixture.gd").primary_enemy(scene).weapon
 	root.add_child(scene)
 	current_scene = scene
 	var enemy = preload("res://tests/enemy/enemy_fire_fixture.gd").primary_enemy(scene)
@@ -18,7 +19,7 @@ func _run() -> void:
 		_finish()
 		return
 	# 场景检查资源接线和按当前配置初始化；具体数值行为由下面独立武器验证。
-	_check("场景挂载独立敌人武器并读取当前初始概率", enemy.weapon is WeaponData and enemy.weapon == load("res://resources/weapons/enemy_test_pistol.tres") and is_equal_approx(enemy.get_center_probability(), enemy.weapon.initial_accuracy))
+	_check("场景按实际保存的武器引用初始化当前概率", saved_weapon != null and enemy.weapon == saved_weapon and is_equal_approx(enemy.get_center_probability(), saved_weapon.initial_accuracy))
 	var weapon := WeaponData.new()
 	weapon.initial_accuracy = 0.9
 	weapon.stabilize_seconds = 1.0
@@ -36,6 +37,8 @@ func _run() -> void:
 	player.global_position = enemy.global_position + Vector3(0, 0, 4.8)
 	enemy.look_at(player.global_position)
 	player.get_node("Health").debug_invincible = true
+	# 真实相机跟随传送后的玩家；屏幕外禁射仍生效，不能靠删除相机绕过。
+	_check("射击前真实跟随相机已包含敌人", await preload("res://tests/enemy/enemy_fire_fixture.gd").wait_for_camera(enemy))
 	for frame in range(5):
 		await physics_frame
 	var target: Vector3 = player.get_torso_position()

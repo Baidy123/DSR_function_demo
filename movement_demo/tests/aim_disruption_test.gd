@@ -7,7 +7,7 @@ func _initialize() -> void:
 	_run.call_deferred()
 
 func _run() -> void:
-	var scene = preload("res://tests/enemy/enemy_fire_fixture.gd").unbound_scene()
+	var scene = preload("res://tests/enemy/enemy_fire_fixture.gd").single_member_scene()
 	root.add_child(scene)
 	current_scene = scene
 	var player = scene.get_node("Player")
@@ -23,6 +23,8 @@ func _run() -> void:
 	# 攻击基础值来自两把测试武器，受方只配置倍率。
 	ai.training.profile.set_setting(&"tactics", &"hit_accuracy_loss_multiplier", 1.0)
 	ai.training.profile.set_setting(&"tactics", &"suppression_accuracy_loss_multiplier", 1.0)
+	# 本用例修改训练视距验证同帧缓存；显式选择训练视距，不与武器绑定开关混用。
+	ai.training.profile.set_setting(&"perception", &"use_weapon_sight_range", false)
 	actor.debug_shooting = false
 	for wall in get_nodes_in_group("cover_region"): wall.collision_layer = 0
 	player.global_position = Vector3(22, 0, -2)
@@ -34,12 +36,15 @@ func _run() -> void:
 	weapon.convergence_seconds = 2.1
 	weapon.reload_seconds = 0.5
 	weapon.shot_spread_penalty_degrees = 0.0
+	# 本套核对普通命中损失；随机爆头的秒杀／硬直由专项覆盖。
+	weapon.headshot_enabled = false
 	combat.equip_weapon(weapon, false, preload("res://scripts/weapons/weapon_ammo.gd").new(weapon, {weapon.ammo_type: 100}))
 	var enemy_weapon := WeaponData.new()
 	enemy_weapon.reload_seconds = 0.5
 	enemy_weapon.accuracy_recovery_delay = 0.4
 	enemy_weapon.stabilize_seconds = 2.0
 	actor.equip_weapon(enemy_weapon)
+	check(await preload("res://tests/enemy/enemy_fire_fixture.gd").wait_for_camera(actor), "传送后实际相机已包含交战双方")
 	for frame in range(8): await physics_frame
 	combat.accuracy = 1.0
 	player.receive_weapon_hit(1.0, Vector3.ZERO, enemy_weapon.get_attack_effects())
