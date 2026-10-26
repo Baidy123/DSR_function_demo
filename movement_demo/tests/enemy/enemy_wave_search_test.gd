@@ -7,6 +7,7 @@ func _run() -> void:
 	_configuration()
 	for level in 3: await _spawn_search_case(level)
 	await _disabled_case()
+	await _no_fast_case()
 	await _reordered_case()
 	await _blocked_spawn_case()
 	print("WAVE SPAWN SEARCH: %d/%d passed" % [checks - failures, checks])
@@ -47,12 +48,17 @@ func _hidden_fixture(level: int, enabled: bool = true) -> Node3D:
 			squad.profile = squad.profile.duplicate(true)
 			squad.profile.level = level
 			for enemy in squad.get_children():
+				enemy.move_speed = 2.0
 				var training = enemy.get_node("Training")
 				training.profile = training.profile.duplicate(true)
 				training.profile.selected_tactics.clear()
 				training.profile.search.tracking_cheat_enabled = false
 				# 普通未目击调查会在这个时间后结束；出生搜索应持续警戒。
 				training.profile.search.search_seconds = 0.1
+				training.profile.search.combat_pursuit_seconds = 1.5
+				training.profile.search.combat_pursuit_speed_multiplier = 1.8
+				training.profile.search.focused_search_seconds = 2.5
+				training.profile.search.focused_search_speed_multiplier = 1.0
 	var wall := StaticBody3D.new()
 	wall.name = "SightWall"
 	wall.position = Vector3(0, 2, 6)
@@ -97,34 +103,54 @@ func _spawn_search_case(level: int) -> void:
 	var starts := {}
 	for enemy in members: starts[enemy.get_instance_id()] = enemy.global_position
 	player.global_position.x = -6.0
-	var patrol_or_track := false
+	var patrolled := false
 	var sight_or_fire := false
 	var searched := false
+	var fast_phase := false
+	var source_clock_preserved := true
+	var peak_speed_ratio := 0.0
+	var previous := starts.duplicate()
+	var previous_frame := Engine.get_physics_frames()
 	for frame in 120:
 		await _settle(1)
+		var current_frame := Engine.get_physics_frames()
+		var sample_seconds := float(current_frame - previous_frame) / float(Engine.physics_ticks_per_second)
 		for enemy in members:
 			var ai = enemy.get_node("AI")
-			patrol_or_track = patrol_or_track or ai.context.state in [ai.State.PATROL, ai.State.TRACK]
+			var before: Vector3 = previous[enemy.get_instance_id()]
+			var after: Vector3 = enemy.global_position
+			if sample_seconds > 0.0: peak_speed_ratio = maxf(peak_speed_ratio, Vector2(after.x - before.x, after.z - before.z).length() / sample_seconds / enemy.move_speed)
+			previous[enemy.get_instance_id()] = after
+			patrolled = patrolled or ai.context.state == ai.State.PATROL
 			sight_or_fire = sight_or_fire or ai.context.has_visual_memory or ai.context.sees_player or enemy.shot_count > 0
 			if level == 0:
-				searched = searched or (ai.current_action != null and ai.current_action.action_id == &"search" and ai.context.state == ai.State.SEARCH)
+				source_clock_preserved = source_clock_preserved and absf(ai.actions[&"search"]._search_evidence_age() - (ai.context.coordination_now() - float(first_hint.captured_at))) < 0.001
+				searched = searched or (ai.current_action != null and ai.current_action.action_id == &"search" and ai.context.state in [ai.State.TRACK, ai.State.SEARCH])
+				fast_phase = fast_phase or (ai.current_action != null and ai.current_action.action_id == &"search" and ai.current_action.movement_multiplier() > 1.0)
 			else:
 				var objective: Dictionary = ai.context.coordination_debug_snapshot().get("objective", {})
 				searched = searched or objective.get("phase") == &"search"
-				patrol_or_track = patrol_or_track or ai.context.coordination_assignment().get("role") == &"patrol"
-	check(searched and not patrol_or_track, "等级%d：直接执行搜索，无巡逻或声音TRACK开局" % level)
+				var task: Dictionary = ai.context.coordination_assignment()
+				patrolled = patrolled or task.get("role") == &"patrol"
+				fast_phase = fast_phase or (task.get("role") == &"search" and float(task.get("pursuit_until", -INF)) > ai.context.coordination_now())
+		previous_frame = current_frame
+	check(searched and not patrolled, "等级%d：出生直接追查／搜索，不执行巡逻" % level)
+	check(fast_phase and peak_speed_ratio > 1.15, "等级%d：已有快速阶段产生实际加速位移（峰值%.2f倍）" % [level, peak_speed_ratio])
 	check(members.any(func(enemy): return enemy.global_position.distance_to(starts[enemy.get_instance_id()]) > 0.2), "等级%d：搜索产生实际身体移动" % level)
 	check(not sight_or_fire and members.all(func(enemy): return not enemy.get_node("AI").context.last_seen_aim_position.is_finite()), "等级%d：实体墙后不伪造目击、瞄点或开火" % level)
 	check(members.all(func(enemy): return enemy.get_node("AI").context.spawn_search_hint == first_hint and enemy.get_node("AI").context.is_alerted), "等级%d：隐蔽位移及普通调查超时不刷新提示或解除警戒" % level)
 	check(original.all(func(enemy): return enemy.get_node("AI").context.spawn_search_hint.is_empty() and not enemy.get_node("AI").context.is_alerted), "等级%d：出生提示不广播给在场旧波次" % level)
 	if level > 0:
 		check(members.all(func(enemy): return enemy.get_node("AI").utility_decision_count == 0 and enemy.get_node("AI").context.commanded()), "等级%d：全程保留团队控制权，个人Utility次数为0" % level)
+		check(members.all(func(enemy): return float(enemy.get_node("AI").context.coordination_assignment().get("pursuit_until", -INF)) <= float(first_hint.captured_at) + 1.501), "等级%d：重排和到点不返还出生快速时窗" % level)
 	else:
 		var ai = members[0].get_node("AI")
 		var search = ai.actions[&"search"]
+		check(source_clock_preserved, "出生快速阶段按原区域捕获时间计龄，不混用新成员的局部时钟")
 		var old_age: float = search.search_elapsed_seconds
 		search._end_search()
 		check(ai.context.is_alerted and search.investigation_phase == ai.State.SEARCH and search.search_elapsed_seconds == old_age and not ai.context.has_visual_memory, "个人搜完一轮继续搜索，保持衰减年龄且不伪造战斗目击")
+		check(not search._fresh_pursuit() and search.movement_multiplier() <= 1.0, "搜索换轮不刷新出生年龄，不重复获得快速追查")
 	var elapsed: float = members[0].get_node("AI").context.evidence_elapsed_seconds
 	paused = true
 	await _settle(3)
@@ -165,6 +191,22 @@ func _disabled_case() -> void:
 	await _settle(20)
 	var members: Array = controller.get_node("Wave2/Squad").get_children()
 	check(members.all(func(enemy): return enemy.get_node("AI").context.spawn_search_hint.is_empty() and not enemy.get_node("AI").context.is_alerted), "关闭开关后不注入情报或警戒，保留原出生行为")
+	region.queue_free()
+	await _settle()
+
+func _no_fast_case() -> void:
+	var region := _hidden_fixture(0)
+	var controller = region.get_node("EnemyWaves")
+	for squad in controller.get_node("Wave2").get_children():
+		for enemy in squad.get_children(): enemy.get_node("Training").profile.search.combat_pursuit_seconds = 0.0
+	root.add_child(region)
+	current_scene = region
+	region.get_node("Player").set_physics_process(false)
+	check(await _await_wave(controller, 2), "快速时长为0仍正常生成出生搜索")
+	var ai = controller.get_node("Wave2/Squad/Enemy/AI")
+	await _settle(20)
+	var search = ai.actions[&"search"]
+	check(ai.context.is_alerted and not search._fresh_pursuit() and search.movement_multiplier() <= 1.0, "0秒关闭快速阶段，保留出生搜索与警戒")
 	region.queue_free()
 	await _settle()
 

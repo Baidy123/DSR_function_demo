@@ -211,6 +211,9 @@ func _known_search_position() -> Vector3:
 
 
 func _search_evidence_age() -> float:
+	# 出生提示用原区域时钟计龄；动作切换、到点和普通调查不能将它变成新目击。
+	if not context.has_combat_contact() and not context.spawn_search_hint.is_empty():
+		return maxf(0.0, context.coordination_now() - float(context.spawn_search_hint.captured_at))
 	var evidence := _search_evidence()
 	return maxf(0.0, context.evidence_elapsed_seconds - float(evidence.get("captured_at", context.evidence_elapsed_seconds - context.utility_unseen_seconds)))
 
@@ -357,11 +360,11 @@ func _start_next_trail() -> bool:
 
 
 func _focused_evidence() -> bool:
-	return context.has_combat_contact() and not noise_search_origin.is_finite() and _search_evidence_age() < maxf(0.0, float(_setting(&"focused_search_seconds", 8.0)))
+	return (context.has_combat_contact() or not context.spawn_search_hint.is_empty()) and not noise_search_origin.is_finite() and _search_evidence_age() < maxf(0.0, float(_setting(&"focused_search_seconds", 8.0)))
 
 
 func _fresh_pursuit() -> bool:
-	return context.has_combat_contact() and not noise_search_origin.is_finite() and _search_evidence_age() < maxf(0.0, float(_setting(&"combat_pursuit_seconds", 4.0)))
+	return (context.has_combat_contact() or not context.spawn_search_hint.is_empty()) and not noise_search_origin.is_finite() and _search_evidence_age() < maxf(0.0, float(_setting(&"combat_pursuit_seconds", 4.0)))
 
 
 func _next_segment_speed() -> float:
@@ -650,7 +653,7 @@ func _process_track(delta: float) -> Vector3:
 	track_timer = maxf(0.0, track_timer - delta)
 	if _return_to_area_search:
 		search_elapsed_seconds += delta
-		if not context.has_combat_contact() and search_seconds > 0.0:
+		if not context.has_combat_contact() and context.spawn_search_hint.is_empty() and search_seconds > 0.0:
 			search_timer = maxf(0.0, search_timer - delta)
 
 	var next_position: Vector3 = agent.get_next_path_position()
@@ -1119,6 +1122,7 @@ func state_label() -> String:
 	if investigation_phase == context.State.TRACK:
 		return "快速追查" if movement_multiplier() > 1.0 else "沿线调查"
 	if investigation_phase == context.State.SEARCH:
+		if movement_multiplier() > 1.0: return "快速搜索"
 		return "重点查找" if movement_multiplier() >= 1.0 else "区域搜索"
 	return super.state_label()
 
@@ -1275,7 +1279,7 @@ func hold_released() -> bool:
 func on_event(event: StringName, data: Dictionary) -> void:
 	if event == &"spawn_search":
 		reset()
-		begin_search(data.position)
+		begin_tracking_or_search(false)
 		return
 	if event == &"cooperation_intel" and data.get("reacquired", false):
 		# Same-position reacquisition is new contact, not a repeated wall clue.

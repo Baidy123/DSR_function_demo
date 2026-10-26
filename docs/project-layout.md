@@ -1,6 +1,6 @@
 # 项目目录结构
 
-波次出生搜索（2026-10-26）：原 `world/enemy_wave_definition.gd` 保存逐波开关及误差半径，原控制器在实际提交时取样并向本波就绪 AI 交付。`enemy_memory.gd`／`enemy_context.gd` 保存并清理一次性出生线索；AI 只提供接收入口，原 `enemy_search.gd` 执行个人持续搜索，原 `squad_coordination.gd` 从本队成员提示初始化队级搜索。初始波强制排除，公开编号仍从1开始，不添加节点、广播或循环。新 `enemy_wave_search_test.gd` 复用原波次夹具，原编辑分支核对字段与保存；见[使用说明](gameplay/ENEMY_WAVES.md#后续波出生即搜索)。
+波次出生搜索（2026-10-26）：原 `world/enemy_wave_definition.gd` 保存逐波开关及误差半径，原控制器在实际提交时取样并向本波就绪 AI 交付。`enemy_memory.gd`／`enemy_context.gd` 保存并清理一次性出生线索；AI 只提供接收入口，原 `enemy_search.gd` 执行个人快速追查及持续搜索，原 `squad_coordination.gd` 从本队成员提示初始化队级搜索，`enemy_search_formation.gd` 对出生来源填写原限时加速字段。速度复用原Search配置，出生年龄读取区域原始时钟，不写视觉记忆。初始波强制排除，公开编号仍从1开始，不添加节点、广播或循环。新 `enemy_wave_search_test.gd` 复用原波次夹具，原编辑分支核对字段与保存；见[使用说明](gameplay/ENEMY_WAVES.md#后续波出生即搜索)。
 
 屏外开火（2026-10-26）：原 `enemy_actor.gd` 在Shooting导出 `offscreen_fire_chance`（默认50%），仅在合法 `try_fire()` 内用独立随机序列判定整枪，失败仍消耗身体冷却。`can_fire()` 保持纯查询；新增 `shot_attempt_count` 区分合法尝试与实际发射。原 `enemy_fire_controller.gd` 的普通／记忆射击共用一次尝试入口，按计数推进原AI间隔与点射配额，仅成功时通知实际射击。没有新增节点、AI循环或协调器策略，原武器、训练、场景和UID保持。使用说明见[敌人AI](enemy-ai.md#血条视距与屏幕内开火2026-10-25)。
 

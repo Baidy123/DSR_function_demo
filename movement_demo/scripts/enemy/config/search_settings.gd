@@ -105,20 +105,20 @@ func _init() -> void:
 	set(value):
 		track_move_speed_multiplier = value
 		mark_override(&"track_move_speed_multiplier")
-## 【个人与协调器共用】团队搜索也按最后合法目击的年龄决定是否加速，不由位置提示续期。
-## 近期真实目击允许快速追查的时窗；0关闭加速，提示和到点不刷新目击时间。
+## 【个人与协调器共用】按最后合法目击或一次性出生提示的年龄决定是否加速，不由后续hint续期。
+## 允许快速追查的时窗；0关闭加速，搜索换轮／到点不刷新原始情报时间。
 @export_range(0.0, 8.0, 0.5) var combat_pursuit_seconds: float = 4.0:
 	set(value):
 		combat_pursuit_seconds = value
 		mark_override(&"combat_pursuit_seconds")
-## 【个人与协调器共用】团队搜索也按最后合法目击的年龄决定是否加速，不由位置提示续期。
-## 快速追查倍率；只用于已有视觉交战记忆，普通声音调查仍用原速度。
+## 【个人与协调器共用】团队搜索也读取本场冻结值；出生快速搜索共用此倍率。
+## 快速追查倍率；用于视觉交战或出生情报的有限时窗，普通声音调查仍用原速度。
 @export_range(1.0, 3.0, 0.1) var combat_pursuit_speed_multiplier: float = 1.8:
 	set(value):
 		combat_pursuit_speed_multiplier = value
 		mark_override(&"combat_pursuit_speed_multiplier")
 ## 【仅个人 Utility】个人新鲜线索阶段的时窗/短停留；不控制团队搜索阶段。
-## 优先检查轨迹和掩体出口的总时窗，从最后真实目击开始计算。
+## 优先检查轨迹和掩体出口的总时窗，从最后真实目击或一次性出生提示开始计算。
 @export_range(0.0, 20.0, 0.5) var focused_search_seconds: float = 8.0:
 	set(value):
 		focused_search_seconds = value

@@ -11,7 +11,7 @@ const Squad = preload("res://scripts/world/squad_controller.gd")
 ## 暂停、对话或玩家死亡时不扣时间；刷新点被占用时仍需等待原位置空出。
 @export_range(0.0, 120.0, 0.1, "or_greater", "suffix:s") var start_delay_seconds: float = 0.0
 @export_group("出生搜索")
-## 仅后续波生效：实际生成时获得一次玩家大概位置，跳过开局巡逻并持续警戒搜索。
+## 仅后续波生效：实际生成时获得一次玩家大概位置，先快速追查提示区域，再持续警戒搜索。
 ## 场景树最前的初始波（第0波）始终忽略；真实视野、声音和接敌仍按原规则运行。
 @export var search_on_spawn: bool = true
 ## 出生位置提示的最大水平误差，单位米；默认3米，0为精确的单次位置提示。

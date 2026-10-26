@@ -312,9 +312,10 @@ static func _candidate(context, profile: Dictionary, body: Dictionary, site: Dic
 		if site.has(key): result[key] = site[key]
 	if site.has("overwatch_for"): result.overwatch_for = site.overwatch_for
 	if not profile.firearms and role in [&"engage", &"flank"]: result.contact_post = phase == &"contact" and not site.get("approach_only", false)
-	if role == &"search" and objective.get("source") in [&"visual", &"shared_visual"]:
+	if role == &"search" and objective.get("source") in [&"visual", &"shared_visual", &"wave_spawn"]:
 		# Reuse the frozen, time-limited pursuit setting on long approach legs.
-		# Hints and arrival cannot renew the original visual evidence timestamp.
+		# Visual contact and one-off wave intel keep their own original timestamp;
+		# later hints and arrival never renew either source's pursuit window.
 		result.pursuit_until = float(objective.get("captured_at", -INF)) + float(parameters.get("combat_pursuit_seconds", 0.0))
 		result.pursuit_multiplier = float(parameters.get("combat_pursuit_speed_multiplier", speed))
 	if not description.is_empty() and description.geometry_revision >= 0:
