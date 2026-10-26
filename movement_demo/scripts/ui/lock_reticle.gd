@@ -57,7 +57,8 @@ func _process(delta: float) -> void:
 		if _draw_aim:
 			position = camera.unproject_position(point)
 			var stability: float = combat.get_effective_accuracy()
-			radius = lerpf(maximum_radius, minimum_radius, stability)
+			# 姿态影响大小；颜色与爆头菱形仍取基础收敛进度，不能因蹲下提前亮起。
+			radius = lerpf(maximum_radius, minimum_radius, combat.get_spread_stability())
 			tint = Color(1.0, 0.55, 0.2).lerp(Color(0.35, 1.0, 0.55), stability)
 			_headshot_ready = combat.weapon != null and combat.weapon.get_headshot_chance(stability) > 0.0
 	visible = _draw_aim or not _headshot_markers.is_empty()

@@ -5,6 +5,7 @@ extends Resource
 enum FireMode { SEMI_AUTO, AUTOMATIC, MELEE, SHOTGUN }
 enum AmmoType { RIFLE, PISTOL, SMG, SHOTGUN }
 enum StaggerRefresh { KEEP_LONGER, RESTART }
+enum ConvergenceModel { LINEAR, QUADRATIC, EXPONENTIAL }
 
 const ShotgunConfig = preload("res://scripts/weapons/shotgun_settings.gd")
 
@@ -54,6 +55,18 @@ const ShotgunConfig = preload("res://scripts/weapons/shotgun_settings.gd")
 @export var shotgun: ShotgunSettings
 ## 两次射击的最短间隔（秒）。
 @export_range(0.05, 3.0, 0.05) var shot_interval: float = 0.2
+
+@export_group("瞄准收敛（仅玩家）")
+## 最大散布到最小散布的函数：线性匀速，二次／指数前快后慢。只改变恢复，不改变惩罚或等待。
+@export_enum("线性:0", "二次:1", "指数:2") var convergence_model: int = ConvergenceModel.LINEAR:
+	set(value):
+		convergence_model = value
+		notify_property_list_changed()
+## 从最大到最小散布的完整用时，不含等待；当前状态从曲线对应位置继续。
+## 0按原模式的恢复速度换算，保留旧资源调参；大于0时玩家只使用本时间，敌人仍读原参数。
+@export_range(0.0, 60.0, 0.05, "or_greater", "suffix:s") var convergence_seconds: float = 0.0
+## 指数前后速度差异，越大前段越快、尾段越慢。0按线性；默认3，只在指数公式下显示。
+@export_range(0.0, 10.0, 0.1) var convergence_exponent_k: float = 3.0
 
 @export_group("精准爆头（仅玩家）")
 ## 玩家开火前达到最准精度时，实际命中才判定概率爆头；不分身体部位，不额外等待。敌人和近战不使用。
@@ -124,6 +137,7 @@ const ShotgunConfig = preload("res://scripts/weapons/shotgun_settings.gd")
 ## 初始直射中心概率：0.5表示50%；松开瞄准也将概率限制到不超过本值。
 @export_range(0.0, 1.0, 0.01) var initial_accuracy: float = 0.5
 ## 从初始概率恢复到100%需要的秒数，不含恢复延迟；初始为100%时按从0到100%计算。
+## 玩家收敛时间为0时用它换算速度；玩家设定新时间后本项仅供敌人使用。
 @export_range(0.1, 10.0, 0.1) var stabilize_seconds: float = 2.0
 ## 玩家移动惩罚最多将中心概率降到此值：0.35表示35%；不会瞬间抬高已经更低的概率。
 ## 若受击等造成更低概率，经过恢复延迟后可边走边逐渐恢复到此值；未瞄准仍不超过初始概率。
@@ -156,6 +170,7 @@ const ShotgunConfig = preload("res://scripts/weapons/shotgun_settings.gd")
 ## 装备时的散布半角；松开瞄准后，散布也不会比本值更小。
 @export_range(0.0, 45.0, 0.1, "suffix:°") var initial_spread_angle_degrees: float = 6.0
 ## 经过恢复延迟后，每秒收拢多少度；0表示不自动收拢。
+## 玩家收敛时间大于0时改用新时间；本字段保留保存值与原模式兼容。
 ## 玩家走路时额外散布最多收拢到移动最大散布，停步且未瞄准时收拢到初始散布。
 @export_range(0.0, 90.0, 0.1, "suffix:°/s") var spread_recovery_degrees_per_second: float = 3.0
 ## 持枪者移动惩罚最多把半角扩大到多少度；不会瞬间收拢其他原因造成的更大散布。
@@ -221,6 +236,34 @@ func get_aim_settings(use_spread: bool) -> Dictionary:
 		"target_floor": _angle_to_stability(target_move_max_spread_angle_degrees, minimum, span),
 		"fast_speed": spread_target_move_fast_speed,
 	}
+
+
+## 只做玩家恢复的纯值计算；当前进度、等待和恢复上限仍由 Combat 持有。
+## 相位由当前稳定度反求，所以受击／射击后接续曲线，不重新等待完整总时长。
+func recover_player_accuracy(current: float, delta: float, legacy_rate: float) -> float:
+	var base := _valid_fraction(current)
+	if not is_finite(delta) or delta <= 0.0 or base >= 1.0:
+		return base
+	var rate := 1.0 / convergence_seconds if is_finite(convergence_seconds) and convergence_seconds > 0.0 else maxf(0.0, legacy_rate)
+	if not is_finite(rate) or rate <= 0.0:
+		return base
+	var step := delta * rate
+	var remaining := 1.0 - base
+	match convergence_model:
+		ConvergenceModel.QUADRATIC:
+			var phase := 1.0 - sqrt(remaining)
+			if phase + step >= 1.0: return 1.0
+			return maxf(base, 1.0 - pow(1.0 - phase - step, 2.0))
+		ConvergenceModel.EXPONENTIAL:
+			var k := clampf(convergence_exponent_k, 0.0, 10.0) if is_finite(convergence_exponent_k) else 3.0
+			# k趋近0时直接使用极限，避免相近数相减后再相除。
+			if k < 0.001: return minf(1.0, base + step)
+			var tail := exp(-k)
+			var phase := -log(remaining * (1.0 - tail) + tail) / k
+			if phase + step >= 1.0: return 1.0
+			return clampf(1.0 - (exp(-k * (phase + step)) - tail) / (1.0 - tail), base, 1.0)
+		_:
+			return minf(1.0, base + step)
 
 
 ## 正常由 Fire Mode 创建配置；外部代码清空时只读使用默认值，不写回共享资源。

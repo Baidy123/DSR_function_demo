@@ -66,6 +66,7 @@ func _run() -> void:
 	weapon.set_block_signals(false)
 	for frame in 30: await process_frame
 	check(redone and weapon.fire_mode == WeaponData.FireMode.MELEE and not _properties(EditorInterface.get_inspector(), weapon).has("magazine_capacity") and weapon.magazine_capacity == 27, "缺少资源即时通知时，重做重新隐藏并保留数值")
+	await _convergence_checks(manager)
 	# 使用实际敌人节点的内嵌资源 Inspector，并通过资源选择器展开。
 	EditorInterface.open_scene_from_path("res://scenes/enemy/enemy.tscn")
 	await create_timer(1.0).timeout
@@ -99,8 +100,59 @@ func _run() -> void:
 
 
 func _select_mode(weapon: WeaponData, mode: int, suppress_notification: bool = false) -> void:
+	_select_enum(weapon, "fire_mode", mode, suppress_notification)
+
+
+func _convergence_checks(manager: EditorUndoRedoManager) -> void:
+	var weapon := WeaponData.new()
+	EditorInterface.edit_resource(weapon)
+	for frame in 30: await process_frame
+	EditorInterface.get_inspector().expand_all_folding()
+	for frame in 10: await process_frame
+	var fields := _properties(EditorInterface.get_inspector(), weapon)
+	check(fields.has("convergence_model") and fields.has("convergence_seconds") and not fields.has("convergence_exponent_k"), "线性显示收敛公式与时间，隐藏指数强度")
+	_select_enum(weapon, "convergence_model", WeaponData.ConvergenceModel.EXPONENTIAL)
+	for frame in 30: await process_frame
+	check(weapon.convergence_model == 2 and _properties(EditorInterface.get_inspector(), weapon).has("convergence_exponent_k"), "真实公式下拉框写入指数并显示强度")
+	var history := manager.get_history_undo_redo(manager.get_object_history_id(weapon))
+	var undone := history.undo()
+	for frame in 30: await process_frame
+	check(undone and weapon.convergence_model == 0 and not _properties(EditorInterface.get_inspector(), weapon).has("convergence_exponent_k"), "撤销公式后字段按线性刷新")
+	var redone := history.redo()
+	for frame in 30: await process_frame
+	check(redone and weapon.convergence_model == 2 and _properties(EditorInterface.get_inspector(), weapon).has("convergence_exponent_k"), "重做公式后恢复指数强度")
+	var edited := false
 	for prop in _descendants(EditorInterface.get_inspector(), "EditorProperty"):
-		if prop.get_edited_object() != weapon or prop.get_edited_property() != "fire_mode": continue
+		if prop.get_edited_object() != weapon or prop.get_edited_property() != "convergence_seconds": continue
+		for spin in _descendants(prop, "SpinBox"):
+			edited = spin.suffix == "s" and not spin.tooltip_text.is_empty()
+			spin.value = 2.75
+	for frame in 10: await process_frame
+	check(edited and weapon.convergence_seconds == 2.75, "真实秒数控件有单位／兼容说明且写回资源")
+	undone = history.undo()
+	for frame in 10: await process_frame
+	check(undone and weapon.convergence_seconds == 0, "收敛时间可原生撤销")
+	redone = history.redo()
+	for frame in 10: await process_frame
+	check(redone and weapon.convergence_seconds == 2.75, "收敛时间可原生重做")
+	var path := "user://convergence-inspector-test.tres"
+	var saved := ResourceSaver.save(weapon, path)
+	var loaded := ResourceLoader.load(path, "", ResourceLoader.CACHE_MODE_IGNORE) as WeaponData
+	check(saved == OK and loaded.convergence_model == 2 and loaded.convergence_seconds == 2.75, "检查器操作后的公式与时间保存重载一致")
+	DirAccess.remove_absolute(path)
+	_select_mode(weapon, WeaponData.FireMode.SHOTGUN)
+	for frame in 30: await process_frame
+	fields = _properties(EditorInterface.get_inspector(), weapon)
+	check(fields.has("convergence_model") and fields.has("convergence_seconds"), "霰弹保留玩家收敛入口")
+	_select_mode(weapon, WeaponData.FireMode.MELEE)
+	for frame in 30: await process_frame
+	fields = _properties(EditorInterface.get_inspector(), weapon)
+	check(not fields.has("convergence_model") and not fields.has("convergence_seconds") and not fields.has("convergence_exponent_k"), "近战隐藏全部瞄准收敛字段")
+
+
+func _select_enum(weapon: WeaponData, path: String, mode: int, suppress_notification: bool = false) -> void:
+	for prop in _descendants(EditorInterface.get_inspector(), "EditorProperty"):
+		if prop.get_edited_object() != weapon or prop.get_edited_property() != path: continue
 		for option in _descendants(prop, "OptionButton"):
 			var index: int = option.get_item_index(mode)
 			option.select(index)
@@ -108,7 +160,7 @@ func _select_mode(weapon: WeaponData, mode: int, suppress_notification: bool = f
 			option.item_selected.emit(index)
 			weapon.set_block_signals(false)
 			return
-	check(false, "未找到Fire Mode原生下拉框")
+	check(false, "未找到原生下拉框：" + path)
 
 
 func _descendants(node: Node, type: String) -> Array:

@@ -1,5 +1,7 @@
 # 项目目录结构
 
+瞄准收敛（2026-10-26）：原 `WeaponData` 保存三种函数、完整时间和指数强度，`recover_player_accuracy()` 只计算下一基础稳定度；原 `player_combat_v3.gd::_recover_accuracy()` 继续拥有恢复等待与上限，不增加计时状态或节点。`get_effective_accuracy()` 为基础收敛／爆头资格，新增 `get_spread_stability()` 仅映射蹲姿最大端点，供普通散布、霰弹随机偏移与准星大小读取；共享弹道和敌人接口保持。原检查器复用支持刷新的枚举控件，原槽位状态键与UID保持，旧蹲姿属性通过 `_set()` 读取为新比例。新增专项登记到战斗回归，见[实施设计与验证](superpowers/specs/2026-10-26-aim-convergence-models-design.md)。
+
 霰弹偏移模式（2026-10-26）：原 `ShotgunSettings.spread_mode` 保存随机／不向圆心两种模式，旧资源默认0；原 `shotgun_ballistics.gd::sample_offsets()` 约束每颗随机方向，原投影、射线、玩家范围估计与双方结算接口保持。原预览脚本增加独立 `preview_spread_mode` 并复用同一采样，原检查器只给原生枚举提供中文标签／说明；不新增插件、运行组件或场景节点。新 `tests/shotgun_spread_test.gd` 专门验证模式与双方真实射线，登记在战斗回归；原检查器／预览测试继续覆盖保存和撤销。已有资源、节点路径、UID及用户调参保留，见[实施记录](superpowers/specs/2026-10-26-shotgun-outward-spread-design.md)。
 
 三关训练隔离（2026-10-26）：现有 `scenes/enemy/levels/lvl_1/melee.tscn`、`lvl_2/{melee,pistol,smg}.tscn`、`lvl_3/{melee,pistol,smg}.tscn` 各自引用 `resources/enemy/training/levels/` 下同关同名 `.tres`。训练动作勾选与嵌套参数按关卡／兵种保存，公共 `types/` 与 `enemy.tscn` 的组件继承保持；同关同兵种实例共用本关配置。地图通过对应关卡的兵种预设取得训练；直接实例化公共Enemy时，需自行覆盖 `Training.profile` 到本关资源。没有新增运行时脚本或修改检查器接口，见[训练隔离说明](enemy-ai.md#三关战术解锁与训练隔离2026-10-26)。

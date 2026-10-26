@@ -42,6 +42,7 @@ enum SpreadMode { RANDOM, NO_INWARD }
 ## 装备／松开瞄准后的稳定度上限；0 最不稳定、1 最稳定，与命中概率无关。
 @export_range(0.0, 1.0, 0.01) var starting_stability: float = 0.65
 ## 从初始稳定度恢复到 1 的时间；初始为 1 时，表示从 0 恢复到 1 的时间。
+## 玩家武器的收敛时间为0时由本项换算；设定新时间后只影响玩家，敌人仍使用本项。
 @export_range(0.1, 10.0, 0.1, "suffix:s") var settle_seconds: float = 1.2
 ## 持枪者移动每米损失的稳定度。
 @export_range(0.0, 1.0, 0.01) var movement_loss_per_meter: float = 0.12

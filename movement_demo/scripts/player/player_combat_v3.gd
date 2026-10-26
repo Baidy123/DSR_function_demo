@@ -24,8 +24,9 @@ enum AimMode { PROBABILITY, SPREAD_CONE }
 @export_range(0.0, 45.0, 0.5, "suffix:°") var tracking_parallel_tolerance_degrees: float = 15.0
 
 @export_group("蹲姿精度")
-## 仅玩家完成蹲伏时增加的0～1稳定度；0关闭，不改写武器或基础精度。
-@export_range(0.0, 1.0, 0.01) var crouch_accuracy_bonus: float = 0.25
+## 蹲姿最大散布乘以(1-n)，最小散布不变；0关闭，n始终小于1。
+## 霰弹只缩小最大随机偏移，固定图样不变；不修改恢复进度、时间或爆头资格。
+@export_range(0.0, 0.99, 0.01) var crouch_spread_reduction: float = 0.25
 var crouch_bonus_blocked_until_recovery: bool = false
 
 @export_group("受击反应倍率")
@@ -87,6 +88,14 @@ var player_position_before_move: Vector3 = Vector3.ZERO
 
 @onready var player = get_parent()
 @onready var status: Label = $HUD/Panel/Status
+
+
+## 读取旧场景的自定义比例，后续保存使用新字段；不再执行旧的稳定度加法。
+func _set(property: StringName, value: Variant) -> bool:
+	if property == &"crouch_accuracy_bonus":
+		crouch_spread_reduction = clampf(float(value), 0.0, 0.99)
+		return true
+	return false
 
 
 func _ready() -> void:
@@ -386,7 +395,7 @@ func _recover_accuracy(delta: float, recovery: float, limit: float) -> void:
 	# 只计入延迟结束后剩余的时间，避免低帧率改变恢复速度。
 	var recovery_delta: float = maxf(0.0, delta - accuracy_recovery_timer)
 	accuracy_recovery_timer = maxf(0.0, accuracy_recovery_timer - delta)
-	accuracy = minf(limit, accuracy + recovery * recovery_delta)
+	accuracy = minf(limit, weapon.recover_player_accuracy(accuracy, recovery_delta, recovery))
 
 
 func _start_target_movement_tracking(target: Node3D) -> void:
@@ -577,7 +586,7 @@ func _shoot_shotgun(origin: Vector3, direction: Vector3, stability: float, attac
 	var shotgun := weapon.get_shotgun_settings()
 	var pellet_damage := maxf(0.0, shotgun.pellet_damage)
 	var aim_settings := shotgun.get_aim_settings(is_using_spread_cone())
-	var pellets := ShotgunBallistics.trace(player, weapon, origin, direction, stability, _shotgun_rng)
+	var pellets := ShotgunBallistics.trace(player, weapon, origin, direction, get_spread_stability(), _shotgun_rng)
 	var hits := ShotgunBallistics.count_hits(pellets, &"combat_target")
 	# 全部射线和每目标一次判定完成后才调用受击，死亡／回调不改变本枪其余结果。
 	var results := Headshots.resolve(hits, pellet_damage, headshot_settings, _headshot_rng)
@@ -643,14 +652,34 @@ func _random_direction_in_miss_cone(
 	return (cone_axis * cos(theta) + radial * sin(theta)).normalized()
 
 
-## 姿态只影响当前有效精度，不改写原惩罚与恢复状态。
+## 基础收敛进度：供爆头资格、中心概率与状态显示读取，姿态不能补满它。
 func get_effective_accuracy() -> float:
-	var base := clampf(accuracy, 0.0, 1.0)
+	return clampf(accuracy, 0.0, 1.0) if is_finite(accuracy) else 0.0
+
+
+## 相对于原角度区间的弹道稳定度，仅供散布采样与准星大小读取，不用于爆头。
+## 在原弹道接口前换算端点，因此不用修改共享采样器或敌人执行流程。
+func get_spread_stability() -> float:
+	var base := get_effective_accuracy()
+	if weapon == null: return base
 	if crouch_bonus_blocked_until_recovery or ammo.is_reloading or ammo.reload_checkpoint > 0.0:
 		return base
-	if player != null and player.has_method("is_crouching") and player.is_crouching() and not player.is_vaulting():
-		return clampf(base + crouch_accuracy_bonus, 0.0, 1.0)
-	return base
+	if player == null or not player.is_crouching() or player.is_vaulting(): return base
+	var minimum: float
+	var maximum: float
+	if weapon.fire_mode == WeaponData.FireMode.SHOTGUN:
+		var shotgun := weapon.get_shotgun_settings()
+		minimum = shotgun.get_jitter_degrees(1.0)
+		maximum = shotgun.get_jitter_degrees(0.0)
+	elif is_using_spread_cone():
+		minimum = clampf(weapon.min_spread_angle_degrees, 0.0, 45.0)
+		maximum = clampf(weapon.max_spread_angle_degrees, minimum, 45.0)
+	else:
+		return base # 概率模式没有连续散布区间，不给中心命中概率增加姿态加成。
+	if maximum - minimum <= 0.00001: return base
+	var reduction := clampf(crouch_spread_reduction, 0.0, 0.99) if is_finite(crouch_spread_reduction) else 0.0
+	var crouched_maximum := maxf(minimum, maximum * (1.0 - reduction))
+	return 1.0 - (1.0 - base) * (crouched_maximum - minimum) / (maximum - minimum)
 
 
 ## 当前实际弹道半角；准星保留原圆形样式，仅用稳定度表现收拢。
@@ -661,10 +690,10 @@ func get_spread_half_angle_degrees() -> float:
 		var shotgun := weapon.get_shotgun_settings()
 		var extent := 0.0
 		for point in shotgun.get_pattern_points(): extent = maxf(extent, point.length())
-		return extent * shotgun.pattern_angle_degrees + shotgun.get_jitter_degrees(get_effective_accuracy())
+		return extent * shotgun.pattern_angle_degrees + shotgun.get_jitter_degrees(get_spread_stability())
 	var minimum: float = clampf(weapon.min_spread_angle_degrees, 0.0, 45.0)
 	var maximum: float = clampf(weapon.max_spread_angle_degrees, minimum, 45.0)
-	return lerpf(maximum, minimum, get_effective_accuracy())
+	return lerpf(maximum, minimum, get_spread_stability())
 
 
 # 在整个锥内按立体角均匀取样，不再先判定是否直射中心。

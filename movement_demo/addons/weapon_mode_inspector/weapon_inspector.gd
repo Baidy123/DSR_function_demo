@@ -36,6 +36,7 @@ const SPREAD_FIELDS := {
 	"spread_target_move_fast_speed": "高速目标速度",
 }
 const COMMON_FIELDS := {
+	"convergence_seconds": "收敛时间（最大→最小）", "convergence_exponent_k": "指数强度 k",
 	"headshot_chance": "爆头概率", "headshot_damage_multiplier": "未秒杀时伤害倍率", "headshot_stagger_seconds": "被爆头状态时长",
 	"headshot_movement_multiplier": "被爆头时保留移速", "headshot_accuracy_cap": "被爆头期间精度上限",
 	"hit_accuracy_loss": "命中精度损失", "suppression_accuracy_loss": "被压制精度损失",
@@ -63,6 +64,7 @@ const PERCENT_FIELDS := [
 	"melee_slow_multiplier",
 ]
 const FIREARM_FIELDS := [
+	"convergence_model", "convergence_seconds", "convergence_exponent_k",
 	"headshot_enabled", "headshot_chance", "headshot_damage_multiplier",
 	"headshot_instant_kill_enabled", "headshot_stagger_seconds", "headshot_stagger_refresh_mode",
 	"headshot_movement_multiplier", "headshot_accuracy_cap",
@@ -74,6 +76,9 @@ const FIREARM_FIELDS := [
 
 ## 自定义数值控件也提供直接提示；脚本的 ## 属性文档同时保留原生检查器帮助。
 const EFFECT_HELP := {
+	"stabilize_seconds": "原概率模式从初始到满概率的秒数；初始100%时按0到100%。玩家收敛时间为0时由本项换算；设定新收敛时间后玩家改用新值，敌人仍使用本项。",
+	"convergence_seconds": "玩家从最大散布到最小散布的完整秒数，不含恢复等待；当前精度从曲线对应位置继续。0按原模式恢复速度换算；大于0时只使用此时间。概率模式对应0到100%，霰弹对应最大到最小随机偏移。敌人仍使用原恢复参数。",
+	"convergence_exponent_k": "指数曲线的前后速度差，越大前段越快、尾段越慢；0按线性，默认3。总收敛时间由上一项控制。",
 	"headshot_chance": "仅玩家开火前达到最准时，实际命中才掷概率。普通枪和霰弹都每枪每目标判定一次，不保证命中；0关闭，100%必定触发合格命中。",
 	"headshot_damage_multiplier": "武器不启用秒杀或敌人开启爆头防护时使用。默认3倍；霰弹乘实际命中该目标的弹丸总伤害，不放大干扰、减速或击退。",
 	"headshot_stagger_seconds": "存活敌人应用本武器移速与精度限制的秒数；默认1秒，0关闭。复用原受击效果，不禁止开枪或取消AI动作；转向、换弹、近战、重力和碰撞继续。",
@@ -95,7 +100,7 @@ const EFFECT_HELP := {
 	"melee_slow_seconds": "近战命中减速持续秒数；0关闭。使用与射击共用的受方速度损失倍率，倍率不改变本时长；无减速命中不清除已有减速。",
 	"moving_accuracy_cap": "正常移动惩罚的概率下限，不会瞬间抬高更差的精度。受击等造成更低概率时，经过恢复等待后可边走边逐渐恢复到本值；未瞄准不超过初始概率。",
 	"accuracy_recovery_delay": "新的精度损失后等多久开始恢复（秒）。低于移动下限时，继续走路不会反复刷新等待；新命中、擦过或射击会重新等待。",
-	"spread_recovery_degrees_per_second": "恢复等待结束后每秒收拢的角度，0关闭。玩家走路时额外散布最多收拢到移动最大散布；停步且未瞄准时收拢到初始散布。",
+	"spread_recovery_degrees_per_second": "玩家收敛时间为0时，用本项换算完整收敛时间，0关闭恢复；设定新收敛时间后改用新值。原移动／跟枪／未瞄准恢复上限仍有效。",
 	"moving_spread_angle_degrees": "正常移动惩罚的最大半角，不会瞬间收拢更大散布。受击等造成额外散布时，经过恢复等待后可边走边逐渐收拢到本值；未瞄准不比初始散布更小。",
 	"spread_recovery_delay": "新的精度损失后等多久开始收拢（秒）。比移动最大散布更散时，继续走路不会反复刷新等待；新命中、擦过或射击会重新等待。",
 }
@@ -132,7 +137,7 @@ func _parse_property(object: Object, type: Variant.Type, path: String, hint: Pro
 			return true
 		return false
 	if path == "fire_mode":
-		var editor := FireModeProperty.new()
+		var editor := RefreshingEnumProperty.new()
 		editor.configure(hint_text, int(object.fire_mode))
 		add_property_editor(path, editor)
 		return true
@@ -141,6 +146,14 @@ func _parse_property(object: Object, type: Variant.Type, path: String, hint: Pro
 	if object.fire_mode == WeaponData.FireMode.SHOTGUN and (path == "damage" or PROBABILITY_FIELDS.has(path) or SPREAD_FIELDS.has(path)):
 		return true
 	if object.fire_mode == WeaponData.FireMode.MELEE and (path in FIREARM_FIELDS or PROBABILITY_FIELDS.has(path) or SPREAD_FIELDS.has(path)):
+		return true
+	if path == "convergence_model":
+		var editor := RefreshingEnumProperty.new()
+		editor.configure(hint_text, int(object.convergence_model))
+		editor.tooltip_text = "线性匀速；二次和指数前快后慢。三者在同一完整时间到达最准；增加总时间可提高等待最准的成本。仅玩家生效。"
+		add_property_editor(path, editor, false, "收敛公式")
+		return true
+	if path == "convergence_exponent_k" and object.convergence_model != WeaponData.ConvergenceModel.EXPONENTIAL:
 		return true
 	var headshot_labels := {"headshot_enabled": "启用爆头", "headshot_instant_kill_enabled": "启用爆头秒杀", "headshot_stagger_refresh_mode": "连续硬直刷新方式"}
 	if headshot_labels.has(path):
@@ -186,7 +199,7 @@ func _context_mode(weapon: Object) -> int:
 
 # 保留原资源字段与原生撤销；已打开资源热更新后可能漏发 setter 通知，
 # 因此选择结束及撤销／重做更新控件时，由检查器延迟请求一次面板重建。
-class FireModeProperty extends EditorProperty:
+class RefreshingEnumProperty extends EditorProperty:
 	var option := OptionButton.new()
 	var shown_mode: int = -1
 

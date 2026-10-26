@@ -80,7 +80,8 @@ func _run() -> void:
 	check(is_equal_approx(_shoot(1), 62.5), "Automatic weapons have the same full-precision eligibility")
 	gun.fire_mode = WeaponData.FireMode.SEMI_AUTO
 	player.crouch_amount = 1
-	check(is_equal_approx(_shoot(0.75), 62.5), "Completed crouch bonus uses the same effective precision as reticle")
+	check(is_equal_approx(_shoot(0.75), 25), "Crouching with unfinished convergence cannot grant headshots, even with zero spread")
+	check(is_equal_approx(_shoot(1.0), 62.5), "Crouching retains headshots after base convergence completes")
 	combat.crouch_bonus_blocked_until_recovery = true
 	check(is_equal_approx(_shoot(0.75), 25), "Blocked crouch bonus cannot grant eligibility")
 	player.crouch_amount = 0
@@ -303,6 +304,22 @@ func _feedback_checks() -> void:
 	combat.accuracy = 0.999
 	reticle._process(0)
 	check(not reticle._headshot_ready, "Eligibility indicator disappears below full precision")
+	gun.min_spread_angle_degrees = 1
+	gun.max_spread_angle_degrees = 4
+	combat.accuracy = 0.5
+	player.crouch_amount = 0
+	reticle._process(0)
+	var standing_radius: float = reticle.radius
+	player.crouch_amount = 1
+	reticle._process(0)
+	check(reticle.radius < standing_radius and not reticle._headshot_ready and combat.accuracy == 0.5, "Crouched reticle follows smaller spread without granting headshot eligibility")
+	combat.crouch_spread_reduction = 0.99
+	reticle._process(0)
+	check(reticle.radius == reticle.minimum_radius and not reticle._headshot_ready, "Even saturated stance reduction cannot light the headshot indicator")
+	combat.crouch_spread_reduction = 0.25
+	player.crouch_amount = 0
+	gun.min_spread_angle_degrees = 0
+	gun.max_spread_angle_degrees = 0
 	target.retire_on_hit = true
 	_shoot(1)
 	reticle._process(0)

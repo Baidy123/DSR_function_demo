@@ -148,31 +148,31 @@ func _run() -> void:
 	gun_blocker.queue_free()
 	player.request_crouch(true)
 	await _step(15)
-	# The bonus is a view of base accuracy, shared by both existing aim modes.
+	# Crouching never writes or completes base convergence in either mode.
 	for mode in [0, 1]:
 		combat.aim_mode = mode
 		combat.accuracy = 0.5
 		combat.crouch_bonus_blocked_until_recovery = false
-		_check("mode %d adds 0.25 without writing base" % mode, is_equal_approx(combat.get_effective_accuracy(), 0.75) and combat.accuracy == 0.5)
+		_check("mode %d preserves base accuracy while crouching" % mode, is_equal_approx(combat.get_effective_accuracy(), 0.5) and combat.accuracy == 0.5)
 		combat.accuracy = 0.9
-		_check("mode %d caps effective accuracy at one" % mode, combat.get_effective_accuracy() == 1.0)
+		_check("mode %d cannot complete convergence by crouching" % mode, combat.get_effective_accuracy() == 0.9)
 	combat.accuracy = 0.5
-	combat.crouch_accuracy_bonus = 0.0
-	_check("zero bonus disables it", combat.get_effective_accuracy() == 0.5)
-	combat.crouch_accuracy_bonus = 0.25
+	combat.crouch_spread_reduction = 0.0
+	_check("zero reduction disables it", combat.get_spread_stability() == 0.5)
+	combat.crouch_spread_reduction = 0.25
 	combat.ammo.magazine_rounds = 1
 	_check("crouch allows existing reload", combat.request_reload())
-	_check("reload forced zero overrides crouch bonus", combat.get_effective_accuracy() == 0.0)
+	_check("reload forced zero overrides crouch spread reduction", combat.get_effective_accuracy() == 0.0 and combat.get_spread_stability() == 0.0)
 	combat.end_frame(combat.weapon.reload_seconds + 1.0, false)
-	_check("completion frame remains zero", not combat.ammo.is_reloading and combat.get_effective_accuracy() == 0.0)
+	_check("completion frame remains zero", not combat.ammo.is_reloading and combat.get_effective_accuracy() == 0.0 and combat.get_spread_stability() == 0.0)
 	combat.end_frame(0.01, false)
-	_check("post-reload recovery wait remains zero", combat.get_effective_accuracy() == 0.0)
+	_check("post-reload recovery wait remains zero", combat.get_effective_accuracy() == 0.0 and combat.get_spread_stability() == 0.0)
 	combat.end_frame(5.0, false)
-	_check("bonus returns after original recovery wait", combat.get_effective_accuracy() >= 0.25)
+	_check("spread reduction returns after original recovery wait", combat.get_spread_stability() > combat.get_effective_accuracy())
 	combat.apply_weapon_hit(WeaponData.new().get_attack_effects(true))
-	_check("melee disruption overrides crouch bonus", combat.get_effective_accuracy() == 0.0)
+	_check("melee disruption overrides crouch spread reduction", combat.get_effective_accuracy() == 0.0 and combat.get_spread_stability() == 0.0)
 	slots.select_slot(1)
-	_check("switching weapon cannot bypass melee zero", combat.get_effective_accuracy() == 0.0)
+	_check("switching weapon cannot bypass melee zero", combat.get_effective_accuracy() == 0.0 and combat.get_spread_stability() == 0.0)
 	await _step(3)
 	combat.end_frame(5.0, false)
 	combat.cancel_reload()
@@ -232,11 +232,11 @@ func _run() -> void:
 	saved.free()
 	var packed_combat := PackedScene.new()
 	var settings_node = combat.get_script().new()
-	settings_node.crouch_accuracy_bonus = 0.4
+	settings_node.set("crouch_accuracy_bonus", 0.4)
 	packed_combat.pack(settings_node)
 	ResourceSaver.save(packed_combat, "user://half-cover-accuracy-test.tscn")
 	var reloaded_combat = load("user://half-cover-accuracy-test.tscn").instantiate()
-	_check("player-only accuracy bonus is exported and reloads", is_equal_approx(reloaded_combat.crouch_accuracy_bonus, 0.4))
+	_check("legacy crouch ratio migrates to spread reduction and reloads", is_equal_approx(reloaded_combat.crouch_spread_reduction, 0.4))
 	reloaded_combat.free()
 	settings_node.free()
 	DirAccess.remove_absolute("user://half-cover-accuracy-test.tscn")
