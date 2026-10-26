@@ -64,6 +64,16 @@ static func approach(task: Dictionary) -> PackedVector3Array:
 		if Contract.horizontal(path[index], staging) <= 0.05: return path.slice(0, index + 1)
 	return PackedVector3Array()
 
+## Nearest-segment trimming around a corner can otherwise drop the entry
+## vertex before release. Keep that mandatory vertex until rendezvous ends.
+static func remaining_preparation(position: Vector3, task: Dictionary) -> PackedVector3Array:
+	var entry := approach(task)
+	if entry.is_empty(): return remaining(position, task.route)
+	var path := remaining(position, entry)
+	if path[-1].distance_to(task.staging_position) > 0.001: path.append(task.staging_position)
+	path.append_array(task.route.slice(entry.size()))
+	return path
+
 ## Strong search must also be feasible while everyone is parked at their
 ## preparation posts. Final destinations alone cannot prove that rendezvous.
 static func plan(tasks: Dictionary, bodies: Dictionary, synchronize_search: bool = false) -> Dictionary:

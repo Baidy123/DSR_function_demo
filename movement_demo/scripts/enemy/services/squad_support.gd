@@ -122,7 +122,7 @@ func ready(context, task: Dictionary, body: Dictionary, region: Vector3, profile
 
 ## Called from the original area tick. Returns invalidated beneficiaries;
 ## no body, accepted/observed flag or task table is written by this component.
-func advance(tasks: Dictionary, bodies: Dictionary, profiles: Dictionary, lookup: Callable, now: float) -> Array[int]:
+func advance(tasks: Dictionary, bodies: Dictionary, profiles: Dictionary, lookup: Callable, now: float, joint_arrivals: Array = []) -> Array[int]:
 	var invalid: Array[int] = []
 	for id in fire_links.keys():
 		if not Contract.same_task(fire_links[id].task, tasks.get(id, {})):
@@ -142,11 +142,14 @@ func advance(tasks: Dictionary, bodies: Dictionary, profiles: Dictionary, lookup
 		if link.phase == &"invalid": continue
 		link.ready.clear()
 		var unavailable := true
+		var approaching := false
 		for other in link.providers.keys():
 			if not tasks.has(other) or not bodies.has(other) or not Contract.same_task(link.providers[other], tasks[other]):
 				link.providers.erase(other)
 				continue
-			if bodies[other].firearms and not bodies[other].occupied and not bodies[other].reloading and bodies[other].can_attack and bodies[other].rounds > 0 and bodies[other].pressure <= float(profiles[other].get("stress_tolerance", 0.4)): unavailable = false
+			if bodies[other].firearms and not bodies[other].occupied and not bodies[other].reloading and bodies[other].can_attack and bodies[other].rounds > 0 and bodies[other].pressure <= float(profiles[other].get("stress_tolerance", 0.4)):
+				unavailable = false
+				if tasks[other].state not in [&"blocked", &"complete"] and tasks[other].expires_at > now and Contract.horizontal(bodies[other].position, tasks[other].position) > 0.18: approaching = true
 			if ready(lookup.call(other), tasks[other], bodies[other], link.region, profiles[other]): link.ready.append(other)
 		if not link.ready.is_empty():
 			link.phase = &"covering"
@@ -159,11 +162,22 @@ func advance(tasks: Dictionary, bodies: Dictionary, profiles: Dictionary, lookup
 		link.phase = &"preparing"
 		link.reason = &"support_preparing"
 		var staging: Vector3 = tasks[id].get("staging_position", Vector3.INF)
+		# An early inspector cannot depart while its other side is still on the
+		# way either. Valid simultaneous arrivals are not missing support time.
+		# Pause an existing clock rather than renewing it across task changes.
+		var assembling: bool = joint_arrivals.has(id) and approaching and not link.get("had_ready", false)
+		var clock: Dictionary = wait_clock.get(id, {})
+		if assembling:
+			if not clock.is_empty() and not clock.has("joint_paused_at"): clock.joint_paused_at = now
+			link.waiting_since = -1.0
+			link.deadline = INF
+		elif clock.has("joint_paused_at"):
+			clock.at += maxf(0.0, now - float(clock.joint_paused_at))
+			clock.erase("joint_paused_at")
 		# The dependent may reach its protected preparation point before waiting.
 		# Once released, loss of support gets the same finite recovery window.
 		var waiting: bool = Contract.horizontal(bodies[id].position, staging) < 0.18 or tasks[id].get("reason") == &"support_preparing" or link.get("had_ready", false)
-		if link.providers.is_empty() or waiting and link.waiting_since < 0.0:
-			var clock: Dictionary = wait_clock.get(id, {})
+		if link.providers.is_empty() or waiting and not assembling and link.waiting_since < 0.0:
 			if clock.is_empty() or clock.objective_id != tasks[id].objective_id or Contract.horizontal(clock.position, bodies[id].position) > 0.5:
 				clock = {"at": now, "position": bodies[id].position, "objective_id": tasks[id].objective_id}
 				wait_clock[id] = clock

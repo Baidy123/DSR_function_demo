@@ -3,6 +3,33 @@ extends RefCounted
 ## Frozen-clue walking geometry. No target body reads, fire requests or leases.
 const BodyGeometry = preload("res://scripts/systems/character_geometry.gd")
 
+## Freeze only geometry and the original approach side of a committed entry.
+## No navigation queries, target reads or tactical authority.
+static func preparation_geometry(context, cover_id: int, observer: Vector3) -> Dictionary:
+	var cover = instance_from_id(cover_id)
+	if not is_instance_valid(cover) or not cover is StaticBody3D or not cover.is_in_group("cover_region") or not context.navigation_region.is_ancestor_of(cover): return {}
+	var box := cover.get_node_or_null("CollisionShape3D") as CollisionShape3D
+	if box == null or box.disabled or not box.shape is BoxShape3D or (cover.collision_layer & 1) == 0: return {}
+	if box.global_basis.y.normalized().dot(Vector3.UP) < 0.999: return {}
+	return {"cover": weakref(cover), "cover_transform": box.global_transform,
+		"cover_size": box.shape.size, "observer_position": observer}
+
+## A newly observed point still belongs to this cover's corner/back region.
+## This does not confirm hidden occupancy or authorize fire.
+static func same_preparation_cover(context, geometry: Dictionary, position: Vector3) -> bool:
+	if not position.is_finite() or not valid(context, geometry): return false
+	var box: CollisionShape3D = geometry.cover.get_ref().get_node("CollisionShape3D")
+	var half: Vector3 = geometry.cover_size * 0.5
+	if absf(box.to_global(Vector3(0, -half.y, 0)).y - position.y) > 0.5: return false
+	var origin: Vector3 = box.to_local(geometry.observer_position)
+	var known: Vector3 = box.to_local(position)
+	var surface: Vector3 = box.to_global(Vector3(clampf(known.x, -half.x, half.x), known.y, clampf(known.z, -half.z, half.z)))
+	if context._horizontal_distance_between(surface, position) > float(context.setting(&"selection", &"cover_inference_distance", 1.75)): return false
+	var along_x := absf(origin.z) / maxf(0.01, half.z) >= absf(origin.x) / maxf(0.01, half.x)
+	var front := signf(origin.z if along_x else origin.x)
+	if is_zero_approx(front): return false
+	return not ((known.z if along_x else known.x) * front > (half.z if along_x else half.x) and absf(known.x if along_x else known.z) < (half.x if along_x else half.z))
+
 ## A range/FOV loss can happen just before a known cover corner. This is a
 ## bounded investigation hypothesis from observed motion, never a hidden-body
 ## read or a replacement for the original visual/suppression evidence.

@@ -112,14 +112,14 @@ movement_demo/
 | --- | --- |
 | `enemy/services/squad_combat_tactics.gd` | 按冻结武器与合法目标生成近战攻击点、远程交叉/后侧射位，评价整队射界及近战路线冲突，提交前刷新近战停点；不选择动作，无任务所有权或身体控制。 |
 | `enemy/services/enemy_command_offers.gd` | AI 持有的统一提案适配器，按共同截止时间轮询已装配动作、保留不同执行器和空间方案；只返回纯值，不提交任务或执行身体。 |
-| `enemy/services/squad_support.gd` | 协调器持有的任务身份关联、实际掩护观察核对、累计等待期限和短段独立恢复建议；清理完成/替换/减员关系，无独立循环或任务提交权。 |
+| `enemy/services/squad_support.gd` | 协调器持有的任务身份关联、实际掩护观察核对、累计等待期限、共同入位期间的计时暂停／续接和短段独立恢复建议；共同入位成员由协调器作为只读输入传入，清理完成/替换/减员关系，无独立循环或任务提交权。 |
 | `world/squad_controller.gd` | Squad 配置、区域注册、单次区域时钟推进、销毁；不增加独立 AI 循环。 |
-| `enemy/services/squad_coordination.gd` | 本场能力档案、默认模板、持续目标、全员任务表、反馈、成员轮询准备、接敌提前提交与共同续接、逐轮同步、原子提交与生命周期。 |
+| `enemy/services/squad_coordination.gd` | 本场能力档案、默认模板、持续目标、全员任务表、反馈、成员轮询准备、接敌提前提交与共同续接、逐轮同步、同掩体准备步骤连续性及共同掩护就绪核对、原子提交与生命周期。 |
 | `enemy/services/squad_contract.gd` | 纯值任务身份、状态、能力角色、观察步骤字段及整队默认模板。 |
 | `enemy/services/enemy_team_planner.gd` | 全成员岗位组合搜索，按模板能力与几何排除不完整方案；限制重复入口、比较检查/掩护组合及侧翼人数。 |
 | `enemy/services/squad_scoring.gd` | 队伍评分的纯值默认值、范围校验与候选代价；由原Profile、候选池、整队规划共用，不持有场景、任务进度或个人AI。 |
 | `enemy/services/enemy_search_formation.gd` | 根据合法线索生成两端检查、远侧掩护和接敌站位，验证完整路线、观察/枪线；提供入口前后关注点及冻结的任务机动速度。 |
-| `enemy/services/squad_traffic.gd` | 全队通行顺序、准备点占位与离开顺序、观察线互挡、当前阻挡者与剩余路线计算。 |
+| `enemy/services/squad_traffic.gd` | 全队通行顺序、准备点占位与离开顺序、观察线互挡、当前阻挡者与剩余路线计算；未放行步骤裁剪路线时保留原准备点。 |
 | `enemy/services/squad_patrol.gd` | 原协调器持有的各成员出生点巡逻中心、顺序、近期到达记录、候选与只读快照；无独立循环、任务提交或身体控制。 |
 | `enemy/services/squad_search.gd` | 编排合法线索、地图覆盖和多段路线；hint 改变优先级，不清空观察历史。 |
 | `enemy/services/squad_map_coverage.gd` | 各小队独立的地图/楼层面积样本、观察时长与来源、当前监视、复查及局部几何失效；不控制身体或下达任务。 |
