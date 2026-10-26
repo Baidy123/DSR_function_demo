@@ -14,7 +14,7 @@
 ## 在编辑器中使用
 
 1. 打开 `scenes/main.tscn`，选中 `Player/Equipment`，展开 `Primary Weapon` 或 `Secondary Weapon`。
-2. 在资源共用参数中将 `Fire Mode` 设为“自动”；“单发”仍是一按一枪。现有资源保持默认单发。
+2. 在资源“基本信息”中将 `Fire Mode` 设为“自动”；“单发”仍是一按一枪。现有资源保持默认单发。
 3. `Shot Interval` 是每枪间隔，例如0.2秒约每秒5枪。进入战斗区，按住右键瞄准，再按住左键验证连发；松开左键停火。
 4. 玩家瞄准算法仍在 `Player/Combat > Aim Mode` 选择。槽位内只显示对应的概率或角度参数。
 

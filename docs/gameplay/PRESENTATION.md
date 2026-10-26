@@ -51,7 +51,7 @@
 
 ## 给武器指定模型
 
-打开实际装备使用的 **WeaponData** 资源，例如 `resources/weapons/test_pistol.tres`，在 **武器外观** 分组设置：
+打开实际装备使用的 **WeaponData** 资源，例如 `resources/weapons/test_pistol.tres`，在 **外观与声音 → 模型** 设置：
 
 | 配置栏 | 用途 |
 | --- | --- |
