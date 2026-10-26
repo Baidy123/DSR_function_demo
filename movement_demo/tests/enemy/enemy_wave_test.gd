@@ -449,6 +449,8 @@ func _actual_levels() -> void:
 		check(level.get_script() == Region and level.has_node("CombatZone/CollisionShape3D") and level.has_node("NavigationRegion3D"), "第%d关继续共用原区域接口" % number)
 		level.free()
 	var level = load("res://scenes/world/levels/lvl_1.tscn").instantiate()
+	# 此夹具验证原波次与跨区生命周期；入场说明和按钮切关由 level_flow_test 验证。
+	level.get_node("LevelFlow").free()
 	var controller = level.get_node("EnemyWaves")
 	var count: int = level.get_node("Squad").get_child_count()
 	var second_count: int = controller.get_node("Wave2/Squad").get_child_count()
@@ -493,7 +495,7 @@ func _actual_levels() -> void:
 	# 只改另一张地图的内存实例，旋转/平移整个区域后沿同一流程部署。
 	var other = load("res://scenes/world/levels/lvl_2.tscn").instantiate()
 	# 跨区用例由第一关同一个玩家移动过去；用户可独立给第二关配置试玩玩家／相机。
-	for path in ["Player", "Camera3D", "EnemyWaves"]:
+	for path in ["Player", "Camera3D", "EnemyWaves", "LevelFlow"]:
 		var standalone = other.get_node_or_null(path)
 		if standalone != null: standalone.free()
 	for authored_member in other.get_node("Squad").get_children(): authored_member.free()

@@ -1,5 +1,6 @@
 [gd_scene format=3 uid="uid://bw7cys6btdo2j"]
 
+[ext_resource type="PackedScene" path="res://scenes/ui/level_flow.tscn" id="level_flow"]
 [ext_resource type="PackedScene" path="res://scenes/world/cover.tscn" id="1_full"]
 [ext_resource type="PackedScene" uid="uid://ruy4wd5vjpqt" path="res://scenes/world/low_cover.tscn" id="2_low"]
 [ext_resource type="Resource" uid="uid://bbrb41p0fx1x5" path="res://resources/enemy/cooperation/intel_only.tres" id="7_8uhlw"]
@@ -729,3 +730,6 @@ shadow_enabled = true
 [editable path="NavigationRegion3D/Environment/Walls/Walls02"]
 [editable path="NavigationRegion3D/Environment/Walls/Walls03"]
 [editable path="NavigationRegion3D/Environment/Walls/Walls04"]
+
+[node name="LevelFlow" parent="." instance=ExtResource("level_flow")]
+level_number = 4

@@ -1,5 +1,7 @@
 # 项目目录结构
 
+五关主入口与说明（2026-10-27）：`project.godot` 默认启动 `scenes/world/levels/lvl_1.tscn`，五关各增加 `scenes/ui/level_flow.tscn` 实例。`scripts/systems/level_flow.gd` 监听原波次完成信号，只在玩家点击结果界面按钮后切换；第五关显示通关与重玩按钮。内嵌 `scenes/ui/play_guide.tscn`／`scripts/ui/play_guide.gd` 提供共用的启动说明、暂停恢复和可滚动正文；布局采用原生全屏锚点，关闭按钮固定在正文外。原区域、身体、AI、波次、Health及酒馆任务职责保持，详见[游玩说明](gameplay/PLAY_GUIDE.md)。
+
 五关试玩配置（2026-10-27）：`scenes/world/levels/lvl_1.tscn` 至 `lvl_5.tscn` 均由用户保存玩家、相机、灯光、小队与波次。`scenes/enemy/levels/lvl_4/`、`lvl_5/` 各保存近战、手枪、冲锋枪和霰弹四种预设，训练在 `resources/enemy/training/levels/` 下同关目录；公共霰弹兵位于 `scenes/enemy/types/shotgun.tscn`，新增武器为 `resources/weapons/test_rifle.tres` 与 `enemy_test_shotgun.tres`。这些是用户关卡和资源配置的归档，保持原身体、AI、导航、波次与装备接口；详见[关卡说明](gameplay/LEVEL_MAPS.md)。
 
 弹药置顶与数量上限（2026-10-27）：原 `ammo_pickup.gd` 为模型表面复制前景材质，原Label3D关闭深度测试并提高绘制优先级，保留地面位置／碰撞。原 `ammo_drop_controller.gd` 在实际死亡受理时为延迟生成预留名额，每区地面有效包＋待生成包合计最多2；拾取即释放名额，生成失败和复位清理预约，不增加全局服务或循环。原专项含实际OpenGL遮挡截图及像素对照；见[实施记录](superpowers/plans/2026-10-26-ammo-drops-and-types.md)。

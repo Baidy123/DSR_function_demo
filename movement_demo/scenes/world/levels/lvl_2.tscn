@@ -1,5 +1,6 @@
 [gd_scene format=3 uid="uid://gdihu3wsksn5"]
 
+[ext_resource type="PackedScene" path="res://scenes/ui/level_flow.tscn" id="level_flow"]
 [ext_resource type="PackedScene" path="res://scenes/world/cover.tscn" id="1_full"]
 [ext_resource type="PackedScene" uid="uid://ruy4wd5vjpqt" path="res://scenes/world/low_cover.tscn" id="2_low"]
 [ext_resource type="PackedScene" uid="uid://dij4dt65i70vj" path="res://scenes/enemy/levels/lvl_2/pistol.tscn" id="5_ox2wm"]
@@ -402,3 +403,6 @@ transform = Transform3D(-4.371139e-08, 0, -1, 0, 1, 0, 1, 0, -4.371139e-08, -9.7
 [editable path="NavigationRegion3D/Environment/HalfCover/HalfCover03"]
 [editable path="NavigationRegion3D/Environment/HalfCover/HalfCover04"]
 [editable path="Camera3D"]
+
+[node name="LevelFlow" parent="." instance=ExtResource("level_flow")]
+level_number = 2

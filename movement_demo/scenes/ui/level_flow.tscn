@@ -1,0 +1,81 @@
+[gd_scene load_steps=4 format=3]
+
+[ext_resource type="Script" path="res://scripts/systems/level_flow.gd" id="1_flow"]
+[ext_resource type="PackedScene" path="res://scenes/ui/play_guide.tscn" id="2_guide"]
+
+[sub_resource type="StyleBoxFlat" id="PanelStyle"]
+bg_color = Color(0.045, 0.065, 0.085, 1)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.35, 0.65, 0.72, 1)
+corner_radius_top_left = 12
+corner_radius_top_right = 12
+corner_radius_bottom_left = 12
+corner_radius_bottom_right = 12
+content_margin_left = 28.0
+content_margin_top = 24.0
+content_margin_right = 28.0
+content_margin_bottom = 24.0
+
+[node name="LevelFlow" type="CanvasLayer"]
+process_mode = 3
+layer = 90
+script = ExtResource("1_flow")
+
+[node name="Progress" type="Label" parent="."]
+anchors_preset = 10
+anchor_right = 1.0
+offset_top = 12.0
+offset_bottom = 44.0
+grow_horizontal = 2
+mouse_filter = 2
+theme_override_colors/font_color = Color(0.8, 0.94, 1, 1)
+theme_override_font_sizes/font_size = 20
+text = "第 1 关 / 5"
+horizontal_alignment = 1
+
+[node name="Result" type="ColorRect" parent="."]
+visible = false
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+color = Color(0.015, 0.025, 0.04, 0.85)
+
+[node name="Center" type="CenterContainer" parent="Result"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="Panel" type="PanelContainer" parent="Result/Center"]
+layout_mode = 2
+theme_override_styles/panel = SubResource("PanelStyle")
+
+[node name="Content" type="VBoxContainer" parent="Result/Center/Panel"]
+layout_mode = 2
+theme_override_constants/separation = 20
+
+[node name="Title" type="Label" parent="Result/Center/Panel/Content"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 26
+text = "五关挑战完成"
+horizontal_alignment = 1
+
+[node name="Message" type="Label" parent="Result/Center/Panel/Content"]
+layout_mode = 2
+text = "你已完成全部 5 关。"
+horizontal_alignment = 1
+
+[node name="Continue" type="Button" parent="Result/Center/Panel/Content"]
+custom_minimum_size = Vector2(260, 48)
+layout_mode = 2
+theme_override_font_sizes/font_size = 20
+text = "从第 1 关重新开始"
+
+[node name="PlayGuide" parent="." instance=ExtResource("2_guide")]

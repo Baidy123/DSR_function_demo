@@ -11,7 +11,7 @@ config_version=5
 [application]
 
 config/name="角色移动练习"
-run/main_scene="res://scenes/main.tscn"
+run/main_scene="res://scenes/world/levels/lvl_1.tscn"
 config/features=PackedStringArray("4.7", "GL Compatibility")
 
 [autoload]

@@ -1,0 +1,94 @@
+[gd_scene load_steps=4 format=3]
+
+[ext_resource type="Script" path="res://scripts/ui/play_guide.gd" id="1_guide"]
+
+[sub_resource type="StyleBoxFlat" id="PanelStyle"]
+bg_color = Color(0.045, 0.065, 0.085, 0.98)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.35, 0.65, 0.72, 0.8)
+corner_radius_top_left = 12
+corner_radius_top_right = 12
+corner_radius_bottom_left = 12
+corner_radius_bottom_right = 12
+content_margin_left = 24.0
+content_margin_top = 18.0
+content_margin_right = 24.0
+content_margin_bottom = 18.0
+
+[sub_resource type="StyleBoxFlat" id="ButtonStyle"]
+bg_color = Color(0.13, 0.32, 0.39, 1)
+corner_radius_top_left = 6
+corner_radius_top_right = 6
+corner_radius_bottom_left = 6
+corner_radius_bottom_right = 6
+
+[node name="PlayGuide" type="CanvasLayer"]
+process_mode = 3
+layer = 100
+script = ExtResource("1_guide")
+
+[node name="Backdrop" type="ColorRect" parent="."]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+color = Color(0.015, 0.025, 0.04, 0.8)
+
+[node name="Panel" type="PanelContainer" parent="Backdrop"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 16.0
+offset_top = 16.0
+offset_right = -16.0
+offset_bottom = -16.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_styles/panel = SubResource("PanelStyle")
+
+[node name="Content" type="VBoxContainer" parent="Backdrop/Panel"]
+layout_mode = 2
+theme_override_constants/separation = 12
+
+[node name="Title" type="Label" parent="Backdrop/Panel/Content"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.88, 0.96, 1, 1)
+theme_override_font_sizes/font_size = 28
+text = "游玩说明"
+
+[node name="Subtitle" type="Label" parent="Backdrop/Panel/Content"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.58, 0.76, 0.82, 1)
+theme_override_font_sizes/font_size = 16
+text = "熟悉操作，利用掩体，完成连续五关挑战"
+autowrap_mode = 3
+
+[node name="Body" type="RichTextLabel" parent="Backdrop/Panel/Content"]
+layout_mode = 2
+size_flags_vertical = 3
+theme_override_colors/default_color = Color(0.83, 0.88, 0.91, 1)
+theme_override_constants/normal_line_separation = 5
+theme_override_font_sizes/normal_font_size = 18
+theme_override_font_sizes/bold_font_size = 18
+bbcode_enabled = true
+text = "游玩说明"
+
+[node name="Hint" type="Label" parent="Backdrop/Panel/Content"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.6, 0.7, 0.75, 1)
+theme_override_font_sizes/font_size = 14
+text = "阅读期间战斗已暂停 · 滚轮查看说明 · 关闭后开始游玩"
+autowrap_mode = 3
+
+[node name="Close" type="Button" parent="Backdrop/Panel/Content"]
+custom_minimum_size = Vector2(0, 46)
+layout_mode = 2
+mouse_default_cursor_shape = 2
+theme_override_font_sizes/font_size = 20
+theme_override_styles/normal = SubResource("ButtonStyle")
+text = "关闭 / 开始游玩"

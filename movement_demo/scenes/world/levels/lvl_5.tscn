@@ -1,5 +1,6 @@
 [gd_scene format=3 uid="uid://iwyks2aql6qb"]
 
+[ext_resource type="PackedScene" path="res://scenes/ui/level_flow.tscn" id="level_flow"]
 [ext_resource type="PackedScene" path="res://scenes/world/cover.tscn" id="1_full"]
 [ext_resource type="PackedScene" uid="uid://ruy4wd5vjpqt" path="res://scenes/world/low_cover.tscn" id="2_low"]
 [ext_resource type="Resource" path="res://resources/enemy/cooperation/tactical.tres" id="7_p4f50"]
@@ -831,3 +832,6 @@ shadow_enabled = true
 [editable path="NavigationRegion3D/Environment/Walls/Walls06"]
 [editable path="NavigationRegion3D/Environment/Walls/Walls07"]
 [editable path="NavigationRegion3D/Environment/Walls/Walls08"]
+
+[node name="LevelFlow" parent="." instance=ExtResource("level_flow")]
+level_number = 5
