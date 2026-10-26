@@ -31,7 +31,7 @@ func _run() -> void:
 	weapon.min_spread_angle_degrees = 3.0
 	weapon.max_spread_angle_degrees = 24.0
 	weapon.spread_recovery_delay = 0.4
-	weapon.spread_recovery_degrees_per_second = 10.0
+	weapon.convergence_seconds = 2.1
 	weapon.reload_seconds = 0.5
 	weapon.shot_spread_penalty_degrees = 0.0
 	combat.equip_weapon(weapon, false, preload("res://scripts/weapons/weapon_ammo.gd").new(weapon, {weapon.ammo_type: 100}))
@@ -209,11 +209,10 @@ func _test_moving_recovery(scene: Node, player, combat) -> void:
 	weapon.max_spread_angle_degrees = 10.0
 	weapon.initial_spread_angle_degrees = 4.0
 	weapon.moving_spread_angle_degrees = 8.0
-	weapon.spread_recovery_degrees_per_second = 4.0
+	weapon.convergence_seconds = 2.0
 	weapon.spread_recovery_delay = 0.4
 	weapon.initial_accuracy = 0.75
 	weapon.moving_accuracy_cap = 0.25
-	weapon.stabilize_seconds = 0.5
 	weapon.accuracy_recovery_delay = 0.4
 	player.get_node("Health").debug_invincible = true
 	for action in [&"aim", &"fire", &"sprint", &"move_up", &"move_down", &"move_left", &"move_right"]:

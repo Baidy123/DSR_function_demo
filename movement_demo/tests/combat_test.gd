@@ -76,7 +76,7 @@ func run(scene: Node) -> Dictionary:
 	var original = c.weapon
 	var alternate = original.duplicate()
 	alternate.initial_accuracy = 0.25
-	alternate.stabilize_seconds = 1.0
+	alternate.convergence_seconds = 1.0 / (1.0 - alternate.initial_accuracy)
 	c.equip_weapon(alternate)
 	checks["equip_resets_lock_and_accuracy"] = c.locked_target == null and is_equal_approx(c.accuracy, 0.25)
 	checks["original_weapon_unchanged"] = is_equal_approx(original.initial_accuracy, 0.5)

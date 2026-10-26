@@ -8,6 +8,7 @@ enum StaggerRefresh { KEEP_LONGER, RESTART }
 enum ConvergenceModel { LINEAR, QUADRATIC, EXPONENTIAL }
 
 const ShotgunConfig = preload("res://scripts/weapons/shotgun_settings.gd")
+const DEFAULT_CONVERGENCE_SECONDS := 4.0
 
 @export_group("基本信息")
 ## 武器显示名称。
@@ -34,6 +35,8 @@ const ShotgunConfig = preload("res://scripts/weapons/shotgun_settings.gd")
 @export_range(1, 300, 1) var magazine_capacity: int = 12
 ## 正常换弹耗时（秒）。玩家奔跑倍率在Combat调整；敌人不受移动影响。
 @export_range(0.1, 20.0, 0.1) var reload_seconds: float = 2.0
+
+@export_group("Shotgun")
 ## Fire Mode 选霰弹后自动提供默认九点图样；展开配置每颗伤害、图样与稳定度。
 ## 切回原模式时保留此配置但不使用，不修改原单发／自动参数或弹药类型。
 @export var shotgun: ShotgunSettings
@@ -47,34 +50,23 @@ const ShotgunConfig = preload("res://scripts/weapons/shotgun_settings.gd")
 ## 玩家锁定时的走路速度倍率，锁定期间禁跑；敌人移动由 AI 决定。
 @export_range(0.1, 1.0, 0.05) var locked_move_multiplier: float = 0.5
 
-@export_subgroup("恢复")
+@export_subgroup("玩家收敛")
 ## 最大散布到最小散布的函数：线性匀速，二次／指数前快后慢。只改变恢复，不改变惩罚或等待。
 @export_enum("线性:0", "二次:1", "指数:2") var convergence_model: int = ConvergenceModel.LINEAR:
 	set(value):
 		convergence_model = value
 		notify_property_list_changed()
 ## 从最大到最小散布的完整用时，不含等待；当前状态从曲线对应位置继续。
-## 0按原模式的恢复速度换算，保留旧资源调参；大于0时玩家只使用本时间，敌人仍读原参数。
-## 只切换二次／指数而保持0时，旧速度仍参与计算；移动、跟枪、开火惩罚与恢复等待始终保留。
-@export_range(0.0, 60.0, 0.05, "or_greater", "suffix:s") var convergence_seconds: float = 0.0:
+## 三种公式、概率模式与霰弹统一使用此时间，敌人不读取。默认4秒，最小0.01秒。
+## 旧资源的0（原兼容标记）及非法值使用默认4秒，不再读取角速度或敌人恢复时间。
+@export_range(0.01, 60.0, 0.01, "or_greater", "suffix:s") var convergence_seconds: float = DEFAULT_CONVERGENCE_SECONDS:
 	set(value):
-		var previously_explicit := is_finite(convergence_seconds) and convergence_seconds > 0.0
-		convergence_seconds = value
-		# 只在参数生效关系改变时刷新检查器，避免拖动同一正值时不断重建输入控件。
-		if previously_explicit != (is_finite(value) and value > 0.0):
-			notify_property_list_changed()
+		convergence_seconds = maxf(0.01, value) if is_finite(value) and value > 0.0 else DEFAULT_CONVERGENCE_SECONDS
 ## 指数前后速度差异，越大前段越快、尾段越慢。0按线性；默认3，只在指数公式下显示。
 @export_range(0.0, 10.0, 0.1) var convergence_exponent_k: float = 3.0
-## 经过恢复延迟后，每秒收拢多少度；0表示不自动收拢。
-## 玩家收敛时间大于0时改用新时间；本字段保留保存值与原模式兼容。
-## 时间0＋线性时为实际角速度；时间0＋二次／指数时只用于换算完整时间，角速度随曲线变化。
-## 玩家走路时额外散布最多收拢到移动最大散布，停步且未瞄准时收拢到初始散布。
-@export_range(0.0, 90.0, 0.1, "suffix:°/s") var spread_recovery_degrees_per_second: float = 3.0
+@export_subgroup("恢复等待")
 ## 新的精度损失后等多久开始收拢（秒）；比移动最大散布更散时，继续走路不会反复刷新等待。
 @export_range(0.0, 3.0, 0.05) var spread_recovery_delay: float = 0.6
-## 从初始概率恢复到100%需要的秒数，不含恢复延迟；初始为100%时按从0到100%计算。
-## 玩家收敛时间为0时用它换算速度；玩家设定新时间后本项仅供敌人使用。
-@export_range(0.1, 10.0, 0.1) var stabilize_seconds: float = 2.0
 ## 新的精度损失后等多久开始恢复中心概率（秒）；低于移动下限时，继续走路不会反复刷新等待。
 @export_range(0.0, 3.0, 0.05) var accuracy_recovery_delay: float = 0.6
 
@@ -129,6 +121,14 @@ const ShotgunConfig = preload("res://scripts/weapons/shotgun_settings.gd")
 ## 目标达到此速度（米/秒）时使用高速惩罚，较慢时在两种每米惩罚间插值。
 ## 玩家使用有效横向速度，迎面／背离的径向速度不增加惩罚；敌人规则保留。
 @export_range(0.1, 30.0, 0.1) var target_move_fast_speed: float = 6.0
+
+@export_subgroup("敌人恢复（原算法）")
+## 仅供原散布锥恢复接口：每秒收拢的角度，0不恢复。玩家不再读取此速度。
+## 当前敌人身体使用概率模式，因此通常配置下方概率恢复时间；保存键和旧数值保留。
+@export_range(0.0, 90.0, 0.1, "suffix:°/s") var spread_recovery_degrees_per_second: float = 3.0
+## 敌人从初始概率恢复到100%的秒数，不含恢复等待；初始100%时按0到100%计算。
+## 同时保留原 AI 掩体阶段估时用途。玩家的公式和收敛时间不会覆盖或禁用本项。
+@export_range(0.1, 10.0, 0.1, "suffix:s") var stabilize_seconds: float = 2.0
 
 @export_group("命中效果")
 @export_subgroup("枪击与压制")
@@ -214,7 +214,8 @@ const ShotgunConfig = preload("res://scripts/weapons/shotgun_settings.gd")
 ## 成功开火产生的声音半径（米），玩家和敌人都读取各自武器；0关闭枪声事件。
 @export_range(0.0, 100.0, 0.5) var shot_noise_radius: float = 14.0
 
-## 两套输入在这里换算，战斗脚本继续共用惩罚、等待、恢复流程。
+## 两套输入在这里换算，双方共用惩罚与等待；recovery仅供敌人原算法。
+## 玩家恢复只调用 recover_player_accuracy()，不再读取此字典的recovery。
 func get_aim_settings(use_spread: bool) -> Dictionary:
 	if fire_mode == FireMode.SHOTGUN:
 		return get_shotgun_settings().get_aim_settings(use_spread)
@@ -257,14 +258,11 @@ func get_aim_settings(use_spread: bool) -> Dictionary:
 
 ## 只做玩家恢复的纯值计算；当前进度、等待和恢复上限仍由 Combat 持有。
 ## 相位由当前稳定度反求，所以受击／射击后接续曲线，不重新等待完整总时长。
-func recover_player_accuracy(current: float, delta: float, legacy_rate: float) -> float:
+func recover_player_accuracy(current: float, delta: float) -> float:
 	var base := _valid_fraction(current)
 	if not is_finite(delta) or delta <= 0.0 or base >= 1.0:
 		return base
-	var rate := 1.0 / convergence_seconds if is_finite(convergence_seconds) and convergence_seconds > 0.0 else maxf(0.0, legacy_rate)
-	if not is_finite(rate) or rate <= 0.0:
-		return base
-	var step := delta * rate
+	var step := delta / convergence_seconds
 	var remaining := 1.0 - base
 	match convergence_model:
 		ConvergenceModel.QUADRATIC:

@@ -93,6 +93,26 @@ func _run() -> void:
 	_check("换枪不绕过尚未结束的冷却", is_equal_approx(enemy.shot_cooldown, 0.6))
 	enemy.reset_target()
 	_check("刷新恢复武器初始精度并清理冷却", is_equal_approx(enemy.get_center_probability(), 0.9) and enemy.shot_cooldown == 0.0)
+	# 同一资源同时带有玩家公式与敌人旧参数，实际敌人恢复必须只使用后者。
+	for mode in [WeaponData.FireMode.SEMI_AUTO, WeaponData.FireMode.SHOTGUN]:
+		var isolated := WeaponData.new()
+		isolated.fire_mode = mode
+		isolated.initial_accuracy = 0.6
+		isolated.stabilize_seconds = 1.2
+		isolated.accuracy_recovery_delay = 0.25
+		if mode == WeaponData.FireMode.SHOTGUN:
+			isolated.shotgun.starting_stability = 0.6
+			isolated.shotgun.settle_seconds = 1.2
+			isolated.shotgun.stability_recovery_delay = 0.25
+		for model in 3:
+			isolated.convergence_model = model
+			isolated.convergence_seconds = [0.05, 20.0, 3.0][model]
+			enemy.equip_weapon(isolated)
+			enemy.update_weapon(0.0)
+			enemy.weapon_stability = 0.2
+			enemy.weapon_recovery_timer = 0.25
+			enemy.update_weapon(0.55, target)
+			_check("敌人模式%d不受玩家公式%d与时间影响，等待后仍按原速恢复" % [mode, model], is_equal_approx(enemy.get_center_probability(), 0.3) and isolated.stabilize_seconds == 1.2)
 	enemy.equip_weapon(null)
 	enemy.update_weapon(1.0, target)
 	_check("卸下武器不射击", not enemy.try_fire() and not enemy.has_aim)

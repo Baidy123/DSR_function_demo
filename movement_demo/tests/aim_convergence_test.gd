@@ -37,46 +37,54 @@ func _models() -> void:
 	var half_time := [0.5, 0.75, 0.8175744762]
 	for model in 3:
 		data.convergence_model = model
-		check(data.recover_player_accuracy(0, 0, 0) == 0 and data.recover_player_accuracy(0, 2, 0) == 1 and data.recover_player_accuracy(1, 0.1, 0) == 1, "Model %d has exact finite endpoints" % model)
-		check(absf(data.recover_player_accuracy(0, 1, 0) - half_time[model]) < 0.000001, "Model %d matches independent half-time reference" % model)
+		check(data.recover_player_accuracy(0, 0) == 0 and data.recover_player_accuracy(0, 2) == 1 and data.recover_player_accuracy(1, 0.1) == 1, "Model %d has exact finite endpoints" % model)
+		check(absf(data.recover_player_accuracy(0, 1) - half_time[model]) < 0.000001, "Model %d matches independent half-time reference" % model)
 		var previous := 0.0
 		var monotonic := true
 		for step in 201:
-			var value := data.recover_player_accuracy(0, step * 0.01, 0)
+			var value := data.recover_player_accuracy(0, step * 0.01)
 			monotonic = monotonic and is_finite(value) and value >= previous and value <= 1
 			previous = value
 		check(monotonic, "Model %d is bounded and monotonic" % model)
-		var whole := data.recover_player_accuracy(0.21, 0.73, 0)
+		var whole := data.recover_player_accuracy(0.21, 0.73)
 		for frames in [30, 60, 144]:
 			var split := 0.21
-			for frame in frames: split = data.recover_player_accuracy(split, 0.73 / frames, 0)
+			for frame in frames: split = data.recover_player_accuracy(split, 0.73 / frames)
 			check(absf(split - whole) < 0.000001, "Model %d recovery is independent of %d frame partitions" % [model, frames])
 		var old_settings := data.get_aim_settings(true)
 		data.convergence_seconds = 7
 		check(data.get_aim_settings(true) == old_settings, "Model %d leaves shared enemy settings unchanged" % model)
 		data.convergence_seconds = 2
 	data.convergence_model = WeaponData.ConvergenceModel.QUADRATIC
-	check(is_equal_approx(data.recover_player_accuracy(0.75, 0.5, 0), 0.9375) and data.recover_player_accuracy(0.75, 1, 0) == 1, "Arbitrary damage/recoil state resumes phase instead of restarting a full two seconds")
+	check(is_equal_approx(data.recover_player_accuracy(0.75, 0.5), 0.9375) and data.recover_player_accuracy(0.75, 1) == 1, "Arbitrary damage/recoil state resumes phase instead of restarting a full two seconds")
 	data.convergence_seconds = 1.6
-	check(data.recover_player_accuracy(0, 0.6, 0) > 0.60 and data.recover_player_accuracy(0, 1, 0) < 1, "Longer quadratic template reaches usable spread early but delays perfect aim")
+	check(data.recover_player_accuracy(0, 0.6) > 0.60 and data.recover_player_accuracy(0, 1) < 1, "Longer quadratic template reaches usable spread early but delays perfect aim")
 	data.convergence_model = WeaponData.ConvergenceModel.EXPONENTIAL
 	data.convergence_seconds = 2
 	for k in [0.0, 0.00000001, 3.0, 10.0, NAN, INF, -1.0]:
 		data.convergence_exponent_k = k
-		check(is_finite(data.recover_player_accuracy(0.1, 0.5, 0)) and data.recover_player_accuracy(0, 2, 0) == 1, "Exponent boundary remains finite: " + str(k))
+		check(is_finite(data.recover_player_accuracy(0.1, 0.5)) and data.recover_player_accuracy(0, 2) == 1, "Exponent boundary remains finite: " + str(k))
 	data.convergence_model = WeaponData.ConvergenceModel.LINEAR
-	data.convergence_seconds = 0
+	data.convergence_seconds = 2
 	for mode in [false, true]:
-		var rate: float = data.get_aim_settings(mode).recovery
-		check(is_equal_approx(data.recover_player_accuracy(0.2, 0.3, rate), 0.2 + rate * 0.3), "Absent new duration preserves legacy rate for spread=" + str(mode))
+		var enemy_settings := data.get_aim_settings(mode)
+		data.spread_recovery_degrees_per_second = 90
+		data.stabilize_seconds = 0.1
+		check(is_equal_approx(data.recover_player_accuracy(0.2, 0.3), 0.35), "Enemy recovery parameters do not control player convergence: " + str(mode))
+		data.convergence_model = WeaponData.ConvergenceModel.EXPONENTIAL
+		data.convergence_seconds = 8
+		var changed_settings := data.get_aim_settings(mode)
+		data.convergence_model = WeaponData.ConvergenceModel.LINEAR
+		data.convergence_seconds = 2
+		check(data.get_aim_settings(mode) == changed_settings and enemy_settings.initial == changed_settings.initial, "Player formula/time leave enemy recovery data unchanged: " + str(mode))
 	data.fire_mode = WeaponData.FireMode.SHOTGUN
-	var shotgun_rate: float = data.get_aim_settings(true).recovery
-	check(is_equal_approx(data.recover_player_accuracy(0.2, 0.3, shotgun_rate), 0.2 + shotgun_rate * 0.3), "Shotgun legacy initial-to-perfect seconds keep their original rate")
-	check(data.recover_player_accuracy(0.2, 50, 0) == 0.2, "Zero legacy recovery stays disabled")
-	check(data.recover_player_accuracy(NAN, 0, 1) == 0 and data.recover_player_accuracy(0.2, NAN, 1) == 0.2 and data.recover_player_accuracy(0.2, 1, INF) == 0.2, "Non-finite state, delta and rate cannot propagate")
+	data.shotgun.settle_seconds = 0.1
+	check(is_equal_approx(data.recover_player_accuracy(0.2, 0.3), 0.35), "Shotgun player recovery ignores enemy settle time")
+	check(data.recover_player_accuracy(NAN, 0) == 0 and data.recover_player_accuracy(0.2, NAN) == 0.2, "Non-finite state and delta cannot propagate")
 	data.convergence_model = 99
-	data.convergence_seconds = -5
-	check(is_equal_approx(data.recover_player_accuracy(0.2, 0.1, 1), 0.3), "Invalid model/time fall back to legacy linear recovery")
+	for invalid_time in [0.0, -5.0, NAN, INF]:
+		data.convergence_seconds = invalid_time
+		check(data.convergence_seconds == 4 and is_equal_approx(data.recover_player_accuracy(0.2, 0.4), 0.3), "Invalid duration / old zero marker uses four seconds without legacy fallback: " + str(invalid_time))
 	data.convergence_model = WeaponData.ConvergenceModel.EXPONENTIAL
 	data.convergence_seconds = 2.7
 	data.convergence_exponent_k = 4.1
@@ -84,6 +92,7 @@ func _models() -> void:
 	var saved := ResourceSaver.save(data, path)
 	var restored := ResourceLoader.load(path, "", ResourceLoader.CACHE_MODE_IGNORE) as WeaponData
 	check(saved == OK and restored.convergence_model == 2 and restored.convergence_seconds == 2.7 and restored.convergence_exponent_k == 4.1, "Formula, duration and exponent survive resource save/reload")
+	check(restored.get_aim_settings(false) == data.get_aim_settings(false) and restored.stabilize_seconds == 0.1 and restored.spread_recovery_degrees_per_second == 90, "Enemy saved values and recovery survive resource round-trip")
 	DirAccess.remove_absolute(path)
 
 func _player() -> void:

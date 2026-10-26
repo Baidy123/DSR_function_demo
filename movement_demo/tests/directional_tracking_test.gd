@@ -87,7 +87,7 @@ func _prepare(mode: int = 0, point: Vector3 = Vector3(0, 0, -10)) -> void:
 	gun.cone_angle_degrees = 180
 	gun.shot_noise = null
 	gun.initial_accuracy = 0.5
-	gun.stabilize_seconds = 1
+	gun.convergence_seconds = 2
 	gun.target_move_accuracy_loss_per_meter_slow = 0.1
 	gun.target_move_accuracy_loss_per_meter_fast = 0.2
 	gun.target_move_minimum_accuracy = 0.3
@@ -96,7 +96,6 @@ func _prepare(mode: int = 0, point: Vector3 = Vector3(0, 0, -10)) -> void:
 	gun.min_spread_angle_degrees = 0
 	gun.max_spread_angle_degrees = 20
 	gun.initial_spread_angle_degrees = 10
-	gun.spread_recovery_degrees_per_second = 10
 	gun.target_move_spread_degrees_per_meter_slow = 2
 	gun.target_move_spread_degrees_per_meter_fast = 4
 	gun.target_move_max_spread_angle_degrees = 14
@@ -104,7 +103,6 @@ func _prepare(mode: int = 0, point: Vector3 = Vector3(0, 0, -10)) -> void:
 	if mode == 2:
 		gun.fire_mode = WeaponData.FireMode.SHOTGUN
 		gun.shotgun.starting_stability = 0.5
-		gun.shotgun.settle_seconds = 1
 		gun.shotgun.tracking_loss_per_meter = Vector2(0.1, 0.2)
 		gun.shotgun.tracking_stability_floor = 0.3
 	combat.aim_mode = combat.AimMode.PROBABILITY if mode == 0 else combat.AimMode.SPREAD_CONE

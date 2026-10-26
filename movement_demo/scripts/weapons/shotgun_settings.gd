@@ -41,9 +41,6 @@ enum SpreadMode { RANDOM, NO_INWARD }
 @export_group("霰弹稳定度")
 ## 装备／松开瞄准后的稳定度上限；0 最不稳定、1 最稳定，与命中概率无关。
 @export_range(0.0, 1.0, 0.01) var starting_stability: float = 0.65
-## 从初始稳定度恢复到 1 的时间；初始为 1 时，表示从 0 恢复到 1 的时间。
-## 玩家武器的收敛时间为0时由本项换算；设定新时间后只影响玩家，敌人仍使用本项。
-@export_range(0.1, 10.0, 0.1, "suffix:s") var settle_seconds: float = 1.2
 ## 持枪者移动每米损失的稳定度。
 @export_range(0.0, 1.0, 0.01) var movement_loss_per_meter: float = 0.12
 ## 移动造成的损失最多降到此值，不抬高已因受伤等原因变低的稳定度。
@@ -62,6 +59,11 @@ enum SpreadMode { RANDOM, NO_INWARD }
 ## 目标达到此速度时使用快速跟枪损失。
 ## 玩家读取有效横向速度；径向速度不增加损失。敌人保留原目标速度计算。
 @export_range(0.1, 30.0, 0.1, "suffix:m/s") var tracking_fast_speed: float = 6.0
+
+@export_group("敌人恢复（原算法）")
+## 仅敌人：从初始稳定度恢复到1的时间；初始为1时表示从0到1。
+## 玩家统一使用所属武器的收敛时间／公式，不读取本项。保留原保存键与默认值。
+@export_range(0.1, 10.0, 0.1, "suffix:s") var settle_seconds: float = 1.2
 
 
 ## 两种旧瞄准模式都只复用稳定度生命周期；霰弹不使用中心命中抽签或整团散布锥。

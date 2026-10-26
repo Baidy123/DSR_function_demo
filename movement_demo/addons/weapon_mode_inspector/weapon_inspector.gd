@@ -2,7 +2,8 @@
 extends EditorInspectorPlugin
 
 var _creating_native_property := false
-const LEGACY_RECOVERY_FIELDS := ["spread_recovery_degrees_per_second", "stabilize_seconds", "settle_seconds"]
+const ENEMY_RECOVERY_FIELDS := ["spread_recovery_degrees_per_second", "stabilize_seconds", "settle_seconds"]
+const PLAYER_CONVERGENCE_FIELDS := ["convergence_model", "convergence_seconds", "convergence_exponent_k"]
 
 const PatternProperty = preload("res://addons/weapon_mode_inspector/shotgun_pattern_property.gd")
 const CoverageProperty = preload("res://addons/weapon_mode_inspector/shotgun_coverage_property.gd")
@@ -10,7 +11,7 @@ const PatternPreview = preload("res://scripts/debug/shotgun_pattern_preview.gd")
 
 const PROBABILITY_FIELDS := {
 	"initial_accuracy": "初始中心概率",
-	"stabilize_seconds": "恢复到满概率用时",
+	"stabilize_seconds": "敌人概率恢复时间",
 	"moving_accuracy_cap": "移动惩罚概率下限",
 	"player_move_accuracy_loss_per_meter": "持枪者每米降低概率",
 	"shot_accuracy_penalty": "每枪降低概率",
@@ -25,7 +26,7 @@ const SPREAD_FIELDS := {
 	"min_spread_angle_degrees": "最小散布半角",
 	"max_spread_angle_degrees": "最大散布半角",
 	"initial_spread_angle_degrees": "初始散布半角",
-	"spread_recovery_degrees_per_second": "每秒收拢角度",
+	"spread_recovery_degrees_per_second": "原散布接口每秒收拢角度",
 	"moving_spread_angle_degrees": "移动最大散布",
 	"player_move_spread_degrees_per_meter": "玩家每米扩大角度",
 	"shot_spread_penalty_degrees": "每枪扩大角度",
@@ -77,9 +78,9 @@ const FIREARM_FIELDS := [
 
 ## 自定义数值控件也提供直接提示；脚本的 ## 属性文档同时保留原生检查器帮助。
 const EFFECT_HELP := {
-	"stabilize_seconds": "原概率模式从初始到满概率的秒数；初始100%时按0到100%。玩家收敛时间为0时由本项换算；设定新收敛时间后玩家改用新值，敌人仍使用本项。",
-	"settle_seconds": "霰弹从初始稳定度到最准的原恢复用时。所属武器的玩家收敛时间为0时由本项换算；时间大于0时玩家不使用本项，敌人仍使用。独立打开霰弹配置时无法确定所属武器，请同时查看武器的瞄准与散布／恢复。",
-	"convergence_seconds": "玩家从最大散布到最小散布的完整秒数，不含恢复等待；当前精度从曲线对应位置继续。0按原模式恢复速度换算；大于0时只使用此时间。概率模式对应0到100%，霰弹对应最大到最小随机偏移。敌人仍使用原恢复参数。",
+	"stabilize_seconds": "仅敌人：从初始概率恢复到100%的秒数；初始100%时按0到100%。继续供原AI恢复与掩体阶段估时使用。玩家不读取，不受玩家公式和收敛时间影响。",
+	"settle_seconds": "仅敌人：霰弹从初始稳定度恢复到最准的秒数；初始100%时按0到100%。玩家不读取；玩家霰弹统一使用所属武器的玩家收敛时间与公式。",
+	"convergence_seconds": "仅玩家：从最大散布到最小散布的完整秒数，不含恢复等待；当前状态从曲线对应位置继续。线性、二次、指数均只用此时间；概率模式对应0到100%，霰弹对应最大到最小随机偏移。默认4秒，最小0.01秒；旧0值按4秒，不再启用旧参数。敌人保持原算法。",
 	"convergence_exponent_k": "指数曲线的前后速度差，越大前段越快、尾段越慢；0按线性，默认3。总收敛时间由上一项控制。",
 	"headshot_chance": "仅玩家开火前达到最准时，实际命中才掷概率。普通枪和霰弹都每枪每目标判定一次，不保证命中；0关闭，100%必定触发合格命中。",
 	"headshot_damage_multiplier": "武器不启用秒杀或敌人开启爆头防护时使用。默认3倍；霰弹乘实际命中该目标的弹丸总伤害，不放大干扰、减速或击退。",
@@ -102,7 +103,7 @@ const EFFECT_HELP := {
 	"melee_slow_seconds": "近战命中减速持续秒数；0关闭。使用与射击共用的受方速度损失倍率，倍率不改变本时长；无减速命中不清除已有减速。",
 	"moving_accuracy_cap": "正常移动惩罚的概率下限，不会瞬间抬高更差的精度。受击等造成更低概率时，经过恢复等待后可边走边逐渐恢复到本值；未瞄准不超过初始概率。",
 	"accuracy_recovery_delay": "新的精度损失后等多久开始恢复（秒）。低于移动下限时，继续走路不会反复刷新等待；新命中、擦过或射击会重新等待。",
-	"spread_recovery_degrees_per_second": "玩家收敛时间为0时：线性按本角速度恢复；二次／指数用(最大角度-最小角度)/本值换算完整时间，实际速度随曲线变化。0关闭原速度恢复。收敛时间大于0时玩家不使用本项。恢复等待、移动／跟枪上限与开火惩罚仍有效。",
+	"spread_recovery_degrees_per_second": "保留原散布锥恢复接口与保存值，每秒收拢多少度，0不恢复。玩家不读取；当前敌人身体使用概率恢复时间，不读取散布锥角速度。",
 	"moving_spread_angle_degrees": "正常移动惩罚的最大半角，不会瞬间收拢更大散布。受击等造成额外散布时，经过恢复等待后可边走边逐渐收拢到本值；未瞄准不比初始散布更小。",
 	"spread_recovery_delay": "新的精度损失后等多久开始收拢（秒）。比移动最大散布更散时，继续走路不会反复刷新等待；新命中、擦过或射击会重新等待。",
 }
@@ -133,7 +134,12 @@ func _parse_property(object: Object, type: Variant.Type, path: String, hint: Pro
 			add_property_editor(path, CoverageProperty.new(), false, "图样覆盖范围")
 			return true
 		if path == "settle_seconds":
-			_add_recovery_editor(object, path, hint_text, "原恢复用时（初始→最准）")
+			if _is_player_context(): return true
+			var editor := NumberProperty.new()
+			editor.configure(hint_text, false)
+			editor.tooltip_text = EFFECT_HELP[path]
+			editor.spin.tooltip_text = EFFECT_HELP[path]
+			add_property_editor(path, editor, false, "敌人霰弹恢复时间")
 			return true
 		return false
 	if object is ShotgunPattern:
@@ -152,11 +158,13 @@ func _parse_property(object: Object, type: Variant.Type, path: String, hint: Pro
 		return true
 	if object.fire_mode == WeaponData.FireMode.MELEE and (path in FIREARM_FIELDS or PROBABILITY_FIELDS.has(path) or SPREAD_FIELDS.has(path)):
 		return true
+	if path in ENEMY_RECOVERY_FIELDS and _is_player_context(): return true
+	if path in PLAYER_CONVERGENCE_FIELDS and _is_enemy_context(): return true
 	if path == "convergence_model":
 		var note := Label.new()
 		note.name = "AimRecoveryHelp"
 		note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		note.text = "时间大于0：玩家按新时间恢复，旧速度不参与；时间为0：按旧速度换算。\n二次／指数只改变过程；恢复等待、移动与开火惩罚继续生效。"
+		note.text = "玩家三种公式统一使用收敛时间；二次／指数前快后慢。\n恢复等待与惩罚继续生效；敌人使用独立的原算法接口。"
 		note.add_theme_font_size_override("font_size", 13)
 		add_custom_control(note)
 		var editor := RefreshingEnumProperty.new()
@@ -177,9 +185,6 @@ func _parse_property(object: Object, type: Variant.Type, path: String, hint: Pro
 	var mode: int = _context_mode(object)
 	if (mode == 0 and SPREAD_FIELDS.has(path)) or (mode == 1 and PROBABILITY_FIELDS.has(path)):
 		return true
-	if path in LEGACY_RECOVERY_FIELDS:
-		_add_recovery_editor(object, path, hint_text, PROBABILITY_FIELDS.get(path, SPREAD_FIELDS.get(path, "")))
-		return true
 	if type != TYPE_FLOAT or hint != PROPERTY_HINT_RANGE:
 		return false
 	var label_text: String = COMMON_FIELDS.get(path, PROBABILITY_FIELDS.get(path, SPREAD_FIELDS.get(path, "")))
@@ -194,38 +199,18 @@ func _parse_property(object: Object, type: Variant.Type, path: String, hint: Pro
 	return true
 
 
-## 只限制确定属于玩家装备的控件；共享资源和敌人仍可编辑原恢复参数。
-func _add_recovery_editor(object: Object, path: String, hint_text: String, label_text: String) -> void:
-	var editor := RecoveryProperty.new()
-	var weapon := _recovery_owner(object)
-	var selected := EditorInterface.get_inspector().get_edited_object()
-	var player_context := false
-	if selected != null and selected.get_script() != null and weapon != null and _context_mode(weapon) >= 0:
-		player_context = selected.get_script().resource_path in ["res://scripts/player/player_weapon_slots.gd", "res://scripts/player/player_combat_v3.gd"]
-	editor.configure(hint_text, false)
-	editor.configure_recovery(weapon, player_context, label_text, EFFECT_HELP[path])
-	add_property_editor(path, editor, false, label_text)
+# Nested resources follow the selected owner; standalone resources show both interfaces.
+func _is_player_context() -> bool:
+	return _selected_script() in ["res://scripts/player/player_weapon_slots.gd", "res://scripts/player/player_combat_v3.gd"]
 
 
-## 独立 ShotgunSettings 不保存反向父引用；多个槽共享同一配置时不猜测归属。
-func _recovery_owner(object: Object) -> WeaponData:
-	if object is WeaponData: return object
+func _is_enemy_context() -> bool:
+	return _selected_script() == "res://scripts/enemy/enemy_actor.gd"
+
+
+func _selected_script() -> String:
 	var selected := EditorInterface.get_inspector().get_edited_object()
-	if selected == null: return null
-	if selected is WeaponData: return selected if selected.shotgun == object else null
-	if selected.get_script() == null: return null
-	var candidates: Array = []
-	match selected.get_script().resource_path:
-		"res://scripts/player/player_weapon_slots.gd":
-			candidates = [selected.get("primary_weapon"), selected.get("secondary_weapon")]
-		"res://scripts/player/player_combat_v3.gd", "res://scripts/enemy/enemy_actor.gd":
-			candidates = [selected.get("weapon")]
-	var owner_weapon: WeaponData
-	for candidate in candidates:
-		if candidate is WeaponData and candidate.shotgun == object:
-			if owner_weapon != null and owner_weapon != candidate: return null
-			owner_weapon = candidate
-	return owner_weapon
+	return selected.get_script().resource_path if selected != null and selected.get_script() != null else ""
 
 
 func _context_mode(weapon: Object) -> int:
@@ -320,36 +305,3 @@ class NumberProperty extends EditorProperty:
 	func _on_value_changed(value: float) -> void:
 		if not spin.editable: return
 		emit_changed(get_edited_property(), value / scale_factor)
-
-
-## 面板原生刷新时重新核对依赖，覆盖内嵌资源、撤销与脚本热更新；不写回任何武器参数。
-class RecoveryProperty extends NumberProperty:
-	var weapon: WeaponData
-	var player_context := false
-	var original_label := ""
-	var original_help := ""
-	var inspector_read_only := false
-
-	func configure_recovery(data: WeaponData, for_player: bool, text: String, help: String) -> void:
-		weapon = data
-		player_context = for_player
-		original_label = text
-		original_help = help
-		_update_availability()
-
-	func _update_property() -> void:
-		super._update_property()
-		_update_availability()
-
-	func _set_read_only(read_only: bool) -> void:
-		inspector_read_only = read_only
-		_update_availability()
-
-	func _update_availability() -> void:
-		var overridden := weapon != null and is_finite(weapon.convergence_seconds) and weapon.convergence_seconds > 0.0
-		spin.editable = not inspector_read_only and not (player_context and overridden)
-		label = original_label + ("（玩家未使用）" if overridden else "")
-		tooltip_text = original_help
-		if overridden:
-			tooltip_text += "\n当前玩家由收敛时间决定恢复；把收敛时间设为0可恢复使用本项。敌人仍使用原参数。"
-		spin.tooltip_text = tooltip_text

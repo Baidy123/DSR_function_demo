@@ -96,7 +96,7 @@ func _run() -> void:
 	var nested_restored := _properties(EditorInterface.get_inspector(), nested)
 	check(nested_restored.has("damage") and nested_restored.has("magazine_capacity") and nested.magazine_capacity == 31 and nested_restored.has("initial_accuracy") and not nested_restored.has("min_spread_angle_degrees"), "内嵌面板切回单发恢复数值，并保持敌人的概率模式过滤")
 	var enemy_recovery := _spin(nested, "stabilize_seconds")
-	check(enemy_recovery != null and enemy_recovery.editable, "敌人仍可编辑自己的恢复速度，不受玩家正数收敛时间误锁")
+	check(enemy_recovery != null and enemy_recovery.editable and not nested_restored.has("convergence_seconds") and not nested_restored.has("convergence_model"), "敌人只显示原恢复接口，不受玩家收敛时间误锁")
 	EditorInterface.get_inspector().edit(null)
 	bridge.free()
 	for frame in 5: await process_frame
@@ -127,8 +127,8 @@ func _check_layout(weapon: WeaponData) -> void:
 			subgroup = property.name
 		elif property.usage & PROPERTY_USAGE_EDITOR:
 			locations[property.name] = [group, subgroup]
-	check(groups == ["基本信息", "射击与弹药", "瞄准与散布", "命中效果", "近战", "外观与声音"], "原资源按确认的六组显示")
-	check(locations.convergence_model == locations.spread_recovery_degrees_per_second and locations.convergence_seconds == locations.stabilize_seconds and locations.spread_recovery_delay == locations.convergence_seconds, "恢复公式、时间、旧速度与恢复等待归在同一处")
+	check(groups == ["基本信息", "射击与弹药", "Shotgun", "瞄准与散布", "命中效果", "近战", "外观与声音"] and locations.shotgun == ["Shotgun", ""], "Shotgun独立为一级组，位于瞄准与散布前")
+	check(locations.convergence_model == locations.convergence_seconds and locations.stabilize_seconds[1] == "敌人恢复（原算法）" and locations.spread_recovery_degrees_per_second == locations.stabilize_seconds and locations.accuracy_recovery_delay == locations.spread_recovery_delay, "玩家收敛、敌人恢复与恢复等待各自集中，职责明确")
 	check(locations.min_spread_angle_degrees[0] == "瞄准与散布" and locations.initial_accuracy[0] == "瞄准与散布" and locations.headshot_enabled[0] == "命中效果" and locations.visual_model[0] == locations.shot_noise[0], "散布、爆头、表现参数分别归入对应大组")
 
 
@@ -146,7 +146,6 @@ func _player_recovery_controls(manager: EditorUndoRedoManager) -> void:
 	var slots = EditorInterface.get_edited_scene_root().get_node("Equipment")
 	var weapon := WeaponData.new()
 	weapon.spread_recovery_degrees_per_second = 7
-	weapon.convergence_model = WeaponData.ConvergenceModel.QUADRATIC
 	slots.set("primary_weapon", weapon)
 	slots.set("secondary_weapon", null)
 	EditorInterface.inspect_object(slots)
@@ -157,25 +156,23 @@ func _player_recovery_controls(manager: EditorUndoRedoManager) -> void:
 			for picker in _descendants(prop, "EditorResourcePicker"): picker.resource_selected.emit(weapon, false)
 	for frame in 30: await process_frame
 	EditorInterface.get_inspector().expand_all_folding()
-	var legacy := _spin(weapon, "spread_recovery_degrees_per_second")
+	for model in [WeaponData.ConvergenceModel.QUADRATIC, WeaponData.ConvergenceModel.EXPONENTIAL, WeaponData.ConvergenceModel.LINEAR]:
+		_select_enum(weapon, "convergence_model", model)
+		for frame in 30: await process_frame
+		var seconds := _spin(weapon, "convergence_seconds")
+		check(seconds != null and seconds.editable and _spin(weapon, "spread_recovery_degrees_per_second") == null and _spin(weapon, "stabilize_seconds") == null, "玩家公式%d只显示统一时间，移除旧恢复入口" % model)
 	var seconds := _spin(weapon, "convergence_seconds")
-	check(legacy != null and legacy.editable and seconds != null, "玩家内嵌资源：二次＋时间0时旧速度仍可编辑")
 	if seconds == null: return
 	seconds.value = 3
-	for frame in 30: await process_frame
-	legacy = _spin(weapon, "spread_recovery_degrees_per_second")
-	check(legacy != null and not legacy.editable and legacy.tooltip_text.contains("当前玩家"), "玩家新时间大于0时旧速度置灰并显示生效说明")
-	if legacy != null: legacy.value = 9
-	check(weapon.spread_recovery_degrees_per_second == 7, "禁用的输入不会把旧速度写回资源")
+	for frame in 10: await process_frame
+	check(weapon.convergence_seconds == 3 and weapon.spread_recovery_degrees_per_second == 7, "玩家时间修改不改写敌人保存值")
 	var history := manager.get_history_undo_redo(manager.get_object_history_id(weapon))
 	var undone := history.undo()
-	for frame in 30: await process_frame
-	legacy = _spin(weapon, "spread_recovery_degrees_per_second")
-	check(undone and weapon.convergence_seconds == 0 and legacy != null and legacy.editable and weapon.spread_recovery_degrees_per_second == 7, "撤销到时间0会解锁旧速度并保留原数值")
+	for frame in 10: await process_frame
+	check(undone and weapon.convergence_seconds == 4 and _spin(weapon, "convergence_seconds").editable, "撤销时间保持唯一可编辑入口")
 	var redone := history.redo()
-	for frame in 30: await process_frame
-	legacy = _spin(weapon, "spread_recovery_degrees_per_second")
-	check(redone and weapon.convergence_seconds == 3 and legacy != null and not legacy.editable, "重做正数时间会重新禁用旧速度")
+	for frame in 10: await process_frame
+	check(redone and weapon.convergence_seconds == 3 and weapon.spread_recovery_degrees_per_second == 7, "重做时间不影响敌人恢复参数")
 	_select_mode(weapon, WeaponData.FireMode.SHOTGUN)
 	for frame in 30: await process_frame
 	for prop in _descendants(EditorInterface.get_inspector(), "EditorProperty"):
@@ -183,17 +180,22 @@ func _player_recovery_controls(manager: EditorUndoRedoManager) -> void:
 			for picker in _descendants(prop, "EditorResourcePicker"): picker.resource_selected.emit(weapon.shotgun, false)
 	for frame in 30: await process_frame
 	EditorInterface.get_inspector().expand_all_folding()
-	var settle := _spin(weapon.shotgun, "settle_seconds")
-	check(settle != null and not settle.editable, "玩家霰弹内嵌配置的原恢复用时也按所属武器禁用")
+	check(_spin(weapon.shotgun, "settle_seconds") == null and _spin(weapon, "convergence_seconds") != null, "玩家霰弹没有第二套恢复时间入口")
 	EditorInterface.edit_resource(weapon.shotgun)
 	for frame in 30: await process_frame
-	settle = _spin(weapon.shotgun, "settle_seconds")
-	check(settle != null and settle.editable and settle.tooltip_text.contains("独立打开"), "独立霰弹资源不猜测父武器，保留编辑并解释生效条件")
+	EditorInterface.get_inspector().expand_all_folding()
+	var settle := _spin(weapon.shotgun, "settle_seconds")
+	check(settle != null and settle.editable and settle.tooltip_text.contains("仅敌人"), "独立霰弹明确显示可编辑的敌人恢复接口")
+	if settle != null: settle.value = 2.3
+	check(is_equal_approx(weapon.shotgun.settle_seconds, 2.3) and weapon.convergence_seconds == 3, "敌人霰弹时间独立写入，不覆盖玩家时间")
 	weapon.fire_mode = WeaponData.FireMode.SEMI_AUTO
 	EditorInterface.edit_resource(weapon)
 	for frame in 30: await process_frame
-	legacy = _spin(weapon, "spread_recovery_degrees_per_second")
-	check(legacy != null and legacy.editable and legacy.tooltip_text.contains("敌人仍使用"), "独立共享武器仍可调敌人旧速度，同时明确玩家未使用")
+	EditorInterface.get_inspector().expand_all_folding()
+	var enemy := _spin(weapon, "stabilize_seconds")
+	check(enemy != null and enemy.editable and enemy.tooltip_text.contains("仅敌人"), "独立共享武器显示独立的敌人恢复接口")
+	if enemy != null: enemy.value = 1.7
+	check(is_equal_approx(weapon.stabilize_seconds, 1.7) and weapon.convergence_seconds == 3, "敌人恢复时间独立写入，不覆盖玩家时间")
 
 
 func _convergence_checks(manager: EditorUndoRedoManager) -> void:
@@ -221,10 +223,10 @@ func _convergence_checks(manager: EditorUndoRedoManager) -> void:
 			edited = spin.suffix == "s" and not spin.tooltip_text.is_empty()
 			spin.value = 2.75
 	for frame in 10: await process_frame
-	check(edited and weapon.convergence_seconds == 2.75, "真实秒数控件有单位／兼容说明且写回资源")
+	check(edited and weapon.convergence_seconds == 2.75, "真实秒数控件有单位／独立作用说明且写回资源")
 	undone = history.undo()
 	for frame in 10: await process_frame
-	check(undone and weapon.convergence_seconds == 0, "收敛时间可原生撤销")
+	check(undone and weapon.convergence_seconds == 4, "收敛时间可原生撤销")
 	redone = history.redo()
 	for frame in 10: await process_frame
 	check(redone and weapon.convergence_seconds == 2.75, "收敛时间可原生重做")

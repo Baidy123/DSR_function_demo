@@ -1,6 +1,6 @@
 # 测试入口与维护
 
-2026-10-26 瞄准收敛新增 `aim_convergence_test`，登记在原战斗回归清单；覆盖三公式、分帧一致性、旧速率兼容、蹲姿端点、非线性换弹与真实弹道。原 `weapon_fire_mode_inspector_test` 增加公式／时间保存与撤销断言，仍用真实编辑器运行。已验证范围、既有失败与编辑器退出清理诊断分列于[实施记录](superpowers/specs/2026-10-26-aim-convergence-models-design.md#7-验证与试玩边界)，不将断言通过等同于无错误退出。
+2026-10-26 瞄准收敛新增 `aim_convergence_test`，登记在原战斗回归清单；覆盖三公式、分帧一致性、玩家与敌人恢复参数隔离、默认时间、蹲姿端点、非线性换弹与真实弹道。原 `weapon_fire_mode_inspector_test` 增加公式／时间保存与撤销断言，仍用真实编辑器运行。已验证范围、既有失败与编辑器退出清理诊断分列于[实施记录](superpowers/specs/2026-10-26-aim-convergence-models-design.md#7-验证与试玩边界)，不将断言通过等同于无错误退出。
 
 ## 验证范围与试玩优先级
 
