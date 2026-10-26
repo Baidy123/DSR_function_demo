@@ -33,7 +33,7 @@ const ShotgunConfig = preload("res://scripts/weapons/shotgun_settings.gd")
 @export_range(0.0, 100.0, 0.5) var shot_noise_radius: float = 14.0
 ## 实际射线命中后的单发伤害。
 @export_range(1.0, 1000.0, 1.0) var damage: float = 25.0
-## 锁定距离（米）：玩家相机默认据此计算；远程敌人默认以此距离加训练中的感知余量作为视距。
+## 锁定距离（米）：玩家相机据此计算视野；远程敌人默认以此距离加训练中的感知余量作为视距。
 @export_range(0.5, 50.0, 0.5) var aim_range: float = 8.0
 ## 子弹射线的最大距离（米）。
 @export_range(0.5, 200.0, 0.5) var fire_range: float = 30.0
