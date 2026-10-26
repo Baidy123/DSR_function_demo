@@ -26,6 +26,11 @@ const Ballistics = preload("res://scripts/weapons/shotgun_ballistics.gd")
 		_queue_refresh()
 
 @export_group("独立预览参数（不影响实际武器）")
+## 只改变本预览的采样方向。不向圆心偏移允许侧向和小偏移，中心弹丸仍可向四周偏移。
+@export_enum("随机偏移", "不向圆心偏移") var preview_spread_mode: int = ShotgunSettings.SpreadMode.RANDOM:
+	set(value):
+		preview_spread_mode = value
+		_queue_refresh()
 ## 完全稳定时，每颗弹丸的最大随机偏移角。只影响此预览，0 可观察准确固定落点。
 @export_range(0.0, 5.0, 0.01, "suffix:°") var preview_stable_jitter_degrees: float = 0.08:
 	set(value):
@@ -171,6 +176,7 @@ func _unhandled_key_input(event: InputEvent) -> void:
 
 
 func fire() -> void:
+	_settings.spread_mode = preview_spread_mode
 	_settings.pattern_angle_degrees = preview_pattern_angle_degrees
 	_settings.stable_jitter_degrees = preview_stable_jitter_degrees
 	_settings.unstable_jitter_degrees = preview_unstable_jitter_degrees
@@ -180,7 +186,8 @@ func fire() -> void:
 		shots.append(Ballistics.sample_offsets(_settings, stability, rng) if pattern != null else PackedVector2Array())
 	_settings.pattern = null
 	if status != null:
-		status.text = "独立预览 · 稳定度 %d%% · 每颗最大偏差 %.2f° · 固定图样尺度 %.2f°" % [roundi(stability * 100), _settings.get_jitter_degrees(stability), preview_pattern_angle_degrees]
+		var mode := "不向圆心偏移" if preview_spread_mode == ShotgunSettings.SpreadMode.NO_INWARD else "随机偏移"
+		status.text = "独立预览 · %s · 稳定度 %d%% · 每颗最大偏差 %.2f° · 固定图样尺度 %.2f°" % [mode, roundi(stability * 100), _settings.get_jitter_degrees(stability), preview_pattern_angle_degrees]
 	queue_redraw()
 
 

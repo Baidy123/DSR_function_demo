@@ -51,6 +51,7 @@ func _run() -> void:
 	var history = manager.get_history_undo_redo(manager.get_object_history_id(gun))
 	check(history.undo() and gun.fire_mode == WeaponData.FireMode.SEMI_AUTO, "Native inspector undo restores original Fire Mode")
 	check(history.redo() and gun.fire_mode == WeaponData.FireMode.SHOTGUN, "Native inspector redo restores shotgun mode")
+	await _check_spread_mode(gun.shotgun, manager)
 	EditorInterface.edit_resource(gun)
 	for frame in 20: await process_frame
 	fields = _fields(gun)
@@ -85,6 +86,30 @@ func _run() -> void:
 	for frame in 5: await process_frame
 	print("SHOTGUN INSPECTOR: %d/%d passed" % [checks - failures, checks])
 	quit(1 if failures else 0)
+
+func _check_spread_mode(settings: ShotgunSettings, manager: EditorUndoRedoManager) -> void:
+	EditorInterface.edit_resource(settings)
+	for frame in 20: await process_frame
+	var property = _property(settings, "spread_mode")
+	check(property != null and property.label == "偏移方式" and not property.tooltip_text.is_empty(), "Spread mode has a Chinese label and direction help")
+	if property == null: return
+	var option: OptionButton = _descendants(property, "OptionButton")[0]
+	check(option.item_count == 2 and option.get_item_text(0) == "随机偏移" and option.get_item_text(1) == "不向圆心偏移", "Native dropdown retains legacy mode and offers no-inward mode")
+	option.select(1)
+	option.item_selected.emit(1)
+	for frame in 5: await process_frame
+	check(settings.spread_mode == ShotgunSettings.SpreadMode.NO_INWARD and settings.pellet_damage == 11, "Mode edit preserves other weapon values")
+	var history = manager.get_history_undo_redo(manager.get_object_history_id(settings))
+	check(history.undo() and settings.spread_mode == ShotgunSettings.SpreadMode.RANDOM, "Native undo restores legacy mode")
+	check(history.redo() and settings.spread_mode == ShotgunSettings.SpreadMode.NO_INWARD, "Native redo restores no-inward mode")
+	property.set_read_only(true)
+	check(option.disabled, "Native read-only property disables mode selection")
+	property.set_read_only(false)
+	DirAccess.make_dir_recursive_absolute("res://logs/shotgun_inspector")
+	var path := "res://logs/shotgun_inspector/mode.tres"
+	var saved := ResourceSaver.save(settings, path)
+	var restored = ResourceLoader.load(path, "", ResourceLoader.CACHE_MODE_IGNORE)
+	check(saved == OK and restored.spread_mode == ShotgunSettings.SpreadMode.NO_INWARD and restored.pellet_damage == 11, "Inspector-edited mode survives save and reload")
 
 func _fields(gun: Resource) -> Array:
 	var fields := []

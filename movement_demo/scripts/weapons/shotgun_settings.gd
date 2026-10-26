@@ -3,6 +3,7 @@ class_name ShotgunSettings
 extends Resource
 
 const MAX_PATTERN_ANGLE_DEGREES := 15.0
+enum SpreadMode { RANDOM, NO_INWARD }
 
 # 与原角度一起保存。加载时不运行标定换算，避免资源字段顺序改变旧枪性能。
 @export_storage var pattern_calibration_distance_m: float = 4.0
@@ -17,6 +18,9 @@ const MAX_PATTERN_ANGLE_DEGREES := 15.0
 @export_range(0.1, 5.0, 0.05, "suffix:s") var shell_reload_seconds: float = 0.6
 
 @export_group("霰弹图样")
+## 随机偏移保持原360°扰动；不向圆心偏移只排除朝图样原点的方向，允许侧向和很小的偏移。
+## 中心弹丸仍可向四周偏移；不改图样点位，不强制沿径向外扩。旧资源默认随机偏移。
+@export_enum("随机偏移", "不向圆心偏移") var spread_mode: int = SpreadMode.RANDOM
 ## 每个图样点对应一颗弹丸；拖入独立 ShotgunPattern 资源。留空为中心一颗。
 @export var pattern: ShotgunPattern = preload("res://resources/weapons/patterns/balanced.tres"):
 	set(value):

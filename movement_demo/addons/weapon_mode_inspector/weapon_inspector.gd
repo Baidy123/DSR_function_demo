@@ -108,6 +108,14 @@ func _can_handle(object: Object) -> bool:
 
 func _parse_property(object: Object, type: Variant.Type, path: String, hint: PropertyHint,
 		hint_text: String, usage: int, wide: bool) -> bool:
+	if (object is ShotgunSettings and path == "spread_mode") or (object is PatternPreview and path == "preview_spread_mode"):
+		_creating_native_property = true
+		var native := EditorInspector.instantiate_property_editor(object, type, path, hint, hint_text, usage, wide)
+		_creating_native_property = false
+		if native == null: return false
+		native.tooltip_text = "随机偏移：保留原360°扰动。不向圆心偏移：允许侧向和斜外侧，只禁止朝图样原点偏移；中心弹丸仍向四周偏移，没有最低偏移距离。"
+		add_property_editor(path, native, false, "预览偏移方式" if object is PatternPreview else "偏移方式")
+		return true
 	if object is PatternPreview:
 		if path == "preview_pattern_angle_degrees":
 			add_property_editor(path, CoverageProperty.new(true), false, "预览图样覆盖范围")

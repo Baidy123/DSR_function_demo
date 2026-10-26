@@ -103,7 +103,7 @@ func _run() -> void:
 	var saved_preview_distance: float = preview.preview_calibration_distance_m
 	EditorInterface.edit_node(preview)
 	for frame in 20: await process_frame
-	for field in ["pattern_1", "pattern_2", "pattern_3", "preview_stable_jitter_degrees", "preview_unstable_jitter_degrees", "preview_pattern_angle_degrees"]:
+	for field in ["pattern_1", "pattern_2", "pattern_3", "preview_spread_mode", "preview_stable_jitter_degrees", "preview_unstable_jitter_degrees", "preview_pattern_angle_degrees"]:
 		check(_find_property(EditorInterface.get_inspector(), preview, field) != null, "Preview exposes inspector input " + field)
 	var jitter_property := _find_property(EditorInterface.get_inspector(), preview, "preview_unstable_jitter_degrees")
 	var initial_jitter: float = preview.preview_unstable_jitter_degrees
@@ -112,6 +112,14 @@ func _run() -> void:
 	var scene_history = manager.get_history_undo_redo(manager.get_object_history_id(preview))
 	check(is_equal_approx(preview.preview_unstable_jitter_degrees, 0.9) and scene_history.undo() and is_equal_approx(preview.preview_unstable_jitter_degrees, initial_jitter), "Preview parameters use native scene undo")
 	check(scene_history.redo() and is_equal_approx(preview.preview_unstable_jitter_degrees, 0.9), "Preview parameters use native scene redo")
+	var mode_property := _find_property(EditorInterface.get_inspector(), preview, "preview_spread_mode")
+	var original_mode: int = preview.preview_spread_mode
+	var new_mode := 1 - original_mode
+	mode_property.emit_changed("preview_spread_mode", new_mode)
+	for frame in 3: await process_frame
+	check(mode_property.label == "预览偏移方式" and preview.preview_spread_mode == new_mode and preview._settings.spread_mode == new_mode, "Preview mode edits refresh the shared sampler")
+	check(scene_history.undo() and preview.preview_spread_mode == original_mode, "Native scene undo restores preview mode")
+	check(scene_history.redo() and preview.preview_spread_mode == new_mode, "Native scene redo restores preview mode")
 	await _check_preview_calibration_controls(preview, manager, saved_preview_angle, saved_preview_distance)
 	await _check_preview(preview)
 	await _check_preview_calibration(preview)
@@ -321,20 +329,27 @@ func _check_preview(preview) -> void:
 	expected.pattern_angle_degrees = 2
 	expected.stable_jitter_degrees = 0
 	expected.unstable_jitter_degrees = 1
-	for stability_value in [0.0, 0.5, 1.0]:
-		preview.stability = stability_value
-		preview.rng.seed = 2468
-		preview.fire()
-		var rng := RandomNumberGenerator.new()
-		rng.seed = 2468
-		check(preview.shots[0] == Ballistics.sample_offsets(expected, stability_value, rng) and preview.shots[2] == Ballistics.sample_offsets(expected, stability_value, rng), "Independent preview uses real sampling at stability " + str(stability_value))
+	for mode in [ShotgunSettings.SpreadMode.RANDOM, ShotgunSettings.SpreadMode.NO_INWARD]:
+		preview.preview_spread_mode = mode
+		expected.spread_mode = mode
+		for stability_value in [0.0, 0.5, 1.0]:
+			preview.stability = stability_value
+			preview.rng.seed = 2468
+			preview.fire()
+			var rng := RandomNumberGenerator.new()
+			rng.seed = 2468
+			check(preview.shots[0] == Ballistics.sample_offsets(expected, stability_value, rng) and preview.shots[2] == Ballistics.sample_offsets(expected, stability_value, rng), "Independent preview uses real sampling: mode %d stability %.1f" % [mode, stability_value])
+	check(preview.status.text.contains("不向圆心偏移"), "Preview status names the selected mode")
 	var source_gun = load("res://resources/weapons/test_shotgun.tres")
 	var source_angle: float = source_gun.shotgun.pattern_angle_degrees
 	var source_jitter: float = source_gun.shotgun.stable_jitter_degrees
+	var source_mode: int = source_gun.shotgun.spread_mode
+	source_gun.shotgun.spread_mode = ShotgunSettings.SpreadMode.RANDOM
 	source_gun.shotgun.pattern_angle_degrees = 14
 	source_gun.shotgun.stable_jitter_degrees = 4
 	preview.fire()
-	check(preview.preview_pattern_angle_degrees == 2 and preview.shots[0][1].is_equal_approx(Vector2(0.8, -0.4)), "Changing the example weapon cannot affect preview configuration or samples")
+	check(preview.preview_spread_mode == ShotgunSettings.SpreadMode.NO_INWARD and preview.preview_pattern_angle_degrees == 2 and preview.shots[0][1].is_equal_approx(Vector2(0.8, -0.4)), "Changing the example weapon cannot affect preview configuration or samples")
+	source_gun.shotgun.spread_mode = source_mode
 	source_gun.shotgun.pattern_angle_degrees = source_angle
 	source_gun.shotgun.stable_jitter_degrees = source_jitter
 	custom.points.append(Vector2(-0.5, 0.6))
@@ -351,6 +366,7 @@ func _check_preview(preview) -> void:
 	root.add_child(restored)
 	for frame in 3: await process_frame
 	check(restored.get_patterns()[0].resource_path == custom.resource_path and restored.pattern_2 == null and restored.preview_unstable_jitter_degrees == 1 and restored.stability == 0.5 and restored.distance_m == 4, "Saved preview restores custom slots and independent parameters")
+	check(restored.preview_spread_mode == ShotgunSettings.SpreadMode.NO_INWARD and restored._settings.spread_mode == ShotgunSettings.SpreadMode.NO_INWARD and source_gun.shotgun.spread_mode == source_mode, "Scene reload preserves preview mode without changing the weapon mode")
 	check(restored.shots[0].size() == 3 and packed.get_state().get_node_count() == 1, "Restored scene rebuilds only transient UI and samples its saved pattern")
 	restored.queue_free()
 	await process_frame

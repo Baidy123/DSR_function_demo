@@ -3,14 +3,19 @@ extends RefCounted
 const ImpactEffects = preload("res://scripts/systems/effects/impact_effects.gd")
 
 
-## 单位为度的固定落点加各颗独立的圆盘扰动；不旋转、平移或缩放整个图样。
+## 单位为度的固定落点加各颗独立扰动；模式只约束方向，不改变图样或偏移长度分布。
 static func sample_offsets(weapon: ShotgunSettings, stability: float, rng: RandomNumberGenerator) -> PackedVector2Array:
 	var result := PackedVector2Array()
 	var jitter := weapon.get_jitter_degrees(stability)
 	for point in weapon.get_pattern_points():
+		var base := point * clampf(weapon.pattern_angle_degrees, 0.0, 15.0)
 		var angle := rng.randf_range(0.0, TAU)
+		# 每颗仍只取方向、半径两个随机数，旧模式的种子序列保持原样。
+		# 非中心点在朝外的半圆盘采样，含两侧切向；近零点没有朝内参考方向。
+		if weapon.spread_mode == ShotgunSettings.SpreadMode.NO_INWARD and not base.is_zero_approx():
+			angle = base.angle() + angle * 0.5 - PI * 0.5
 		var radius := sqrt(rng.randf()) * jitter
-		result.append(point * clampf(weapon.pattern_angle_degrees, 0.0, 15.0) + Vector2(cos(angle), sin(angle)) * radius)
+		result.append(base + Vector2(cos(angle), sin(angle)) * radius)
 	return result
 
 
