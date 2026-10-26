@@ -308,7 +308,12 @@ func _update_objective() -> void:
 	var phase: StringName = &"contact" if contact else (&"search" if not newest.is_empty() or _objective.get("target_id", 0) != 0 else &"patrol")
 	var changed: bool = _objective.is_empty() or _objective.phase != phase
 	if phase == &"contact" and not newest.is_empty():
-		changed = changed or _objective.get("position", Vector3.INF).distance_to(newest.position) > 1.0
+		changed = changed or _objective.get("target_id", 0) != newest.get("target_id", 0)
+		# A moving instance is still the same target. Complete the bounded
+		# in-flight preparation before sampling another position, including
+		# movement across the normal one-metre replanning threshold. Phase,
+		# target identity and map changes still invalidate their old work.
+		changed = changed or _preparation.is_empty() and _objective.get("position", Vector3.INF).distance_to(newest.position) > 1.0
 	if phase == &"search" and not newest.is_empty():
 		changed = changed or float(newest.captured_at) > float(_objective.get("captured_at", -INF)) + 0.01
 		changed = changed or (_objective.get("source") == &"wave_spawn" and newest.get("source") != &"wave_spawn")
@@ -319,14 +324,17 @@ func _update_objective() -> void:
 			# Small legal target movement can invalidate one melee post without
 			# replacing the objective or the still useful ranged firing tasks.
 			for id in _tasks:
-				if _profiles.get(id, {}).get("firearms", true) or not _tasks[id].role in [&"engage", &"flank"] or not _tasks[id].get("contact_post", true): continue
-				if Combat.melee_post_valid(_context(id), _profiles[id], _tasks[id].position, newest.position, 0.08): continue
+				if _profiles.get(id, {}).get("firearms", true) or not _tasks[id].role in [&"engage", &"flank", &"guard"] or not _tasks[id].get("contact_post", true): continue
+				if _tasks[id].role != &"guard" and Combat.melee_post_valid(_context(id), _profiles[id], _tasks[id].position, newest.position, 0.08): continue
 				# Finish the bounded in-flight team plan before taking another
 				# sub-metre sample. Restarting for every walking frame starves it.
 				if _preparation.is_empty() and _objective.position.distance_to(newest.position) > 0.02:
 					_objective.position = newest.position
 					_objective.captured_at = newest.captured_at
 					_failed_sites.clear()
+				# Guard has no contact endpoint. It still needs a fresh target on
+				# the next preparation pass, but is not a failed attack geometry.
+				if _tasks[id].role == &"guard": continue
 				_tasks[id].needs_replan = true
 				# A moved contact endpoint does not invalidate the safe approach
 				# already in progress. Continue it while preparing a new endpoint.
@@ -526,6 +534,7 @@ func _finish_plan(deadline: int) -> void:
 	frame_costs.stage = &"combinations"
 	var result := _planner.advance(_preparation.solution, deadline)
 	if not result.ready:
+		_publish_contact_incumbent()
 		_due = elapsed
 		return
 	planning_count += 1
@@ -551,8 +560,7 @@ func _finish_plan(deadline: int) -> void:
 			_due = elapsed
 	else:
 		if not _preparation_done():
-			_preparation.erase("solution")
-			_due = elapsed
+			_continue_preparation()
 			return
 		_attempt += 1
 		# Exhaust the first bounded geometry alternatives on subsequent area
@@ -581,20 +589,38 @@ func _finish_plan(deadline: int) -> void:
 	else:
 		# Committing an early solution cannot discard the remaining trained
 		# actions. Finish their cursors and compare their proposals afterwards.
-		if _objective.phase == &"contact":
-			# A member's first complete failed page must not wait for every
-			# teammate's optional actions. Restart only that completed cursor;
-			# all unfinished teammates retain their exact preparation progress.
-			var ready := {}
-			for id in _preparation.candidates:
-				if _preparation.works.get(id, {}).get("done", false) and _contact_recovery.round_for(id) == 0:
-					ready[id] = _preparation.candidates[id]
-			_contact_recovery.finished(_tasks, ready, _bodies, _objective, _last_map_revision, elapsed)
-			for id in ready:
-				if _contact_recovery.round_for(id) > 0: _preparation.works.erase(id)
-			_preparation.contact_priority = _contact_recovery.take_priority_pass() or _preparation.get("contact_priority", false)
-		_preparation.erase("solution")
-		_due = elapsed
+		_continue_preparation()
+
+func _publish_contact_incumbent() -> void:
+	# The bounded comparison may span many ticks even after finding a valid
+	# full table. Do not leave the squad holding just to finish optimization.
+	# Search rendezvous still wait for the complete observation/support set.
+	if _objective.phase != &"contact": return
+	var work: Dictionary = _preparation.solution
+	var proposals: Dictionary = work.get("best", {})
+	if proposals.size() != _bodies.size() or float(work.cost) >= float(work.get("publish_attempt_cost", INF)): return
+	var repairs_waiting := _tasks.keys().any(func(id): return (_tasks[id].role == &"guard" or _tasks[id].state == &"blocked") and proposals[id].role != &"guard")
+	if not repairs_waiting: return
+	# Attempt each improving table once; failures still use the normal final
+	# revalidation/retry path, rather than spending another commit every tick.
+	work.publish_attempt_cost = work.cost
+	frame_costs.stage = &"commit"
+	_commit(proposals, work.traffic)
+
+func _continue_preparation() -> void:
+	if _objective.phase == &"contact":
+		# A completed member can recover even when no teammate has obtained
+		# a non-guard plan yet. Unfinished members retain their exact cursors.
+		var ready := {}
+		for id in _preparation.candidates:
+			if _preparation.works.get(id, {}).get("done", false) and _contact_recovery.round_for(id) == 0:
+				ready[id] = _preparation.candidates[id]
+		_contact_recovery.finished(_tasks, ready, _bodies, _objective, _last_map_revision, elapsed)
+		for id in ready:
+			if _contact_recovery.round_for(id) > 0: _preparation.works.erase(id)
+		_preparation.contact_priority = _contact_recovery.take_priority_pass() or _preparation.get("contact_priority", false)
+	_preparation.erase("solution")
+	_due = elapsed
 
 func _member_work(id: int) -> Dictionary:
 	var candidates: Array[Dictionary] = []

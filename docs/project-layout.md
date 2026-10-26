@@ -1,5 +1,7 @@
 # 项目目录结构
 
+接敌派发连续性（2026-10-27）：原 `squad_coordination.gd` 在纯规划器尚未完成比较时，可通过原完整事务提交已找到的全员可行表；仍持有并续算原组合栈和成员游标。目标移动不再饿死在途准备，全警戒提前返回也接回已完成成员恢复。新增 `tests/enemy/squad_dispatch_continuity_test.gd` 同时验证调度边界与保存第五关的真实连续目标移动，不新增运行服务或场景节点，见[验证记录](enemy-tests.md#接敌派发空窗2026-10-27)。
+
 近战接敌续接（2026-10-27）：原 `squad_combat_tactics.gd` 负责在最新合法目击下保留仍有效的近战落点与路线；`enemy_ai.gd` 按枪械资格区分恢复提示。新增 `tests/enemy/squad_melee_contact_test.gd` 复用 `squad_contact_recovery_test.gd` 的波次夹具与清理，验证第五关原六人队、合法玩家移动、真实近战命中、身体间距及终点续接。没有增加运行节点或任务协议，结果见[敌人测试](enemy-tests.md#第五关近战落点与真实命中2026-10-27)。
 
 接敌恢复（2026-10-27）：`scripts/enemy/services/squad_contact_recovery.gd` 是小队协调器私有的值记录服务，只维护持续警戒历史、有限候选轮次及最近受阻提案；不读取场景、不新增节点或时钟。原 `squad_combat_tactics.gd` 生成恢复站位，原 `squad_coordination.gd` 分帧准备、校验并原子提交整队任务；`enemy_ai.gd` 只将恢复原因用于状态显示。接口和默认值见[接敌恢复](enemy-ai.md#接敌后的持续警戒恢复2026-10-27)，真实保存地图专项为 `tests/enemy/squad_contact_recovery_test.gd`。
