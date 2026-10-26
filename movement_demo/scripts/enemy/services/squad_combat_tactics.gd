@@ -10,6 +10,12 @@ const ARRIVAL_MARGIN := 0.16
 ## at commitment, after budgeted preparation has finished. No action choice.
 static func refresh_contact_post(context, profile: Dictionary, body: Dictionary, task: Dictionary, target: Vector3) -> bool:
 	if not task.get("contact_post", false) or target.distance_to(task.look_position) < 0.02: return true
+	# A legal observation can move inside the existing strike margin. Keep
+	# that validated endpoint/route instead of queuing another navigation job
+	# and rejecting the entire team's commit while it is pending.
+	if melee_post_valid(context, profile, task.position, target, ARRIVAL_MARGIN * 0.5):
+		task.look_position = target
+		return true
 	var seed_point: Vector3 = target + (task.position - task.look_position)
 	if melee_post_valid(context, profile, body.position, target, ARRIVAL_MARGIN): seed_point = body.position
 	var point := melee_position(context, profile, body, seed_point, target)

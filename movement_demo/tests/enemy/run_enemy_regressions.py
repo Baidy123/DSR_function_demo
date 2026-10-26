@@ -13,6 +13,7 @@ TESTS = [
     "squad_command_runtime_test",
     "squad_cover_breach_test",
     "squad_contact_recovery_test",
+    "squad_melee_contact_test",
     "squad_patrol_test",
     "squad_command_contract_test",
     "squad_map_observation_test",

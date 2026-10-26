@@ -421,6 +421,7 @@ func _update_label() -> void:
 		label = "队伍指挥·%s" % names.get(task.get("role"), "等待任务")
 		if task.get("role") == &"guard" and task.has("recovery_reason"):
 			var recovery_names := {&"finding_post": "寻找接敌位置", &"post_occupied": "调整站位", &"friendly_fire_lane": "调整射界", &"passage_occupied": "等待通道"}
+			if not actor.can_use_firearms(): recovery_names[&"friendly_fire_lane"] = "避让队友射线"
 			label = "队伍指挥·%s" % recovery_names.get(task.recovery_reason, "寻找接敌位置")
 	var name: String = context.unit.display_name if context.unit != null else "未配置兵种"
 	actor.set_status_text("%s：%s\n生命 %d / %d" % [name, label, ceili(actor.health), ceili(actor.max_health)])

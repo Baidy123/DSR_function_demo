@@ -1,5 +1,7 @@
 # 项目目录结构
 
+近战接敌续接（2026-10-27）：原 `squad_combat_tactics.gd` 负责在最新合法目击下保留仍有效的近战落点与路线；`enemy_ai.gd` 按枪械资格区分恢复提示。新增 `tests/enemy/squad_melee_contact_test.gd` 复用 `squad_contact_recovery_test.gd` 的波次夹具与清理，验证第五关原六人队、合法玩家移动、真实近战命中、身体间距及终点续接。没有增加运行节点或任务协议，结果见[敌人测试](enemy-tests.md#第五关近战落点与真实命中2026-10-27)。
+
 接敌恢复（2026-10-27）：`scripts/enemy/services/squad_contact_recovery.gd` 是小队协调器私有的值记录服务，只维护持续警戒历史、有限候选轮次及最近受阻提案；不读取场景、不新增节点或时钟。原 `squad_combat_tactics.gd` 生成恢复站位，原 `squad_coordination.gd` 分帧准备、校验并原子提交整队任务；`enemy_ai.gd` 只将恢复原因用于状态显示。接口和默认值见[接敌恢复](enemy-ai.md#接敌后的持续警戒恢复2026-10-27)，真实保存地图专项为 `tests/enemy/squad_contact_recovery_test.gd`。
 
 五关主入口与说明（2026-10-27）：`project.godot` 默认启动 `scenes/world/levels/lvl_1.tscn`，五关各增加 `scenes/ui/level_flow.tscn` 实例。`scripts/systems/level_flow.gd` 监听原波次完成信号，只在玩家点击结果界面按钮后切换；第五关显示通关与重玩按钮。内嵌 `scenes/ui/play_guide.tscn`／`scripts/ui/play_guide.gd` 提供共用的启动说明、暂停恢复和可滚动正文；布局采用原生全屏锚点，关闭按钮固定在正文外。原区域、身体、AI、波次、Health及酒馆任务职责保持，详见[游玩说明](gameplay/PLAY_GUIDE.md)。
