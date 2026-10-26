@@ -70,6 +70,7 @@ func _initialize() -> void:
 	_support_contract()
 	_offer_contract()
 	_scoring_contract(planner)
+	_large_search_contract(planner)
 	print("SQUAD COMMAND CONTRACT: %d/%d passed" % [checks - failures, checks])
 	quit(1 if failures else 0)
 
@@ -166,6 +167,39 @@ func _combat_roles(planner) -> void:
 	snapshot.scoring = {&"score_melee_support_weight": 0.0}
 	result = planner.propose(snapshot)
 	check(result.complete and result.tasks[2].position == exposed.position, "Disabling mixed support preference allows the cheaper otherwise legal gun post")
+
+func _large_search_contract(planner) -> void:
+	# 六人搜索中，大量便宜掩护候选缺少对应检查者，不能组成合法布局。
+	# 每人仍有合法的搜索路线和原地等待；有限搜索必须让队伍取得实际进展。
+	var bodies := {}
+	var profiles := {}
+	var candidates := {}
+	for id in range(1, 7):
+		var start := Vector3(float(id - 1) * 3.0, 0, 0)
+		bodies[id] = {"position": start, "radius": 0.35, "spacing_margin": 0.45}
+		profiles[id] = {"profile_id": str(id), "actions": {&"fixture": {"roles": [&"search", &"support", &"guard"], "basis": "installed_fixture"}}}
+		var options: Array = []
+		for rank in range(6):
+			var unsupported := _post(start, start + Vector3(0, 0, 3.0 + float(rank) * 0.1), 1.0 + float(rank))
+			unsupported.merge({"action": &"fixture", "role": &"support", "overwatch_for": "unavailable:%d" % id, "side": 1}, true)
+			options.append(unsupported)
+		var investigate := _post(start, start + Vector3(0, 0, 6), 15.0)
+		investigate.merge({"action": &"fixture", "role": &"search"}, true)
+		options.append(investigate)
+		var hold := _post(start, start, 40.0)
+		hold.merge({"action": &"fixture", "role": &"guard"}, true)
+		options.append(hold)
+		candidates[id] = options
+	var snapshot := {"members": bodies, "profiles": profiles, "template": Contract.template(profiles, 1), "objective": {"phase": &"search"}, "candidates": candidates}
+	var pending: Dictionary = planner.begin(snapshot)
+	check(not planner.advance(pending, 0).ready, "Large-team preparation yields without consuming an expired frame budget")
+	var result: Dictionary = planner.advance(pending, 9223372036854775807)
+	check(result.complete and result.tasks.values().any(func(task): return task.role == &"search"), "A six-member search obtains a safe advancing layout before crowded alternatives exhaust the finite budget")
+	check(result.trials <= Planner.MAX_COMBINATIONS, "Large-team safety preparation shares the original 256-combination limit")
+	check(not result.complete or result.traffic.valid and result.tasks.values().all(func(task): return task.role != &"support"), "An advancing layout still rejects unsupported fire duties and blocked traffic")
+	snapshot.scoring = {&"score_action_cost_weight": 0.0, &"score_search_support_weight": 0.0}
+	var neutral: Dictionary = planner.propose(snapshot)
+	check(neutral.complete and neutral.tasks.values().any(func(task): return task.role == &"search"), "Zero cost weights do not let temporary holding hide equally priced advancing assignments")
 
 func _scoring_contract(planner) -> void:
 	var Settings = preload("res://scripts/enemy/config/cooperation_settings.gd")

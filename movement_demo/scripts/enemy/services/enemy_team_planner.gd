@@ -34,8 +34,18 @@ func begin(snapshot: Dictionary) -> Dictionary:
 	for index in range(ids.size() - 1, -1, -1):
 		var options: Array = snapshot.candidates.get(ids[index], [])
 		remaining_minimum[index] = remaining_minimum[index + 1] + (float(options[0].planning_cost) if not options.is_empty() else 0.0)
+	var holding := {}
+	for id in ids:
+		for candidate: Dictionary in snapshot.candidates.get(id, []):
+			if candidate.role == &"guard":
+				holding[id] = candidate
+				break
+	# Crowded large squads can exhaust every DFS trial on incompatible cheap
+	# posts before reaching a safe holding alternative. Establish a feasible
+	# full table first, then keep the original global comparison and limits.
+	var seed := {"tasks": holding, "started": false, "index": 0, "candidate": 0} if holding.size() == ids.size() else {}
 	return {"snapshot": snapshot, "ids": ids, "stack": [{"index": 0, "selected": {}, "cost": 0.0}],
-		"remaining_minimum": remaining_minimum,
+		"remaining_minimum": remaining_minimum, "seed": seed,
 		"trials": 0, "nodes": 0, "best": {}, "attempted": {}, "cost": INF, "traffic": {}, "reason": &"no_complete_layout"}
 
 ## Resume the same full-team search when the area budget is exhausted. Bodies
@@ -43,6 +53,7 @@ func begin(snapshot: Dictionary) -> Dictionary:
 func advance(work: Dictionary, deadline: int) -> Dictionary:
 	var snapshot: Dictionary = work.snapshot
 	var ids: Array = work.ids
+	if not _seed_layout(work, deadline): return {"ready": false}
 	while not work.stack.is_empty() and work.trials < MAX_COMBINATIONS and work.nodes < 2048:
 		if Time.get_ticks_usec() >= deadline: return {"ready": false}
 		var node: Dictionary = work.stack.pop_back()
@@ -69,8 +80,66 @@ func advance(work: Dictionary, deadline: int) -> Dictionary:
 			var selected: Dictionary = node.selected.duplicate()
 			selected[id] = candidate
 			work.stack.append({"index": node.index + 1, "selected": selected, "cost": node.cost + float(candidate.planning_cost)})
+	if work.best.is_empty() and work.has("holding_fallback"):
+		work.best = work.holding_fallback.tasks
+		work.traffic = work.holding_fallback.traffic
+		work.cost = work.holding_fallback.cost
+		work.reason = &"complete_layout"
 	return {"tasks": work.best, "traffic": work.traffic, "cost": work.cost,
 		"ready": true, "trials": work.trials, "reason": work.reason, "attempted": work.attempted, "complete": work.best.size() == ids.size() and not ids.is_empty()}
+
+func _seed_layout(work: Dictionary, deadline: int) -> bool:
+	var seed: Dictionary = work.seed
+	if seed.is_empty(): return true
+	while work.trials < MAX_COMBINATIONS and work.nodes < 2048:
+		if Time.get_ticks_usec() >= deadline: return false
+		if not seed.started:
+			seed.started = true
+			_consider_seed(work, seed.tasks)
+			continue
+		if seed.index >= work.ids.size(): break
+		var id = work.ids[seed.index]
+		var options: Array = work.snapshot.candidates.get(id, [])
+		if seed.candidate >= options.size():
+			seed.index += 1
+			seed.candidate = 0
+			continue
+		var candidate: Dictionary = options[seed.candidate]
+		seed.candidate += 1
+		if candidate.role == &"guard": continue
+		var tasks: Dictionary = seed.tasks.duplicate()
+		tasks[id] = candidate
+		_consider_seed(work, tasks)
+	work.seed = {}
+	return true
+
+func _consider_seed(work: Dictionary, tasks: Dictionary) -> void:
+	work.trials += 1
+	work.nodes += 1
+	var selected := {}
+	var cost := 0.0
+	for id in work.ids:
+		if not _eligible(work.snapshot, id, tasks[id], selected): return
+		selected[id] = tasks[id]
+		cost += float(tasks[id].planning_cost)
+	cost += _team_cost(work.snapshot, selected)
+	if cost >= work.cost: return
+	var traffic := Traffic.plan(selected, work.snapshot.members, work.snapshot.get("synchronize_search", false))
+	# Keep a real attempted departure for the coordinator's joint yielding;
+	# the all-holding baseline has no corridor conflict for it to repair.
+	if work.attempted.is_empty() and selected.values().any(func(task): return task.role != &"guard"):
+		work.attempted = selected.duplicate(true)
+	if not traffic.valid or not Support.acyclic(selected, traffic): return
+	if selected.values().all(func(task): return task.role == &"guard"):
+		# This is a safe fallback, not a bound that can prune equally priced
+		# departures when the action-cost weight is zero.
+		work.holding_fallback = {"tasks": selected.duplicate(true), "traffic": traffic, "cost": cost}
+		return
+	work.best = selected.duplicate(true)
+	work.seed.tasks = selected
+	work.cost = cost
+	work.traffic = traffic
+	work.reason = &"complete_layout"
 
 func _team_cost(snapshot: Dictionary, tasks: Dictionary) -> float:
 	if snapshot.get("objective", {}).get("phase") == &"search":

@@ -3,6 +3,11 @@ extends "res://tests/enemy/enemy_wave_test.gd"
 ## 复用原波次夹具和真实区域推进；墙体遮挡玩家，不注入状态、任务或获选动作。
 func _run() -> void:
 	root.get_node("DebugSettings").enabled = false
+	if "--saved-lvl5" in OS.get_cmdline_user_args():
+		await _saved_lvl5_search_case()
+		print("WAVE SPAWN SEARCH LVL5: %d/%d passed" % [checks - failures, checks])
+		quit(1 if failures else 0)
+		return
 	seed(20261026)
 	_configuration()
 	for level in 3: await _spawn_search_case(level)
@@ -178,6 +183,42 @@ func _spawn_search_case(level: int) -> void:
 				reacquired = true
 				break
 		check(reacquired, "出生搜索后实际目击玩家，正常接敌流程接管")
+	region.queue_free()
+	await _settle()
+
+func _saved_lvl5_search_case() -> void:
+	seed(2)
+	var region = load("res://scenes/world/levels/lvl_5.tscn").instantiate()
+	root.add_child(region)
+	current_scene = region
+	region.get_node("LevelFlow/PlayGuide").close_guide()
+	var player = region.get_node("Player")
+	player.set_physics_process(false)
+	# 内存实例中把玩家留在地图中央的合法空地，隔开出生区与玩家；不改保存场景。
+	player.global_position = region.to_global(Vector3(0, 0, 3))
+	player.get_node("Health").debug_invincible = true
+	var controller = region.get_node("EnemyWaves")
+	check(await _await_wave(controller, 1, 180), "第五关保存地图按原流程生成首波")
+	for number in [2, 3]:
+		for enemy in region.enemies.duplicate(): enemy.receive_hit(100000.0)
+		var spawned: bool = await _await_wave(controller, number, 180)
+		check(spawned and region.enemies.size() == 6, "第五关第%d波真实死亡清波后生成六人小队" % number)
+		if not spawned: break
+		var starts := {}
+		var travelled := {}
+		for enemy in region.enemies:
+			starts[enemy.get_instance_id()] = enemy.global_position
+			travelled[enemy.get_instance_id()] = 0.0
+		check(region.enemies.all(func(enemy): return not enemy.get_node("AI").context.spawn_search_hint.is_empty()), "第五关第%d波全员取得出生搜索线索" % number)
+		for frame in range(720):
+			await physics_frame
+			for enemy in region.enemies:
+				var id: int = enemy.get_instance_id()
+				travelled[id] = maxf(travelled[id], enemy.global_position.distance_to(starts[id]))
+		var moved := travelled.values().filter(func(distance): return distance > 1.0).size()
+		check(moved >= 2, "第五关第%d波至少两名成员实际离开出生点（本次%d/6）" % [number, moved])
+		check(region.enemies.any(func(enemy): return enemy.global_position.distance_to(player.global_position) + 1.0 < starts[enemy.get_instance_id()].distance_to(player.global_position)), "第五关第%d波实际向玩家所在区域推进" % number)
+		check(region.enemies.all(func(enemy): return enemy.get_node("AI").context.commanded() and enemy.get_node("AI").utility_decision_count == 0), "第五关第%d波保持原团队控制权" % number)
 	region.queue_free()
 	await _settle()
 
