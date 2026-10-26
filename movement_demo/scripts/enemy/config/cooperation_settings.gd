@@ -2,6 +2,8 @@
 extends "res://scripts/enemy/config/module_settings.gd"
 class_name EnemyCooperationSettings
 
+## 仅由 Squad → Profile 或旧区域显式绑定配置；Training 不再提供此模块。
+## 0级个人 Utility 仍读所属小队的情报/间距设置；无绑定时使用各消费点默认值。
 enum Level { INTEL_ONLY, TACTICAL, COORDINATED }
 const Scoring = preload("res://scripts/enemy/services/squad_scoring.gd")
 
@@ -15,7 +17,7 @@ const Scoring = preload("res://scripts/enemy/services/squad_scoring.gd")
 func _init() -> void:
 	section = &"cooperation"
 
-## 【个人与协调器共用】共享情报的有效期；绑定小队时读取 Squad → Profile，不读个人 Training 的同名值。
+## 【个人与协调器共用】共享情报的有效期；配置来自 Squad → Profile，与个人 Training 无关。
 ## Expiry limits precise shared evidence, never completes a search objective.
 @export_range(0.1, 15.0, 0.1) var intel_seconds := 5.0:
 	set(value):

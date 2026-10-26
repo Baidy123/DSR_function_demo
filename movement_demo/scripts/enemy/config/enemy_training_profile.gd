@@ -32,13 +32,18 @@ class_name EnemyTrainingProfile
 @export var perception: Resource = preload("res://scripts/enemy/config/perception_settings.gd").new()
 ## 【混合范围】翻越偏好、攻击占位几何等共用；个人掩体质量参数不替代团队防御检查。
 @export var selection: Resource = preload("res://scripts/enemy/config/selection_settings.gd").new()
-## 【配置来源例外】绑定小队时以 Squad → Profile 为准，个人 Training 的同名值不覆盖它。0级仍为个人决策。
-@export var cooperation: Resource = preload("res://scripts/enemy/config/cooperation_settings.gd").new()
 
 ## 【个人与协调器共用】按模块覆盖训练参数；每项适用范围仍由对应参数决定，不自动解锁动作。
 @export var action_overrides: Array[EnemyModuleSettings] = []
 
+## 旧训练文件仍可能带此字段；加载时丢弃，不暴露属性或再次序列化。
+## 协作配置由 Squad/区域显式绑定提供，个人训练不再保存第二份。
+func _set(property: StringName, _value: Variant) -> bool:
+	return property == &"cooperation"
+
 func module(section: StringName) -> Resource:
+	# 包括旧 Action Overrides：不能借训练覆盖重新引入队级配置。
+	if section == &"cooperation": return null
 	for settings in action_overrides:
 		if settings != null and settings.section == section: return settings
 	var value = get(section)

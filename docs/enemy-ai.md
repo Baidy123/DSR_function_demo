@@ -14,13 +14,21 @@
 | Fire Decision / Perception | 统一火控和成员感知共用；火控评分不等于团队岗位分配评分 |
 | Selection | 翻越偏好、攻击占位几何和掩体线索推断共用；个人掩体质量参数不替代团队防御检查；诊断参数不参与评分 |
 | 近战战术参数（Action Overrides） | 对应战术的个人执行和团队提案/命令共用，仍须训练解锁 |
-| Cooperation | 绑定小队时以 `Squad → Profile` 为准，个人训练同名值不覆盖它；各项是否用于0级/1/2级见字段注释 |
+| 小队配合（已移出 Training） | 统一在 `Squad → Profile` 配置；0级个人也读取所属小队的情报/间距参数，无绑定时用现有默认值 |
 
 同名共用参数可能有不同含义：`Search Radius` 是个人搜索边界，在团队中只参与围绕线索的选点排序，不能限制整区覆盖；`Focused Search Speed Multiplier` 在团队中是搜索任务基础速度，不受个人 `Focused Search Seconds` 时窗限制；`Search Pause Seconds` 在团队中是可边走边累计的有效观察时长，最少0.25秒。提示间隔与排序半径采用首个具备搜索能力成员的冻结配置；提示概率/误差按当次合格成员读取，每次小队机会只抽一次，不按人数累加概率。
 
 团队在本场装配时冻结成员训练与能力，改值后需重新加载战斗。配置存在不等于已解锁动作；具体字段的适用范围以[训练配置](../movement_demo/scripts/enemy/config/enemy_training_profile.gd)及其模块注释为入口。Godot 原生属性帮助读取这些 `##` 注释，已有自定义检查器提示仍由对应插件提供。
 
 本轮验证：12个配置脚本的 Godot `--check-only` 全部通过，并逐文件核对非注释内容与修改前一致；未修改资源值、接口或执行流程，因此未重跑行为回归。
+
+### 移除个人训练 Cooperation（2026-10-26）
+
+用户随后要求删除重复的训练入口。`EnemyTrainingProfile` 已移除 `cooperation` 属性，`Training → Profile` 不再显示或保存该模块；旧文件中的同名字段只在加载时接收并丢弃，重新保存会自然去掉，其他训练参数与战术解锁保持。旧 `Action Overrides` 中的协作模块也不参与训练查询，不能重新覆盖队级设置。本次不批量重写用户保存的训练资源。
+
+`EnemyContext.setting("cooperation", ...)` 统一查询所属 Squad 的 Profile（保留旧区域显式绑定）；无绑定或配置缺失时按调用方原有缺省值回退，不再查询 Training。0级个人 Utility 仍依赖以下共享参数，所以保留 `cooperation_settings.gd` 和情报/预约/间距服务：`intel_seconds` 默认5秒、`checked_point_seconds` 默认3秒、`cover_inspection_seconds` 默认20秒、`spacing_margin` 默认0.45米。有小队的0级成员和1/2级成员仍使用同一小队配置来源。只有原来依赖无绑定个人 Training 覆盖这些值的旧配置会改用默认值；需要自定义时在0级 Squad 的 Profile 设置。
+
+删除的是个人训练中的重复配置，并未删除团队协调器、共享情报、物理预约或个人基础间距。个人/团队决策分流、动作解锁与团队本场冻结规则保持。验证见[配置来源清理](enemy-tests.md#移除个人训练cooperation2026-10-26)。
 
 2026-10-26 玩家收敛接口清理：敌人的恢复计算不变。普通枪仍使用 `WeaponData.stabilize_seconds` 从初始概率恢复到满概率，霰弹仍使用 `ShotgunSettings.settle_seconds`；初始满值时按0到1恢复。检查器入口分别是 **Weapon → 瞄准与散布 → 敌人恢复（原算法）**、**Weapon → Shotgun → 敌人恢复（原算法）**。玩家公式／统一时间不参与敌人计算，原AI掩体阶段估时仍读原字段，未修改身体、火控、Utility或协调器代码。
 
@@ -234,7 +242,7 @@ Debug 地面显示未查（橙）、部分查（黄）、近期查过（绿）�
 | hint 参数 | 按有资格成员的冻结配置进行队级一次采样；搜索公共半径和调度间隔目前取首个可搜索成员的配置，不是每人独立计时。 |
 | 掩体躲藏/探出、掩护撤退参数 | 防御组件和原动作命令入口消费实际装配的参数；资格与身体条件仍需满足。 |
 | 普通/支援点射、射击与近战条件 | 继续由原火控和身体按训练/武器条件执行；团队支援标签不授予越过枪线或攻击范围的权限。 |
-| `cooperation` 参数 | 有 Squad/区域绑定时，以小队 Profile 为准；个人 Training 中同名模块不覆盖整队等级和公共配合参数。 |
+| `cooperation` 参数 | 统一读 Squad/区域显式绑定的 Profile；无绑定时用调用方默认值。个人 Training 已移除此模块，旧字段不参与读取。 |
 | 个人 Utility 权重与切换策略 | 仅共享情报/无绑定的个人分支使用；普通和强配合不运行个人 Utility，这是既定设计，不应为了使用这些权重重新放权。 |
 
 本次核对仍存在明确接入边界：`enemy_attack_position_action.gd` 没有声明团队执行岗位；`enemy_melee_cover_action.gd` 继承的团队入口是基础 `shelter/cover_peek`，个人掩体接近、出口选择和后续突进流程不能据此认定已被团队完整使用。近战 `melee_rush` 的命令入口、有限加速和状态快照已由另一轮维护在 `6c1d2f4` 提交，验证见本文开头的追加修复及[敌人测试](enemy-tests.md)，不计为本次检查器验证成果。后续接入应逐项核对资格、参数、岗位候选、原动作执行和实战结果；相关审计要求见[设计补充](superpowers/specs/2026-10-24-ranged-melee-cooperation-design.md#11-个人训练能力的接入审计2026-10-24)。

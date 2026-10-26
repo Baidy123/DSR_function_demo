@@ -86,8 +86,11 @@ func setup(body: CharacterBody3D, perception_node: Node, selection_node: Node) -
 	last_seen_position = body.global_position
 
 func setting(section: StringName, key: StringName, fallback: Variant = null, unit_defaults: Dictionary = {}) -> Variant:
-	if section == &"cooperation" and cooperation != null and cooperation.has_team_binding(self):
-		return cooperation.team_setting(self, key, fallback, unit_defaults)
+	if section == &"cooperation":
+		if cooperation != null and cooperation.has_team_binding(self):
+			return cooperation.team_setting(self, key, fallback, unit_defaults)
+		# 无绑定的个人行为仍使用情报/间距默认值，不回读旧训练配置。
+		return unit_defaults.get(key, fallback)
 	return training.setting(section, key, fallback, unit_defaults) if training != null else unit_defaults.get(key, fallback)
 
 func has_headshot_protection() -> bool:
