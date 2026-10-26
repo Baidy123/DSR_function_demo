@@ -1,23 +1,34 @@
-[gd_resource type="Resource" script_class="WeaponData" load_steps=6 format=3]
+[gd_resource type="Resource" script_class="WeaponData" format=3 uid="uid://b2qsyd2lyoyvl"]
 
-[ext_resource type="Script" path="res://scripts/weapons/weapon_data.gd" id="1"]
-[ext_resource type="Script" path="res://scripts/weapons/shotgun_settings.gd" id="2"]
-[ext_resource type="Resource" path="res://resources/weapons/patterns/balanced.tres" id="3"]
+[ext_resource type="Script" uid="uid://b7iqg2tyib57x" path="res://scripts/weapons/weapon_data.gd" id="1"]
+[ext_resource type="Script" uid="uid://86ksfvj2gy7n" path="res://scripts/weapons/shotgun_settings.gd" id="2"]
+[ext_resource type="Resource" path="res://resources/noise/gunshot_noise.tres" id="2_7l6oa"]
+[ext_resource type="Resource" uid="uid://blvv661nthnpu" path="res://resources/weapons/patterns/balanced.tres" id="3"]
 [ext_resource type="PackedScene" path="res://scenes/presentation/weapon_placeholder.tscn" id="4"]
 
-[sub_resource type="Resource" id="Shotgun"]
+[sub_resource type="Resource" id="Resource_d48b2"]
 script = ExtResource("2")
-pattern = ExtResource("3")
+pattern_calibration_distance_m = 3.5
+spread_mode = 1
+pellet_damage = 9.0
+pattern_angle_degrees = 6.3144702703506805
+unstable_jitter_degrees = 5.0
+starting_stability = 0.3
+stability_recovery_delay = 0.2
+tracking_stability_floor = 0.4
+metadata/_custom_type_script = "uid://86ksfvj2gy7n"
 
 [resource]
 script = ExtResource("1")
 display_name = "九点霰弹枪（示例）"
 fire_mode = 3
-shotgun = SubResource("Shotgun")
-ammo_type = 3
-magazine_capacity = 6
-reload_seconds = 2.4
-aim_range = 18.0
-fire_range = 30.0
 shot_interval = 0.35
+ammo_type = 3
+magazine_capacity = 2
+shotgun = SubResource("Resource_d48b2")
+aim_range = 15.0
+convergence_model = 2
+headshot_chance = 0.2
+headshot_damage_multiplier = 2.5
+headshot_stagger_seconds = 2.0
 visual_model = ExtResource("4")

@@ -19,6 +19,13 @@ overridden = PackedStringArray()
 
 [sub_resource type="Resource" id="Resource_tsrkt"]
 script = ExtResource("3_8446m")
+score_cover_preference = null
+score_action_cost_weight = null
+score_fire_continuity_weight = null
+score_crossfire_weight = null
+score_melee_support_weight = null
+score_search_support_weight = null
+patrol_radius = null
 overridden = PackedStringArray()
 
 [sub_resource type="Resource" id="cover"]
@@ -36,6 +43,7 @@ overridden = PackedStringArray()
 
 [sub_resource type="Resource" id="perception"]
 script = ExtResource("perception")
+sight_distance = 20.0
 overridden = PackedStringArray("sight_distance")
 
 [sub_resource type="Resource" id="search"]
@@ -53,6 +61,7 @@ overridden = PackedStringArray("lost_target_hint_chance", "search_hint_decay_mod
 
 [sub_resource type="Resource" id="selection"]
 script = ExtResource("selection")
+vault_preference = 6.0
 cover_lateral_test_distance = 0.3
 minimum_cover_quality = 0.1
 overridden = PackedStringArray("cover_lateral_test_distance", "minimum_cover_quality")
@@ -64,12 +73,14 @@ overridden = PackedStringArray()
 [sub_resource type="Resource" id="tactics"]
 script = ExtResource("tactics")
 fire_stability_target = 0.6
-overridden = PackedStringArray("fire_stability_target", "burst_shot_count", "burst_pause_seconds")
+burst_shot_count = 10
+support_burst_shot_count = 10
+overridden = PackedStringArray("fire_stability_target", "burst_shot_count", "burst_pause_seconds", "support_burst_shot_count", "headshot_protection")
 
 [resource]
 script = ExtResource("profile")
 display_name = "竞技场现有训练"
-selected_tactics = Array[StringName]([&"cover", &"covering_retreat", &"suppression", &"attack_position", &"melee_rush", &"melee_cover", &"cooperate"])
+selected_tactics = Array[StringName]([&"melee_rush", &"cover", &"suppression", &"covering_retreat", &"melee_cover", &"melee_intercept", &"attack_position"])
 ai = SubResource("ai")
 tactics = SubResource("tactics")
 search = SubResource("search")

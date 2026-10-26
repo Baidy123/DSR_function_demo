@@ -1,6 +1,6 @@
-[gd_resource type="Resource" script_class="AmmoDefinition" load_steps=3 format=3]
+[gd_resource type="Resource" script_class="AmmoDefinition" format=3 uid="uid://j8wogsjo0qrj"]
 
-[ext_resource type="Script" path="res://scripts/weapons/ammo_definition.gd" id="1"]
+[ext_resource type="Script" uid="uid://bt2nxo6gx5lpk" path="res://scripts/weapons/ammo_definition.gd" id="1"]
 [ext_resource type="PackedScene" path="res://scenes/presentation/ammo/rifle_box.tscn" id="2"]
 
 [resource]

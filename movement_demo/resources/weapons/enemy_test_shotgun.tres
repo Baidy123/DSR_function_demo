@@ -1,0 +1,34 @@
+[gd_resource type="Resource" script_class="WeaponData" format=3 uid="uid://bghwoavvclxoj"]
+
+[ext_resource type="Script" uid="uid://b7iqg2tyib57x" path="res://scripts/weapons/weapon_data.gd" id="1_r2yk8"]
+[ext_resource type="Resource" path="res://resources/noise/gunshot_noise.tres" id="2_5rrb7"]
+[ext_resource type="Script" uid="uid://dtlyd5wwxx0oa" path="res://scripts/weapons/shotgun_pattern.gd" id="3_0wb0y"]
+[ext_resource type="Script" uid="uid://86ksfvj2gy7n" path="res://scripts/weapons/shotgun_settings.gd" id="4_pgqlc"]
+
+[sub_resource type="Resource" id="Resource_0wb0y"]
+script = ExtResource("3_0wb0y")
+display_name = "五点"
+points = PackedVector2Array(-0.16, 0.099999994, -0.03, 0.24, 0.14, 0.099999994, 0.12, -0.13, -0.07, -0.11)
+metadata/_custom_type_script = "uid://dtlyd5wwxx0oa"
+
+[sub_resource type="Resource" id="Resource_ru586"]
+script = ExtResource("4_pgqlc")
+pattern_calibration_distance_m = 2.0
+spread_mode = 1
+pattern = SubResource("Resource_0wb0y")
+pellet_damage = 4.0
+pattern_angle_degrees = 7.797057407177736
+unstable_jitter_degrees = 5.0
+settle_seconds = 3.0
+
+[resource]
+script = ExtResource("1_r2yk8")
+display_name = "测试霰弹枪"
+fire_mode = 3
+shot_interval = 1.0
+ammo_type = 3
+magazine_capacity = 2
+reload_seconds = 3.0
+shotgun = SubResource("Resource_ru586")
+aim_range = 6.0
+metadata/_custom_type_script = "uid://b7iqg2tyib57x"

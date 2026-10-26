@@ -1,0 +1,12 @@
+[gd_scene format=3 uid="uid://c70un7aupsqtf"]
+
+[ext_resource type="PackedScene" uid="uid://bec3a8cldnglv" path="res://scenes/enemy/types/smg.tscn" id="1_qajxj"]
+[ext_resource type="Resource" uid="uid://drjl8xof513c1" path="res://resources/enemy/training/levels/lvl_5/smg.tres" id="2_qajxj"]
+
+[node name="Enemy" unique_id=205767877 instance=ExtResource("1_qajxj")]
+
+[node name="Training" parent="." index="1" unique_id=740728946]
+profile = ExtResource("2_qajxj")
+
+[node name="AI" parent="." index="2" unique_id=1624589162]
+utility_risk_weight = 5.0

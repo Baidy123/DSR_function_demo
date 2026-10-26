@@ -1,4 +1,4 @@
-[gd_resource type="Resource" format=3 uid="uid://wf82uaxorlji"]
+[gd_resource type="Resource" script_class="EnemyCooperationSettings" format=3 uid="uid://wf82uaxorlji"]
 
 [ext_resource type="Script" uid="uid://cqdvipxtj05rx" path="res://scripts/enemy/config/cooperation_settings.gd" id="settings"]
 
@@ -6,4 +6,8 @@
 resource_name = "强配合"
 script = ExtResource("settings")
 level = 2
-overridden = PackedStringArray("level")
+score_fire_continuity_weight = 1.2
+score_crossfire_weight = 1.2
+score_melee_support_weight = 1.2
+score_search_support_weight = 0.5
+overridden = PackedStringArray("level", "score_search_support_weight", "score_melee_support_weight", "score_crossfire_weight", "score_fire_continuity_weight", "run_speed_multiplier")

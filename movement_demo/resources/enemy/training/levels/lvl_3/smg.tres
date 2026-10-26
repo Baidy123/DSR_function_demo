@@ -72,7 +72,7 @@ overridden = PackedStringArray("fire_stability_target", "burst_shot_count", "bur
 [resource]
 script = ExtResource("profile")
 display_name = "第3关冲锋枪兵训练"
-selected_tactics = Array[StringName]([&"melee_rush", &"cover", &"suppression", &"covering_retreat", &"melee_cover", &"melee_intercept", &"attack_position"])
+selected_tactics = Array[StringName]([&"melee_rush", &"cover", &"covering_retreat", &"melee_cover", &"melee_intercept", &"attack_position", &"suppression"])
 ai = SubResource("ai")
 tactics = SubResource("tactics")
 search = SubResource("search")

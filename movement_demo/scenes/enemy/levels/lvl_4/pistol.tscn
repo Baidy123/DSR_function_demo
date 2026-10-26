@@ -1,0 +1,13 @@
+[gd_scene format=3 uid="uid://b026e3xyk5ef7"]
+
+[ext_resource type="PackedScene" uid="uid://bwornjdb2w16d" path="res://scenes/enemy/types/pistol.tscn" id="1_gnfcs"]
+[ext_resource type="Resource" uid="uid://ifeniax7gwqx" path="res://resources/enemy/training/levels/lvl_4/pistol.tres" id="2_odbxg"]
+
+[node name="Enemy" unique_id=205767877 instance=ExtResource("1_gnfcs")]
+
+[node name="Training" parent="." index="1" unique_id=740728946]
+profile = ExtResource("2_odbxg")
+
+[node name="AI" parent="." index="2" unique_id=1624589162]
+utility_fire_weight = 2.0
+utility_risk_weight = 6.0

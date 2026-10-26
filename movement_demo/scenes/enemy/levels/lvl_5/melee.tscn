@@ -1,0 +1,9 @@
+[gd_scene format=3 uid="uid://bsrgn3iuvqeho"]
+
+[ext_resource type="PackedScene" uid="uid://7t37opdrvjss" path="res://scenes/enemy/types/melee.tscn" id="1_bcsff"]
+[ext_resource type="Resource" uid="uid://djmj68n246rlp" path="res://resources/enemy/training/levels/lvl_5/melee.tres" id="2_bcsff"]
+
+[node name="Enemy" unique_id=1006983647 instance=ExtResource("1_bcsff")]
+
+[node name="Training" parent="." index="1" unique_id=740728946]
+profile = ExtResource("2_bcsff")

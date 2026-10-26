@@ -4,8 +4,7 @@
 [ext_resource type="Resource" uid="uid://dmha1hmkune0c" path="res://resources/enemy/training/levels/lvl_1/melee.tres" id="2_training"]
 
 [node name="Enemy" unique_id=134263749 instance=ExtResource("1_melee")]
-move_speed = 1.5
-max_health = 80.0
+move_speed = 3.0
 
 [node name="Training" parent="." index="1" unique_id=740728946]
 profile = ExtResource("2_training")

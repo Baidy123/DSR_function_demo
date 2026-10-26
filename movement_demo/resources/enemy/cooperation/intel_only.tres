@@ -1,9 +1,8 @@
-[gd_resource type="Resource" format=3]
+[gd_resource type="Resource" script_class="EnemyCooperationSettings" format=3 uid="uid://bbrb41p0fx1x5"]
 
 [ext_resource type="Script" uid="uid://cqdvipxtj05rx" path="res://scripts/enemy/config/cooperation_settings.gd" id="settings"]
 
 [resource]
 resource_name = "仅视野共享"
 script = ExtResource("settings")
-level = 0
-overridden = PackedStringArray("level")
+overridden = PackedStringArray("level", "patrol_radius", "score_cover_preference", "score_action_cost_weight", "score_fire_continuity_weight", "score_crossfire_weight", "score_melee_support_weight", "score_search_support_weight")

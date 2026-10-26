@@ -3,7 +3,6 @@
 [ext_resource type="Script" uid="uid://cmqxbw8d8ko4e" path="res://scripts/enemy/config/enemy_training_profile.gd" id="1_profile"]
 [ext_resource type="Script" uid="uid://b0j3a627844ku" path="res://scripts/enemy/config/module_settings.gd" id="1_q73mb"]
 [ext_resource type="Script" uid="uid://lauyebht4oxa" path="res://scripts/enemy/config/ai_settings.gd" id="2_4xw33"]
-[ext_resource type="Script" uid="uid://cqdvipxtj05rx" path="res://scripts/enemy/config/cooperation_settings.gd" id="3_8kbga"]
 [ext_resource type="Script" uid="uid://c2eu2biwoikls" path="res://scripts/enemy/config/cover_settings.gd" id="4_j0r3s"]
 [ext_resource type="Script" uid="uid://d1ra7e76dnl5k" path="res://scripts/enemy/config/exit_suppression_settings.gd" id="5_jn4df"]
 [ext_resource type="Script" uid="uid://bhipw1tv8dnbd" path="res://scripts/enemy/config/fire_decision_settings.gd" id="6_piwj0"]
@@ -15,10 +14,6 @@
 
 [sub_resource type="Resource" id="Resource_flduj"]
 script = ExtResource("2_4xw33")
-overridden = PackedStringArray()
-
-[sub_resource type="Resource" id="Resource_5qjmc"]
-script = ExtResource("3_8kbga")
 overridden = PackedStringArray()
 
 [sub_resource type="Resource" id="Resource_0u8u4"]
@@ -56,6 +51,7 @@ overridden = PackedStringArray()
 [resource]
 script = ExtResource("1_profile")
 display_name = "第1关近战兵示例训练"
+selected_tactics = Array[StringName]([&"cover"])
 ai = SubResource("Resource_flduj")
 tactics = SubResource("Resource_hkpub")
 search = SubResource("Resource_6p75d")
@@ -65,4 +61,3 @@ exit_suppression = SubResource("Resource_k8iv4")
 fire_decision = SubResource("Resource_umpg5")
 perception = SubResource("Resource_raoyt")
 selection = SubResource("Resource_0l3l7")
-cooperation = SubResource("Resource_5qjmc")

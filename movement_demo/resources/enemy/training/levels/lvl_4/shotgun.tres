@@ -1,0 +1,69 @@
+[gd_resource type="Resource" script_class="EnemyTrainingProfile" format=3 uid="uid://vdd25la1rfk"]
+
+[ext_resource type="Script" uid="uid://b0j3a627844ku" path="res://scripts/enemy/config/module_settings.gd" id="1_mv8sr"]
+[ext_resource type="Script" uid="uid://lauyebht4oxa" path="res://scripts/enemy/config/ai_settings.gd" id="2_w07ju"]
+[ext_resource type="Script" uid="uid://c2eu2biwoikls" path="res://scripts/enemy/config/cover_settings.gd" id="4_8kspw"]
+[ext_resource type="Script" uid="uid://d1ra7e76dnl5k" path="res://scripts/enemy/config/exit_suppression_settings.gd" id="5_dycfj"]
+[ext_resource type="Script" uid="uid://bhipw1tv8dnbd" path="res://scripts/enemy/config/fire_decision_settings.gd" id="6_q8oty"]
+[ext_resource type="Script" uid="uid://curixaod7050y" path="res://scripts/enemy/config/perception_settings.gd" id="7_p2u7d"]
+[ext_resource type="Script" uid="uid://cmqxbw8d8ko4e" path="res://scripts/enemy/config/enemy_training_profile.gd" id="8_nhpmm"]
+[ext_resource type="Script" uid="uid://deqxtvcihlf8n" path="res://scripts/enemy/config/search_settings.gd" id="9_mb874"]
+[ext_resource type="Script" uid="uid://bk01ecvvxhl6s" path="res://scripts/enemy/config/selection_settings.gd" id="10_57qd3"]
+[ext_resource type="Script" uid="uid://c8bbxotvc8xdh" path="res://scripts/enemy/config/suppression_settings.gd" id="11_6yops"]
+[ext_resource type="Script" uid="uid://c8pqrsjr22e3m" path="res://scripts/enemy/config/tactics_settings.gd" id="12_e70fd"]
+
+[sub_resource type="Resource" id="Resource_bi645"]
+script = ExtResource("2_w07ju")
+overridden = PackedStringArray()
+
+[sub_resource type="Resource" id="Resource_78efs"]
+script = ExtResource("4_8kspw")
+overridden = PackedStringArray()
+
+[sub_resource type="Resource" id="Resource_h5yia"]
+script = ExtResource("5_dycfj")
+overridden = PackedStringArray()
+
+[sub_resource type="Resource" id="Resource_fvrgv"]
+script = ExtResource("6_q8oty")
+overridden = PackedStringArray()
+
+[sub_resource type="Resource" id="Resource_nwkel"]
+script = ExtResource("7_p2u7d")
+overridden = PackedStringArray()
+
+[sub_resource type="Resource" id="Resource_wbgfy"]
+script = ExtResource("9_mb874")
+overridden = PackedStringArray()
+
+[sub_resource type="Resource" id="Resource_uc76u"]
+script = ExtResource("10_57qd3")
+overridden = PackedStringArray()
+
+[sub_resource type="Resource" id="Resource_aq1fn"]
+script = ExtResource("11_6yops")
+overridden = PackedStringArray()
+
+[sub_resource type="Resource" id="Resource_qaxtq"]
+script = ExtResource("12_e70fd")
+fire_stability_target = 0.8
+burst_shot_count = 2
+support_burst_shot_count = 2
+ranged_min_distance = 3.0
+ranged_max_distance = 4.0
+overridden = PackedStringArray("burst_shot_count", "fire_stability_target", "support_burst_shot_count", "ranged_min_distance", "ranged_max_distance")
+
+[resource]
+script = ExtResource("8_nhpmm")
+display_name = "第4关霰弹枪兵训练"
+selected_tactics = Array[StringName]([&"cover", &"covering_retreat", &"attack_position", &"suppression"])
+ai = SubResource("Resource_bi645")
+tactics = SubResource("Resource_qaxtq")
+search = SubResource("Resource_wbgfy")
+cover = SubResource("Resource_78efs")
+suppression = SubResource("Resource_aq1fn")
+exit_suppression = SubResource("Resource_h5yia")
+fire_decision = SubResource("Resource_fvrgv")
+perception = SubResource("Resource_nwkel")
+selection = SubResource("Resource_uc76u")
+metadata/_custom_type_script = "uid://cmqxbw8d8ko4e"
