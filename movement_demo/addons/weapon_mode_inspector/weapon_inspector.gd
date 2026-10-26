@@ -41,7 +41,6 @@ const COMMON_FIELDS := {
 	"hit_accuracy_loss": "命中精度损失", "suppression_accuracy_loss": "被压制精度损失",
 	"near_miss_radius": "擦过检测范围（米）", "hit_speed_loss": "击中速度损失",
 	"hit_speed_loss_seconds": "击中减速时长（秒）", "melee_accuracy_loss": "近战命中精度损失",
-	"camera_view_size": "视野大小（0沿用场景）", "camera_transition_seconds": "视野过渡时间",
 	"damage": "单发伤害", "aim_range": "锁定距离", "fire_range": "弹道射程",
 	"cone_angle_degrees": "索敌总角度", "locked_move_multiplier": "锁定移动倍率",
 	"shot_interval": "射击间隔",

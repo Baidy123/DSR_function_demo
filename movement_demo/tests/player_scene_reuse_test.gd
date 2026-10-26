@@ -19,12 +19,8 @@ func _run() -> void:
 	# changing ownership of nested CanvasLayers while packing runtime nodes.
 	var pistol = load("res://resources/weapons/test_pistol.tres").duplicate(true)
 	var rifle = load("res://resources/weapons/test_sidearm.tres").duplicate(true)
-	pistol.camera_follows_aim_range = false
-	rifle.camera_follows_aim_range = false
-	pistol.camera_view_size = 15.0
-	rifle.camera_view_size = 21.0
-	pistol.camera_transition_seconds = 0.2
-	rifle.camera_transition_seconds = 0.2
+	pistol.aim_range = 18.0
+	rifle.aim_range = 22.0
 	var error := ResourceSaver.save(pistol, "res://logs/player_prefab_work/pistol.tres")
 	if error == OK: error = ResourceSaver.save(rifle, "res://logs/player_prefab_work/rifle.tres")
 	var medical = load("res://resources/player/default_medkit.tres").duplicate(true)
@@ -58,7 +54,9 @@ func _run() -> void:
 	current_scene = level
 	hero.get_node("Health").debug_invincible = true
 	check(camera.get_follow_actor() == hero and camera._actor == hero and camera.get_node("CameraGroundAnchor").actor == hero, "One relative player path binds weapon view and ground following after player rename/nesting")
-	check(is_equal_approx(camera.size, 21.0), "Camera entering first reads the initial secondary weapon without opening zoom")
+	var pistol_size: float = camera._size_for_lock_range(pistol.aim_range)
+	var rifle_size: float = camera._size_for_lock_range(rifle.aim_range)
+	check(is_equal_approx(camera.size, rifle_size) and is_equal_approx(camera.view_transition_seconds, 0.2), "Camera entering first reads initial lock range and preserves its saved transition duration")
 	check(hero.get_node("Combat").weapon_changed.is_connected(camera._on_weapon_changed), "Reused camera subscribes to the actual player's equipment signal")
 	for frame in 6: await physics_frame
 	var phantom = camera.get_node("PhantomCamera3D")
@@ -67,11 +65,11 @@ func _run() -> void:
 	var basis: Basis = camera.global_basis
 	var offset: Vector3 = phantom.follow_offset
 	_key(KEY_1)
-	check(hero.get_node("Combat").weapon == hero.get_node("Equipment").primary_weapon and is_equal_approx(camera.size, 21.0), "Real slot input starts a smooth weapon-driven view transition")
+	check(hero.get_node("Combat").weapon == hero.get_node("Equipment").primary_weapon and is_equal_approx(camera.size, rifle_size), "Real slot input starts a smooth weapon-driven view transition")
 	for frame in 5: await physics_frame
-	check(camera.size > 15.0 and camera.size < 21.0, "Weapon-specific view transition has intermediate values")
+	check(camera.size > pistol_size and camera.size < rifle_size, "Lock-range view transition has intermediate values")
 	for frame in 16: await physics_frame
-	check(is_equal_approx(camera.size, 15.0), "Primary weapon reaches its configured view size")
+	check(is_equal_approx(camera.size, pistol_size), "Primary weapon reaches its lock-range view size")
 	var start: Vector3 = hero.global_position
 	Input.action_press("move_right")
 	for frame in 45: await physics_frame
@@ -82,7 +80,7 @@ func _run() -> void:
 	check(camera.global_basis.is_equal_approx(basis) and phantom.follow_offset == offset, "Character turning and parent transforms preserve camera tilt and follow offset")
 	_key(KEY_2)
 	for frame in 20: await physics_frame
-	check(is_equal_approx(camera.size, 21.0), "Secondary weapon continues controlling the separately instanced camera")
+	check(is_equal_approx(camera.size, rifle_size), "Secondary weapon continues controlling the separately instanced camera")
 	var old_ammo = hero.get_node("Combat").ammo
 	level.queue_free()
 	await process_frame
@@ -119,6 +117,7 @@ rotation = Vector3(0, 0.65, 0)
 [node name="Views" type="Node3D" parent="Room"]
 [node name="Camera3D" parent="Room/Views" instance=ExtResource("camera")]
 player_path = NodePath("../../Actors/Hero")
+view_transition_seconds = 0.2
 [node name="Actors" type="Node3D" parent="Room"]
 [node name="Hero" parent="Room/Actors" instance=ExtResource("player")]
 position = Vector3(2, 0, 1)

@@ -25,29 +25,27 @@ func _run() -> void:
 	var base_size: float = camera.size
 	var pistol: WeaponData = slots.primary_weapon.duplicate()
 	var rifle: WeaponData = slots.secondary_weapon.duplicate()
-	# 保留手动Size模式的原合同；范围联动另由 combat_view_test 验证。
-	pistol.camera_follows_aim_range = false
-	rifle.camera_follows_aim_range = false
-	pistol.camera_view_size = 13.0
-	pistol.camera_transition_seconds = 0.3
-	rifle.camera_view_size = 17.0
-	rifle.camera_transition_seconds = 0.3
+	pistol.aim_range = 18.0
+	rifle.aim_range = 22.0
+	camera.view_transition_seconds = 0.3
 	slots.primary_weapon = pistol
 	slots.secondary_weapon = rifle
 	slots.starting_slot = 1
 	root.add_child(scene)
 	current_scene = scene
 	actor.set_physics_process(false)
-	_check("birth reads already-equipped secondary weapon without an opening zoom", is_equal_approx(camera.size, 17.0))
+	var pistol_size: float = camera._size_for_lock_range(pistol.aim_range)
+	var rifle_size: float = camera._size_for_lock_range(rifle.aim_range)
+	_check("birth reads already-equipped secondary weapon without an opening zoom", is_equal_approx(camera.size, rifle_size))
 	_check("existing camera host and ground anchor remain connected", camera.has_node("PhantomCameraHost") and camera.get_node("PhantomCamera3D").follow_target == camera.get_node("CameraGroundAnchor"))
 	_check("camera projection stays orthogonal", camera.projection == Camera3D.PROJECTION_ORTHOGONAL)
 	_check("third-party camera only follows the transform without a competing lens override", camera.get_node("PhantomCamera3D").camera_3d_resource == null)
 	var follow_offset: Vector3 = camera.get_node("PhantomCamera3D").follow_offset
 	await _frames(3)
 	_key(KEY_1)
-	_check("real slot input changes weapon without snapping the camera", combat.weapon == pistol and is_equal_approx(camera.size, 17.0))
+	_check("real slot input changes weapon without snapping the camera", combat.weapon == pistol and is_equal_approx(camera.size, rifle_size))
 	await _frames(6)
-	_check("weapon-specific duration produces an intermediate view", camera.size > 13.0 and camera.size < 17.0)
+	_check("camera transition duration produces an intermediate view", camera.size > pistol_size and camera.size < rifle_size)
 	var before_pause: float = camera.size
 	paused = true
 	for frame in 20: await process_frame
@@ -57,40 +55,40 @@ func _run() -> void:
 	_key(KEY_2)
 	_check("switching again mid-transition starts from the current view", is_equal_approx(camera.size, before_switch))
 	await _frames(24)
-	_check("rifle finishes at the wider view", is_equal_approx(camera.size, 17.0))
+	_check("rifle finishes at the wider view", is_equal_approx(camera.size, rifle_size))
 	_key(KEY_1)
 	await _frames(24)
-	_check("switching back restores the pistol view", is_equal_approx(camera.size, 13.0))
+	_check("switching back restores the pistol view", is_equal_approx(camera.size, pistol_size))
 	_check("weapon view does not change camera tilt or follow offset", camera.get_node("PhantomCamera3D").follow_offset == follow_offset)
 	var fire_range: float = pistol.fire_range
 	var aim_range: float = pistol.aim_range
 	var magazine: int = combat.ammo.magazine_rounds
 	var instant := pistol.duplicate() as WeaponData
-	instant.camera_view_size = 20.0
-	instant.camera_transition_seconds = 0.0
+	instant.aim_range = 25.0
+	camera.view_transition_seconds = 0.0
 	slots.secondary_weapon = instant
 	_key(KEY_2)
-	_check("zero duration applies the equipped view immediately", is_equal_approx(camera.size, 20.0))
+	_check("zero duration applies the equipped view immediately", is_equal_approx(camera.size, camera._size_for_lock_range(instant.aim_range)))
 	_check("camera configuration preserves weapon ranges and ammo configuration", pistol.fire_range == fire_range and pistol.aim_range == aim_range and combat.ammo.magazine_rounds == magazine)
 	var fallback := WeaponData.new()
-	fallback.camera_follows_aim_range = false
+	fallback.aim_range = 0.0
+	camera.view_transition_seconds = 0.25
 	combat.equip_weapon(fallback)
 	await _frames(22)
-	_check("an unconfigured resource restores the scene default", is_equal_approx(camera.size, base_size))
+	_check("a zero lock range restores the scene default", is_equal_approx(camera.size, base_size))
 	combat.equip_weapon(instant)
 	combat.equip_weapon(null)
 	await _frames(22)
 	_check("unequipping also restores the scene default", is_equal_approx(camera.size, base_size))
 	var invalid := WeaponData.new()
-	invalid.camera_follows_aim_range = false
-	invalid.camera_view_size = NAN
-	invalid.camera_transition_seconds = NAN
+	invalid.aim_range = NAN
+	camera.view_transition_seconds = NAN
 	combat.equip_weapon(invalid)
 	await _frames(22)
 	_check("non-finite resource values cannot poison the lens", is_equal_approx(camera.size, base_size))
 	var save_error := ResourceSaver.save(rifle, "user://camera-weapon-roundtrip.tres")
 	var restored: WeaponData = ResourceLoader.load("user://camera-weapon-roundtrip.tres", "", ResourceLoader.CACHE_MODE_IGNORE)
-	_check("view size and duration survive resource save and reload", save_error == OK and restored.camera_view_size == 17.0 and restored.camera_transition_seconds == 0.3)
+	_check("lock range survives resource save and reload", save_error == OK and restored.aim_range == 22.0)
 	DirAccess.remove_absolute("user://camera-weapon-roundtrip.tres")
 	# 原锚点仍消费身体公开的地面高度，相机扩展不跟随翻越的额外抬升。
 	actor.global_position += Vector3(2, 0, 1)
@@ -106,7 +104,7 @@ func _run() -> void:
 	var restarted = current_scene
 	var restored_weapon = restarted.get_node("Player/Combat").weapon
 	var restarted_camera = restarted.get_node("Camera3D")
-	var expected_size: float = restarted_camera._size_for_lock_range(restored_weapon.aim_range) if restored_weapon.camera_follows_aim_range else restored_weapon.camera_view_size
+	var expected_size: float = restarted_camera._size_for_lock_range(restored_weapon.aim_range)
 	_check("death restart restores the configured initial weapon view", not paused and is_equal_approx(restarted_camera.size, expected_size))
 	restarted.queue_free()
 	await process_frame

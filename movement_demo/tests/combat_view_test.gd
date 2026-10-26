@@ -35,10 +35,10 @@ func _run() -> void:
 	player.name = "Player"
 	var pistol := WeaponData.new()
 	pistol.aim_range = 18.0
-	pistol.camera_transition_seconds = 0.0
 	player.get_node("Equipment").primary_weapon = pistol
 	scene.add_child(player)
 	var camera = load("res://scenes/player/player_camera_rig.tscn").instantiate()
+	camera.view_transition_seconds = 0.0
 	scene.add_child(camera)
 	var enemy = load("res://scenes/enemy/enemy.tscn").instantiate()
 	# 测试身体、火控资格和感知距离，避免导航／选战术改变固定边界位置。
@@ -78,20 +78,19 @@ func _run() -> void:
 	var short_size: float = camera.size
 	var longer := pistol.duplicate() as WeaponData
 	longer.aim_range = 22.0
-	longer.camera_transition_seconds = 0.15
+	camera.view_transition_seconds = 0.15
 	player.get_node("Combat").equip_weapon(longer)
 	check(is_equal_approx(camera.size, short_size), "长距离武器从当前大小开始平滑扩展")
 	await _frames(15)
 	check(camera.size > short_size and _corners_fit(camera, player, 22.0), "22米武器按实际范围扩展，角落保持可达")
 	var long_size: float = camera.size
-	pistol.camera_transition_seconds = 0.15
 	player.get_node("Combat").equip_weapon(pistol)
 	check(is_equal_approx(camera.size, long_size), "切短距离武器也从当前大小开始，不瞬间切镜头")
 	await _frames(4)
 	check(camera.size < long_size and camera.size > short_size, "短距离镜头收窄存在真实过渡帧")
 	await _frames(12)
 	check(is_equal_approx(camera.size, short_size) and _corners_fit(camera, player, 18.0), "平滑收窄完成后恢复18米范围")
-	pistol.camera_transition_seconds = 0.0
+	camera.view_transition_seconds = 0.0
 	var window_size := root.size
 	for dimensions in [Vector2i(900, 900), Vector2i(1600, 700)]:
 		root.size = dimensions

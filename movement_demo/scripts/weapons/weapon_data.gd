@@ -8,14 +8,6 @@ enum StaggerRefresh { KEEP_LONGER, RESTART }
 
 const ShotgunConfig = preload("res://scripts/weapons/shotgun_settings.gd")
 
-@export_group("相机视野（仅玩家）")
-## 开启后按 Aim Range、相机倾角及实际窗口比例计算视野；调整锁定距离即可同步调整画面范围。
-@export var camera_follows_aim_range: bool = true
-## 关闭范围联动时手动指定正交 Size；0沿用场景原视野。开启联动时不使用此值。
-@export_range(0.0, 60.0, 0.1, "suffix:m") var camera_view_size: float = 0.0
-## 切换到这把枪时的视野过渡秒数；0立即切换，出生直接使用初始武器视野。
-@export_range(0.0, 3.0, 0.05, "suffix:s") var camera_transition_seconds: float = 0.25
-
 @export_group("武器外观")
 ## 可选纯外观场景；留空显示方块占位，不参与弹道、命中或装备资格。
 @export var visual_model: PackedScene

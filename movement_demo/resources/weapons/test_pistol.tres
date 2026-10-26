@@ -5,7 +5,6 @@
 
 [resource]
 script = ExtResource("1")
-camera_view_size = 13.0
 aim_range = 18.0
 cone_angle_degrees = 45.0
 suppression_accuracy_loss = 0.05

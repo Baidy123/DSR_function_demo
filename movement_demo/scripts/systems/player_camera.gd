@@ -5,6 +5,9 @@ const Occlusion = preload("res://scripts/systems/camera_occlusion.gd")
 
 ## 相对于相机根节点；地面锚点与武器视野共用这一玩家引用。
 @export_node_path("Node3D") var player_path: NodePath = ^"../Player"
+@export_group("视野过渡")
+## 按当前武器锁定距离调整视野时的过渡秒数；0立即切换，出生直接应用。
+@export_range(0.0, 3.0, 0.05, "suffix:s") var view_transition_seconds: float = 0.25
 @export_group("遮挡透明")
 ## 只处理 camera_fadeable 组的天花板／装饰；玩法掩体始终排除。
 @export var occlusion_enabled: bool = true
@@ -73,21 +76,16 @@ func _on_weapon_changed(data: WeaponData) -> void:
 	_weapon = data
 	_from_size = size
 	_target_size = _base_size
-	_transition_seconds = 0.25
-	if data != null:
-		if data.camera_follows_aim_range and projection == Camera3D.PROJECTION_ORTHOGONAL and is_finite(data.aim_range) and data.aim_range > 0.0:
-			_target_size = _size_for_lock_range(data.aim_range)
-		elif not data.camera_follows_aim_range and is_finite(data.camera_view_size) and data.camera_view_size > 0.0:
-			_target_size = maxf(0.1, data.camera_view_size)
-		if is_finite(data.camera_transition_seconds):
-			_transition_seconds = maxf(0.0, data.camera_transition_seconds)
+	_transition_seconds = maxf(0.0, view_transition_seconds) if is_finite(view_transition_seconds) else 0.25
+	if data != null and projection == Camera3D.PROJECTION_ORTHOGONAL and is_finite(data.aim_range) and data.aim_range > 0.0:
+		_target_size = _size_for_lock_range(data.aim_range)
 	_elapsed = 0.0
 	# 两个方向都从当前显示大小平滑过渡；快速切换也不跳回上一目标值。
 	if is_zero_approx(_transition_seconds):
 		size = _target_size
 
 func _on_viewport_resized() -> void:
-	if _weapon != null and _weapon.camera_follows_aim_range: _on_weapon_changed(_weapon)
+	if _weapon != null: _on_weapon_changed(_weapon)
 
 ## 以玩家为圆心，让地面至站立角色高度的画面四角落入锁定圆，并留0.5米身体边缘余量。
 ## 使用原跟随偏移，不改 Phantom Camera 的位置、倾角或翻越地面锚点。
