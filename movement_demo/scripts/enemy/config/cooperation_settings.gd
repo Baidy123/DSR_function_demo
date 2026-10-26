@@ -4,6 +4,7 @@ class_name EnemyCooperationSettings
 
 enum Level { INTEL_ONLY, TACTICAL, COORDINATED }
 
+## 【模式选择】0级由个人 Utility 决策，1/2级由协调器指挥；绑定小队时以 Squad → Profile 为准。
 ## Levels 1/2 both command the squad; optional actions still require training.
 @export_enum("仅视野共享", "战术配合", "强配合") var level: int = Level.INTEL_ONLY:
 	set(value):
@@ -13,25 +14,30 @@ enum Level { INTEL_ONLY, TACTICAL, COORDINATED }
 func _init() -> void:
 	section = &"cooperation"
 
+## 【个人与协调器共用】共享情报的有效期；绑定小队时读取 Squad → Profile，不读个人 Training 的同名值。
 ## Expiry limits precise shared evidence, never completes a search objective.
 @export_range(0.1, 15.0, 0.1) var intel_seconds := 5.0:
 	set(value):
 		intel_seconds = value
 		mark_override(&"intel_seconds")
+## 【仅个人 Utility】个人搜索共享已查点的保留时长；团队区域覆盖另行维护。绑定小队时取 Squad → Profile。
 @export_range(0.5, 15.0, 0.1) var checked_point_seconds := 3.0:
 	set(value):
 		checked_point_seconds = value
 		mark_override(&"checked_point_seconds")
+## 【仅个人 Utility】个人掩体检查记忆；团队搜索拥有持续目标。绑定小队时取 Squad → Profile。
 ## Personal inspection evidence. Commanded searches own a persistent objective.
 @export_range(1.0, 40.0, 0.5) var cover_inspection_seconds := 20.0:
 	set(value):
 		cover_inspection_seconds = value
 		mark_override(&"cover_inspection_seconds")
+## 【个人与协调器共用】共用的身体/站位间距；绑定小队时取 Squad → Profile。
 @export_range(0.0, 1.0, 0.05) var spacing_margin := 0.45:
 	set(value):
 		spacing_margin = value
 		mark_override(&"spacing_margin")
 
+## 【仅协调器】团队侧翼与赶上队友；绑定小队时取 Squad → Profile，掩体动作速度另读 Cover。
 ## Commanded flanking and catching up to waiting teammates; frozen per battle.
 @export_range(1.0, 3.0, 0.1) var run_speed_multiplier := 2.0:
 	set(value):
