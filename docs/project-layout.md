@@ -1,6 +1,6 @@
 # 项目目录结构
 
-三关训练隔离（2026-10-26）：现有 `scenes/enemy/levels/lvl_1/melee.tscn`、`lvl_2/{melee,pistol,smg}.tscn`、`lvl_3/{melee,pistol,smg}.tscn` 各自引用 `resources/enemy/training/levels/` 下同关同名 `.tres`。训练动作勾选与嵌套参数按关卡／兵种保存，公共 `types/` 与 `enemy.tscn` 的组件继承保持；同关同兵种实例共用本关配置。第三关本地地图中直接实例化公共敌人的旧节点，仅覆盖 `Training.profile` 到本关对应资源，保留原节点、武器、属性和摆放。没有新增运行时脚本或修改检查器接口，见[训练隔离说明](enemy-ai.md#三关战术解锁与训练隔离2026-10-26)。
+三关训练隔离（2026-10-26）：现有 `scenes/enemy/levels/lvl_1/melee.tscn`、`lvl_2/{melee,pistol,smg}.tscn`、`lvl_3/{melee,pistol,smg}.tscn` 各自引用 `resources/enemy/training/levels/` 下同关同名 `.tres`。训练动作勾选与嵌套参数按关卡／兵种保存，公共 `types/` 与 `enemy.tscn` 的组件继承保持；同关同兵种实例共用本关配置。地图通过对应关卡的兵种预设取得训练；直接实例化公共Enemy时，需自行覆盖 `Training.profile` 到本关资源。没有新增运行时脚本或修改检查器接口，见[训练隔离说明](enemy-ai.md#三关战术解锁与训练隔离2026-10-26)。
 
 爆头结算与被爆头状态（2026-10-25）：原 `scripts/weapons/weapon_data.gd` 导出开关、概率、秒杀选项、兜底倍率、状态时长及刷新规则。`scripts/weapons/headshot_resolver.gd` 仅处理已完成射线的命中统计，每枪每目标一次抽样，在受击回调前冻结本枪所有结果；`player_combat_v3.gd` 仍拥有弹药、后坐与实际射击。原 `headshot_hit(world_position, pellets, shotgun)` 保留，新增 `headshot_resolved(world_position, outcome)` 通知准星显示实际结果。
 
