@@ -107,6 +107,7 @@ movement_demo/
 | `enemy/services/squad_coordination.gd` | 本场能力档案、默认模板、持续目标、全员任务表、反馈、成员轮询准备、接敌提前提交与共同续接、逐轮同步、原子提交与生命周期。 |
 | `enemy/services/squad_contract.gd` | 纯值任务身份、状态、能力角色、观察步骤字段及整队默认模板。 |
 | `enemy/services/enemy_team_planner.gd` | 全成员岗位组合搜索，按模板能力与几何排除不完整方案；限制重复入口、比较检查/掩护组合及侧翼人数。 |
+| `enemy/services/squad_scoring.gd` | 队伍评分的纯值默认值、范围校验与候选代价；由原Profile、候选池、整队规划共用，不持有场景、任务进度或个人AI。 |
 | `enemy/services/enemy_search_formation.gd` | 根据合法线索生成两端检查、远侧掩护和接敌站位，验证完整路线、观察/枪线；提供入口前后关注点及冻结的任务机动速度。 |
 | `enemy/services/squad_traffic.gd` | 全队通行顺序、准备点占位与离开顺序、观察线互挡、当前阻挡者与剩余路线计算。 |
 | `enemy/services/squad_patrol.gd` | 原协调器持有的各成员出生点巡逻中心、顺序、近期到达记录、候选与只读快照；无独立循环、任务提交或身体控制。 |

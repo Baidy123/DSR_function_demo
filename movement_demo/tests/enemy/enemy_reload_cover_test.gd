@@ -46,6 +46,13 @@ func _run() -> void:
 	var action = ai.actions[&"reload"]
 	check(action.config_section == &"cover" and action._setting(&"reload_cover_preference", -1.0) == 6.0 and action._setting(&"reload_cover_preference_distance", -1.0) == 4.0, "换弹偏好归原Cover参数段且默认值可查询")
 	await _reset(ai, actor, center + across * (box.size.z * 0.5 + 0.8))
+	_check_multileg_credit(action, actor)
+	if OS.get_cmdline_user_args().has("--route-only"):
+		scene.queue_free()
+		await process_frame
+		print("RELOAD ROUTE: %d/%d passed" % [checks - failures, checks])
+		quit(1 if failures else 0)
+		return
 	var starting_position: Vector3 = actor.global_position
 	var selected_here := false
 	var actual_crouch := false
@@ -234,6 +241,26 @@ func _reset(ai, actor, position: Vector3) -> void:
 	actor.look_at(ai.context.player.global_position)
 	for frame in 6: await physics_frame
 	check(await Fixture.wait_for_camera(actor), "真实跟随相机已到达当前掩体交战位置")
+
+func _check_multileg_credit(action, actor) -> void:
+	# 路线消费合同：由实际打包器生成两次翻越，故意不含旧before/after别名。
+	# 不注入自主运行的候选或宣称这些纯值路线已通过物理导航。
+	var start: Vector3 = actor.global_position
+	var segments: Array[Dictionary] = [
+		{"kind": &"walk", "points": PackedVector3Array([start, start + Vector3(0, 0, 0.2)])},
+		{"kind": &"vault", "entry": start + Vector3(0, 0, 0.2), "exit": start + Vector3(0, 0, 0.6)},
+		{"kind": &"walk", "points": PackedVector3Array([start + Vector3(0, 0, 0.6), start + Vector3(0, 0, 1.0)])},
+		{"kind": &"vault", "entry": start + Vector3(0, 0, 1.0), "exit": start + Vector3(0, 0, 1.4)},
+		{"kind": &"walk", "points": PackedVector3Array([start + Vector3(0, 0, 1.4), start + Vector3(0, 0, 1.6)])}]
+	var route: Dictionary = preload("res://scripts/enemy/services/enemy_navigation_route.gd")._pack(segments, 1, start + Vector3(0, 0, 1.6))
+	var candidate := {"destination": {"hide": route.destination}, "route": route, "outcome": {"exposed_seconds": 0.0}}
+	var threat := start + Vector3(20, 0, 0)
+	check(not route.has("before") and action._cover_credit(candidate, 4.0, threat) > 0.0, "两次翻越的完整摘要能正常评估附近换弹掩体收益")
+	segments[2].points = PackedVector3Array([start + Vector3(0, 0, 0.6), start + Vector3(0, 0, 7), start + Vector3(0, 0, 1.0)])
+	candidate.route = preload("res://scripts/enemy/services/enemy_navigation_route.gd")._pack(segments, 1, route.destination)
+	check(action._cover_credit(candidate, 4.0, threat) == 0.0, "两次翻越之间的长绕行计入总路程，不领取附近掩体偏好")
+	candidate.route = {"before": PackedVector3Array([start, start + Vector3(0, 0, 0.2)]), "vault": {"exit": start + Vector3(0, 0, 0.6)}, "after": PackedVector3Array([start + Vector3(0, 0, 0.6), route.destination])}
+	check(action._cover_credit(candidate, 4.0, threat) > 0.0, "旧单翻越路线继续消费相同的附近换弹偏好")
 
 func _winner(ai, options: Array) -> Dictionary:
 	var scored: Array = []

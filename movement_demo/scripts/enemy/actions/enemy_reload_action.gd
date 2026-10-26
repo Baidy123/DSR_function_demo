@@ -126,12 +126,7 @@ func _stationary_exposure(point: Vector3, threat: Vector3, seconds: float, crouc
 
 func _cover_credit(candidate: Dictionary, here_exposure: float, threat: Vector3) -> float:
 	if candidate.destination.is_empty() or not threat.is_finite(): return 0.0
-	var path: PackedVector3Array = candidate.destination.get("path", PackedVector3Array())
-	var route: Dictionary = candidate.get("route", {})
-	if not route.is_empty():
-		path = route.before.duplicate()
-		path.append(route.vault.exit)
-		path.append_array(route.after)
+	var path := _reload_route_path(candidate)
 	if not context.spatial.cover_route_safe(path, threat): return 0.0
 	var distance := 0.0
 	var previous: Vector3 = actor.global_position
@@ -143,6 +138,17 @@ func _cover_credit(candidate: Dictionary, here_exposure: float, threat: Vector3)
 	var gain := clampf((here_exposure - float(candidate.outcome.exposed_seconds)) / maxf(0.01, context.utility_horizon_seconds), 0.0, 1.0)
 	return maxf(0.0, float(_setting(&"reload_cover_preference", 6.0))) * nearby * gain
 
+## 这里只用路线摘要核对近身风险与总长度，不把翻越摘要当成可直接步行的路线。
+## 原单翻越格式继续兼容；原生多段路线没有before/after，必须使用完整points。
+func _reload_route_path(candidate: Dictionary) -> PackedVector3Array:
+	var route: Dictionary = candidate.get("route", {})
+	if route.is_empty(): return candidate.destination.get("path", PackedVector3Array())
+	if route.has("segments"): return route.points
+	var path: PackedVector3Array = route.before.duplicate()
+	path.append(route.vault.exit)
+	path.append_array(route.after)
+	return path
+
 func expand_route_candidates(candidates: Array[Dictionary]) -> Array[Dictionary]:
 	if candidates.is_empty() and route_motion.route.is_empty(): return []
 	var result: Array[Dictionary] = []
@@ -152,9 +158,7 @@ func expand_route_candidates(candidates: Array[Dictionary]) -> Array[Dictionary]
 	for candidate in super.expand_route_candidates(candidates):
 		# 翻越展开改变了真实路线与暴露，必须重新门控信用，不能复制普通路线的奖励。
 		if not candidate.get("route", {}).is_empty():
-			var path: PackedVector3Array = candidate.route.before.duplicate()
-			path.append(candidate.route.vault.exit)
-			path.append_array(candidate.route.after)
+			var path := _reload_route_path(candidate)
 			if not context.spatial.cover_route_safe(path, threat): continue
 			# 翻越会中断实际换弹，现有支持窗口不足以承诺落地后仍有人掩护。
 			# 保留真实个人路线成本，不能把普通走路时的协作收益复制给翻越。

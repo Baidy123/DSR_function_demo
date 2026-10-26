@@ -4,6 +4,7 @@ extends RefCounted
 ## atomic full-member task tables. No personal Utility or fallback authority.
 const Contract = preload("res://scripts/enemy/services/squad_contract.gd")
 const Planner = preload("res://scripts/enemy/services/enemy_team_planner.gd")
+const Scoring = preload("res://scripts/enemy/services/squad_scoring.gd")
 const Formation = preload("res://scripts/enemy/services/enemy_search_formation.gd")
 const Traffic = preload("res://scripts/enemy/services/squad_traffic.gd")
 const Search = preload("res://scripts/enemy/services/squad_search.gd")
@@ -29,6 +30,7 @@ var _failed_sites: Dictionary = {}
 var _preparation: Dictionary = {}
 var _planner = Planner.new()
 var configuration: Dictionary = {}
+var _scoring: Dictionary = Scoring.weights({})
 var configuration_revision = 0
 var planning_count = 0
 var last_advance_usec = 0
@@ -60,6 +62,7 @@ func bind_environment(board) -> void:
 func configure_profile(value: Dictionary) -> void:
 	if configuration == value: return
 	configuration = value.duplicate(true)
+	_scoring = Scoring.weights(configuration.get("values", {}))
 	configuration_revision += 1
 	reset()
 
@@ -425,6 +428,7 @@ func _plan() -> void:
 		work.sites = eligible
 		work.offer_cursor = {}
 	var query := {"profile": _profiles[id], "body": _bodies[id], "objective": _objective,
+		"scoring": _scoring.duplicate(),
 		"previous": _tasks[id], "sites": work.sites,
 		"revision": [generation, _profiles[id].profile_id, _objective.objective_id, map_revision]}
 	var batch: Dictionary = {"done": true, "cursor": {}, "offers": []} if work.get("retain", false) else _context(id).prepare_command_offers(query, work.offer_cursor, deadline)
@@ -479,7 +483,7 @@ func _begin_prepared_plan() -> Dictionary:
 			continuing.estimate = 0.0
 			candidates[id].push_front(continuing)
 	return _planner.begin({"members": _bodies, "profiles": _profiles, "template": _template,
-		"objective": _objective, "candidates": candidates, "synchronize_search": _synchronize_search()})
+		"objective": _objective, "candidates": candidates, "scoring": _scoring, "synchronize_search": _synchronize_search()})
 
 func _recent_inspection(site: Dictionary, map_revision: int) -> bool:
 	if site.has("coverage_key"): return false
@@ -902,6 +906,7 @@ func debug_member_snapshot(context) -> Dictionary:
 	var future := PackedVector3Array()
 	for step in task.get("future_steps", []): future.append_array(step.route)
 	return {"source": &"squad" if not task.is_empty() else &"personal", "task": task,
+		"scoring": _scoring.duplicate(),
 		"coverage_owner": get_instance_id(),
 		"next_route": future, "observation_direction": -context.actor.global_basis.z,
 		"objective": _objective.duplicate(true), "template": _template.duplicate(true),

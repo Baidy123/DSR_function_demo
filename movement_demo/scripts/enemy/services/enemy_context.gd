@@ -26,7 +26,7 @@ var permitted: Dictionary = {}
 var utility_current: Dictionary = {}
 var utility_horizon_seconds := 4.0
 var utility_fire_weight := 3.0
-var utility_risk_weight := 3.0
+var utility_risk_weight := 4.0
 var utility_information_weight := 1.0
 var utility_threat_half_life_seconds := 4.0
 var tactical_map

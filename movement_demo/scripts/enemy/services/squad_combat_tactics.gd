@@ -3,6 +3,7 @@ extends RefCounted
 ## Coordinator-owned planning geometry, never an executor or target observer.
 const Contract = preload("res://scripts/enemy/services/squad_contract.gd")
 const Traffic = preload("res://scripts/enemy/services/squad_traffic.gd")
+const Scoring = preload("res://scripts/enemy/services/squad_scoring.gd")
 const ARRIVAL_MARGIN := 0.16
 
 ## Refresh a short-lived contact endpoint from the latest legal observation
@@ -71,7 +72,8 @@ static func team_cost(snapshot: Dictionary, tasks: Dictionary) -> float:
 		if not tasks[id].role in [&"engage", &"support", &"flank", &"cover_peek"]: continue
 		if ranged: shooters.append(id)
 		else: attackers.append(id)
-	var cost := 12.0 if available and not retained else 0.0
+	var weights: Dictionary = snapshot.get("scoring", {})
+	var cost := (12.0 if available and not retained else 0.0) * Scoring.weight(weights, &"score_fire_continuity_weight")
 	for index in shooters.size():
 		var id: int = shooters[index]
 		var shot: Dictionary = tasks[id]
@@ -79,20 +81,21 @@ static func team_cost(snapshot: Dictionary, tasks: Dictionary) -> float:
 		if attackers.is_empty():
 			for other in shooters.slice(index + 1):
 				var peer: Vector3 = (tasks[other].position - target).normalized()
-				cost += 10.0 * clampf((direction.dot(peer) - 0.65) / 0.35, 0.0, 1.0)
+				cost += 10.0 * clampf((direction.dot(peer) - 0.65) / 0.35, 0.0, 1.0) * Scoring.weight(weights, &"score_crossfire_weight")
 		else:
 			for other in attackers:
 				var advance: Dictionary = tasks[other]
 				var origin: Vector3 = snapshot.members[other].position - target
 				origin.y = 0.0
-				if not origin.is_zero_approx(): cost += maxf(0.0, 0.25 - direction.dot(origin.normalized())) * 5.0
-				cost += maxf(0.0, Contract.horizontal(advance.position, target) + 1.5 - Contract.horizontal(shot.position, target)) * 3.0
+				var coordination_weight := Scoring.weight(weights, &"score_melee_support_weight")
+				if not origin.is_zero_approx(): cost += maxf(0.0, 0.25 - direction.dot(origin.normalized())) * 5.0 * coordination_weight
+				cost += maxf(0.0, Contract.horizontal(advance.position, target) + 1.5 - Contract.horizontal(shot.position, target)) * 3.0 * coordination_weight
 				var lane := PackedVector3Array([shot.position, target])
 				var path: PackedVector3Array = advance.route
 				for vertex in range(1, path.size()):
 					var midpoint := (path[vertex - 1] + path[vertex]) * 0.5
 					if Traffic.distance_to_path(midpoint, lane) < float(snapshot.members[other].radius) + 0.2:
-						cost += minf(4.0, Contract.horizontal(path[vertex - 1], path[vertex])) * 2.0
+						cost += minf(4.0, Contract.horizontal(path[vertex - 1], path[vertex])) * 2.0 * coordination_weight
 	return cost
 
 static func melee_post_valid(context, profile: Dictionary, point: Vector3, target: Vector3, margin: float = 0.0) -> bool:

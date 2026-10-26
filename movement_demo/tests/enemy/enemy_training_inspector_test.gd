@@ -25,6 +25,11 @@ func _run() -> void:
 	await create_timer(1.0).timeout
 	while EditorInterface.get_resource_filesystem().is_scanning():
 		await process_frame
+	await _squad_scoring_controls()
+	if OS.get_cmdline_user_args().has("--scoring-only"):
+		print("SQUAD SCORING INSPECTOR: %d/%d passed" % [checks - failed, checks])
+		quit(1 if failed else 0)
+		return
 	_squad_profile_resources()
 	var host := Member.new()
 	var unit = preload("res://scripts/enemy/enemy_unit_type.gd").new()
@@ -176,6 +181,42 @@ func _run() -> void:
 
 func _checks(panel) -> Array:
 	return panel.rows.get_children().filter(func(child): return child is CheckBox)
+
+func _squad_scoring_controls() -> void:
+	var profile = preload("res://scripts/enemy/config/cooperation_settings.gd").new()
+	profile.level = 1
+	EditorInterface.edit_resource(profile)
+	for frame in 30: await process_frame
+	EditorInterface.get_inspector().expand_all_folding()
+	for frame in 10: await process_frame
+	var properties := {}
+	_collect_scoring_properties(EditorInterface.get_inspector(), profile, properties)
+	var labels := {"score_cover_preference": "掩体偏好", "score_action_cost_weight": "行动代价权重", "score_fire_continuity_weight": "持续火力权重",
+		"score_crossfire_weight": "交叉火力权重", "score_melee_support_weight": "远近协同权重", "score_search_support_weight": "搜索掩护权重"}
+	for key in labels:
+		check(properties.has(key) and properties[key].get_label() == labels[key], "真实检查器显示中文团队评分字段：" + labels[key])
+		check(properties.has(key) and _has_score_tooltip(properties[key]), "实际数值控件的说明包含生效模式与默认值：" + labels[key])
+	if properties.has("score_cover_preference"):
+		properties.score_cover_preference.emit_changed(&"score_cover_preference", 1.8)
+		for frame in 10: await process_frame
+		check(is_equal_approx(profile.score_cover_preference, 1.8), "原生属性控件实际写入掩体偏好")
+		var bridge := EditorPlugin.new()
+		var manager = bridge.get_undo_redo()
+		var history = manager.get_history_undo_redo(manager.get_object_history_id(profile))
+		check(history.undo() and is_equal_approx(profile.score_cover_preference, 1.35), "原生撤销恢复默认掩体偏好")
+		check(history.redo() and is_equal_approx(profile.score_cover_preference, 1.8), "原生重做恢复修改的掩体偏好")
+		bridge.free()
+	EditorInterface.get_inspector().edit(null)
+	for frame in 10: await process_frame
+
+func _collect_scoring_properties(node: Node, profile: Resource, result: Dictionary) -> void:
+	if node is EditorProperty and node.get_edited_object() == profile:
+		result[String(node.get_edited_property())] = node
+	for child in node.get_children(): _collect_scoring_properties(child, profile, result)
+
+func _has_score_tooltip(node: Node) -> bool:
+	if (node is EditorSpinSlider or node is LineEdit) and node.tooltip_text.contains("仅普通／强配合") and node.tooltip_text.contains("默认"): return true
+	return node.get_children().any(func(child): return _has_score_tooltip(child))
 
 func _squad_profile_resources() -> void:
 	var squad = preload("res://scripts/world/squad_controller.gd").new()

@@ -6,6 +6,7 @@ const Contract = preload("res://scripts/enemy/services/squad_contract.gd")
 const Traffic = preload("res://scripts/enemy/services/squad_traffic.gd")
 const Combat = preload("res://scripts/enemy/services/squad_combat_tactics.gd")
 const Support = preload("res://scripts/enemy/services/squad_support.gd")
+const Scoring = preload("res://scripts/enemy/services/squad_scoring.gd")
 const MAX_COMBINATIONS := 256
 
 func propose(snapshot: Dictionary) -> Dictionary:
@@ -13,6 +14,7 @@ func propose(snapshot: Dictionary) -> Dictionary:
 
 func begin(snapshot: Dictionary) -> Dictionary:
 	snapshot = snapshot.duplicate(true)
+	snapshot.scoring = Scoring.weights(snapshot.get("scoring", {}))
 	var ids: Array = snapshot.members.keys()
 	snapshot.overwatch_groups = {}
 	for id in ids:
@@ -20,8 +22,20 @@ func begin(snapshot: Dictionary) -> Dictionary:
 			if candidate.has("overwatch_for") and Contract.qualified(snapshot.profiles[id], candidate.action, &"support"):
 				snapshot.overwatch_groups[candidate.overwatch_for] = true
 	ids.sort_custom(func(a, b): return snapshot.candidates.get(a, []).size() < snapshot.candidates.get(b, []).size())
-	for candidates in snapshot.candidates.values(): candidates.sort_custom(func(a, b): return float(a.estimate) < float(b.estimate))
+	for candidates in snapshot.candidates.values():
+		for candidate: Dictionary in candidates:
+			candidate.planning_cost = Scoring.candidate_cost(candidate, snapshot.scoring)
+		candidates.sort_custom(func(a, b): return float(a.planning_cost) < float(b.planning_cost))
+	# 原动作允许负偏好分。剪枝必须计入剩余成员的最低分，不能把
+	# 当前前缀较贵、但后续收益更大的完整方案提前丢掉。
+	var remaining_minimum: Array[float] = []
+	remaining_minimum.resize(ids.size() + 1)
+	remaining_minimum[ids.size()] = 0.0
+	for index in range(ids.size() - 1, -1, -1):
+		var options: Array = snapshot.candidates.get(ids[index], [])
+		remaining_minimum[index] = remaining_minimum[index + 1] + (float(options[0].planning_cost) if not options.is_empty() else 0.0)
 	return {"snapshot": snapshot, "ids": ids, "stack": [{"index": 0, "selected": {}, "cost": 0.0}],
+		"remaining_minimum": remaining_minimum,
 		"trials": 0, "nodes": 0, "best": {}, "attempted": {}, "cost": INF, "traffic": {}, "reason": &"no_complete_layout"}
 
 ## Resume the same full-team search when the area budget is exhausted. Bodies
@@ -33,7 +47,7 @@ func advance(work: Dictionary, deadline: int) -> Dictionary:
 		if Time.get_ticks_usec() >= deadline: return {"ready": false}
 		var node: Dictionary = work.stack.pop_back()
 		work.nodes += 1
-		if node.cost >= work.cost: continue
+		if node.cost + work.remaining_minimum[node.index] >= work.cost: continue
 		if node.index == ids.size():
 			work.trials += 1
 			var cost: float = node.cost + _team_cost(snapshot, node.selected)
@@ -54,7 +68,7 @@ func advance(work: Dictionary, deadline: int) -> Dictionary:
 			if not _eligible(snapshot, id, candidate, node.selected): continue
 			var selected: Dictionary = node.selected.duplicate()
 			selected[id] = candidate
-			work.stack.append({"index": node.index + 1, "selected": selected, "cost": node.cost + float(candidate.estimate)})
+			work.stack.append({"index": node.index + 1, "selected": selected, "cost": node.cost + float(candidate.planning_cost)})
 	return {"tasks": work.best, "traffic": work.traffic, "cost": work.cost,
 		"ready": true, "trials": work.trials, "reason": work.reason, "attempted": work.attempted, "complete": work.best.size() == ids.size() and not ids.is_empty()}
 
@@ -80,7 +94,7 @@ func _team_cost(snapshot: Dictionary, tasks: Dictionary) -> float:
 			repeated += maxf(0.0, float(watchers[key]) - 1.0) * 8.0
 		for key in entrances:
 			if snapshot.overwatch_groups.has(key) and not watchers.has(key): repeated += 6.0
-		return repeated
+		return repeated * Scoring.weight(snapshot.get("scoring", {}), &"score_search_support_weight")
 	if snapshot.get("objective", {}).get("phase") != &"contact": return 0.0
 	var available := false
 	var retained := false
@@ -91,7 +105,7 @@ func _team_cost(snapshot: Dictionary, tasks: Dictionary) -> float:
 		if tasks[id].role in [&"engage", &"support", &"flank", &"cover_peek"]: retained = true
 	# Keep useful fire while other members investigate or shelter. Pressure can
 	# still require everyone to retreat when no qualified firing plan exists.
-	return (8.0 if available and not retained else 0.0) + Combat.team_cost(snapshot, tasks)
+	return (8.0 if available and not retained else 0.0) * Scoring.weight(snapshot.get("scoring", {}), &"score_fire_continuity_weight") + Combat.team_cost(snapshot, tasks)
 
 func _eligible(snapshot: Dictionary, id: int, candidate: Dictionary, selected: Dictionary) -> bool:
 	# The scene-independent template is an input constraint, not a label.

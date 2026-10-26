@@ -2,6 +2,7 @@ extends RefCounted
 
 ## AI-owned adapter. Actions prepare alternatives; only the squad commits them.
 const Contract = preload("res://scripts/enemy/services/squad_contract.gd")
+const Scoring = preload("res://scripts/enemy/services/squad_scoring.gd")
 
 static func dispatch(actions: Dictionary, request: Dictionary) -> void:
 	var query: Dictionary = request.query
@@ -41,13 +42,13 @@ static func dispatch(actions: Dictionary, request: Dictionary) -> void:
 			work.offers.append(offer)
 		if batch.get("done", true): work.done.append(id)
 	request.result = {"done": work.done.size() == work.ids.size(), "cursor": work,
-		"offers": bounded(work.offers), "reasons": work.reasons.duplicate(true)}
+		"offers": bounded(work.offers, 8, query.get("scoring", {})), "reasons": work.reasons.duplicate(true)}
 
 ## Reserve a place for each executor before filling with spatial alternatives.
 ## An early executor cannot fill the pool and prevent the others being queried.
-static func bounded(offers: Array, limit: int = 8) -> Array[Dictionary]:
+static func bounded(offers: Array, limit: int = 8, scoring: Dictionary = {}) -> Array[Dictionary]:
 	var sorted := offers.duplicate()
-	sorted.sort_custom(func(a, b): return float(a.estimate) < float(b.estimate))
+	sorted.sort_custom(func(a, b): return Scoring.candidate_cost(a, scoring) < Scoring.candidate_cost(b, scoring))
 	var result: Array[Dictionary] = []
 	var seen := {}
 	for offer: Dictionary in sorted:
