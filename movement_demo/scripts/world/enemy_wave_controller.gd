@@ -7,6 +7,7 @@ const Squad = preload("res://scripts/world/squad_controller.gd")
 const Actor = preload("res://scripts/enemy/enemy_actor.gd")
 const SpawnCheck = preload("res://scripts/world/enemy_wave_spawn_check.gd")
 const CorpseVisual = preload("res://scripts/enemy/enemy_corpse_visual.gd")
+const SearchHints = preload("res://scripts/enemy/services/enemy_search_hints.gd")
 
 ## 信号中的波次编号从1开始，与检查器中的出场顺序一致。
 signal wave_started(index: int)
@@ -82,6 +83,7 @@ func capture_templates(region: Node3D) -> void:
 			snapshot.free()
 			squad.free()
 		_waves.append({"name": wave.name, "delay": wave.delay, "wait_for_previous_clear": wave.wait_for_previous_clear,
+			"search_on_spawn": wave.search_on_spawn, "spawn_search_error_radius": wave.spawn_search_error_radius,
 			"deployments": deployments, "member_count": wave.member_count})
 	if not _configuration_errors.is_empty(): _fail("; ".join(_configuration_errors))
 
@@ -122,6 +124,7 @@ func _collect_configuration(region: Node) -> Dictionary:
 			if members.is_empty(): errors.append("%s：小队内还没有敌人。" % squad.name)
 			squads.append(squad)
 		waves.append({"name": child.name, "delay": child.start_delay_seconds, "wait_for_previous_clear": child.wait_for_previous_clear,
+			"search_on_spawn": child.search_on_spawn, "spawn_search_error_radius": child.spawn_search_error_radius,
 			"squads": squads, "member_count": member_count})
 	if waves.is_empty(): errors.append("请添加 enemy_wave.tscn；波次按场景树从上到下排列。")
 	return {"waves": waves, "errors": errors, "invalid_roots": invalid_roots}
@@ -232,6 +235,8 @@ func _can_advance() -> bool:
 
 func _commit_wave() -> void:
 	if not _can_advance(): return
+	# 冻结一次成功提交时的情报；占位重试及未入树部署不读取隐藏玩家位置。
+	var search_hint := _spawn_search_hint()
 	_state = State.SPAWNING
 	_reason = ""
 	var generation := _generation
@@ -264,12 +269,44 @@ func _commit_wave() -> void:
 			_retire_runtime()
 			return
 		parent.move_child(deployment.root, mini(deployment.order, parent.get_child_count() - 1))
+	# 成员 ready 已完成，初始化重置不会抹掉提示；整波仍未执行第一轮 AI。
+	if not search_hint.is_empty():
+		for deployment in deployments:
+			for enemy in deployment.members:
+				if is_instance_valid(enemy) and not enemy.is_dead:
+					enemy.get_node("AI").receive_spawn_search_hint(search_hint)
 	_spawned = _index + 1
 	_state = State.ACTIVE
 	wave_started.emit(_index + 1)
 	if generation != _generation or _state != State.ACTIVE: return
 	if _index + 1 < _waves.size() and not _waves[_index + 1].wait_for_previous_clear:
 		_begin_wave(_index + 1)
+
+func _spawn_search_hint() -> Dictionary:
+	if _index == 0 or not _waves[_index].search_on_spawn: return {}
+	var player: Node3D
+	for candidate in _region.players_inside:
+		if is_instance_valid(candidate) and candidate.is_inside_tree() and not candidate.is_dead() and not candidate.is_in_dialogue:
+			player = candidate
+			break
+	if player == null:
+		push_warning("EnemyWaves：%s 出生搜索未找到本区域有效玩家，使用原出生行为。" % _waves[_index].name)
+		return {}
+	var captured_position := player.global_position
+	var radius: float = _waves[_index].spawn_search_error_radius
+	var navigation := _region.get_node("NavigationRegion3D") as NavigationRegion3D
+	var hints := SearchHints.new()
+	for attempt in 4:
+		var raw := hints.sample(captured_position, radius)
+		var point := NavigationServer3D.region_get_closest_point(navigation.get_rid(), raw)
+		if not point.is_finite(): continue
+		if Vector2(point.x - raw.x, point.z - raw.z).length() > 0.65: continue
+		if Vector2(point.x - captured_position.x, point.z - captured_position.z).length() > radius + 0.001: continue
+		return {"id": _region.cooperation.allocate_coordination_id(), "source": &"wave_spawn",
+			"target_id": player.get_instance_id(), "position": point, "uncertainty": radius,
+			"captured_at": _region.cooperation.elapsed}
+	push_warning("EnemyWaves：%s 出生搜索未取得本区合法误差点，使用原出生行为。" % _waves[_index].name)
+	return {}
 
 func _on_member_died(id: int, generation: int) -> void:
 	if generation != _generation or not _alive.has(id): return

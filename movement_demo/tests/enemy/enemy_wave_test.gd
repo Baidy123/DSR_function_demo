@@ -539,6 +539,9 @@ func _editor_roundtrip() -> void:
 	for frame in 20: await process_frame
 	fields = _inspector_fields(EditorInterface.get_inspector(), wave)
 	check(fields.has("wait_for_previous_clear") and fields.has("start_delay_seconds") and fields.has("existing_squads"), "波次检查器显示全灭开关、等待秒数与可选已有小队引用")
+	check(fields.has("search_on_spawn") and fields.has("spawn_search_error_radius"), "原生检查器显示出生搜索与误差半径")
+	wave.search_on_spawn = false
+	wave.spawn_search_error_radius = 4.25
 	wave.wait_for_previous_clear = false
 	wave.start_delay_seconds = 0.7
 	var enemy = wave.get_node("Squad/Enemy")
@@ -561,6 +564,7 @@ func _editor_roundtrip() -> void:
 		check(waves.get_child_count() == 3 and waves.get_child(0).name == "CopiedWave", "保存重开保留复制出的波次与树顺序")
 		check(waves.get_node("Wave2/Squad/Enemy").transform.is_equal_approx(expected_pose) and is_equal_approx(waves.get_node("Wave2").start_delay_seconds, 0.7), "保存重开保留移动、朝向和等待参数")
 		check(not waves.get_node("Wave2").wait_for_previous_clear and not waves.get_node("CopiedWave").wait_for_previous_clear and waves.get_node("Wave1").wait_for_previous_clear, "保存、复制和重开保留定时加入选项，原有波次默认等全灭")
+		check(not waves.get_node("Wave2").search_on_spawn and not waves.get_node("CopiedWave").search_on_spawn and is_equal_approx(waves.get_node("CopiedWave").spawn_search_error_radius, 4.25) and waves.get_node("Wave1").search_on_spawn, "出生搜索配置随复制、排序与保存重开保留，旧波默认开启")
 		check(waves.get_node("Wave1").existing_squads == [NodePath("../../Squad")] and reopened.has_node("Squad/Enemy"), "保存重开保留兼容引用及原小队路径")
 		reopened.free()
 	EditorInterface.get_inspector().edit(null)

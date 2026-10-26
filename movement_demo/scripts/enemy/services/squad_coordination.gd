@@ -276,18 +276,25 @@ func observation_progress(context, token: Dictionary) -> Dictionary:
 
 func _update_objective() -> void:
 	var newest: Dictionary = {}
+	var spawn_hint: Dictionary = {}
 	var contact = false
 	for id in _bodies:
 		var context = _context(id)
 		var report: Dictionary = environment.planning_observation(context)
 		if not report.is_empty() and (newest.is_empty() or report.captured_at > newest.captured_at): newest = report
+		if spawn_hint.is_empty() and not context.spawn_search_hint.is_empty(): spawn_hint = context.spawn_search_hint
 		contact = contact or has_visual_contact(context)
+	# 线索由本队成员持有，延迟注册或 Profile 初始化不丢失，也不泄露给旧波次。
+	# 已有真实线索优先；出生提示不刷新旧情报、不构成视觉接触。
+	if newest.is_empty() and (_objective.get("target_id", 0) == 0 or _objective.get("source") == &"wave_spawn"):
+		newest = spawn_hint
 	var phase: StringName = &"contact" if contact else (&"search" if not newest.is_empty() or _objective.get("target_id", 0) != 0 else &"patrol")
 	var changed: bool = _objective.is_empty() or _objective.phase != phase
 	if phase == &"contact" and not newest.is_empty():
 		changed = changed or _objective.get("position", Vector3.INF).distance_to(newest.position) > 1.0
 	if phase == &"search" and not newest.is_empty():
 		changed = changed or float(newest.captured_at) > float(_objective.get("captured_at", -INF)) + 0.01
+		changed = changed or (_objective.get("source") == &"wave_spawn" and newest.get("source") != &"wave_spawn")
 	if not changed:
 		if phase == &"contact" and not newest.is_empty():
 			# A new usable aim point at the same feet must not stay frozen as INF.
@@ -315,7 +322,7 @@ func _update_objective() -> void:
 	_objective = newest.duplicate(true) if not newest.is_empty() else previous.duplicate(true)
 	_objective.merge({"phase": phase, "objective_id": environment.allocate_coordination_id(),
 		"position": _objective.get("position", _bodies.values()[0].position),
-		"target_id": _objective.get("target_id", 0), "uncertainty": 0.0}, true)
+		"target_id": _objective.get("target_id", 0), "uncertainty": _objective.get("uncertainty", 0.0)}, true)
 	_covered.clear()
 	_failed_sites.clear()
 	_barriers.clear()

@@ -168,6 +168,7 @@ func refresh_environment() -> bool:
 
 
 func detach_environment() -> void:
+	spawn_search_hint.clear()
 	_clear_coordination_memory()
 	_blocked_ally_paths.clear()
 	if spatial != null: spatial.clear_cover_preparation()
@@ -417,6 +418,7 @@ func is_ally_path_blocked(from: Vector3, path: PackedVector3Array) -> bool:
 	return false
 
 func reset_memory() -> void:
+	spawn_search_hint.clear()
 	_clear_coordination_memory()
 	_blocked_ally_paths.clear()
 	_inspection_shared_report_id = -1
@@ -695,6 +697,20 @@ func cooperation_enabled() -> bool:
 
 func has_combat_contact() -> bool:
 	return has_visual_memory or team_visual_contact
+
+## 只接收本轮出生情报，不将其广播为声音或视觉，不更新真实目击记录。
+func receive_spawn_search_hint(hint: Dictionary) -> bool:
+	if not spawn_search_hint.is_empty() or actor.is_dead or not is_arena_active(): return false
+	if hint.get("source") != &"wave_spawn" or hint.get("target_id", 0) != cooperation_target_id(): return false
+	var position: Vector3 = hint.get("position", Vector3.INF)
+	if not position.is_finite(): return false
+	spawn_search_hint = hint.duplicate(true)
+	if not has_combat_contact():
+		last_known_position = position
+		is_alerted = true
+		event_received.emit(&"spawn_search", spawn_search_hint.duplicate(true))
+	invalidate_utility()
+	return true
 
 ## Shared contact authorizes a combat approach, never personal sight or firing.
 func fresh_shared_contact() -> Dictionary:

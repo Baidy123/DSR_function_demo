@@ -14,6 +14,8 @@ var is_alerted := false
 var was_seeing_player := false
 var sees_player := false
 var noise_search_origin := Vector3.INF
+## 本轮一次性的出生搜索情报；保持警戒，不属于视觉、压制或声音证据。
+var spawn_search_hint: Dictionary = {}
 var recent_damage_pressure := 0.0
 var nearby_shot_pressure := 0.0
 var utility_unseen_seconds := 0.0

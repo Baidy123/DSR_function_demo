@@ -8,6 +8,7 @@ from regression_runner import suite_main
 TESTS = [
     "headshot_stagger_runtime_test",
     "enemy_wave_test",
+    "enemy_wave_search_test",
     "squad_mixed_cooperation_test",
     "squad_command_runtime_test",
     "squad_patrol_test",

@@ -350,6 +350,10 @@ func is_arena_active() -> bool:
 func is_active() -> bool:
 	return context.is_alerted and not actor.is_dead
 
+## 波次只向就绪 AI 交付冻结线索，动作选择与小队控制权仍由原流程持有。
+func receive_spawn_search_hint(hint: Dictionary) -> bool:
+	return is_node_ready() and context.receive_spawn_search_hint(hint)
+
 func can_use_action(id: StringName) -> bool:
 	return context.can_use_action(id)
 

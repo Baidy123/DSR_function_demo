@@ -1,0 +1,215 @@
+extends "res://tests/enemy/enemy_wave_test.gd"
+
+## 复用原波次夹具和真实区域推进；墙体遮挡玩家，不注入状态、任务或获选动作。
+func _run() -> void:
+	root.get_node("DebugSettings").enabled = false
+	seed(20261026)
+	_configuration()
+	for level in 3: await _spawn_search_case(level)
+	await _disabled_case()
+	await _reordered_case()
+	await _blocked_spawn_case()
+	print("WAVE SPAWN SEARCH: %d/%d passed" % [checks - failures, checks])
+	quit(1 if failures else 0)
+
+func _configuration() -> void:
+	var wave := Wave.new()
+	check(wave.search_on_spawn and is_equal_approx(wave.spawn_search_error_radius, 3.0), "后续波默认开启出生搜索，默认误差3米")
+	wave.spawn_search_error_radius = -1.0
+	check("出生搜索" in "".join(wave.deployment_configuration().errors), "负误差半径给出中文配置诊断")
+	wave.spawn_search_error_radius = NAN
+	check("出生搜索" in "".join(wave.deployment_configuration().errors), "非有限误差半径给出配置诊断")
+	wave.free()
+
+func _hidden_fixture(level: int, enabled: bool = true) -> Node3D:
+	var region := _fixture()
+	var controller = region.get_node("EnemyWaves")
+	var later = controller.get_node("Wave2")
+	later.wait_for_previous_clear = false
+	later.start_delay_seconds = 0.35
+	later.search_on_spawn = enabled
+	later.spawn_search_error_radius = 2.0
+	var extra = SquadScene.instantiate()
+	extra.name = "OtherSquad"
+	later.add_child(extra)
+	var ranged = load("res://scenes/enemy/levels/lvl_2/pistol.tscn").instantiate()
+	ranged.name = "Ranged"
+	ranged.position = Vector3(5, 0, 3)
+	ranged.get_node("NavigationAgent3D").path_height_offset = 0.0
+	# 明确本用例的射击输入：保存的手枪资源可能被用户调成近战，不覆盖原资源。
+	ranged.get_node("UnitType").profile = load("res://resources/enemy/units/ranged.tres").duplicate(true)
+	ranged.weapon = WeaponData.new()
+	ranged.weapon.magazine_capacity = 6
+	ranged.weapon.fire_range = 30.0
+	extra.add_child(ranged)
+	for wave in controller.get_children():
+		for squad in wave.get_children():
+			squad.profile = squad.profile.duplicate(true)
+			squad.profile.level = level
+			for enemy in squad.get_children():
+				var training = enemy.get_node("Training")
+				training.profile = training.profile.duplicate(true)
+				training.profile.selected_tactics.clear()
+				training.profile.search.tracking_cheat_enabled = false
+				# 普通未目击调查会在这个时间后结束；出生搜索应持续警戒。
+				training.profile.search.search_seconds = 0.1
+	var wall := StaticBody3D.new()
+	wall.name = "SightWall"
+	wall.position = Vector3(0, 2, 6)
+	var shape := CollisionShape3D.new()
+	shape.shape = BoxShape3D.new()
+	shape.shape.size = Vector3(26, 4, 0.4)
+	wall.add_child(shape)
+	region.add_child(wall)
+	region.get_node("Player").position = Vector3(0, 0, 8)
+	controller.wave_started.connect(func(index):
+		if index == 1:
+			# 首波保持原地，排除前波巡逻占位；后波继续真实 AI 和身体更新。
+			for enemy in region.enemies:
+				enemy.set_physics_process(false)
+				enemy.get_node("AI").set_physics_process(false))
+	return region
+
+func _spawn_search_case(level: int) -> void:
+	var region := _hidden_fixture(level)
+	var controller = region.get_node("EnemyWaves")
+	root.add_child(region)
+	current_scene = region
+	var player = region.get_node("Player")
+	player.set_physics_process(false)
+	player.get_node("Health").debug_invincible = true
+	check(await _await_wave(controller, 1), "等级%d：首波按原流程生成" % level)
+	var original: Array = region.enemies.duplicate()
+	check(original.all(func(enemy): return enemy.get_node("AI").context.spawn_search_hint.is_empty() and not enemy.get_node("AI").context.is_alerted), "等级%d：首波即使开关默认开启也不注入出生警戒" % level)
+	player.global_position.x = 4.0
+	var expected_capture: Vector3 = player.global_position
+	check(await _await_wave(controller, 2), "等级%d：后波按实际加入时间生成" % level)
+	var members: Array = region.enemies.filter(func(enemy): return not original.has(enemy))
+	check(members.size() == 3, "等级%d：后波两个小队完整出场" % level)
+	check(members.any(func(enemy): return enemy.can_use_firearms() and enemy.ammo.magazine_rounds > 0), "等级%d：墙后禁射检查包含实际装备枪械且有弹药的成员" % level)
+	if members.is_empty():
+		region.queue_free()
+		await _settle()
+		return
+	var first_hint: Dictionary = members[0].get_node("AI").context.spawn_search_hint.duplicate(true)
+	check(not first_hint.is_empty() and first_hint.source == &"wave_spawn" and Vector2(first_hint.position.x - expected_capture.x, first_hint.position.z - expected_capture.z).length() <= 2.001, "等级%d：提示来自实际出生时快照且误差在配置半径内" % level)
+	check(members.all(func(enemy): return enemy.get_node("AI").context.spawn_search_hint == first_hint), "等级%d：同波不同小队共用一份情报，人数不增加采样" % level)
+	var starts := {}
+	for enemy in members: starts[enemy.get_instance_id()] = enemy.global_position
+	player.global_position.x = -6.0
+	var patrol_or_track := false
+	var sight_or_fire := false
+	var searched := false
+	for frame in 120:
+		await _settle(1)
+		for enemy in members:
+			var ai = enemy.get_node("AI")
+			patrol_or_track = patrol_or_track or ai.context.state in [ai.State.PATROL, ai.State.TRACK]
+			sight_or_fire = sight_or_fire or ai.context.has_visual_memory or ai.context.sees_player or enemy.shot_count > 0
+			if level == 0:
+				searched = searched or (ai.current_action != null and ai.current_action.action_id == &"search" and ai.context.state == ai.State.SEARCH)
+			else:
+				var objective: Dictionary = ai.context.coordination_debug_snapshot().get("objective", {})
+				searched = searched or objective.get("phase") == &"search"
+				patrol_or_track = patrol_or_track or ai.context.coordination_assignment().get("role") == &"patrol"
+	check(searched and not patrol_or_track, "等级%d：直接执行搜索，无巡逻或声音TRACK开局" % level)
+	check(members.any(func(enemy): return enemy.global_position.distance_to(starts[enemy.get_instance_id()]) > 0.2), "等级%d：搜索产生实际身体移动" % level)
+	check(not sight_or_fire and members.all(func(enemy): return not enemy.get_node("AI").context.last_seen_aim_position.is_finite()), "等级%d：实体墙后不伪造目击、瞄点或开火" % level)
+	check(members.all(func(enemy): return enemy.get_node("AI").context.spawn_search_hint == first_hint and enemy.get_node("AI").context.is_alerted), "等级%d：隐蔽位移及普通调查超时不刷新提示或解除警戒" % level)
+	check(original.all(func(enemy): return enemy.get_node("AI").context.spawn_search_hint.is_empty() and not enemy.get_node("AI").context.is_alerted), "等级%d：出生提示不广播给在场旧波次" % level)
+	if level > 0:
+		check(members.all(func(enemy): return enemy.get_node("AI").utility_decision_count == 0 and enemy.get_node("AI").context.commanded()), "等级%d：全程保留团队控制权，个人Utility次数为0" % level)
+	else:
+		var ai = members[0].get_node("AI")
+		var search = ai.actions[&"search"]
+		var old_age: float = search.search_elapsed_seconds
+		search._end_search()
+		check(ai.context.is_alerted and search.investigation_phase == ai.State.SEARCH and search.search_elapsed_seconds == old_age and not ai.context.has_visual_memory, "个人搜完一轮继续搜索，保持衰减年龄且不伪造战斗目击")
+	var elapsed: float = members[0].get_node("AI").context.evidence_elapsed_seconds
+	paused = true
+	await _settle(3)
+	check(members[0].get_node("AI").context.evidence_elapsed_seconds == elapsed, "等级%d：暂停冻结出生搜索时钟" % level)
+	paused = false
+	player.is_in_dialogue = true
+	await _settle(3)
+	check(members.all(func(enemy): return enemy.get_node("AI").context.spawn_search_hint == first_hint), "等级%d：对话保留冻结提示" % level)
+	player.is_in_dialogue = false
+	await _settle(8)
+	check(members.all(func(enemy): return enemy.get_node("AI").context.is_alerted and enemy.get_node("AI").context.state != enemy.get_node("AI").State.PATROL), "等级%d：对话结束继续搜索" % level)
+	controller.reset_encounter()
+	controller.start_encounter()
+	check(await _await_wave(controller, 2), "等级%d：整轮复位后可再次生成后波" % level)
+	var fresh_hint: Dictionary = controller.get_node("Wave2/Squad/Enemy/AI").context.spawn_search_hint
+	check(not fresh_hint.is_empty() and fresh_hint.id != first_hint.id and fresh_hint.captured_at > first_hint.captured_at and Vector2(fresh_hint.position.x - player.global_position.x, fresh_hint.position.z - player.global_position.z).length() <= 2.001, "等级%d：新一轮重新取样，不重放旧提示" % level)
+	if level == 0:
+		region.get_node("SightWall").queue_free()
+		player.global_position = Vector3(0, 0, 5)
+		var reacquired := false
+		for frame in 120:
+			await _settle(1)
+			var live = controller.get_node("Wave2/Squad/Enemy/AI")
+			if live.context.has_visual_memory and live.current_action != null and live.current_action.action_id != &"search":
+				reacquired = true
+				break
+		check(reacquired, "出生搜索后实际目击玩家，正常接敌流程接管")
+	region.queue_free()
+	await _settle()
+
+func _disabled_case() -> void:
+	var region := _hidden_fixture(0, false)
+	var controller = region.get_node("EnemyWaves")
+	root.add_child(region)
+	current_scene = region
+	region.get_node("Player").set_physics_process(false)
+	check(await _await_wave(controller, 2), "关闭出生搜索仍按原波次条件生成")
+	await _settle(20)
+	var members: Array = controller.get_node("Wave2/Squad").get_children()
+	check(members.all(func(enemy): return enemy.get_node("AI").context.spawn_search_hint.is_empty() and not enemy.get_node("AI").context.is_alerted), "关闭开关后不注入情报或警戒，保留原出生行为")
+	region.queue_free()
+	await _settle()
+
+func _blocked_spawn_case() -> void:
+	var region := _hidden_fixture(0)
+	var controller = region.get_node("EnemyWaves")
+	controller.get_node("Wave2").spawn_search_error_radius = 0.0
+	var blocker := CharacterBody3D.new()
+	blocker.position = Vector3(-2, 0, 3)
+	var shape := CollisionShape3D.new()
+	shape.shape = CapsuleShape3D.new()
+	shape.position.y = 0.875
+	blocker.add_child(shape)
+	region.add_child(blocker)
+	root.add_child(region)
+	current_scene = region
+	var player = region.get_node("Player")
+	player.set_physics_process(false)
+	check(await _await_state(controller, "BLOCKED"), "后波被实际身体占位时等待")
+	check(controller._pending.all(func(deployment): return deployment.members.all(func(enemy): return enemy.get_node("AI").context.spawn_search_hint.is_empty())), "等待占位期间树外部署没有提前取得提示")
+	# 提示按水平误差约束；角色临时抬升时，仍可投影到本区地面。
+	player.global_position = Vector3(-4, 1.25, 8)
+	blocker.queue_free()
+	check(await _await_wave(controller, 2), "让开刷新点后整波正常出场")
+	var ai = controller.get_node("Wave2/Squad/Enemy/AI")
+	check(not ai.context.spawn_search_hint.is_empty() and ai.context.spawn_search_hint.position.is_equal_approx(Vector3(-4, 0, 8)), "0误差在让开后读取最新水平位置，临时抬升仍投影到本区导航")
+	var captured: Dictionary = ai.context.spawn_search_hint.duplicate(true)
+	check(not ai.receive_spawn_search_hint(captured), "同一轮重复交付不会重新开始搜索")
+	player.global_position = Vector3(30, 0, 30)
+	check(await _await_state(controller, "WAITING") and region.enemies.is_empty(), "离场清理出生搜索成员和本轮情报")
+	region.queue_free()
+	await _settle()
+
+func _reordered_case() -> void:
+	var region := _hidden_fixture(0)
+	var controller = region.get_node("EnemyWaves")
+	controller.move_child(controller.get_node("Wave2"), 0)
+	controller.get_node("Wave1").wait_for_previous_clear = false
+	controller.get_node("Wave1").start_delay_seconds = 0.15
+	root.add_child(region)
+	current_scene = region
+	region.get_node("Player").set_physics_process(false)
+	check(await _await_wave(controller, 1), "重排后仍按公开编号1报告实际首波")
+	check(region.enemies.all(func(enemy): return enemy.get_node("AI").context.spawn_search_hint.is_empty()), "名为Wave2的波次移到首位后受第0波保护")
+	check(await _await_wave(controller, 2), "原首波移到后面后按新顺序生成")
+	check(controller.get_node("Wave1/Squad/Enemy/AI").context.spawn_search_hint.get("source") == &"wave_spawn", "名为Wave1的原首波移到后面后可正常出生搜索")
+	region.queue_free()
+	await _settle()

@@ -822,7 +822,7 @@ func _process_search(delta: float) -> Vector3:
 	search_elapsed_seconds += delta
 	search_hint_timer = maxf(0.0, search_hint_timer - delta)
 
-	if not context.has_combat_contact() and search_seconds > 0.0:
+	if not context.has_combat_contact() and context.spawn_search_hint.is_empty() and search_seconds > 0.0:
 		search_timer = maxf(0.0, search_timer - delta)
 		if search_timer <= 0.0:
 			if debug_systematic_search:
@@ -997,8 +997,8 @@ func _skip_current_search_point() -> void:
 
 
 func _end_search() -> void:
-	if context.has_combat_contact() and is_enabled():
-		# 搜完一轮或暂时无路可走都不解除交战警戒，也不刷新证据和提示衰减。
+	if (context.has_combat_contact() or not context.spawn_search_hint.is_empty()) and is_enabled():
+		# 搜完一轮或暂时无路可走都不解除搜索警戒，也不刷新证据和提示衰减。
 		var elapsed := search_elapsed_seconds
 		var hint_remaining := search_hint_timer
 		_trail_pending.clear()
@@ -1209,6 +1209,9 @@ func begin(candidate: Dictionary, visible: bool) -> bool:
 			recover_unreachable_destination()
 		else:
 			agent.target_position = utility_destination()
+	elif not context.spawn_search_hint.is_empty() and not context.has_combat_contact():
+		# 暂停／动作切换后仍直接搜索；不重新取得隐藏位置或伪造失视追踪。
+		begin_search(context.last_known_position)
 	else:
 		begin_tracking_or_search(context.investigation_hint_allowed)
 	context.investigation_hint_allowed = false
@@ -1270,6 +1273,10 @@ func hold_released() -> bool:
 	return is_segment_released()
 
 func on_event(event: StringName, data: Dictionary) -> void:
+	if event == &"spawn_search":
+		reset()
+		begin_search(data.position)
+		return
 	if event == &"cooperation_intel" and data.get("reacquired", false):
 		# Same-position reacquisition is new contact, not a repeated wall clue.
 		# Release both coordinated and personal routes before using that report.
