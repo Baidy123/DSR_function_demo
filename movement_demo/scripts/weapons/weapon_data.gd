@@ -10,6 +10,21 @@ enum ConvergenceModel { LINEAR, QUADRATIC, EXPONENTIAL }
 const ShotgunConfig = preload("res://scripts/weapons/shotgun_settings.gd")
 const DEFAULT_CONVERGENCE_SECONDS := 4.0
 
+func get_ammo_definition() -> AmmoDefinition:
+	var definition := ammo_definition if ammo_definition != null else AmmoDefinition.legacy(ammo_type)
+	if definition == null or not definition.has_valid_id():
+		push_warning("WeaponData %s：弹药定义无有效 ammo_id，请修正配置后重开。" % display_name)
+		return null
+	return definition
+
+func get_ammo_key() -> StringName:
+	var definition := get_ammo_definition()
+	return definition.ammo_id if definition != null else &""
+
+func _validate_property(property: Dictionary) -> void:
+	if property.name == "ammo_type" and ammo_definition != null:
+		property.usage &= ~PROPERTY_USAGE_EDITOR
+
 @export_group("基本信息")
 ## 武器显示名称。
 @export var display_name: String = "测试手枪"
@@ -31,6 +46,12 @@ const DEFAULT_CONVERGENCE_SECONDS := 4.0
 @export_range(0.5, 200.0, 0.5) var fire_range: float = 30.0
 ## 玩家使用对应类型的共享备弹池；敌人仍使用有限弹匣、无限备弹。
 @export_enum("步枪弹药:0", "手枪弹药:1", "冲锋枪弹药:2", "霰弹枪弹药:3") var ammo_type: int = AmmoType.PISTOL
+## 新弹药拖入 AmmoDefinition；优先于旧 Ammo Type。留空继续使用原四类配置。
+## 展开资源可设置缺弹掉落开关、数量范围与模型；运行中的类型在装备时冻结。
+@export var ammo_definition: AmmoDefinition:
+	set(value):
+		ammo_definition = value
+		notify_property_list_changed()
 ## 每把枪独立保存弹匣余量；12发为可调试玩初值。
 @export_range(1, 300, 1) var magazine_capacity: int = 12
 ## 正常换弹耗时（秒）。玩家奔跑倍率在Combat调整；敌人不受移动影响。

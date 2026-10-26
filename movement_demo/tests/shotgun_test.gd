@@ -149,7 +149,7 @@ func _actors() -> void:
 	gun.shotgun.pellet_damage = 7
 	gun.shotgun.shell_stability_loss = 0.2
 	gun.shot_noise = null
-	combat.equip_weapon(gun, false, combat.Ammo.new(gun, {WeaponData.AmmoType.SHOTGUN: 12}))
+	combat.equip_weapon(gun, false, combat.Ammo.new(gun, {&"shotgun": 12}))
 	var muzzle: Vector3 = player.get_muzzle_position()
 	var front := _target(scene, muzzle + Vector3(0, 0, -1))
 	front.disable_on_hit = true

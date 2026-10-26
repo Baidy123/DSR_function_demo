@@ -38,7 +38,7 @@ func _run() -> void:
 	weapon.shot_spread_penalty_degrees = 0.0
 	# 本套核对普通命中损失；随机爆头的秒杀／硬直由专项覆盖。
 	weapon.headshot_enabled = false
-	combat.equip_weapon(weapon, false, preload("res://scripts/weapons/weapon_ammo.gd").new(weapon, {weapon.ammo_type: 100}))
+	combat.equip_weapon(weapon, false, preload("res://scripts/weapons/weapon_ammo.gd").new(weapon, {weapon.get_ammo_key(): 100}))
 	var enemy_weapon := WeaponData.new()
 	enemy_weapon.reload_seconds = 0.5
 	enemy_weapon.accuracy_recovery_delay = 0.4

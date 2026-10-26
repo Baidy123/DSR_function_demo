@@ -22,12 +22,12 @@ func _run() -> void:
 	var weapon: WeaponData = MeleeWeapon.duplicate(true)
 	check(WeaponData.new().fire_mode == WeaponData.FireMode.SEMI_AUTO and gun.fire_mode == WeaponData.FireMode.AUTOMATIC, "默认单发与旧自动武器编号保持")
 	check(weapon.fire_mode == WeaponData.FireMode.MELEE and weapon.melee_enabled, "现成近战武器通过Fire Mode配置")
-	var pool := {weapon.ammo_type: 36}
+	var pool := {weapon.get_ammo_key(): 36}
 	var ammo = Ammo.new(weapon, pool, true)
 	check(ammo.magazine_rounds == 0 and ammo.reserve_count() == 0, "近战武器没有有效弹匣和备弹")
 	check(not ammo.can_fire() and not ammo.consume_round() and not ammo.start_reload(), "即使无限备弹，近战也不能开枪或换弹")
 	ammo.advance_reload(10.0)
-	check(pool[weapon.ammo_type] == 36 and not ammo.is_reloading, "近战不改变共享备弹或推进换弹")
+	check(pool[weapon.get_ammo_key()] == 36 and not ammo.is_reloading, "近战不改变共享备弹或推进换弹")
 	DirAccess.make_dir_recursive_absolute("res://logs/melee_weapon_work")
 	var saved := ResourceSaver.save(weapon, "res://logs/melee_weapon_work/roundtrip.tres")
 	var restored: WeaponData = load("res://logs/melee_weapon_work/roundtrip.tres")

@@ -1,0 +1,13 @@
+[gd_resource type="Resource" script_class="AmmoDefinition" load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://scripts/weapons/ammo_definition.gd" id="1"]
+[ext_resource type="PackedScene" path="res://scenes/presentation/ammo/shotgun_box.tscn" id="2"]
+
+[resource]
+script = ExtResource("1")
+ammo_id = &"shotgun"
+display_name = "霰弹枪弹药"
+allow_random_drop = true
+drop_min_count = 3
+drop_max_count = 6
+drop_model = ExtResource("2")

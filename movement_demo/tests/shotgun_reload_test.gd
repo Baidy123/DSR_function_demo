@@ -32,30 +32,30 @@ func _gun() -> WeaponData:
 
 func _ammo() -> void:
 	var gun := _gun()
-	var pool := {WeaponData.AmmoType.SHOTGUN: 10}
+	var pool := {&"shotgun": 10}
 	var ammo := Ammo.new(gun, pool)
 	ammo.magazine_rounds = 0
 	check(ammo.start_reload() and is_equal_approx(ammo.reload_remaining_seconds(), 3), "Empty tube predicts six insertions using the shell time")
 	ammo.advance_reload(0.49)
-	check(ammo.magazine_rounds == 0 and pool[3] == 10, "An unfinished shell is neither loaded nor charged")
+	check(ammo.magazine_rounds == 0 and pool[&"shotgun"] == 10, "An unfinished shell is neither loaded nor charged")
 	ammo.advance_reload(0.01)
-	check(ammo.magazine_rounds == 1 and pool[3] == 9 and ammo.is_reloading and is_zero_approx(ammo.reload_progress), "First completed shell loads exactly one and restarts per-shell progress")
+	check(ammo.magazine_rounds == 1 and pool[&"shotgun"] == 9 and ammo.is_reloading and is_zero_approx(ammo.reload_progress), "First completed shell loads exactly one and restarts per-shell progress")
 	ammo.advance_reload(1.25)
-	check(ammo.magazine_rounds == 3 and pool[3] == 7 and is_equal_approx(ammo.reload_progress, 0.5), "A long frame preserves completed shells and the next shell fraction")
+	check(ammo.magazine_rounds == 3 and pool[&"shotgun"] == 7 and is_equal_approx(ammo.reload_progress, 0.5), "A long frame preserves completed shells and the next shell fraction")
 	check(is_equal_approx(ammo.reload_remaining_seconds(), 1.25) and is_equal_approx(ammo.reload_remaining_seconds(false), 1.5), "Remaining and interrupted reload estimates use actual missing shells")
 	ammo.cancel_reload()
-	check(ammo.magazine_rounds == 3 and ammo.can_fire() and ammo.reload_progress == 0 and pool[3] == 7, "Cancel retains completed shells and discards unfinished progress")
+	check(ammo.magazine_rounds == 3 and ammo.can_fire() and ammo.reload_progress == 0 and pool[&"shotgun"] == 7, "Cancel retains completed shells and discards unfinished progress")
 	ammo.start_reload()
 	ammo.advance_reload(100)
-	check(ammo.magazine_rounds == 6 and pool[3] == 4 and not ammo.is_reloading, "Large elapsed time cannot overfill or overcharge")
+	check(ammo.magazine_rounds == 6 and pool[&"shotgun"] == 4 and not ammo.is_reloading, "Large elapsed time cannot overfill or overcharge")
 	ammo.magazine_rounds = 0
-	pool[3] = 2
+	pool[&"shotgun"] = 2
 	ammo.start_reload()
 	ammo.advance_reload(1)
-	check(ammo.magazine_rounds == 2 and pool[3] == 0 and not ammo.is_reloading and ammo.can_fire(), "Reserve exhaustion finishes reload and keeps loaded rounds usable")
-	pool[3] = 2
+	check(ammo.magazine_rounds == 2 and pool[&"shotgun"] == 0 and not ammo.is_reloading and ammo.can_fire(), "Reserve exhaustion finishes reload and keeps loaded rounds usable")
+	pool[&"shotgun"] = 2
 	ammo.start_reload()
-	pool[3] = 0
+	pool[&"shotgun"] = 0
 	ammo.advance_reload(0)
 	check(not ammo.is_reloading and ammo.magazine_rounds == 2, "Another weapon draining the shared pool cannot leave a stuck reload")
 	var unlimited := Ammo.new(gun, {}, true)
@@ -94,7 +94,7 @@ func _actors() -> void:
 	var gun := _gun()
 	equipment.primary_weapon = gun
 	equipment.select_slot(0)
-	equipment.reserve_ammo[3] = 30
+	equipment.reserve_ammo[&"shotgun"] = 30
 	combat.ammo.magazine_rounds = 0
 	for frame in 5: await physics_frame
 	Input.action_press("aim")

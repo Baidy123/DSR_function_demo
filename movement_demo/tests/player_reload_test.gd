@@ -67,7 +67,7 @@ func _run() -> void:
 	_key_r()
 	combat.end_frame(2.0, false)
 	check(not combat.ammo.is_reloading and combat.ammo.magazine_rounds == 12, "再次按R后快速换弹重新累计两秒完成")
-	check(slots.reserve_ammo[WeaponData.AmmoType.PISTOL] == 24, "完成换弹从对应共享池扣弹")
+	check(slots.reserve_ammo[&"pistol"] == 24, "完成换弹从对应共享池扣弹")
 	combat.ammo.magazine_rounds = 3
 	combat.request_reload()
 	combat.end_frame(0.5, false)
@@ -130,7 +130,7 @@ func _run() -> void:
 	slots = player.get_node("Equipment")
 	player.set_physics_process(false)
 	check(not paused and combat.ammo.magazine_rounds == combat.weapon.magazine_capacity and not combat.ammo.is_reloading, "实际重开恢复初始武器满弹及换弹状态")
-	check(slots.reserve_ammo[0] == slots.starting_rifle_ammo and slots.reserve_ammo[1] == slots.starting_pistol_ammo and slots.reserve_ammo[2] == slots.starting_smg_ammo and slots.reserve_ammo[3] == slots.starting_shotgun_ammo, "重开恢复四类备弹初值")
+	check(slots.reserve_ammo[&"rifle"] == slots.starting_rifle_ammo and slots.reserve_ammo[&"pistol"] == slots.starting_pistol_ammo and slots.reserve_ammo[&"smg"] == slots.starting_smg_ammo and slots.reserve_ammo[&"shotgun"] == slots.starting_shotgun_ammo, "重开恢复四类备弹初值")
 	# 下面断言按0.5进度倍率验证固定方式，只配置测试实例；用户场景可用其他倍率。
 	combat.sprint_reload_speed_multiplier = 0.5
 	# 驱动真实Player物理流程，验证快速换弹可被奔跑中断，慢速方式仍保留。

@@ -71,7 +71,7 @@ const FIREARM_FIELDS := [
 	"headshot_instant_kill_enabled", "headshot_stagger_seconds", "headshot_stagger_refresh_mode",
 	"headshot_movement_multiplier", "headshot_accuracy_cap",
 	"hit_accuracy_loss", "suppression_accuracy_loss", "near_miss_radius", "hit_speed_loss", "hit_speed_loss_seconds",
-	"ammo_type", "magazine_capacity", "reload_seconds", "shot_noise", "shot_noise_radius",
+	"ammo_type", "ammo_definition", "magazine_capacity", "reload_seconds", "shot_noise", "shot_noise_radius",
 	"damage", "aim_range", "fire_range", "cone_angle_degrees", "locked_move_multiplier",
 	"shot_interval",
 ]

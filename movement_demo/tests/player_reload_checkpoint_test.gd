@@ -53,7 +53,7 @@ func _run() -> void:
 		player.is_sprinting = true
 		combat.end_frame(0.5, true)
 		check(not combat.ammo.is_reloading and close(combat.ammo.reload_progress, 0.5) and close(combat.ammo.reload_checkpoint, 0.5), "%d%%中断只保留半程" % int(fraction * 100))
-		check(combat.ammo.magazine_rounds == 3 and slots.reserve_ammo[weapon.ammo_type] == 60 and not combat.ammo.can_fire(), "已保留半程不会提前补弹或扣备弹，余弹也不能开火")
+		check(combat.ammo.magazine_rounds == 3 and slots.reserve_ammo[weapon.get_ammo_key()] == 60 and not combat.ammo.can_fire(), "已保留半程不会提前补弹或扣备弹，余弹也不能开火")
 		combat.end_frame(2.0, true)
 		check(close(combat.ammo.reload_progress, 0.5) and not combat.request_reload(), "快速换弹在持续奔跑中暂停，R不能绕过强制续换阶段")
 		slots._update_display()
@@ -73,7 +73,7 @@ func _run() -> void:
 		combat.end_frame(0.99, false)
 		check(combat.ammo.is_reloading and combat.ammo.magazine_rounds == 3, "续换不足剩余时长不会提前完成")
 		combat.end_frame(0.01, false)
-		check(not combat.ammo.is_reloading and combat.ammo.reload_checkpoint == 0.0 and combat.ammo.magazine_rounds == 12 and slots.reserve_ammo[weapon.ammo_type] == 51, "续换足够一秒才补满，且只扣一次缺口备弹")
+		check(not combat.ammo.is_reloading and combat.ammo.reload_checkpoint == 0.0 and combat.ammo.magazine_rounds == 12 and slots.reserve_ammo[weapon.get_ammo_key()] == 51, "续换足够一秒才补满，且只扣一次缺口备弹")
 
 	prepare()
 	combat.request_reload()
@@ -124,11 +124,11 @@ func _run() -> void:
 	combat.end_frame(1.6, false)
 	first = combat.ammo
 	slots.select_slot(1)
-	slots.reserve_ammo[weapon.ammo_type] = 0
+	slots.reserve_ammo[weapon.get_ammo_key()] = 0
 	slots.select_slot(0)
 	check(first.is_reloading and not first.can_fire(), "共享备弹耗尽仍能继续已保留阶段，不永久卡住")
 	combat.end_frame(1.0, false)
-	check(first.magazine_rounds == 3 and first.can_fire() and slots.reserve_ammo[weapon.ammo_type] == 0, "无备弹完成动作后不凭空补弹并恢复原有余弹可用")
+	check(first.magazine_rounds == 3 and first.can_fire() and slots.reserve_ammo[weapon.get_ammo_key()] == 0, "无备弹完成动作后不凭空补弹并恢复原有余弹可用")
 
 	prepare()
 	combat.request_reload()
@@ -164,7 +164,7 @@ func prepare() -> void:
 	slots.select_slot(0)
 	combat.cancel_reload()
 	combat.ammo.magazine_rounds = 3
-	slots.reserve_ammo[weapon.ammo_type] = 60
+	slots.reserve_ammo[weapon.get_ammo_key()] = 60
 
 func close(a: float, b: float) -> bool:
 	return absf(a - b) < 0.00001

@@ -171,7 +171,7 @@ func _player() -> void:
 	combat.end_frame(5, false)
 	paused = false
 	check(combat.accuracy == before, "Pause freezes nonlinear recovery")
-	combat.ammo = combat.Ammo.new(gun, {gun.ammo_type: 300})
+	combat.ammo = combat.Ammo.new(gun, {gun.get_ammo_key(): 300})
 	combat.ammo.magazine_rounds = 1
 	check(combat.request_reload(), "Nonlinear weapon starts original reload")
 	combat.end_frame(gun.reload_seconds + 1, false)

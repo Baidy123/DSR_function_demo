@@ -14,6 +14,7 @@ var _combat_zone: Area3D
 var tactical_map = preload("res://scripts/enemy/services/enemy_tactical_map.gd").new()
 var cooperation = preload("res://scripts/enemy/services/enemy_cooperation.gd").new()
 var vault_navigation = preload("res://scripts/world/vault_navigation.gd").new()
+var ammo_drops = preload("res://scripts/world/ammo_drop_controller.gd").new()
 
 
 func enemy_environment() -> Dictionary:
@@ -28,14 +29,17 @@ func enemy_environment() -> Dictionary:
 func register_enemy(enemy: CharacterBody3D) -> void:
 	if not enemies.has(enemy):
 		enemies.append(enemy)
+		ammo_drops.register_enemy(enemy)
 
 
 func unregister_enemy(enemy: CharacterBody3D) -> void:
+	ammo_drops.unregister_id(enemy.get_instance_id())
 	enemies.erase(enemy)
 	cooperation.unregister(enemy.get_instance_id())
 
 
 func _enter_tree() -> void:
+	ammo_drops.bind(self)
 	# 父节点先入树：部署模板不能先执行敌人/小队的注册、碰撞或 AI 就绪。
 	var controllers: Array[Node] = []
 	for child in get_children():
@@ -96,6 +100,7 @@ func _on_player_exited(body: Node3D) -> void:
 
 
 func _reset_targets() -> void:
+	ammo_drops.reset()
 	# 先取消波次；queue_free 尚未退树的成员也必须排除，不能复活旧波。
 	if is_instance_valid(_enemy_waves): _enemy_waves.reset_encounter()
 	cooperation.reset()
@@ -115,5 +120,6 @@ func _reset_targets() -> void:
 
 
 func _exit_tree() -> void:
+	ammo_drops.release()
 	tactical_map.release()
 	vault_navigation.release()
