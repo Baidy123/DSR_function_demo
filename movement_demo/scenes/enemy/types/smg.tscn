@@ -1,0 +1,8 @@
+[gd_scene format=3 uid="uid://bec3a8cldnglv"]
+
+[ext_resource type="PackedScene" uid="uid://cu5pdeu3u7v5m" path="res://scenes/enemy/enemy.tscn" id="1_xf27k"]
+[ext_resource type="Resource" uid="uid://cyht2v0pccu2h" path="res://resources/weapons/enemy_test_smg.tres" id="2_xrqbc"]
+
+[node name="Enemy" unique_id=205767877 instance=ExtResource("1_xf27k")]
+max_health = 80.0
+weapon = ExtResource("2_xrqbc")

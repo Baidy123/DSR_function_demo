@@ -1,0 +1,9 @@
+[gd_scene format=3 uid="uid://dbbt8l5i4seme"]
+
+[ext_resource type="PackedScene" uid="uid://bec3a8cldnglv" path="res://scenes/enemy/types/smg.tscn" id="1_lrbfl"]
+[ext_resource type="Resource" path="res://resources/enemy/training/levels/lvl_2/smg.tres" id="training_profile"]
+
+[node name="Enemy" unique_id=205767877 instance=ExtResource("1_lrbfl")]
+
+[node name="Training" parent="." index="1" unique_id=740728946]
+profile = ExtResource("training_profile")

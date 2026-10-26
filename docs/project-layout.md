@@ -1,5 +1,7 @@
 # 项目目录结构
 
+三关训练隔离（2026-10-26）：现有 `scenes/enemy/levels/lvl_1/melee.tscn`、`lvl_2/{melee,pistol,smg}.tscn`、`lvl_3/{melee,pistol,smg}.tscn` 各自引用 `resources/enemy/training/levels/` 下同关同名 `.tres`。训练动作勾选与嵌套参数按关卡／兵种保存，公共 `types/` 与 `enemy.tscn` 的组件继承保持；同关同兵种实例共用本关配置。第三关本地地图中直接实例化公共敌人的旧节点，仅覆盖 `Training.profile` 到本关对应资源，保留原节点、武器、属性和摆放。没有新增运行时脚本或修改检查器接口，见[训练隔离说明](enemy-ai.md#三关战术解锁与训练隔离2026-10-26)。
+
 爆头结算与被爆头状态（2026-10-25）：原 `scripts/weapons/weapon_data.gd` 导出开关、概率、秒杀选项、兜底倍率、状态时长及刷新规则。`scripts/weapons/headshot_resolver.gd` 仅处理已完成射线的命中统计，每枪每目标一次抽样，在受击回调前冻结本枪所有结果；`player_combat_v3.gd` 仍拥有弹药、后坐与实际射击。原 `headshot_hit(world_position, pellets, shotgun)` 保留，新增 `headshot_resolved(world_position, outcome)` 通知准星显示实际结果。
 
 敌人身体拥有独立 `scripts/enemy/services/enemy_headshot_state.gd` 状态，保存本次攻击武器的效果快照与剩余时间；不加节点／Timer／AI循环。复用近战／枪击的 `apply_aim_penalty()` 与 `get_hit_movement_multiplier()` 出口执行精度和减速，不禁止射击，不取消AI动作、不新增协调器占用。`EnemyContext` 只沿原训练查询注入爆头防护，`tactics_settings.gd` 直接保存布尔字段，检查器仅将原 `Profile.tactics` 显示为“作战能力”。原资源键、场景路径和UID保留。`enemy_ai.gd`、火控决策和协调器逻辑未因本状态修改。设计与接口见[爆头设计](superpowers/specs/2026-10-25-headshot-stagger-execution-design.md)。
