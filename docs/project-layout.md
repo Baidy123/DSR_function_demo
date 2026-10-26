@@ -1,5 +1,7 @@
 # 项目目录结构
 
+屏外开火（2026-10-26）：原 `enemy_actor.gd` 在Shooting导出 `offscreen_fire_chance`（默认50%），仅在合法 `try_fire()` 内用独立随机序列判定整枪，失败仍消耗身体冷却。`can_fire()` 保持纯查询；新增 `shot_attempt_count` 区分合法尝试与实际发射。原 `enemy_fire_controller.gd` 的普通／记忆射击共用一次尝试入口，按计数推进原AI间隔与点射配额，仅成功时通知实际射击。没有新增节点、AI循环或协调器策略，原武器、训练、场景和UID保持。使用说明见[敌人AI](enemy-ai.md#血条视距与屏幕内开火2026-10-25)。
+
 武器检查器整理（2026-10-26，后续统一时间）：原资源按基本信息、射击与弹药、Shotgun、瞄准与散布、命中效果、近战、外观与声音七组排列。Shotgun为独立一级组，位于瞄准与散布前。玩家收敛、恢复等待、敌人恢复（原算法）各为子组；原保存键和UID保留。玩家仅调用 `recover_player_accuracy(current, delta)`，不再消费 `get_aim_settings().recovery`；新时间缺省／旧0用4秒，保存的正数保留。敌人仍读原字典恢复速率与 `stabilize_seconds` 掩体估时，敌人脚本不改。检查器删除 `RecoveryProperty` 与所属武器推断，复用普通数值控件；玩家上下文隐藏敌人恢复入口，敌人上下文隐藏玩家收敛，独立资源显示明确标签。见[武器资源分组](gameplay/COMBAT.md#武器资源分组2026-10-26)。
 
 瞄准收敛（2026-10-26）：原 `WeaponData` 保存三种函数、完整时间和指数强度，`recover_player_accuracy()` 只计算下一基础稳定度；原 `player_combat_v3.gd::_recover_accuracy()` 继续拥有恢复等待与上限，不增加计时状态或节点。`get_effective_accuracy()` 为基础收敛／爆头资格，新增 `get_spread_stability()` 仅映射蹲姿最大端点，供普通散布、霰弹随机偏移与准星大小读取；共享弹道和敌人接口保持。原检查器复用支持刷新的枚举控件，原槽位状态键与UID保持，旧蹲姿属性通过 `_set()` 读取为新比例。新增专项登记到战斗回归，见[实施设计与验证](superpowers/specs/2026-10-26-aim-convergence-models-design.md)。

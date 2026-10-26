@@ -44,7 +44,7 @@
 
 玩家和相机可分别复用：拖入 `scenes/player/player.tscn` 与 `scenes/player/player_camera_rig.tscn`，在相机根节点的 **Player Path** 指定玩家（同级且名为 Player 时默认即有效）。相机随当前武器 **Aim Range** 调整，试玩两把枪采用18／22米初值；武器资源已移除独立相机视野分组，过渡时间在相机的 **View Transition Seconds** 调整。移动、战斗、生命和装备仍属于玩家，详见[相机与复用说明](docs/gameplay/CAMERA.md)。
 
-敌人默认带无数字血条；远程视距取自身武器锁定距离加可调余量，并且屏幕外停止射击。波次全灭后保留静态尸体外观，回收AI、碰撞和血条，离场／重置后再清掉尸体。配置见[敌人 AI](docs/enemy-ai.md#血条视距与屏幕内开火2026-10-25)和[血条／尸体说明](docs/gameplay/PRESENTATION.md#临时敌人血条与波次尸体2026-10-25)。
+敌人默认带无数字血条；远程视距取自身武器锁定距离加可调余量。屏幕外每次合法开火机会默认50%成功，失败跳过整枪且不耗弹，仍消耗射击间隔和点射次数；敌人根节点 **Shooting → Offscreen Fire Chance** 可调0～100%。波次全灭后保留静态尸体外观，回收AI、碰撞和血条，离场／重置后再清掉尸体。配置见[敌人 AI](docs/enemy-ai.md#血条视距与屏幕内开火2026-10-25)和[血条／尸体说明](docs/gameplay/PRESENTATION.md#临时敌人血条与波次尸体2026-10-25)。
 
 医疗包操作：松开动作键后按 **H** 治疗，无需等待惯性停稳；默认两秒完成、恢复50生命，初始3个。动作输入或受击立即打断，中断不消耗。选中 `Player → Equipment`，在“医疗包”分组配置 **Medkit Count** 与 **Medkit** 资源，展开资源调整回血量／时间；Equipment（装备）为原 WeaponSlots 节点，统一管理武器与医疗包，见 [生命与医疗包](docs/gameplay/PLAYER_HEALTH.md)。
 

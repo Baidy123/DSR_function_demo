@@ -210,7 +210,8 @@ func _actors() -> void:
 	check(is_equal_approx(enemy.weapon_stability, 0.8) and not enemy.try_fire(), "Enemy recoil once and cooldown still blocks another shot")
 	enemy.shot_cooldown = 0
 	enemy.global_position.x = 100
-	check(not enemy.try_fire(), "Shotgun enemies still cannot fire outside the camera")
+	enemy.offscreen_fire_chance = 0.0
+	check(not enemy.try_fire(), "Shotgun enemies with zero offscreen chance skip the whole shell")
 	check(equipment.secondary_weapon is WeaponData and equipment.secondary_weapon.fire_mode != WeaponData.FireMode.SHOTGUN, "Existing secondary resource is unchanged")
 	gun.shot_interval = 0.9
 	combat.ammo.magazine_rounds = 3

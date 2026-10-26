@@ -88,6 +88,11 @@ var _status_text: String = ""
 @export_group("Shooting")
 ## 是否允许执行射击；可暂时关闭以单独观察移动和掩体行为。
 @export var shooting_enabled: bool = true
+## 屏幕外每次合法开火机会的成功概率（%）；0禁射、50约减半、100正常。
+## 失败时跳过整枪且不耗弹，但消耗冷却与AI点射次数；屏幕内和近战不受影响。
+@export_range(0.0, 100.0, 1.0, "suffix:%") var offscreen_fire_chance: float = 50.0:
+	set(value):
+		offscreen_fire_chance = clampf(value, 0.0, 100.0) if is_finite(value) else 0.0
 ## 武器类型及攻击参数；近战武器不启用射击，远程武器使用原中心概率模式。
 ## 运行时换枪调用 equip_weapon；反应时间与连射节奏仍由 AI/Tactics 决定。
 @export var weapon: WeaponData
@@ -104,6 +109,8 @@ var has_aim: bool = false
 var aim_acquired: bool = false
 var shot_cooldown: float = 0.0
 var shot_count: int = 0
+## 已具备身体开火条件的尝试数，包含屏幕外随机跳过；实际射击仍只统计shot_count。
+var shot_attempt_count: int = 0
 var last_shot_collider: Object
 var last_shot_direction: Vector3 = Vector3.ZERO
 # weapon_stability保留旧内部名称，当前含义为中心概率；每个持枪者独立保存。
@@ -113,6 +120,7 @@ var _weapon_move_distance: float = 0.0
 var _last_visible_point: Vector3 = Vector3.INF
 # 射击取样不消耗全局随机序列，避免改变巡逻/搜索/掩体的随机选择。
 var _shot_rng := RandomNumberGenerator.new()
+var _offscreen_fire_rng := RandomNumberGenerator.new()
 
 var health: float = 100.0
 var is_dead: bool = false
@@ -139,6 +147,7 @@ func _ready() -> void:
 	debug_settings.changed.connect(_apply_debug_mode)
 	_apply_debug_mode(debug_settings.enabled)
 	_shot_rng.randomize()
+	_offscreen_fire_rng.randomize()
 	initial_transform = transform
 	initial_body_transform = $Body.transform
 	_normalize_legacy_noise_radius()
@@ -474,6 +483,7 @@ func reset_target() -> void:
 	clear_aim()
 	shot_cooldown = 0.0
 	shot_count = 0
+	shot_attempt_count = 0
 	last_shot_collider = null
 	last_shot_direction = Vector3.ZERO
 	is_dead = false
@@ -667,7 +677,6 @@ func can_use_firearms() -> bool:
 ## 纯查询执行条件；让评分只在枪械确实能发射时积累主动等待时间。
 func can_fire() -> bool:
 	if is_vaulting(): return false
-	if not CombatView.contains_actor(self, 8.0): return false
 	if get_tree().paused or melee_active or not can_use_firearms() or not ammo.can_fire():
 		return false
 	if not has_aim or not aim_acquired or shot_cooldown > 0.0:
@@ -734,6 +743,11 @@ func execute_melee(target: Node3D, settings: Dictionary, direction: Vector3) -> 
 ## 只执行请求，不寻找玩家或决定行为；实际射线围绕当前枪口方向取样。
 func try_fire() -> bool:
 	if not can_fire():
+		return false
+	shot_attempt_count += 1
+	# 只在真正准备开枪时抽一次；查询资格不会抽样，也不改变弹道随机序列。
+	if not CombatView.contains_actor(self, 8.0) and (offscreen_fire_chance <= 0.0 or (offscreen_fire_chance < 100.0 and _offscreen_fire_rng.randf() >= offscreen_fire_chance / 100.0)):
+		shot_cooldown = maxf(0.05, weapon.shot_interval)
 		return false
 	if weapon.fire_mode == WeaponData.FireMode.SHOTGUN:
 		return _try_fire_shotgun()

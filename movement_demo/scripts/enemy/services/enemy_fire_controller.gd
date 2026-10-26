@@ -1,7 +1,5 @@
 extends RefCounted
 
-const CombatView = preload("res://scripts/systems/combat_view.gd")
-
 signal shot_fired
 var context
 var request: Dictionary = {}
@@ -58,12 +56,6 @@ func update_shooting(delta: float, sees_player: bool, movement_requested: bool) 
 		fire_decision.reset()
 		actor.update_weapon(delta)
 		return
-	# 普通与记忆压制共用画面资格；屏幕外不积累开火反应，回到画面后重新准备。
-	if not CombatView.contains_actor(actor, 8.0):
-		fire_reaction_elapsed = 0.0
-		fire_decision.reset()
-		actor.update_weapon(delta)
-		return
 	if request.get("mode") == &"memory":
 		_update_suppression_shooting(delta, movement_requested)
 		return
@@ -115,10 +107,7 @@ func update_shooting(delta: float, sees_player: bool, movement_requested: bool) 
 		var support_pressure: float = suppression_pressure(request, moving) if request.get("support_intent", false) else 0.0
 		if fire_decision.choose_action(elapsed, stability, fire_stability_target, recovery_rate, close_pressure, support_pressure) != fire_decision.Action.FIRE:
 			return
-	if actor.try_fire():
-		fire_decision.on_shot_fired()
-		_record_burst_shot()
-		shot_fired.emit()
+	_try_fire()
 
 func _update_suppression_shooting(delta: float, movement_requested: bool) -> void:
 	fire_decision.reset()
@@ -147,9 +136,18 @@ func _update_suppression_shooting(delta: float, movement_requested: bool) -> voi
 		context.invalidate_utility()
 		return
 	if not context.cooperation_line_safe(actor.get_shot_origin(), point): return
-	if actor.try_fire():
+	_try_fire()
+
+func _try_fire() -> bool:
+	var attempts_before: int = actor.shot_attempt_count
+	var fired: bool = actor.try_fire()
+	if fired: fire_decision.on_shot_fired()
+	if actor.shot_attempt_count > attempts_before:
+		# 屏幕外跳过也消耗一次点射机会，不能下一帧重新抽取或延长本轮。
 		_record_burst_shot()
-		shot_fired.emit()
+		if not fired: fire_decision.reset()
+	if fired: shot_fired.emit()
+	return fired
 
 func _record_burst_shot() -> void:
 	fire_interval_remaining = shot_interval_seconds()

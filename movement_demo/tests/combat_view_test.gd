@@ -1,7 +1,6 @@
 extends SceneTree
 
 const View = preload("res://scripts/systems/combat_view.gd")
-const Fire = preload("res://scripts/enemy/services/enemy_fire_controller.gd")
 const Perception = preload("res://scripts/enemy/services/enemy_perception.gd")
 var checks := 0
 var failures := 0
@@ -116,23 +115,18 @@ func _run() -> void:
 	var ammo_before: int = enemy.ammo.magazine_rounds
 	var shots_before: int = enemy.shot_count
 	enemy.position = Vector3(40, 0, 0)
+	enemy.offscreen_fire_chance = 0.0
 	await _frames()
+	enemy.look_at(player.global_position)
 	enemy.update_weapon(2.0, player.get_torso_position())
-	check(not View.contains_actor(enemy) and not enemy.try_fire() and enemy.ammo.magazine_rounds == ammo_before and enemy.shot_count == shots_before, "屏幕外身体最终入口禁射且不消耗弹药")
+	check(not View.contains_actor(enemy) and not enemy.try_fire() and enemy.ammo.magazine_rounds == ammo_before and enemy.shot_count == shots_before and enemy.shot_cooldown > 0.0, "屏幕外0%跳过射击、不消耗弹药但消耗冷却")
 	check(not combat._visible_target_point(enemy).is_finite(), "屏幕外目标不被锁定")
-	var fire := Fire.new()
-	fire.setup(context)
-	for mode in [&"visible", &"memory"]:
-		fire.request = {"owner": &"test", "mode": mode, "point": player.get_torso_position()}
-		fire.fire_reaction_elapsed = 1.0
-		fire.update_shooting(0.5, true, false)
-		check(fire.fire_reaction_elapsed == 0.0 and enemy.shot_count == shots_before, "%s 火控在屏幕外停止反应累计和射击" % mode)
-	fire.detach()
+	# 普通／记忆火控的屏外概率及节奏由enemy_offscreen_fire_test使用真实Context覆盖。
 	enemy.position = Vector3(0, 0, -5)
 	enemy.rotation.y = PI
 	await _frames()
 	enemy.update_weapon(2.0, player.get_torso_position())
-	check(enemy.try_fire() and enemy.shot_count == shots_before + 1, "重新进入画面后恢复真实开火资格")
+	check(enemy.try_fire() and enemy.shot_count == shots_before + 1, "重新进入画面后不受屏外0%限制，恢复真实开火资格")
 	var bar = enemy.get_node("HealthBar")
 	enemy.receive_hit(enemy.max_health * 0.6)
 	check(is_equal_approx(bar.ratio, 0.4) and bar.visible and bar.find_children("*", "Label3D").is_empty(), "血条显示剩余比例，不包含生命数字标签")

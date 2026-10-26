@@ -56,7 +56,7 @@ func _init() -> void:
 	set(value):
 		fire_stability_target = value
 		mark_override(&"fire_stability_target")
-## 普通交战每轮实际打出几枪后观察；只统计成功发射，不按命中次数计数。
+## 普通交战每轮开火机会数；屏幕外随机跳过也计一次，不按命中次数计数。
 @export_range(1, 20, 1) var burst_shot_count: int = 3:
 	set(value):
 		burst_shot_count = value

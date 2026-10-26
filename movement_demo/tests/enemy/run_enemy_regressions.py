@@ -16,6 +16,7 @@ TESTS = [
     "enemy_ally_spacing_test",
     "enemy_ally_spacing_runtime_test",
     "enemy_firing_cadence_test",
+    "enemy_offscreen_fire_test",
     "enemy_ally_navigation_test",
     "enemy_ally_navigation_integration_test",
     "enemy_ally_route_recovery_test",
