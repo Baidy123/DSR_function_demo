@@ -27,3 +27,13 @@ python movement_demo/tests/run_regressions.py --check
 ```
 
 日志与隔离副本位于忽略目录 `movement_demo/logs/ammo_implementation_20261026/`，正式回归日志沿用原 `combat_regressions/`、`enemy_regressions/`。未改原敌人身体、AI或协调策略，不引入剧情库存或全局弹药单例。
+
+## 2026-10-27 用户追加：显示置顶与两包上限
+
+用户明确“最上层”是渲染层级，避免尸体挡住弹药。原拾取脚本复制每个模型表面的材质，启用前景绘制；盒子优先级126，名称／数量Label3D为127，地面位置与拾取检测保持。标准／ORM保留原颜色和贴图；没有材质或自定义Shader时使用标准材质保证模型可见，不改共享模型资源。采用透明队列与关闭深度测试的组合，依据[Godot标准材质说明](https://docs.godotengine.org/en/latest/tutorials/3d/standard_material_3d.html)。
+
+未拾取上限按每区合计2包实施，所有弹种共用；原区域服务在死亡时预留待生成名额，同帧多死者不会超额。拾取即释放，生成失败返还，重置清空；旧代际回调不影响新名额。满额时跳过该次死亡掉落，拾取后仅后续新死亡重新检查。此要求取代设计中原先没有地面包上限的规则。
+
+验证：原运行专项扩为 **84/84**，包括真实霰弹三人死亡只生成两包、满额阻止、实际靠近拾取后恢复、旧死亡不补发、失败落点及新旧代际名额、材质副本／颜色保持和标签层级。原波次 **80/80**、测试清单检查通过。实际OpenGL兼容渲染器另 **4/4**：普通盒子被同一不透明遮挡物盖住，掉落盒子和数量标签仍显示；截图 `occluded_control.png`／`foreground_pickup.png` 保存在 `logs/ammo_visibility_limit_20261027/`，无脚本或资源错误。
+
+运行命令仍为战斗组 `ammo_drop_test`；图形验证可用 `Godot_v4.7.2-stable_win64_console.exe --path movement_demo --rendering-method gl_compatibility --script res://tests/ammo_drop_test.gd -- --render-proof`。本次未重新运行上文的整套玩家／敌人历史回归。

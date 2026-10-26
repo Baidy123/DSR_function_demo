@@ -18,6 +18,11 @@ func check(ok: bool, label: String) -> void:
 	print("PASS " if ok else "FAIL ", label)
 
 func _run() -> void:
+	if "--render-proof" in OS.get_cmdline_user_args():
+		await _render_foreground()
+		print("AMMO FOREGROUND RENDER: %d/%d passed" % [checks - failures, checks])
+		quit(1 if failures else 0)
+		return
 	if Engine.is_editor_hint():
 		# 先让编辑器完成启动／扫描；初始化前退出会泄漏编辑器本身的控件与资源。
 		for frame in range(120): await process_frame
@@ -32,6 +37,7 @@ func _run() -> void:
 	_configuration_roundtrip()
 	await _inventory()
 	await _runtime()
+	await _drop_limit()
 	await _shooting_and_models()
 	await _waves()
 	print("AMMO DROPS: %d/%d passed" % [checks - failures, checks])
@@ -397,7 +403,7 @@ func _shooting_and_models() -> void:
 	await _frames()
 	check(targets.all(func(target): return target.is_dead) and combat.ammo.magazine_rounds == 0, "One actual player shotgun shell kills three real enemies with aggregated headshots: %s" % str(targets.map(func(target): return [target.health, target.is_dead])))
 	var packages := _packages(region)
-	check(packages.size() == 3 and packages.all(func(package): return package._amount == 9), "Each actual death drops once; fixed resource count ignores gun capacity")
+	check(packages.size() == 2 and packages.all(func(package): return package._amount == 9), "Three deaths in one shell reserve at most two packages; fixed count ignores gun capacity")
 	if not packages.is_empty():
 		check(packages[0].get_node("Visual").get_child(0).scene_file_path == definition.drop_model.resource_path, "Death instantiates the chosen per-type model")
 	var red := AmmoDefinition.legacy(3).duplicate() as AmmoDefinition
@@ -409,6 +415,12 @@ func _shooting_and_models() -> void:
 		var green_mesh: MeshInstance3D = packages[0].get_node("Visual").get_child(0).get_node("Box")
 		var red_mesh: MeshInstance3D = another.get_node("Visual").get_child(0).get_node("Box")
 		check(green_mesh.mesh.material != red_mesh.mesh.material and green_mesh.mesh.material.albedo_color != red_mesh.mesh.material.albedo_color, "Concurrent ammo models retain separate colors and materials")
+		var foreground: BaseMaterial3D = green_mesh.get_active_material(0)
+		check(foreground != green_mesh.mesh.material and foreground.no_depth_test and foreground.transparency == BaseMaterial3D.TRANSPARENCY_ALPHA and foreground.depth_draw_mode == BaseMaterial3D.DEPTH_DRAW_DISABLED and foreground.render_priority == 126, "Pickup uses its own foreground material above opaque corpses")
+		check(foreground.albedo_color == green_mesh.mesh.material.albedo_color and not green_mesh.mesh.material.no_depth_test and green_mesh.mesh.material.transparency == BaseMaterial3D.TRANSPARENCY_DISABLED, "Foreground conversion preserves color without changing source material")
+		check(packages[0].get_node("Label").no_depth_test and packages[0].get_node("Label").render_priority > foreground.render_priority, "Name and count render above pickup models and corpses")
+		var band := packages[0].get_node("Visual").get_child(0).get_node("Band") as MeshInstance3D
+		check(band.get_active_material(0).no_depth_test, "Unassigned model surfaces also receive foreground material")
 		another.get_node("Visual").scale = Vector3.ONE * 3
 		check(is_equal_approx(another.get_node("CollisionShape3D").shape.radius, 0.8) and another._amount == 2, "Visual scale does not change pickup radius or count")
 	var bad_root := Node.new()
@@ -420,6 +432,53 @@ func _shooting_and_models() -> void:
 	fallback.configure(red, 3)
 	region.add_child(fallback)
 	check(fallback.get_node("Visual").get_child(0) is Node3D and fallback._amount == 3, "Invalid model root uses visible fallback without losing ammo")
+	region.free()
+	await _frames()
+
+func _drop_limit() -> void:
+	var region = _fixture()
+	var definition: AmmoDefinition = region.get_node("Player/Equipment").primary_weapon.ammo_definition
+	definition.drop_min_count = 1
+	definition.drop_max_count = 1
+	root.add_child(region)
+	var player = region.get_node("Player")
+	player.set_physics_process(false)
+	var equipment = player.get_node("Equipment")
+	equipment._ammo_states[0].magazine_rounds = 0
+	await _frames()
+	var first := _enemy(region, Vector3(-3, 0, 0))
+	var second := _enemy(region, Vector3(3, 0, 0))
+	var third := _enemy(region, Vector3(0, 0, -3))
+	first.receive_hit(10000)
+	second.receive_hit(10000)
+	third.receive_hit(10000)
+	check(region.ammo_drops._pending_spawns == 2, "Same-frame deaths reserve at most two pending slots")
+	await _frames()
+	check(region.ammo_drops.uncollected_count() == 2 and _packages(region).size() == 2, "Two uncollected packages stop the third death")
+	player.global_position = _packages(region)[0].global_position
+	await _frames(14)
+	check(region.ammo_drops.uncollected_count() == 1 and equipment.reserve_ammo.energy == 1, "Real proximity pickup releases one drop slot")
+	player.global_position = Vector3(0, 0, 5)
+	await _frames()
+	third.died.emit()
+	await _frames()
+	check(region.ammo_drops.uncollected_count() == 1, "Suppressed old deaths do not queue a later replacement")
+	third.reset_target()
+	third.receive_hit(10000)
+	await _frames()
+	check(region.ammo_drops.uncollected_count() == 2, "A new eligible death fills the released slot")
+	region._reset_targets()
+	await _frames()
+	check(region.ammo_drops.uncollected_count() == 0 and region.ammo_drops._pending_spawns == 0, "Reset clears both ground and reserved capacity")
+	first.global_position = Vector3(40, 0, 0)
+	first.receive_hit(10000)
+	await _frames()
+	check(region.ammo_drops.uncollected_count() == 0 and region.ammo_drops._pending_spawns == 0, "Failed ground placement returns its reserved slot")
+	second.receive_hit(10000)
+	region._reset_targets()
+	third.receive_hit(10000)
+	await _frames()
+	check(region.ammo_drops.uncollected_count() == 1 and region.ammo_drops._pending_spawns == 0, "Old-generation callback cannot consume a new generation reservation")
 	region.free()
 	await _frames()
 
@@ -443,3 +502,67 @@ func _waves() -> void:
 			check(_packages(region).size() == 2, "Final wave retains all drops after runtime enemies retire")
 	region.free()
 	await _frames()
+
+## 使用实际渲染器运行；普通模型被实体遮挡作为对照，再检查掉落盒子和标签的像素。
+func _render_foreground() -> void:
+	var world := Node3D.new()
+	root.add_child(world)
+	current_scene = world
+	var environment := WorldEnvironment.new()
+	environment.environment = Environment.new()
+	environment.environment.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
+	environment.environment.ambient_light_color = Color.WHITE
+	environment.environment.ambient_light_energy = 1.0
+	world.add_child(environment)
+	var camera := Camera3D.new()
+	camera.projection = Camera3D.PROJECTION_ORTHOGONAL
+	camera.size = 2.5
+	world.add_child(camera)
+	camera.position = Vector3(0, 1, 4)
+	camera.look_at(Vector3(0, 0.3, 0))
+	var blocker := MeshInstance3D.new()
+	blocker.mesh = BoxMesh.new()
+	blocker.mesh.size = Vector3(3, 3, 0.15)
+	blocker.position = Vector3(0, 1, 1)
+	var material := StandardMaterial3D.new()
+	material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	material.albedo_color = Color(0.8, 0.05, 0.8)
+	blocker.material_override = material
+	world.add_child(blocker)
+	var definition := AmmoDefinition.legacy(0)
+	var ordinary := definition.drop_model.instantiate()
+	world.add_child(ordinary)
+	var pickup = load("res://scenes/world/objects/ammo_pickup.tscn").instantiate()
+	pickup.configure(definition, 7)
+	world.add_child(pickup)
+	pickup.hide()
+	for frame in range(6): await process_frame
+	await RenderingServer.frame_post_draw
+	var before := root.get_texture().get_image()
+	check(before != null and not before.is_empty(), "Actual renderer provides a viewport image")
+	if before == null or before.is_empty():
+		world.free()
+		return
+	var image_scale := Vector2(before.get_size()) / camera.get_viewport().get_visible_rect().size
+	var point := Vector2i(camera.unproject_position(Vector3(0.12, 0.11, 0)) * image_scale)
+	var blocked_color := before.get_pixelv(point)
+	check(blocked_color.r > 0.5 and blocked_color.b > 0.5 and blocked_color.g < 0.3, "Opaque foreground geometry actually hides the ordinary model")
+	ordinary.hide()
+	pickup.show()
+	for frame in range(6): await process_frame
+	await RenderingServer.frame_post_draw
+	var after := root.get_texture().get_image()
+	var visible_color := after.get_pixelv(point)
+	check(visible_color.g > visible_color.r and visible_color.g > visible_color.b, "Pickup model renders above the same opaque occluder")
+	var label_point := Vector2i(camera.unproject_position(Vector3(0, 0.55, 0)) * image_scale)
+	var white_pixels := 0
+	for y in range(maxi(0, label_point.y - 12), mini(after.get_height(), label_point.y + 12)):
+		for x in range(maxi(0, label_point.x - 65), mini(after.get_width(), label_point.x + 65)):
+			var color := after.get_pixel(x, y)
+			if color.r > 0.8 and color.g > 0.8 and color.b > 0.8: white_pixels += 1
+	check(white_pixels > 8, "Pickup name and count remain visible above opaque geometry")
+	DirAccess.make_dir_recursive_absolute("res://logs/ammo_visibility_limit_20261027")
+	before.save_png("res://logs/ammo_visibility_limit_20261027/occluded_control.png")
+	after.save_png("res://logs/ammo_visibility_limit_20261027/foreground_pickup.png")
+	world.free()
+	await process_frame

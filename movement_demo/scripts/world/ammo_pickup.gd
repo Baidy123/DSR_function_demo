@@ -25,9 +25,39 @@ func _ready() -> void:
 		model = null
 	if model == null: model = FALLBACK_MODEL.instantiate()
 	$Visual.add_child(model)
+	_show_in_foreground(model)
 	$Label.text = "%s ×%d" % [_ammo.display_name, _amount]
 	body_entered.connect(_on_entered)
 	body_exited.connect(_on_exited)
+
+## 只改当前掉落实例的绘制层级；不修改共享模型／材质，也不抬高地面位置。
+func _show_in_foreground(node: Node) -> void:
+	if node is MeshInstance3D and node.mesh != null:
+		node.ignore_occlusion_culling = true
+		if node.material_override != null:
+			node.material_override = _foreground_material(node.material_override)
+		else:
+			for surface in range(node.mesh.get_surface_count()):
+				node.set_surface_override_material(surface, _foreground_material(node.get_active_material(surface)))
+		if node.material_overlay != null: node.material_overlay = _foreground_material(node.material_overlay)
+	elif node is Label3D:
+		node.no_depth_test = true
+		node.render_priority = Material.RENDER_PRIORITY_MAX
+	for child in node.get_children(): _show_in_foreground(child)
+
+func _foreground_material(source: Material) -> BaseMaterial3D:
+	# 标准／ORM材质复制原贴图与颜色；无材质或自定义Shader使用标准材质保证可见。
+	var material: BaseMaterial3D = source.duplicate() if source is BaseMaterial3D else StandardMaterial3D.new()
+	material.no_depth_test = true
+	material.depth_draw_mode = BaseMaterial3D.DEPTH_DRAW_DISABLED
+	# 深度关闭还需进入透明队列，才能稳定在尸体等不透明几何之后绘制。
+	material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	material.render_priority = Material.RENDER_PRIORITY_MAX - 1
+	if material.next_pass != null: material.next_pass = _foreground_material(material.next_pass)
+	return material
+
+func is_available() -> bool:
+	return not _claimed and is_inside_tree() and not is_queued_for_deletion()
 
 func _has_physics(node: Node) -> bool:
 	if node is CollisionObject3D or node is CollisionShape3D or node is CollisionPolygon3D: return true

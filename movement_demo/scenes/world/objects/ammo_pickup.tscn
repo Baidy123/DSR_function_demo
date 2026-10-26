@@ -22,4 +22,5 @@ position = Vector3(0, 0.55, 0)
 billboard = 1
 font_size = 32
 pixel_size = 0.007
-no_depth_test = false
+no_depth_test = true
+render_priority = 127

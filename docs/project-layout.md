@@ -1,5 +1,7 @@
 # 项目目录结构
 
+弹药置顶与数量上限（2026-10-27）：原 `ammo_pickup.gd` 为模型表面复制前景材质，原Label3D关闭深度测试并提高绘制优先级，保留地面位置／碰撞。原 `ammo_drop_controller.gd` 在实际死亡受理时为延迟生成预留名额，每区地面有效包＋待生成包合计最多2；拾取即释放名额，生成失败和复位清理预约，不增加全局服务或循环。原专项含实际OpenGL遮挡截图及像素对照；见[实施记录](superpowers/plans/2026-10-26-ammo-drops-and-types.md)。
+
 弹药与缺弹掉落（2026-10-26）：`weapons/ammo_definition.gd`／`ammo_supply.gd` 定义类型与出生条目，实例在 `resources/ammo/types/`，模型在 `scenes/presentation/ammo/`。Equipment 继续持有唯一运行库存，按稳定ID共享备弹，提供 `ammo_snapshot()`／`add_ammo()`；WeaponAmmo 只执行每枪消耗与换弹。区域原 `shooting_range.gd` 通过注册／注销／复位接入无循环的 `world/ammo_drop_controller.gd`；私有 `ammo_drop_position.gd` 负责有限地面检查，`ammo_pickup.gd` 和 `scenes/world/objects/ammo_pickup.tscn` 负责显示、近处检测及一次入账。包挂在区域内部容器，跨波保留；原敌人死亡信号、AI、协调器、波次与剧情库存职责不变。新增 `ammo_drop_test.gd` 登记在战斗测试入口，含编辑器模式配置分支；见[实施记录](superpowers/plans/2026-10-26-ammo-drops-and-types.md)。
 
 波次出生搜索（2026-10-26）：原 `world/enemy_wave_definition.gd` 保存逐波开关及误差半径，原控制器在实际提交时取样并向本波就绪 AI 交付。`enemy_memory.gd`／`enemy_context.gd` 保存并清理一次性出生线索；AI 只提供接收入口，原 `enemy_search.gd` 执行个人快速追查及持续搜索，原 `squad_coordination.gd` 从本队成员提示初始化队级搜索，`enemy_search_formation.gd` 对出生来源填写原限时加速字段。速度复用原Search配置，出生年龄读取区域原始时钟，不写视觉记忆。初始波强制排除，公开编号仍从1开始，不添加节点、广播或循环。新 `enemy_wave_search_test.gd` 复用原波次夹具，原编辑分支核对字段与保存；见[使用说明](gameplay/ENEMY_WAVES.md#后续波出生即搜索)。
