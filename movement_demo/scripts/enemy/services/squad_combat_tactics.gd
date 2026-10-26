@@ -24,7 +24,7 @@ static func refresh_contact_post(context, profile: Dictionary, body: Dictionary,
 	task.look_position = target
 	return true
 
-static func sites(context, profile: Dictionary, body: Dictionary, objective: Dictionary, bodies: Dictionary, profiles: Dictionary) -> Array[Dictionary]:
+static func sites(context, profile: Dictionary, body: Dictionary, objective: Dictionary, bodies: Dictionary, profiles: Dictionary, recovery_round: int = 0) -> Array[Dictionary]:
 	var target: Vector3 = objective.position
 	var away: Vector3 = body.position - target
 	away.y = 0.0
@@ -44,15 +44,44 @@ static func sites(context, profile: Dictionary, body: Dictionary, objective: Dic
 			radius = clampf(front.length() + 2.0, 4.0, 8.0)
 		# All points still pass original range, lane, body and route validation.
 		radius = minf(radius, float(profile.weapon.fire_range) * 0.8)
+	# A complete unsuccessful pass rotates one finite page, not an ever larger
+	# pool. Stalled members use their own approach and different radial bands;
+	# healthy teammates keep their existing geometry and firing posts.
+	var angle_shift := 0.0
+	if recovery_round > 0:
+		away = body.position - target
+		away.y = 0.0
+		if away.is_zero_approx(): away = Vector3.BACK
+		var ids := bodies.keys()
+		ids.sort()
+		angle_shift = (float(ids.find(body.get("id", context.actor.get_instance_id()))) + 1.0) * 0.23 + float(recovery_round) * 0.31
+		if profile.firearms:
+			var scale: float = [0.75, 1.25, 1.0][(recovery_round - 1) % 3]
+			radius = minf(maxf(3.2, radius * scale), float(profile.weapon.fire_range) * 0.8)
 	var result: Array[Dictionary] = []
+	if recovery_round % 2 == 1:
+		# A nearby lateral/backward step can open a muzzle around a corner even
+		# when the usual target-centred ring is occupied. It still needs a real
+		# firing lane, a complete route and the same whole-team checks.
+		var distance := 1.4 + float(recovery_round - 1) * 0.5
+		for index in 8:
+			var angle := TAU * float(index) / 8.0
+			var raw: Vector3 = body.position + Vector3(cos(angle), 0.0, sin(angle)) * distance
+			var point := NavigationServer3D.region_get_closest_point(context.navigation_region.get_rid(), raw)
+			if Contract.horizontal(point, raw) > 0.4 or absf(point.y - body.position.y) > 0.5: continue
+			point.y = body.position.y
+			result.append({"position": point, "look_position": target, "site_key": "combat:%s:local:%s:%s" % [body.get("id", context.actor.get_instance_id()), recovery_round, index]})
+		return result
 	for offset in [0.7, -0.7, 1.25, -1.25, 0.0, PI, 2.1, -2.1]:
-		var raw: Vector3 = target + away.normalized().rotated(Vector3.UP, offset) * radius
+		var raw: Vector3 = target + away.normalized().rotated(Vector3.UP, offset + angle_shift) * radius
 		var point := raw
 		if profile.firearms:
 			point = NavigationServer3D.region_get_closest_point(context.navigation_region.get_rid(), raw)
 			if Contract.horizontal(point, raw) > 0.4 or absf(point.y - body.position.y) > 0.5: continue
 		point.y = body.position.y
-		result.append({"position": point, "look_position": target, "site_key": "combat:%s:%s" % [body.get("id", context.actor.get_instance_id()), offset]})
+		var key := "combat:%s:%s" % [body.get("id", context.actor.get_instance_id()), offset]
+		if recovery_round > 0: key += ":recovery:%s" % recovery_round
+		result.append({"position": point, "look_position": target, "site_key": key})
 	return result
 
 ## Pure joint costs. Crossing briefly can be scheduled; following the same

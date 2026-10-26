@@ -419,6 +419,9 @@ func _update_label() -> void:
 		var task: Dictionary = context.coordination_assignment()
 		var names := {&"engage": "接敌", &"support": "支援", &"flank": "侧翼机动", &"search": "搜索", &"guard": "警戒", &"reload": "换弹", &"move": "让路", &"patrol": "巡逻"}
 		label = "队伍指挥·%s" % names.get(task.get("role"), "等待任务")
+		if task.get("role") == &"guard" and task.has("recovery_reason"):
+			var recovery_names := {&"finding_post": "寻找接敌位置", &"post_occupied": "调整站位", &"friendly_fire_lane": "调整射界", &"passage_occupied": "等待通道"}
+			label = "队伍指挥·%s" % recovery_names.get(task.recovery_reason, "寻找接敌位置")
 	var name: String = context.unit.display_name if context.unit != null else "未配置兵种"
 	actor.set_status_text("%s：%s\n生命 %d / %d" % [name, label, ceili(actor.health), ceili(actor.max_health)])
 

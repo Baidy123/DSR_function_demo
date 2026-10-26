@@ -10,6 +10,8 @@ const Traffic = preload("res://scripts/enemy/services/squad_traffic.gd")
 const Search = preload("res://scripts/enemy/services/squad_search.gd")
 const Patrol = preload("res://scripts/enemy/services/squad_patrol.gd")
 const Combat = preload("res://scripts/enemy/services/squad_combat_tactics.gd")
+const ContactRecovery = preload("res://scripts/enemy/services/squad_contact_recovery.gd")
+var _contact_recovery = ContactRecovery.new()
 const Support = preload("res://scripts/enemy/services/squad_support.gd")
 const Inspection = preload("res://scripts/enemy/services/enemy_cover_inspection_geometry.gd")
 var _support = Support.new()
@@ -78,6 +80,7 @@ func registered_member_count() -> int:
 
 func reset() -> void:
 	_epoch += 1
+	_contact_recovery = ContactRecovery.new()
 	_search = Search.new()
 	_defense = Defense.new()
 	_support = Support.new()
@@ -105,6 +108,7 @@ func reset() -> void:
 	if environment != null: environment.release_squad_reservations(self)
 
 func release_member(id: int) -> void:
+	_contact_recovery.members.erase(id)
 	_patrol.release(id)
 	_search.coverage.release(id)
 	_observations.erase(id)
@@ -209,6 +213,7 @@ func advance() -> void:
 		_objective.search_center = _search.center
 		_objective.search_revision = _search.revision
 	_update_progress()
+	_contact_recovery.observe(_tasks, _bodies, _objective, elapsed)
 	var joint_arrivals: Array = []
 	for key in _pending_cover_preparations():
 		var participants: Array = _barriers[key].members
@@ -385,6 +390,10 @@ func _plan() -> void:
 	if map_revision != _last_map_revision:
 		_last_map_revision = map_revision
 		_preparation.clear()
+	if _continue_contact_yield(): return
+	if _preparation.has("contact_repair"):
+		_resume_contact_repair()
+		return
 	var must_replan = _preparation.size() > 0
 	for id in _tasks:
 		var task: Dictionary = _tasks[id]
@@ -419,6 +428,7 @@ func _plan() -> void:
 		var sites = Formation.sites(context, _objective, _bodies.size(), _attempt)
 		_preparation = {"members": _bodies.keys(), "index": 0, "candidates": {}, "works": {}, "revision": 0, "solved_revision": -1, "sites": sites, "map_revision": map_revision,
 			"objective_id": _objective.objective_id, "started_at": elapsed}
+		_preparation.contact_priority = _objective.phase == &"contact" and _contact_recovery.take_priority_pass()
 	# A slow optional action must not monopolize preparation for the entire
 	# squad. Every member gets the same bounded turn, then resumes its cursor.
 	for skipped in _preparation.members.size():
@@ -560,10 +570,29 @@ func _finish_plan(deadline: int) -> void:
 			for task in _tasks.values():
 				task.reason = &"retry_other_posts"
 				task.check_at = elapsed + Contract.PERIOD
-	if _preparation_done(): _preparation.clear()
+	if _preparation_done():
+		var repair := _contact_recovery.finished(_tasks, _preparation.candidates, _bodies, _objective, _last_map_revision, elapsed, _preparation.get("contact_priority", false)) if _objective.phase == &"contact" else {}
+		if not repair.is_empty():
+			repair.merge({"started_at": elapsed, "objective_id": _objective.objective_id, "blocker_index": 0, "site_index": 0})
+			_preparation.contact_repair = repair
+			_preparation.erase("solution")
+			_due = elapsed
+		else: _preparation.clear()
 	else:
 		# Committing an early solution cannot discard the remaining trained
 		# actions. Finish their cursors and compare their proposals afterwards.
+		if _objective.phase == &"contact":
+			# A member's first complete failed page must not wait for every
+			# teammate's optional actions. Restart only that completed cursor;
+			# all unfinished teammates retain their exact preparation progress.
+			var ready := {}
+			for id in _preparation.candidates:
+				if _preparation.works.get(id, {}).get("done", false) and _contact_recovery.round_for(id) == 0:
+					ready[id] = _preparation.candidates[id]
+			_contact_recovery.finished(_tasks, ready, _bodies, _objective, _last_map_revision, elapsed)
+			for id in ready:
+				if _contact_recovery.round_for(id) > 0: _preparation.works.erase(id)
+			_preparation.contact_priority = _contact_recovery.take_priority_pass() or _preparation.get("contact_priority", false)
 		_preparation.erase("solution")
 		_due = elapsed
 
@@ -573,7 +602,9 @@ func _member_work(id: int) -> Dictionary:
 	var context = _context(id)
 	var sites: Array = _preparation.sites.duplicate(true)
 	if _objective.phase == &"patrol": sites = _patrol.sites(context, float(configuration.get("values", {}).get("patrol_radius", 3.0)), elapsed)
-	if _objective.phase == &"contact": sites = Combat.sites(context, _profiles[id], body, _objective, _bodies, _profiles)
+	if _objective.phase == &"contact":
+		sites = Combat.sites(context, _profiles[id], body, _objective, _bodies, _profiles, _contact_recovery.round_for(id))
+		sites = _contact_recovery.filter_sites(id, sites, _bodies, _objective.position, _last_map_revision, elapsed)
 	if _objective.phase == &"search":
 		# A completed route can continue into its prepared future, after checking
 		# current coverage and revalidating navigation through normal candidates.
@@ -590,10 +621,17 @@ func _member_work(id: int) -> Dictionary:
 	if needs_reload: sites = [{"position": body.position, "look_position": _objective.position, "site_key": "reload:%s" % id}]
 	var previous: Dictionary = _tasks[id]
 	var defense_role = _defense.role(id)
+	if _contact_yield_members().has(id):
+		var continuing := previous.duplicate(true)
+		continuing.route = Traffic.remaining(body.position, previous.route)
+		continuing.estimate = 0.0
+		candidates.append(continuing)
+		return {"candidates": candidates, "sites": [], "cursor": 0, "defense_ready": true, "proactive": false, "retain": true}
 	# Repair the changed member promptly; already valid teammates need no new
 	# geometry scan for this emergency transaction. Periodic planning still
 	# enumerates every installed executor for the full team.
-	if _objective.phase == &"contact" and _tasks.values().any(func(task): return task.get("needs_replan", false)) and not previous.get("needs_replan", false) and defense_role.is_empty() and not needs_reload and previous.role in [&"engage", &"support", &"flank"] and previous.state in [&"executing", &"occupied"] and previous.expires_at > elapsed and context.validate_command_offer(previous, _profiles[id]):
+	var emergency: bool = _preparation.get("contact_priority", false) or _tasks.values().any(func(task): return task.get("needs_replan", false))
+	if _objective.phase == &"contact" and emergency and not previous.get("needs_replan", false) and defense_role.is_empty() and not needs_reload and previous.role in [&"engage", &"support", &"flank"] and previous.state in [&"executing", &"occupied"] and previous.expires_at > elapsed and context.validate_command_offer(previous, _profiles[id]):
 		var retained := previous.duplicate(true)
 		retained.route = Traffic.remaining(body.position, previous.route)
 		retained.estimate = 0.0
@@ -721,7 +759,9 @@ func _commit(proposals: Dictionary, _traffic: Dictionary) -> bool:
 	for id in table: _defense.accept(id, table[id])
 	for participants in traffic.get("synchronized_groups", []): _install_barrier(participants)
 	for id in table:
-		_progress[id] = {"position": _bodies[id].position, "at": elapsed}
+		# Reissuing a task is not body progress. Frequent partial commits used
+		# to renew this clock forever, hiding a blocked departure from recovery.
+		if not _progress.has(id): _progress[id] = {"position": _bodies[id].position, "at": elapsed}
 	_last_replan = &"complete_plan"
 	return true
 
@@ -788,7 +828,9 @@ func _update_progress() -> void:
 		if task.get("reason") in [&"staging_barrier", &"step_replanning", &"formation_gap", &"support_preparing", &"support_replanning"]:
 			_progress[id].at = elapsed
 			continue
-		if Contract.horizontal(body.position, task.position) <= 0.12 or body.occupied: continue
+		if Contract.horizontal(body.position, task.position) <= 0.12 or body.occupied:
+			_progress[id].at = elapsed
+			continue
 		var passing = false
 		for other in _feedback.get(id, {}).get("waiting_for", []):
 			if _bodies.has(other) and Vector2(_bodies[other].velocity.x, _bodies[other].velocity.z).length() > 0.1: passing = true
@@ -801,6 +843,120 @@ func _update_progress() -> void:
 			_failed_sites[[id, task.site_key]] = elapsed + 4.0
 			_due = 0.0
 			_last_replan = &"no_motion_progress"
+
+## Retry one concrete blocked contact offer with one ally's temporary move.
+## One post per area tick keeps this recovery inside the existing scheduler.
+func _resume_contact_repair() -> void:
+	var work: Dictionary = _preparation.contact_repair
+	var id: int = work.member
+	if _objective.get("phase") != &"contact" or _objective.objective_id != work.objective_id or elapsed - float(work.started_at) > 3.0 or not _tasks.has(id) or (_tasks[id].role != &"guard" and _tasks[id].state != &"blocked"):
+		_preparation.clear()
+		return
+	_due = elapsed
+	var blockers: Array = work.failure.blockers
+	if work.blocker_index >= blockers.size():
+		_preparation.clear()
+		return
+	var blocker: int = blockers[work.blocker_index]
+	var protected: bool = not _bodies.has(blocker) or _bodies[blocker].occupied or _bodies[blocker].reloading or not _defense.role(blocker).is_empty() or _tasks[blocker].has("barrier_id") or _tasks[blocker].has("overwatch_for")
+	var moving_gun: StringName = &""
+	var last_gun := false
+	if not protected and ContactRecovery.firing(_bodies[blocker]):
+		last_gun = not _bodies.keys().any(func(other): return other != blocker and ContactRecovery.firing(_bodies[other]) and _tasks[other].role in [&"engage", &"support", &"flank", &"cover_peek"])
+		if last_gun and not work.get("allow_fire_gap", false):
+			# A qualified moving shooter can clear the lane without surrendering
+			# the last fire duty. Its new post still needs the original fire checks.
+			if _context(blocker).fire.fire_while_moving:
+				for executor in Contract.executors(_profiles[blocker], &"move"):
+					if Contract.qualified(_profiles[blocker], executor, &"engage"):
+						moving_gun = executor
+						break
+	if protected:
+		work.blocker_index += 1
+		work.site_index = 0
+		work.allow_fire_gap = false
+		return
+	if work.site_index >= 16:
+		# Fire continuity is a preference, not a permanent choke-point lock.
+		# Only after exhausting moving-fire posts may a validated replacement
+		# shooter receive a brief handoff through the same finite transaction.
+		if last_gun and not work.get("allow_fire_gap", false) and _profiles[id].firearms and work.failure.offer.get("tactical", {}).get("sustainable_fire", false):
+			work.allow_fire_gap = true
+			work.site_index = 0
+			return
+		work.blocker_index += 1
+		work.site_index = 0
+		work.allow_fire_gap = false
+		return
+	if last_gun and moving_gun.is_empty() and not work.get("allow_fire_gap", false):
+		work.site_index = 16
+		return
+	# The same two rings as Formation.yield_sites, one geometry unit per tick.
+	var radius := 1.4 if int(work.site_index) < 8 else 2.4
+	var angle := TAU * float(int(work.site_index) % 8) / 8.0
+	var point: Vector3 = _bodies[blocker].position + Vector3(cos(angle), 0.0, sin(angle)) * radius
+	work.site_index += 1
+	var path := Formation.route(_context(blocker), point)
+	if path.is_empty(): return
+	var site := {"position": point, "route": path, "site_key": "yield:%s" % point}
+	var table := _tasks.duplicate(true)
+	var action := Contract.executor(_profiles[blocker], &"move")
+	if action.is_empty(): return
+	table[id] = work.failure.offer.duplicate(true)
+	var previous: Dictionary = table[blocker]
+	var yielding := {}
+	if not moving_gun.is_empty():
+		yielding = Formation.candidate(_context(blocker), _profiles[blocker], _bodies[blocker],
+			{"position": point, "look_position": _objective.position, "prepared_route": path, "role": &"engage", "site_key": site.site_key}, _objective, previous, moving_gun)
+		if yielding.is_empty(): return
+		action = moving_gun
+	yielding.merge({"action": action, "role": &"move", "position": site.position, "route": site.route,
+		"look_position": _objective.position, "objective_id": _objective.objective_id, "site_key": site.site_key,
+		"resume_position": previous.get("resume_position", previous.position), "resume_task": previous.get("resume_task", previous).duplicate(true),
+		"yield_for": id, "return_when": &"passage_cleared", "contact_yield": true, "estimate": 0.0}, true)
+	table[blocker] = yielding
+	var selected := {}
+	var snapshot := {"members": _bodies, "template": _template}
+	for member in table:
+		table[member].route = Traffic.remaining(_bodies[member].position, table[member].route)
+		if not _planner._eligible(snapshot, member, table[member], selected): return
+		if not Formation.valid_route(_context(member), table[member].route, table[member].get("route_plan", {})): return
+		selected[member] = table[member]
+	var traffic := Traffic.plan(table, _bodies, false)
+	if traffic.valid and Support.acyclic(table, traffic) and _commit(table, traffic):
+		_last_replan = &"contact_joint_yield"
+		yield_count += 1
+		_preparation.clear()
+
+## A valid joint departure must reach the bodies before ordinary reconsideration
+## replaces either side. Actual blocking, defense, reload, map/target changes and
+## the original task expiry still interrupt it through the existing planner.
+func _continue_contact_yield() -> bool:
+	if _contact_yield_members().is_empty(): return false
+	for id in _tasks:
+		if not _contact_task_current(id): return false
+	return true
+
+func _contact_yield_members() -> Array:
+	var result: Array = []
+	if _objective.phase != &"contact": return result
+	for id in _tasks:
+		var task: Dictionary = _tasks[id]
+		if not task.get("contact_yield", false): continue
+		var requester: int = task.get("yield_for", 0)
+		if not _tasks.has(requester) or not _contact_task_current(id) or not _contact_task_current(requester): continue
+		if task.state == &"complete" and _passage_cleared(task): continue
+		for member in [id, requester]:
+			if not result.has(member): result.append(member)
+	return result
+
+func _contact_task_current(id: int) -> bool:
+	var task: Dictionary = _tasks[id]
+	var body: Dictionary = _bodies[id]
+	if task.state == &"blocked" or task.get("needs_replan", false) or task.expires_at <= elapsed or task.objective_id != _objective.objective_id or task.get("map_revision") != _last_map_revision: return false
+	if (body.reloading or body.can_reload and body.rounds == 0) and task.role != &"reload": return false
+	var defense_role = _defense.role(id)
+	return defense_role.is_empty() or task.role == defense_role
 
 func _repair_traffic(attempted: Dictionary = {}) -> bool:
 	# Joint yield/return plan: the blocker moves to a validated temporary post;
@@ -837,7 +993,12 @@ func _repair_traffic(attempted: Dictionary = {}) -> bool:
 	return false
 
 func assignment(context) -> Dictionary:
-	return _tasks.get(context.actor.get_instance_id(), {}).duplicate(true)
+	var id: int = context.actor.get_instance_id()
+	var task: Dictionary = _tasks.get(id, {}).duplicate(true)
+	if task.get("role") == &"guard":
+		var recovery := _contact_recovery.snapshot(id, elapsed)
+		if int(recovery.get("round", 0)) > 0: task.recovery_reason = recovery.reason
+	return task
 
 func accept(context, token: Dictionary) -> bool:
 	var id: int = context.actor.get_instance_id()
@@ -960,6 +1121,7 @@ func debug_member_snapshot(context) -> Dictionary:
 	for step in task.get("future_steps", []): future.append_array(step.route)
 	return {"source": &"squad" if not task.is_empty() else &"personal", "task": task,
 		"scoring": _scoring.duplicate(),
+		"contact_recovery": _contact_recovery.snapshot(context.actor.get_instance_id(), elapsed),
 		"coverage_owner": get_instance_id(),
 		"next_route": future, "observation_direction": -context.actor.global_basis.z,
 		"objective": _objective.duplicate(true), "template": _template.duplicate(true),

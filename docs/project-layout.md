@@ -1,5 +1,7 @@
 # 项目目录结构
 
+接敌恢复（2026-10-27）：`scripts/enemy/services/squad_contact_recovery.gd` 是小队协调器私有的值记录服务，只维护持续警戒历史、有限候选轮次及最近受阻提案；不读取场景、不新增节点或时钟。原 `squad_combat_tactics.gd` 生成恢复站位，原 `squad_coordination.gd` 分帧准备、校验并原子提交整队任务；`enemy_ai.gd` 只将恢复原因用于状态显示。接口和默认值见[接敌恢复](enemy-ai.md#接敌后的持续警戒恢复2026-10-27)，真实保存地图专项为 `tests/enemy/squad_contact_recovery_test.gd`。
+
 五关主入口与说明（2026-10-27）：`project.godot` 默认启动 `scenes/world/levels/lvl_1.tscn`，五关各增加 `scenes/ui/level_flow.tscn` 实例。`scripts/systems/level_flow.gd` 监听原波次完成信号，只在玩家点击结果界面按钮后切换；第五关显示通关与重玩按钮。内嵌 `scenes/ui/play_guide.tscn`／`scripts/ui/play_guide.gd` 提供共用的启动说明、暂停恢复和可滚动正文；布局采用原生全屏锚点，关闭按钮固定在正文外。原区域、身体、AI、波次、Health及酒馆任务职责保持，详见[游玩说明](gameplay/PLAY_GUIDE.md)。
 
 五关试玩配置（2026-10-27）：`scenes/world/levels/lvl_1.tscn` 至 `lvl_5.tscn` 均由用户保存玩家、相机、灯光、小队与波次。`scenes/enemy/levels/lvl_4/`、`lvl_5/` 各保存近战、手枪、冲锋枪和霰弹四种预设，训练在 `resources/enemy/training/levels/` 下同关目录；公共霰弹兵位于 `scenes/enemy/types/shotgun.tscn`，新增武器为 `resources/weapons/test_rifle.tres` 与 `enemy_test_shotgun.tres`。这些是用户关卡和资源配置的归档，保持原身体、AI、导航、波次与装备接口；详见[关卡说明](gameplay/LEVEL_MAPS.md)。
