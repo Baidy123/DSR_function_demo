@@ -1,5 +1,7 @@
 # 霰弹：配置、图样与试玩
 
+准备修改（2026-10-26）：用户提出不稳定射击仍可能向中心集中、打稳收益不明显，已整理[可选向外扩散设计草案](../superpowers/specs/2026-10-26-shotgun-outward-spread-design_todo.md)。**目前仅有文档，尚未实现；下文仍描述现有随机偏移。** 新模式、最低外扩比例与中心弹丸处理以草案建议为准，最终强度需实际命中统计和试玩确定。
+
 ## 最快上手
 
 1. 在 **Player → Equipment → Primary Weapon / Secondary Weapon** 展开武器；敌人仍在自己的 **Weapon** 配置。
