@@ -133,7 +133,7 @@ static func route_plan(context, destination: Vector3, via: Vector3 = Vector3.INF
 		if NavigationRoute.pending(context, destination): return {}
 	if not description.is_empty():
 		var speed: float = maxf(0.1, context.actor.move_speed)
-		var preference: float = maxf(0.0, float(context.setting(&"selection", &"vault_preference", 6.0)))
+		var preference: float = maxf(0.0, float(context.setting(&"selection", &"vault_preference", 2.0)))
 		var walk_seconds: float = context.cover_selection._path_length_from_path(walking) / speed if not walking.is_empty() else INF
 		if NavigationRoute.seconds(description, speed) - preference < walk_seconds: return description
 	return NavigationRoute.walking(walking)
@@ -320,7 +320,7 @@ static func _candidate(context, profile: Dictionary, body: Dictionary, site: Dic
 		result.pursuit_multiplier = float(parameters.get("combat_pursuit_speed_multiplier", speed))
 	if not description.is_empty() and description.geometry_revision >= 0:
 		result.route_plan = description
-		result.estimate -= maxf(0.0, float(context.setting(&"selection", &"vault_preference", 6.0)))
+		result.estimate -= maxf(0.0, float(context.setting(&"selection", &"vault_preference", 2.0)))
 	return result
 
 static func yield_sites(context, body: Dictionary) -> Array[Dictionary]:

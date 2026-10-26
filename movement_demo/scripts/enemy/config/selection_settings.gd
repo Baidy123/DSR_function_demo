@@ -5,9 +5,9 @@ func _init() -> void:
 	section = &"selection"
 
 ## 已通过完整路径与身体预检的翻越方案的基础偏好；0关闭。
-## 个人 Utility 按1.5倍扣除总代价（默认9分），团队协调器按原值（默认6分）。
+## 个人 Utility 按1.5倍扣除总代价（默认3分），团队协调器按原值（默认2分）。
 ## 不改变实际耗时、暴露或安全检查，其他更有利的方案仍可胜出。
-@export_range(0.0, 20.0, 0.25) var vault_preference: float = 6.0:
+@export_range(0.0, 20.0, 0.25) var vault_preference: float = 2.0:
 	set(value):
 		vault_preference = maxf(0.0, value)
 		mark_override(&"vault_preference")

@@ -95,7 +95,7 @@ func _run() -> void:
 func _preference_checks() -> void:
 	# Compare actual connected walk/vault alternatives without changing score
 	# weights, physical timing, navigation or the candidate's original outcome.
-	check(ai.context.setting(&"selection", &"vault_preference", 0.0) == 6.0, "existing training retains the six-point base vault preference shared with the coordinator")
+	check(ai.context.setting(&"selection", &"vault_preference", 0.0) == 2.0, "existing training uses the two-point base vault preference shared with the coordinator")
 	ai.training.profile.selected_tactics.clear()
 	ai.training.profile.set_setting(&"selection", &"vault_preference", 0.0)
 	ai.refresh_configuration(true)
@@ -126,10 +126,10 @@ func _preference_checks() -> void:
 	ai.training.profile.set_setting(&"selection", &"vault_preference", 0.0)
 	options = ai.action_selector.assess_options(ai, true)
 	check(ai.action_selector.choose_option(options).get("route", {}).is_empty(), "zero preference restores the original winner without accumulating credit")
-	ai.training.profile.set_setting(&"selection", &"vault_preference", 6.0)
+	ai.training.profile.set_setting(&"selection", &"vault_preference", 2.0)
 	options = ai.action_selector.assess_options(ai, true)
 	vaults = options.filter(func(pick): return pick.id == &"melee_engage" and not pick.get("route", {}).is_empty())
-	check(not vaults.is_empty() and is_equal_approx(baseline.cost - float(vaults[0].cost), 9.0), "default personal Utility receives nine credits from the unchanged six-point base preference")
+	check(not vaults.is_empty() and is_equal_approx(baseline.cost - float(vaults[0].cost), 3.0), "default personal Utility receives three credits from the two-point base preference")
 	ai._cancel_utility_execution()
 	ai.context.spatial.reset_evaluation()
 	var crossed := false
@@ -149,7 +149,7 @@ func _preference_checks() -> void:
 			break
 	check(saw_vault and crossed, "cold-cache connected pursuit autonomously vaults and lands with the default preference")
 	check(walk_started_at >= 0 and vault_selected_at > walk_started_at and (vault_selected_at - walk_started_at) * STEP < ai.utility_hold_seconds, "a better prepared vault refines the same walking action before its hold expires")
-	# Strong preference must still defer to the body's live character checks.
+	# Preference must still defer to the body's live character checks.
 	ai._cancel_utility_execution()
 	enemy.global_position = START
 	enemy.velocity = Vector3.ZERO
@@ -163,7 +163,7 @@ func _preference_checks() -> void:
 	player.global_position = vault.exit
 	await physics_frame
 	var blocked: Dictionary = LowGeometry.query_vault_at(enemy, wall, enemy.global_position, vault.exit - vault.entry, vault.duration, false)
-	check(blocked.get("reason") == "landing_space" and not enemy.begin_vault(vault) and not enemy.is_vaulting(), "nine personal preference credits never permit vaulting into the player's occupied landing space")
+	check(blocked.get("reason") == "landing_space" and not enemy.begin_vault(vault) and not enemy.is_vaulting(), "three personal preference credits never permit vaulting into the player's occupied landing space")
 
 func _contact_route_checks() -> void:
 	await _prepare()
