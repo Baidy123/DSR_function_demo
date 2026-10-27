@@ -1,6 +1,6 @@
 # 项目目录结构
 
-爆头与近战眩晕更新（2026-10-27）：`scripts/weapons/weapon_data.gd` 独占线性概率公式与武器配置，原 `headshot_resolver.gd` 按实际命中目标读取破绽并冻结结算；`player_combat_v3.gd` 只在玩家近战快照中携带眩晕参数。敌人身体私有 `scripts/enemy/services/enemy_melee_stun.gd` 保存一份计时／消费记录，沿身体原物理时钟更新，无额外 AI 节点或通用 buff 系统。原 `enemy_presentation.gd` 读取快照，按需实例化 `scenes/effects/melee_stun.tscn` 与纯表现 `scripts/systems/effects/melee_stun_effect.gd`；原 `lock_reticle.gd` 查询相同概率显示收缩菱形与亮边。现有节点路径、脚本 UID 及武器引用保持。接口与清理范围见[实施记录](superpowers/specs/2026-10-27-headshot-curve-melee-opening-design.md)。
+爆头与近战眩晕更新（2026-10-27）：`scripts/weapons/weapon_data.gd` 独占线性概率公式与武器配置，原 `headshot_resolver.gd` 按实际命中目标读取破绽并冻结结算；`player_combat_v3.gd` 只在玩家近战快照中携带眩晕参数。敌人身体私有 `scripts/enemy/services/enemy_melee_stun.gd` 保存本次近战倍率与一份计时／消费记录，沿身体原物理时钟更新；原 Resolver 用实际射击武器普通门槛乘倍率。无额外 AI 节点或通用 buff 系统。原 `enemy_presentation.gd` 读取快照，按需实例化 `scenes/effects/melee_stun.tscn` 与纯表现 `scripts/systems/effects/melee_stun_effect.gd`；原 `lock_reticle.gd` 查询相同概率显示收缩菱形与亮边。现有节点路径、脚本 UID 及武器引用保持。接口与清理范围见[实施记录](superpowers/specs/2026-10-27-headshot-curve-melee-opening-design.md)。
 
 接敌派发连续性（2026-10-27）：原 `squad_coordination.gd` 在纯规划器尚未完成比较时，可通过原完整事务提交已找到的全员可行表；仍持有并续算原组合栈和成员游标。目标移动不再饿死在途准备，全警戒提前返回也接回已完成成员恢复。新增 `tests/enemy/squad_dispatch_continuity_test.gd` 同时验证调度边界与保存第五关的真实连续目标移动，不新增运行服务或场景节点，见[验证记录](enemy-tests.md#接敌派发空窗2026-10-27)。
 

@@ -220,9 +220,9 @@ func _validate_property(property: Dictionary) -> void:
 	set(value):
 		melee_headshot_opening_enabled = value
 		notify_property_list_changed()
-## 玩家枪击此眩晕敌人时使用的爆头起始准度，与本枪普通门槛取较低者；不增加玩家准度。
-## 本次近战冻结该值；首次有效枪击后消费，当前眩晕期间不能重新授予。
-@export_range(0.0, 0.99, 0.01) var melee_headshot_accuracy_threshold: float = 0.7
+## 玩家枪击此眩晕敌人时，射击武器的普通爆头起始准度乘此倍率；80%×0.8=64%，不增加玩家准度。
+## 0将门槛降至0，1不降低门槛。本次近战冻结倍率；首次有效枪击后消费，当前眩晕期间不能重新授予。
+@export_range(0.0, 1.0, 0.01, "suffix:×") var melee_headshot_threshold_multiplier: float = 0.8
 ## 无遮挡且目标不主动移动时的击退参考距离（米）。
 @export_range(0.0, 5.0, 0.05) var melee_knockback_distance: float = 1.0
 ## 击退外力衰减至零的时间（秒）。
@@ -347,7 +347,7 @@ func get_headshot_settings(stability: float) -> Dictionary:
 ## 仅玩家近战入口传给敌人；共享武器的敌方攻击不携带此项，玩家受击也不读取它。
 func get_melee_stun_settings() -> Dictionary:
 	return {"seconds": _valid_seconds(melee_slow_seconds), "opening_enabled": melee_headshot_opening_enabled,
-		"accuracy_threshold": clampf(melee_headshot_accuracy_threshold, 0.0, 0.99) if is_finite(melee_headshot_accuracy_threshold) else 0.9}
+		"threshold_multiplier": clampf(melee_headshot_threshold_multiplier, 0.0, 1.0) if is_finite(melee_headshot_threshold_multiplier) else 1.0}
 
 
 func _angle_to_stability(angle: float, minimum: float, span: float) -> float:

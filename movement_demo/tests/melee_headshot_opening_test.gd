@@ -15,7 +15,7 @@ func _additional_checks() -> void:
 	gun.melee_knockback_distance = 0
 	gun.melee_slow_seconds = 2
 	gun.melee_slow_multiplier = 0.5
-	gun.melee_headshot_accuracy_threshold = 0.7
+	gun.melee_headshot_threshold_multiplier = 0.8
 	combat.equip_weapon(gun)
 	var enemy = _enemy(Vector3(0, 0, -1.2), true)
 	var other = _enemy(Vector3(3, 0, -1.2), true)
@@ -24,19 +24,19 @@ func _additional_checks() -> void:
 	var state: Dictionary = enemy.get_melee_stun_state()
 	check(combat.last_melee_target == enemy and enemy.health == 9999 and state.active and state.opening_available, "Actual melee grants one opening to the surviving enemy")
 	check(not other.get_melee_stun_state().active and not player.has_method("get_melee_stun_state"), "Other enemy and player receive no opening state")
-	check(is_equal_approx(state.remaining_seconds, 2) and is_equal_approx(state.accuracy_threshold, 0.7), "Target stores the attack's duration and absolute threshold")
+	check(is_equal_approx(state.remaining_seconds, 2) and is_equal_approx(state.threshold_multiplier, 0.8), "Target stores the attack's duration and threshold multiplier")
 	state.opening_available = false
 	check(enemy.get_melee_stun_state().opening_available, "Read-only snapshot cannot mutate the enemy's state")
 	var generation: int = enemy.get_melee_stun_state().generation
 	enemy._physics_process(0.5)
 	gun.melee_slow_seconds = 7
-	gun.melee_headshot_accuracy_threshold = 0.2
+	gun.melee_headshot_threshold_multiplier = 0.2
 	check(_swing(), "A second real melee is possible after the original weapon cooldown")
 	state = enemy.get_melee_stun_state()
-	check(is_equal_approx(state.remaining_seconds, 1.5) and is_equal_approx(state.accuracy_threshold, 0.7) and state.generation == generation, "Repeated melee does not extend, replace or restart the opening")
+	check(is_equal_approx(state.remaining_seconds, 1.5) and is_equal_approx(state.threshold_multiplier, 0.8) and state.generation == generation, "Repeated melee does not extend, replace or restart the opening")
 	check(enemy.health == 9998 and enemy.get_hit_movement_multiplier() < 1, "Repeated melee retains original damage and ordinary slowdown")
 	gun.melee_slow_seconds = 2
-	gun.melee_headshot_accuracy_threshold = 0.7
+	gun.melee_headshot_threshold_multiplier = 0.8
 	var before: float = enemy.health
 	_shoot(0.5)
 	state = enemy.get_melee_stun_state()
@@ -71,6 +71,7 @@ func _additional_checks() -> void:
 	gun.damage = 10
 	await _geometry_and_snapshots(enemy, other)
 	await _target_probability(enemy, other)
+	await _multiplier_rules(enemy)
 	await _shotgun_openings(enemy, other)
 	await _callback_generation(enemy, other)
 	await _visual_state(enemy, other)
@@ -111,12 +112,12 @@ func _geometry_and_snapshots(enemy, other) -> void:
 	combat.begin_frame(2, false)
 	check(combat.request_melee(), "Snapshot case starts through the original melee request")
 	gun.melee_slow_seconds = 6
-	gun.melee_headshot_accuracy_threshold = 0.1
+	gun.melee_headshot_threshold_multiplier = 0.1
 	combat.begin_frame(1, false)
 	var state: Dictionary = enemy.get_melee_stun_state()
-	check(state.active and is_equal_approx(state.remaining_seconds, 2) and is_equal_approx(state.accuracy_threshold, 0.7), "Changing the resource during windup cannot change the frozen attack")
+	check(state.active and is_equal_approx(state.remaining_seconds, 2) and is_equal_approx(state.threshold_multiplier, 0.8), "Changing the resource during windup cannot change the frozen attack")
 	gun.melee_slow_seconds = 2
-	gun.melee_headshot_accuracy_threshold = 0.7
+	gun.melee_headshot_threshold_multiplier = 0.8
 	enemy.clear_hit_effects()
 	gun.melee_slow_seconds = 0
 	before = enemy.health
@@ -164,10 +165,10 @@ func _target_probability(enemy, other) -> void:
 	var reference := RandomNumberGenerator.new()
 	reference.seed = 9182
 	combat._headshot_rng.seed = 9182
-	var expected: float = 30 if reference.randf() < 1.0 / 3.0 else 10
+	var expected: float = 30 if reference.randf() < 2.0 / 7.0 else 10
 	var before: float = enemy.health
 	_shoot(0.8)
-	check(is_equal_approx(before - enemy.health, expected) and combat._headshot_rng.state == reference.state, "Eighty-percent real shot uses the target's seventy-percent linear threshold")
+	check(is_equal_approx(before - enemy.health, expected) and combat._headshot_rng.state == reference.state, "Eighty-percent real shot uses the target's 0.8 multiplier and seventy-two-percent linear threshold")
 	combat.locked_target = enemy
 	combat.accuracy = 0.8
 	reticle._process(0)
@@ -176,13 +177,48 @@ func _target_probability(enemy, other) -> void:
 	_renew(enemy)
 	combat._headshot_rng.seed = 100
 	reference.seed = 100
-	expected = 30 if reference.randf() < 0.6 else 10
+	expected = 30 if reference.randf() < 2.0 / 3.0 else 10
 	before = enemy.health
 	_shoot(0.8)
-	check(is_equal_approx(before - enemy.health, expected), "Opening never raises a gun's already lower normal threshold")
+	check(is_equal_approx(before - enemy.health, expected), "Opening multiplies even a lower normal threshold instead of using a fixed minimum")
 	gun.headshot_accuracy_threshold = 0.9
 	reticle.set_process(true)
 	camera.queue_free()
+	await process_frame
+
+func _multiplier_rules(enemy) -> void:
+	gun.headshot_accuracy_threshold = 0.8
+	_renew(enemy)
+	combat.accuracy = 0.64
+	check(is_zero_approx(combat.get_target_headshot_chance(enemy)), "Eighty-percent normal threshold times 0.8 starts at exactly sixty-four percent")
+	combat.accuracy = 0.82
+	check(is_equal_approx(combat.get_target_headshot_chance(enemy), 0.5), "The multiplied threshold feeds the original linear probability formula")
+	var reference := RandomNumberGenerator.new()
+	reference.seed = 412
+	combat._headshot_rng.seed = 412
+	var expected: float = 30 if reference.randf() < 0.5 else 10
+	var before: float = enemy.health
+	_shoot(0.82)
+	check(is_equal_approx(before - enemy.health, expected) and not enemy.get_melee_stun_state().opening_available, "Real gun hit uses eighty times 0.8 and consumes the opening")
+	_renew(enemy)
+	var generation: int = enemy.get_melee_stun_state().generation
+	var other_gun := gun.duplicate() as WeaponData
+	other_gun.headshot_accuracy_threshold = 0.5
+	other_gun.melee_headshot_threshold_multiplier = 0.1
+	combat.equip_weapon(other_gun)
+	combat.accuracy = 0.7
+	check(is_equal_approx(combat.get_target_headshot_chance(enemy), 0.5) and enemy.get_melee_stun_state().generation == generation and is_equal_approx(enemy.get_melee_stun_state().threshold_multiplier, 0.8), "Switching guns uses the shooting gun's threshold and preserves the original melee multiplier")
+	combat.equip_weapon(gun)
+	for sample in [[0.0, 0.0], [1.0, 1.0], [-0.4, 0.0], [2.0, 1.0], [NAN, 1.0], [INF, 1.0]]:
+		gun.melee_headshot_threshold_multiplier = sample[0]
+		_renew(enemy)
+		combat.accuracy = 0.64
+		var expected_chance: float = 0.64 if sample[1] == 0.0 else 0.0
+		check(is_equal_approx(enemy.get_melee_stun_state().threshold_multiplier, sample[1]) and is_equal_approx(combat.get_target_headshot_chance(enemy), expected_chance), "Multiplier %s has bounded, finite target probability without raising player precision" % sample[0])
+		combat.accuracy = 1.0
+		check(combat.get_target_headshot_chance(enemy) == 1.0, "Full precision stays guaranteed with multiplier %s" % sample[0])
+	gun.melee_headshot_threshold_multiplier = 0.8
+	gun.headshot_accuracy_threshold = 0.9
 	await process_frame
 
 func _shotgun_openings(enemy, other) -> void:
@@ -202,7 +238,7 @@ func _shotgun_openings(enemy, other) -> void:
 	var reference := RandomNumberGenerator.new()
 	reference.seed = 917
 	combat._headshot_rng.seed = 917
-	var expected: float = 60 if reference.randf() < 1.0 / 3.0 else 20
+	var expected: float = 60 if reference.randf() < 2.0 / 7.0 else 20
 	var before: float = enemy.health
 	var other_before: float = other.health
 	var hits := [0, 0]

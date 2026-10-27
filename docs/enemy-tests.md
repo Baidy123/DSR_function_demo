@@ -2,6 +2,8 @@
 
 ## 近战破绽与线性爆头（2026-10-27）
 
+倍率修订复测：`headshot_stagger_runtime_test` 39/39、`melee_hit_effects_test` 57/57；破绽联合专项扩展至82/82，覆盖倍率0／1／非法输入、80%×0.8=64%和换枪后按新枪门槛计算，原状态隔离与生命周期继续验证。当前接口和完整结果见[倍率修订](superpowers/specs/2026-10-27-headshot-curve-melee-opening-design.md#11-破绽倍率修订2026-10-27)。以下为初版记录。
+
 `headshot_stagger_runtime_test.gd` 扩展至39/39：使用真实玩家近战，在0／1／2配合等级核对受击敌人状态、感知推进和原动作能力；对话清理仍走原入口。普通近战相关 `player_enemy_melee_hit_test` 15/15、`melee_hit_effects_test` 57/57、`player_melee_test` 41/41，保持玩家受到的原伤害、减速、精度损失与击退。
 
 新增 `tests/melee_headshot_opening_test.gd` 在战斗目录注册，覆盖真实近战／射线、共享资源与目标隔离、单次消费、不续期、攻击快照、霰弹多目标、零伤害实际命中、死亡／复位／暂停／退树及同步回调。详细结果与编辑器原有失败见[实施记录](superpowers/specs/2026-10-27-headshot-curve-melee-opening-design.md#10-实施与验证记录)。本轮没有全量重跑其他 AI 场景，也不改变此前性能或行为失败的记录。

@@ -86,7 +86,7 @@ func _run() -> void:
 				picker.resource_selected.emit(nested, false)
 	for frame in 30: await process_frame
 	var nested_before := _properties(EditorInterface.get_inspector(), nested)
-	check(not nested_before.has("melee_headshot_opening_enabled") and not nested_before.has("melee_headshot_accuracy_threshold"), "敌人专用内嵌武器面板不展示玩家近战破绽能力")
+	check(not nested_before.has("melee_headshot_opening_enabled") and not nested_before.has("melee_headshot_threshold_multiplier"), "敌人专用内嵌武器面板不展示玩家近战破绽能力")
 	check(nested_before.has("fire_mode") and nested_before.has("magazine_capacity"), "敌人 Weapon 内嵌面板的真实下拉框可操作")
 	_select_mode(nested, WeaponData.FireMode.MELEE, true)
 	for frame in 30: await process_frame

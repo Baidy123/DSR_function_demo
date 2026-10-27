@@ -6,7 +6,7 @@ var remaining: float = 0.0
 var duration: float = 0.0
 var generation: int = 0
 var opening_available: bool = false
-var accuracy_threshold: float = 0.9
+var threshold_multiplier: float = 1.0
 
 func apply(settings: Dictionary) -> void:
 	var seconds: float = settings.get("seconds", 0.0)
@@ -15,8 +15,8 @@ func apply(settings: Dictionary) -> void:
 	remaining = seconds
 	duration = seconds
 	opening_available = settings.get("opening_enabled", false)
-	var threshold: float = settings.get("accuracy_threshold", 0.9)
-	accuracy_threshold = clampf(threshold, 0.0, 0.99) if is_finite(threshold) else 0.9
+	var multiplier: float = settings.get("threshold_multiplier", 1.0)
+	threshold_multiplier = clampf(multiplier, 0.0, 1.0) if is_finite(multiplier) else 1.0
 
 func advance(delta: float) -> void:
 	if remaining <= 0.0 or not is_finite(delta) or delta <= 0.0: return
@@ -31,7 +31,7 @@ func consume(expected_generation: int) -> bool:
 func snapshot() -> Dictionary:
 	return {"active": remaining > 0.0, "remaining_seconds": remaining,
 		"elapsed_seconds": duration - remaining, "generation": generation,
-		"opening_available": remaining > 0.0 and opening_available, "accuracy_threshold": accuracy_threshold}
+		"opening_available": remaining > 0.0 and opening_available, "threshold_multiplier": threshold_multiplier}
 
 func clear() -> void:
 	generation += 1 # 复位后旧枪击快照不能消费新一轮状态。

@@ -34,8 +34,9 @@ static func _opening_snapshot(target: Object) -> Dictionary:
 static func _chance(settings: Dictionary, opening: Dictionary) -> float:
 	if not settings.enabled: return 0.0
 	var threshold: float = settings.accuracy_threshold
-	if opening.get("opening_available", false):
-		threshold = minf(threshold, float(opening.accuracy_threshold))
+	if is_finite(threshold) and opening.get("opening_available", false):
+		# 近战只冻结倍率；门槛以实际射击武器为准，切枪与UI查询共用此处。
+		threshold = clampf(threshold, 0.0, 0.99) * float(opening.threshold_multiplier)
 	return WeaponData.headshot_probability(float(settings.stability), threshold)
 
 

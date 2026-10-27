@@ -4,7 +4,7 @@ extends EditorInspectorPlugin
 var _creating_native_property := false
 const ENEMY_RECOVERY_FIELDS := ["spread_recovery_degrees_per_second", "stabilize_seconds", "settle_seconds"]
 const PLAYER_CONVERGENCE_FIELDS := ["convergence_model", "convergence_seconds", "convergence_exponent_k"]
-const MELEE_OPENING_FIELDS := ["melee_headshot_opening_enabled", "melee_headshot_accuracy_threshold"]
+const MELEE_OPENING_FIELDS := ["melee_headshot_opening_enabled", "melee_headshot_threshold_multiplier"]
 
 const PatternProperty = preload("res://addons/weapon_mode_inspector/shotgun_pattern_property.gd")
 const CoverageProperty = preload("res://addons/weapon_mode_inspector/shotgun_coverage_property.gd")
@@ -56,10 +56,10 @@ const COMMON_FIELDS := {
 	"melee_interval": "近战间隔（秒）", "melee_knockback_distance": "击退距离（米）",
 	"melee_knockback_seconds": "击退时长（秒）",
 	"melee_slow_multiplier": "眩晕时保留移速", "melee_slow_seconds": "眩晕持续时间（秒）",
-	"melee_headshot_accuracy_threshold": "眩晕破绽爆头起始准度（仅敌人受方）",
+	"melee_headshot_threshold_multiplier": "眩晕破绽门槛倍率（仅敌人受方）",
 }
 const PERCENT_FIELDS := [
-	"headshot_accuracy_threshold", "melee_headshot_accuracy_threshold",
+	"headshot_accuracy_threshold",
 	"headshot_movement_multiplier", "headshot_accuracy_cap",
 	"hit_accuracy_loss", "suppression_accuracy_loss", "hit_speed_loss", "melee_accuracy_loss",
 	"initial_accuracy", "moving_accuracy_cap", "shot_accuracy_penalty", "minimum_accuracy",
@@ -85,7 +85,7 @@ const EFFECT_HELP := {
 	"convergence_seconds": "仅玩家：从最大散布到最小散布的完整秒数，不含恢复等待；当前状态从曲线对应位置继续。线性、二次、指数均只用此时间；概率模式对应0到100%，霰弹对应最大到最小随机偏移。默认4秒，最小0.01秒；旧0值按4秒，不再启用旧参数。敌人保持原算法。",
 	"convergence_exponent_k": "指数曲线的前后速度差，越大前段越快、尾段越慢；0按线性，默认3。总收敛时间由上一项控制。",
 	"headshot_accuracy_threshold": "基础准度在此门槛时爆头率为0，至100%准度线性增加到必爆头；仍须实际命中，不保证秒杀。0表示从0%准度开始增长，关闭请使用启用爆头。",
-	"melee_headshot_accuracy_threshold": "仅玩家近战命中敌人：玩家随后枪击此目标时的爆头起始准度，与本枪普通门槛取较低者。不增加玩家准度；首次有效枪击后消费，其他目标不受影响。",
+	"melee_headshot_threshold_multiplier": "仅玩家近战命中敌人：随后射击武器的普通爆头起始准度×此倍率，例如80%×0.8=64%。0将门槛降至0，1不降低门槛；不增加玩家准度。倍率在近战出手时冻结，首次有效枪击后消费。",
 	"headshot_damage_multiplier": "武器不启用秒杀或敌人开启爆头防护时使用。默认3倍；霰弹乘实际命中该目标的弹丸总伤害，不放大干扰、减速或击退。",
 	"headshot_stagger_seconds": "存活敌人应用本武器移速与精度限制的秒数；默认1秒，0关闭。复用原受击效果，不禁止开枪或取消AI动作；转向、换弹、近战、重力和碰撞继续。",
 	"headshot_movement_multiplier": "状态期间保留多少自主移速；默认0%不能走动，100%不减速。与普通受击减速取较强者，不影响重力或击退；不取消AI动作。",
@@ -164,7 +164,7 @@ func _parse_property(object: Object, type: Variant.Type, path: String, hint: Pro
 	if path in ENEMY_RECOVERY_FIELDS and _is_player_context(): return true
 	if path in PLAYER_CONVERGENCE_FIELDS and _is_enemy_context(): return true
 	if path in MELEE_OPENING_FIELDS and (_is_enemy_context() or object.fire_mode == WeaponData.FireMode.MELEE): return true
-	if path == "melee_headshot_accuracy_threshold" and not object.melee_headshot_opening_enabled: return true
+	if path == "melee_headshot_threshold_multiplier" and not object.melee_headshot_opening_enabled: return true
 	if path == "convergence_model":
 		var note := Label.new()
 		note.name = "AimRecoveryHelp"

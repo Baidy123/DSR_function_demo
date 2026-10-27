@@ -93,33 +93,34 @@ func _check_opening_controls(gun: WeaponData, manager: EditorUndoRedoManager) ->
 	for frame in 20: await process_frame
 	var fields := _fields(gun)
 	check(not fields.has("headshot_chance") and not fields.has("headshot_curve") and not fields.has("headshot_exponent"), "Fixed probability and non-linear probability controls are absent")
-	check(fields.has("melee_headshot_opening_enabled") and fields.has("melee_headshot_accuracy_threshold"), "Original weapon melee section exposes the opening switch and threshold")
-	var threshold = _property(gun, "melee_headshot_accuracy_threshold")
-	check(threshold != null, "Opening threshold has a real inspector editor")
-	if threshold == null: return
-	var spin: SpinBox = _descendants(threshold, "SpinBox")[0]
-	check(spin.value == 70 and spin.max_value == 99 and spin.suffix == "%" and not spin.tooltip_text.is_empty(), "Opening threshold displays seventy percent, caps at ninety-nine and explains its target")
-	spin.value = 61
+	check(fields.has("melee_headshot_opening_enabled") and fields.has("melee_headshot_threshold_multiplier"), "Original weapon melee section exposes the opening switch and multiplier")
+	var multiplier = _property(gun, "melee_headshot_threshold_multiplier")
+	check(multiplier != null, "Opening multiplier has a real inspector editor")
+	if multiplier == null: return
+	var spin: SpinBox = _descendants(multiplier, "SpinBox")[0]
+	check(is_equal_approx(spin.value, 0.8) and spin.max_value == 1 and spin.suffix == "×" and not spin.tooltip_text.is_empty(), "Opening multiplier displays 0.8 times, caps at one and explains its target")
+	spin.value = 0.61
 	for frame in 5: await process_frame
-	check(is_equal_approx(gun.melee_headshot_accuracy_threshold, 0.61), "Opening editor writes normalized threshold into the original resource")
+	check(is_equal_approx(gun.melee_headshot_threshold_multiplier, 0.61), "Opening editor writes multiplier into the original resource")
 	var history = manager.get_history_undo_redo(manager.get_object_history_id(gun))
-	check(history.undo() and is_equal_approx(gun.melee_headshot_accuracy_threshold, 0.7), "Native undo restores the opening threshold")
-	check(history.redo() and is_equal_approx(gun.melee_headshot_accuracy_threshold, 0.61), "Native redo restores the edited opening threshold")
+	check(history.undo() and is_equal_approx(gun.melee_headshot_threshold_multiplier, 0.8), "Native undo restores the opening multiplier")
+	check(history.redo() and is_equal_approx(gun.melee_headshot_threshold_multiplier, 0.61), "Native redo restores the edited opening multiplier")
 	var toggle = _property(gun, "melee_headshot_opening_enabled")
 	toggle.emit_changed(&"melee_headshot_opening_enabled", false)
 	for frame in 20: await process_frame
-	threshold = _property(gun, "melee_headshot_accuracy_threshold")
-	var unavailable := threshold == null
-	if threshold != null: unavailable = not _descendants(threshold, "SpinBox")[0].editable
-	check(unavailable and is_equal_approx(gun.melee_headshot_accuracy_threshold, 0.61), "Disabling the opening hides or disables its editor without losing the saved threshold")
+	multiplier = _property(gun, "melee_headshot_threshold_multiplier")
+	var unavailable := multiplier == null
+	if multiplier != null: unavailable = not _descendants(multiplier, "SpinBox")[0].editable
+	check(unavailable and is_equal_approx(gun.melee_headshot_threshold_multiplier, 0.61), "Disabling the opening hides or disables its editor without losing the saved multiplier")
 	var data_fields := []
 	for entry in gun.get_property_list(): data_fields.append(entry.name)
 	check(not data_fields.has("headshot_chance"), "Old fixed-probability property is removed from the resource, not merely hidden")
+	check(not data_fields.has("melee_headshot_accuracy_threshold") and not fields.has("melee_headshot_accuracy_threshold"), "Old absolute opening threshold is removed from both resource and inspector")
 	DirAccess.make_dir_recursive_absolute("res://logs/shotgun_inspector")
 	var path := "res://logs/shotgun_inspector/opening.tres"
 	var saved := ResourceSaver.save(gun, path)
 	var restored = ResourceLoader.load(path, "", ResourceLoader.CACHE_MODE_IGNORE)
-	check(saved == OK and not restored.melee_headshot_opening_enabled and is_equal_approx(restored.melee_headshot_accuracy_threshold, 0.61) and is_equal_approx(restored.headshot_accuracy_threshold, 0.9), "Both thresholds and the disabled opening survive save and reload")
+	check(saved == OK and not restored.melee_headshot_opening_enabled and is_equal_approx(restored.melee_headshot_threshold_multiplier, 0.61) and is_equal_approx(restored.headshot_accuracy_threshold, 0.9), "Normal threshold, opening multiplier and disabled opening survive save and reload")
 	gun.melee_headshot_opening_enabled = true
 
 func _check_spread_mode(settings: ShotgunSettings, manager: EditorUndoRedoManager) -> void:

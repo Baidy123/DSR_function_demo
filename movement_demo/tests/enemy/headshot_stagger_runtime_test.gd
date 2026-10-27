@@ -117,7 +117,7 @@ func _case(level: int) -> void:
 	gun.melee_knockback_distance = 0
 	gun.melee_slow_seconds = 2
 	gun.melee_slow_multiplier = 0.5
-	gun.melee_headshot_accuracy_threshold = 0.7
+	gun.melee_headshot_threshold_multiplier = 0.8
 	var approach: Vector3 = (player.global_position - actor.global_position).normalized()
 	approach.y = 0
 	player.global_position = actor.global_position + approach.normalized() * 1.2
