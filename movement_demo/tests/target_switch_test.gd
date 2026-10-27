@@ -67,6 +67,7 @@ func _run() -> void:
 	await _combat_state()
 	await _turning()
 	await _turn_accuracy()
+	await _slow_turn_rates()
 	await _headshot_ui()
 	_gesture_clock()
 	await _ui_focus()
@@ -465,6 +466,56 @@ func _turn_accuracy() -> void:
 		check(combat.accuracy == 0.8, "Mode %d pause neither rotates nor charges turn accuracy" % mode)
 		_step(0.1)
 		check(is_equal_approx(combat.accuracy, 0.8 - deg_to_rad(9) * sqrt(41.0) * 0.1), "Mode %d resume charges only the new frame's angle" % mode)
+
+func _set_tracking_rates(slow: float, fast: float) -> void:
+	# The fixture's spread span is 20 degrees; all three modes receive the same fractions.
+	combat.weapon.target_move_accuracy_loss_per_meter_slow = slow
+	combat.weapon.target_move_accuracy_loss_per_meter_fast = fast
+	combat.weapon.target_move_spread_degrees_per_meter_slow = slow * 20.0
+	combat.weapon.target_move_spread_degrees_per_meter_fast = fast * 20.0
+	if combat.weapon.shotgun != null:
+		combat.weapon.shotgun.tracking_loss_per_meter = Vector2(slow, fast)
+
+func _slow_turn_rates() -> void:
+	for mode in 3:
+		for rates in [Vector2(0.02, 0.2), Vector2(0.02, 2.0), Vector2(0.04, 0.2)]:
+			await _tracking_fixture(mode)
+			_set_tracking_rates(rates.x, rates.y)
+			combat.accuracy_recovery_timer = 0
+			_step(0.1)
+			var expected: float = 0.8 - deg_to_rad(9) * sqrt(41.0) * rates.x
+			check(is_equal_approx(combat.accuracy, expected), "Mode %d manual turn uses this weapon's slow rate, independently of its fast rate %s" % [mode, rates])
+		for movement in [0.2, 0.6]:
+			await _tracking_fixture(mode)
+			_set_tracking_rates(0.02, 0.2)
+			targets[1].position.z += movement
+			await physics_frame
+			var turn_loss: float = deg_to_rad(9) * Vector2(4, -5 + movement).length() * 0.02
+			var lateral_distance: float = movement * 4.0 / Vector2(4, -5 + movement * 0.5).length()
+			var target_rate := lerpf(0.02, 0.2, clampf(lateral_distance / 0.1 / 6.0, 0.0, 1.0))
+			var expected := 0.8 - maxf(turn_loss, lateral_distance * target_rate)
+			_step(0.1)
+			check(is_equal_approx(combat.accuracy, expected), "Mode %d real target motion keeps speed interpolation; compare losses rather than distances (%s)" % [mode, movement])
+		await _tracking_fixture(mode)
+		_set_tracking_rates(0, 0.2)
+		combat.accuracy_recovery_timer = 0
+		_step(0.1)
+		check(combat.accuracy > 0.8, "Mode %d zero slow rate disables turn loss and allows recovery even with nonzero fast rate" % mode)
+	# Reproduce the reported rifle floor without depending on editable saved resources.
+	await _setup([Vector3(0, 0, -5), Vector3(10, 0, 0)])
+	combat.weapon.min_spread_angle_degrees = 0.5
+	combat.weapon.max_spread_angle_degrees = 8
+	combat.weapon.target_move_max_spread_angle_degrees = 3
+	combat.weapon.target_move_spread_degrees_per_meter_slow = 0.36
+	combat.weapon.target_move_spread_degrees_per_meter_fast = 1.2
+	combat.accuracy = 1
+	_motion(_direction(targets[0], targets[1]) * 40)
+	var loss_per_frame := deg_to_rad(6) * 10.0 * 0.36 / 7.5
+	_step(1.0 / 60.0)
+	check(is_equal_approx(combat.accuracy, 1.0 - loss_per_frame), "Rifle fixture first turn frame loses about five points using the slow coefficient")
+	_step(1.0 / 60.0)
+	check(is_equal_approx(combat.accuracy, 1.0 - 2.0 * loss_per_frame) and combat.accuracy > 2.0 / 3.0, "Rifle fixture does not collapse to 67 percent in two frames")
+	check(is_equal_approx(combat.weapon.get_aim_settings(true).target_floor, 2.0 / 3.0), "The displayed 67 percent is the rifle tracking floor, not a one-off switch penalty")
 
 func _gesture_clock() -> void:
 	# Value-only recognizer tests use injected arrival times, separate from scene input above.

@@ -474,7 +474,7 @@ func _reset_target_movement_tracking() -> void:
 
 
 func _apply_target_movement_accuracy_penalty(delta: float) -> bool:
-	var tracking_distance := _switch_turn_distance
+	var turn_distance := _switch_turn_distance
 	_switch_turn_distance = 0.0
 	if weapon == null or not is_instance_valid(locked_target):
 		_reset_target_movement_tracking()
@@ -497,13 +497,13 @@ func _apply_target_movement_accuracy_penalty(delta: float) -> bool:
 	var moved_distance := displacement.length()
 	var relative_midpoint: Vector3 = (previous_position + current_position) * 0.5 - player.global_position
 	var axis := Vector2(relative_midpoint.x, relative_midpoint.z)
+	var tracking_distance := 0.0
 	if moved_distance > 0.000001 and axis.is_finite() and axis.length_squared() > 0.000001:
 		var lateral_ratio := clampf(absf(displacement.cross(axis.normalized())) / moved_distance, 0.0, 1.0)
 		var tolerance := sin(deg_to_rad(weapon.tracking_parallel_tolerance_degrees))
 		var lateral_weight := clampf((lateral_ratio - tolerance) / (1.0 - tolerance), 0.0, 1.0)
-		# 主动转身可能也在追移动目标；取较大位移复用同一次跟枪结算，避免双扣。
-		tracking_distance = maxf(tracking_distance, moved_distance * lateral_weight)
-	if tracking_distance <= 0.000001: return false
+		tracking_distance = moved_distance * lateral_weight
+	if maxf(tracking_distance, turn_distance) <= 0.000001: return false
 
 	var settings: Dictionary = weapon.get_aim_settings(is_using_spread_cone())
 	var target_speed: float = tracking_distance / delta
@@ -513,7 +513,9 @@ func _apply_target_movement_accuracy_penalty(delta: float) -> bool:
 		settings.fast,
 		speed_factor
 	)
-	var movement_penalty: float = tracking_distance * loss_per_meter
+	# 转身固定使用当前枪械的低速系数，不将角速度×距离当成高速敌人。
+	# 真实目标横移仍按原速度插值；两种损耗取较大者，避免同帧双扣。
+	var movement_penalty: float = maxf(tracking_distance * loss_per_meter, turn_distance * settings.slow)
 	# 关闭跟枪损失也必须解除恢复限制；更低的精度仍由原有来源／下限控制。
 	if movement_penalty <= 0.0: return false
 
