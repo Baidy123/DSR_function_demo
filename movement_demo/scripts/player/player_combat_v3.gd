@@ -22,15 +22,22 @@ enum AimMode { PROBABILITY, SPREAD_CONE }
 @export_enum("旧概率模式:0", "新散布锥模式:1") var aim_mode: int = AimMode.SPREAD_CONE
 
 @export_group("目标切换")
-## 换锁行程比例：所需鼠标行程=两目标的屏幕间距×本比例，再限制到下方最小／最大值。
+## 鼠标辅助锁定：按住右键时，无目标可按画面方向选敌，有目标可主动换锁。
+## 关闭后只保留原角色朝向自动锁定与方向键转向；不影响已锁定目标的跟踪。
+@export var mouse_target_assist_enabled: bool = true:
+	set(value):
+		mouse_target_assist_enabled = value
+		if not value: _reset_target_switch_input()
+## 所需鼠标行程=参照点到候选的屏幕间距×本比例，再限制到下方最小／最大值。
+## 有锁定以当前目标为参照，无锁定以玩家为参照。
 ## 0.12表示相隔200逻辑像素时需要拨动24像素；近目标少动、远目标多动。
 @export_range(0.01, 1.0, 0.01) var target_switch_travel_ratio: float = 0.12
 ## 最小换锁行程（逻辑像素）：避免相邻目标因轻微抖动而误切。
 @export_range(1.0, 100.0, 1.0, "suffix:px") var target_switch_min_distance: float = 10.0
 ## 最大换锁行程（逻辑像素）：避免远目标需要拖动过长；小于最小值时按最小值处理。
 @export_range(1.0, 200.0, 1.0, "suffix:px") var target_switch_max_distance: float = 48.0
-## 换锁方向半角：以当前目标的屏幕位置为起点，搜索拨动方向两侧；45°表示总共90°。
-## 仅主动换锁使用，不改变武器的首次锁定锥角或跟枪免罚角度。
+## 鼠标选敌方向半角：以当前目标（无目标时以玩家）的屏幕位置为起点；45°表示总共90°。
+## 仅鼠标辅助使用，不改变武器的自动锁定锥角或跟枪免罚角度。
 @export_range(1.0, 89.0, 1.0, "suffix:°") var target_switch_half_angle_degrees: float = 45.0
 ## 主动换锁后的转身速度（度/秒）；360表示转90°需0.25秒。原自动选敌与普通跟踪不受影响。
 ## 转身中也可立即射击，弹道沿当时的角色朝向；不排队等转完，也不冻结精度。
@@ -180,7 +187,7 @@ func _unhandled_input(event: InputEvent) -> void:
 	if event.is_echo():
 		return
 	if event is InputEventMouseMotion:
-		if _can_switch_target() and Input.is_action_pressed("aim") and _owns_switch_mouse_capture:
+		if _can_use_mouse_target_assist() and Input.is_action_pressed("aim") and _owns_switch_mouse_capture:
 			# 捕获当帧可能有系统产生的定位事件，不能算作玩家的第一下拨动。
 			if Engine.get_process_frames() > _switch_capture_frame:
 				_target_switch_gesture.feed_motion(event.relative, Time.get_ticks_usec())
@@ -305,11 +312,17 @@ func cancel_aim() -> void:
 
 ## 翻越、姿态变化只解除旧目标牵引，不能借取消瞄准改写精度或扳机。
 func clear_target_lock() -> void:
+	_clear_target()
+	_reset_target_switch_input()
+
+
+## 目标死亡／失效只清理旧锁定及手势；持续瞄准的鼠标辅助保持捕获。
+func _clear_target() -> void:
 	_switch_turn_pending = false
 	locked_target = null
 	_locked_aim_point = Vector3.INF
 	_reset_target_movement_tracking()
-	_reset_target_switch_input()
+	_target_switch_gesture.reset()
 
 
 func begin_vault() -> void:
@@ -357,16 +370,17 @@ func begin_frame(delta: float, aim_pressed: bool) -> void:
 	if player.is_vaulting():
 		clear_target_lock()
 		return
-	if is_instance_valid(locked_target) and not _target_visible(locked_target):
-		clear_target_lock()
+	if locked_target != null and (not is_instance_valid(locked_target) or locked_target.is_queued_for_deletion() or not _target_visible(locked_target)):
+		_clear_target()
+	# 无目标时也先处理主动输入；没有有效鼠标请求才继续原朝向自动选敌。
+	_update_target_switch()
 	if not is_instance_valid(locked_target):
-		_reset_target_switch_input()
 		var new_target: Node3D = _find_target()
 		if is_instance_valid(new_target):
+			_target_switch_gesture.reset()
 			_set_locked_target(new_target, _visible_target_point(new_target))
 			# 锁定只改变瞄准目标，不重置当前稳定度。
 			# 因此无锁定持续瞄准积累的稳定度会自然带入锁定状态。
-	_update_target_switch()
 	if is_instance_valid(locked_target):
 		var direction: Vector3 = locked_target.global_position - player.global_position
 		if Vector2(direction.x, direction.z).length_squared() > 0.0001:
@@ -402,7 +416,7 @@ func end_frame(delta: float, moving: bool) -> void:
 		cancel_melee()
 		cancel_aim()
 	if is_instance_valid(locked_target) and not _target_visible(locked_target):
-		clear_target_lock()
+		_clear_target()
 	if weapon != null:
 		# 目标有效横移与主动换锁转身共用跟枪损耗；无有效跟枪影响时按原规则恢复。
 		var tracking_limited: bool = _apply_target_movement_accuracy_penalty(delta)
@@ -547,8 +561,8 @@ func _set_locked_target(target: Node3D, point: Vector3) -> void:
 	_start_target_movement_tracking(target)
 
 
-func _can_switch_target() -> bool:
-	if not is_aiming or not is_instance_valid(locked_target) or weapon == null:
+func _can_use_mouse_target_assist() -> bool:
+	if not mouse_target_assist_enabled or not is_aiming or weapon == null:
 		return false
 	if not _window_focused or get_tree().paused or player.is_dead() or player.is_in_dialogue:
 		return false
@@ -568,7 +582,7 @@ func _reset_target_switch_input() -> void:
 
 
 func _update_target_switch() -> void:
-	if not _can_switch_target():
+	if not _can_use_mouse_target_assist():
 		_reset_target_switch_input()
 		return
 	if not _owns_switch_mouse_capture:
@@ -580,14 +594,19 @@ func _update_target_switch() -> void:
 	var motion := _target_switch_gesture.take_motion()
 	var minimum_travel := maxf(1.0, target_switch_min_distance)
 	if motion.length() < minimum_travel: return
-	var target := _find_switch_target(motion.normalized())
+	var camera := get_viewport().get_camera_3d()
+	var reference_point: Vector3 = get_locked_aim_point() if is_instance_valid(locked_target) else player.get_torso_position()
+	if not reference_point.is_finite() or camera.is_position_behind(reference_point):
+		_target_switch_gesture.consume()
+		return
+	var origin := camera.unproject_position(reference_point)
+	var target := _find_switch_target(motion.normalized(), origin)
 	if not is_instance_valid(target) or target.is_queued_for_deletion():
 		_target_switch_gesture.consume()
 		return
 	var point := _visible_target_point(target)
 	if point.is_finite():
-		var camera := get_viewport().get_camera_3d()
-		var screen_gap := camera.unproject_position(point).distance_to(camera.unproject_position(get_locked_aim_point()))
+		var screen_gap := camera.unproject_position(point).distance_to(origin)
 		var required_travel := clampf(screen_gap * target_switch_travel_ratio,
 			minimum_travel, maxf(minimum_travel, target_switch_max_distance))
 		if motion.length() < required_travel: return
@@ -599,9 +618,8 @@ func _update_target_switch() -> void:
 
 
 ## 仅主动请求扫描周围合法目标；不复用／修改首次自动选敌的朝向评分。
-func _find_switch_target(direction: Vector2) -> Node3D:
+func _find_switch_target(direction: Vector2, origin: Vector2) -> Node3D:
 	var camera := get_viewport().get_camera_3d()
-	var origin := camera.unproject_position(get_locked_aim_point())
 	var candidates: Array[Dictionary] = []
 	var minimum_angle := INF
 	var half_angle := deg_to_rad(clampf(target_switch_half_angle_degrees, 1.0, 89.0))
@@ -658,7 +676,7 @@ func _target_visible(target: Node3D) -> bool:
 
 
 func _visible_target_point(target: Node3D) -> Vector3:
-	if not target.is_inside_tree() or not target.is_in_group("combat_target"):
+	if target.is_queued_for_deletion() or not target.is_inside_tree() or not target.is_in_group("combat_target"):
 		return Vector3.INF
 	if not preload("res://scripts/systems/combat_view.gd").contains_actor(target):
 		return Vector3.INF
@@ -691,7 +709,7 @@ func shoot() -> void:
 		return
 	# 再检查一次，防止输入与物理更新之间出现遮挡。
 	if is_instance_valid(locked_target) and not _target_visible(locked_target):
-		clear_target_lock()
+		_clear_target()
 	shot_count += 1
 	var stability: float = get_effective_accuracy()
 	var headshot_settings := weapon.get_headshot_settings(stability)
@@ -736,7 +754,7 @@ func shoot() -> void:
 				headshot_hit.emit(endpoint, 1, false)
 				headshot_resolved.emit(endpoint, outcome)
 			if locked_target == hit.collider and (not is_instance_valid(hit.collider) or not hit.collider.is_in_group("combat_target")):
-				clear_target_lock()
+				_clear_target()
 				$HUD/Reticle.hide()
 	# 使用实际命中点截断后的线段检测近处来弹；墙后的延长线不会触发。
 	for listener in get_tree().get_nodes_in_group("shot_listener"):
@@ -773,7 +791,7 @@ func _shoot_shotgun(origin: Vector3, direction: Vector3, stability: float, attac
 			headshot_hit.emit(hit_positions[result.target], result.pellets, true)
 			headshot_resolved.emit(hit_positions[result.target], outcome)
 	if locked_target != null and (not is_instance_valid(locked_target) or not locked_target.is_in_group("combat_target")):
-		clear_target_lock()
+		_clear_target()
 		$HUD/Reticle.hide()
 	for listener in get_tree().get_nodes_in_group("shot_listener"):
 		var receiver := listener.get_parent()

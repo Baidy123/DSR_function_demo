@@ -1,5 +1,7 @@
 # 项目目录结构
 
+鼠标辅助扩展（2026-10-28）：原 Combat 增加 `mouse_target_assist_enabled` 开关（默认开启），无锁定时也接收右键瞄准中的手势，以玩家投影为参照；有锁定沿用目标投影，复用同一候选筛选、行程、转身和精度结算。主动请求在自动选敌前处理，原 `_find_target()` 评分函数保持。私有 `_clear_target()` 清理失效目标和手势并保留有效捕获；公开 `clear_target_lock()` 仍清理全部输入，供原取消／姿态／翻越入口使用。禁用即时释放捕获但不解除已有锁定；无需新增节点、辅助模块、武器字段或第二份目标状态。游玩说明和开局介绍同步，测试见[无目标鼠标辅助](superpowers/specs/2026-10-27-mouse-direction-target-switch-design.md#12-无目标鼠标辅助2026-10-28)。
+
 鼠标方向换锁（2026-10-28）：原 `scripts/player/player_combat_v3.gd` 收集未被UI消费的鼠标移动，在 `begin_frame()` 原朝向／射击流程之前处理一次主动请求；`_find_target()` 自动选敌评分保持。共用锁定赋值出口重建移动跟踪基准，不取消瞄准或重置精度；实际转角换算跟枪位移并固定乘当前枪械低速系数，真实目标横移独立按原速度插值，两项损耗在原精度入口取较大值结算。转身期间仍可即时沿当前朝向射击；原 `lock_reticle.gd` 通过只读 `is_turning_to_target()` 显示下一目标标记，对准后恢复普通准星。私有 `scripts/player/target_switch_gesture.gd` 只保存净位移、输入时间和新输入标记，没有停顿解锁状态，不持有场景或目标；没有新节点、敌人组件或全局管理器。原 `play_guide.gd` 同步操作说明，并在战斗释放暂停捕获后记录鼠标恢复模式。新专项 `tests/target_switch_test.gd` 登记到原战斗运行器，设计和边界见[实施记录](superpowers/specs/2026-10-27-mouse-direction-target-switch-design.md#10-实施记录2026-10-28)。
 
 爆头与近战眩晕更新（2026-10-27）：`scripts/weapons/weapon_data.gd` 独占线性概率公式与武器配置，原 `headshot_resolver.gd` 按实际命中目标读取破绽并冻结结算；`player_combat_v3.gd` 只在玩家近战快照中携带眩晕参数。敌人身体私有 `scripts/enemy/services/enemy_melee_stun.gd` 保存本次近战倍率与一份计时／消费记录，沿身体原物理时钟更新；原 Resolver 用实际射击武器普通门槛乘倍率。无额外 AI 节点或通用 buff 系统。原 `enemy_presentation.gd` 读取快照，按需实例化 `scenes/effects/melee_stun.tscn` 与纯表现 `scripts/systems/effects/melee_stun_effect.gd`；原 `lock_reticle.gd` 查询相同概率显示收缩菱形与亮边。现有节点路径、脚本 UID 及武器引用保持。接口与清理范围见[实施记录](superpowers/specs/2026-10-27-headshot-curve-melee-opening-design.md)。

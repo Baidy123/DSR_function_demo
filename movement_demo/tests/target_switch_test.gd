@@ -4,8 +4,10 @@ extends SceneTree
 class Target extends StaticBody3D:
 	var hits := 0
 	var opening_snapshot := {}
+	var remove_on_hit := false
 	func receive_hit(_damage: float, _origin: Vector3 = Vector3.ZERO) -> void:
 		hits += 1
+		if remove_on_hit: remove_from_group("combat_target")
 	func get_visibility_points() -> Array[Vector3]:
 		return [global_position + Vector3.UP * 0.8, global_position + Vector3.UP * 1.6]
 	func get_melee_stun_state() -> Dictionary:
@@ -63,6 +65,9 @@ func _run() -> void:
 	await _distance_travel()
 	await _gestures()
 	await _automatic_lock()
+	await _mouse_assist_acquisition()
+	await _mouse_assist_after_kill()
+	await _mouse_assist_toggle()
 	await _legality()
 	await _combat_state()
 	await _turning()
@@ -94,6 +99,7 @@ func _setup(points: Array[Vector3], mode: int = 1) -> void:
 	Input.action_release("fire")
 	combat.cancel_aim()
 	combat.cancel_melee()
+	combat.mouse_target_assist_enabled = true
 	for target in targets: target.free()
 	targets.clear()
 	player.position = Vector3.ZERO
@@ -245,6 +251,111 @@ func _automatic_lock() -> void:
 	targets[1].remove_from_group("combat_target")
 	_step()
 	check(combat.locked_target == targets[2], "Invalidation still reacquires by the original facing-alignment rule")
+
+func _mouse_assist_acquisition() -> void:
+	for yaw in [0.0, 70.0]:
+		camera.rotation_degrees.y = yaw
+		for point in [Vector3(4, 0, 0), Vector3(-4, 0, 0), Vector3(1, 0, 5)]:
+			await _setup([point])
+			check(combat.locked_target == null and combat._owns_switch_mouse_capture, "Held aim captures mouse with no forward target (camera yaw %s)" % yaw)
+			var direction := _direction(player, targets[0])
+			_motion(direction * 20)
+			_step()
+			_step()
+			check(combat.locked_target == null, "Unselected aim preserves a subthreshold gesture across combat frames")
+			_motion(direction * 20)
+			_step()
+			check(combat.locked_target == targets[0] and combat.is_turning_to_target() and is_zero_approx(player.visual.rotation.y), "Mouse selects screen direction from player position without snapping the turn")
+			_step(0.01)
+			check(combat.accuracy < 0.8 and not is_zero_approx(player.visual.rotation.y), "Mouse acquisition uses gradual turning and weapon tracking loss")
+	camera.rotation_degrees.y = 0
+	await _setup([Vector3(4, 0, 0)])
+	_motion(Vector2.LEFT * 40)
+	_step()
+	check(combat.locked_target == null and is_zero_approx(player.visual.rotation.y), "An empty mouse direction does not select the opposite enemy or rotate the player")
+	_motion(Vector2.RIGHT * 40)
+	_step()
+	check(combat.locked_target == targets[0], "Fresh input can immediately retry a different direction without releasing aim")
+	# A target arriving after a failed gesture must not consume stale motion.
+	await _setup([Vector3(4, 0, 0)])
+	targets[0].remove_from_group("combat_target")
+	_motion(Vector2.RIGHT * 100)
+	_step()
+	targets[0].add_to_group("combat_target")
+	_step()
+	check(combat.locked_target == null, "A new enemy does not inherit an earlier empty-direction request")
+	_motion(Vector2.RIGHT * 40)
+	_step()
+	check(combat.locked_target == targets[0], "Fresh motion acquires an enemy that appeared while aim stayed held")
+	# Explicit mouse intent wins over automatic facing acquisition in this frame.
+	await _setup([Vector3(4, 0, 0), Vector3(0, 0, -5)])
+	_motion(Vector2.RIGHT * 40)
+	_step()
+	check(combat.locked_target == targets[0], "No-lock mouse selection runs before same-frame automatic acquisition")
+
+func _mouse_assist_after_kill() -> void:
+	for mode in 3:
+		await _setup([Vector3(0, 0, -5), Vector3(4, 0, 0)], mode)
+		if mode == 2:
+			combat.weapon.shotgun.pattern = ShotgunPattern.new()
+			combat.weapon.shotgun.stable_jitter_degrees = 0
+		targets[0].remove_on_hit = true
+		combat.accuracy = 1
+		var shots_before: int = combat.shot_count
+		var capture_frame: int = combat._switch_capture_frame
+		_motion(Vector2.RIGHT * 20)
+		combat.shoot()
+		check(targets[0].hits == 1 and not targets[0].is_in_group("combat_target") and combat.locked_target == null, "Mode %d real shot invalidates the killed fixture through the damage callback" % mode)
+		check(combat.is_aiming and combat._owns_switch_mouse_capture and Input.is_action_pressed("aim"), "Mode %d killing a target preserves held aim and capture ownership" % mode)
+		_step()
+		_motion(Vector2.RIGHT * 20)
+		_step()
+		check(combat.locked_target == null, "Mode %d old partial motion is discarded when the target dies" % mode)
+		_motion(Vector2.RIGHT * 20)
+		_step()
+		check(combat.locked_target == targets[1] and combat._switch_capture_frame == capture_frame, "Mode %d fresh motion reacquires without recapture, pause or a new aim press" % mode)
+		check(combat.shot_count == shots_before + 1 and is_equal_approx(combat.shot_cooldown, combat.weapon.shot_interval), "Mode %d reacquisition neither emits an extra shot nor clears its cooldown" % mode)
+	for queued in [false, true]:
+		await _setup([Vector3(0, 0, -5), Vector3(4, 0, 0)])
+		var next := targets[1]
+		if queued:
+			targets[0].queue_free()
+		else:
+			targets[0].free()
+		targets.remove_at(0)
+		_step()
+		check(combat.locked_target == null and combat._owns_switch_mouse_capture, "Removed or queued target clears without releasing the aim session (queued %s)" % queued)
+		_motion(Vector2.RIGHT * 40)
+		_step()
+		check(combat.locked_target == next, "Fresh motion selects the next enemy after external target removal")
+
+func _mouse_assist_toggle() -> void:
+	await _setup([Vector3(0, 0, -5), Vector3(4, 0, 0)])
+	_motion(Vector2.RIGHT * 40)
+	combat.mouse_target_assist_enabled = false
+	check(not combat._owns_switch_mouse_capture, "Disabling mouse assistance releases capture immediately")
+	_step()
+	_motion(Vector2.RIGHT * 100)
+	_step()
+	check(combat.locked_target == targets[0] and is_equal_approx(combat.accuracy, 0.8), "Disabled assistance preserves the existing lock and accuracy and ignores queued or fresh mouse input")
+	var packed := PackedScene.new()
+	var packed_ok := packed.pack(player) == OK
+	var restored = packed.instantiate() if packed_ok else null
+	check(restored != null and not restored.get_node("Combat").mouse_target_assist_enabled, "Player scene serialization preserves the disabled inspector option")
+	if restored != null: restored.free()
+	targets[0].remove_from_group("combat_target")
+	_step()
+	_motion(Vector2.RIGHT * 100)
+	_step()
+	check(combat.locked_target == null and not combat._owns_switch_mouse_capture, "Disabled assistance cannot acquire a side enemy with the mouse")
+	Input.action_press("move_right")
+	player._physics_process(0.2)
+	Input.action_release("move_right")
+	player._physics_process(0)
+	check(combat.locked_target == targets[1], "With assistance disabled, real movement input turns the player and original facing acquisition still works")
+	combat.mouse_target_assist_enabled = true
+	_step()
+	check(combat.locked_target == targets[1] and combat._owns_switch_mouse_capture, "Enabling assistance keeps the existing automatic lock and reacquires capture")
 
 func _legality() -> void:
 	for reason in ["range", "screen", "removed", "queued", "hidden", "wall"]:
