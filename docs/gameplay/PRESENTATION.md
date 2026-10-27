@@ -1,6 +1,14 @@
 # 模型动画与命中特效接入
 
-更新：2026-10-25。
+更新：2026-10-27。
+
+## 近战眩晕星环与爆头准星
+
+`enemy_actor.gd.get_melee_stun_state()` 提供只读的 `active`、`remaining_seconds`、`elapsed_seconds`、`generation`、`life_generation`、`opening_available`、`accuracy_threshold`。近战状态与原被爆头状态独立；身体独占时钟，UI／特效不推进玩法。破绽消费后仍可有剩余眩晕时间，星环不会因此提前消失。
+
+原敌人 **EnemyPresentation** 节点（`enemy_presentation.gd`）的 **Melee Stun Effect Scene** 默认引用 `scenes/effects/melee_stun.tscn`。纯表现 `scripts/systems/effects/melee_stun_effect.gd` 绘制金色星点环，按身体高度和状态经过时间跟随；位于头顶与血条之间，保留真实深度遮挡。效果按敌人实例分别创建，暂停冻结，死亡／复位及时隐藏，随角色卸载回收。玩家不接入这项敌人专属效果，空正式模型仍能显示默认星环。
+
+原 `lock_reticle.gd` 读取 Combat 的目标概率：0隐藏金色菱形，正概率由大到小，100%基础准度增加多层透明亮边，不依赖3D Bloom。**Headshot Minimum Size / Maximum Size** 调整菱形半尺寸，默认4／10像素。颜色和原瞄准圆沿原规则；实际概率下降、目标改变、破绽消费／到期立即更新。死亡自动暂停仍优先清理反馈。发光只代表命中后的爆头确定性，不代替防护或实际弹道判定。
 
 ## 被爆头状态接口
 

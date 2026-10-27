@@ -26,7 +26,6 @@ shot_max_spread_angle_degrees = 6.5
 player_move_spread_degrees_per_meter = 1.0
 moving_spread_angle_degrees = 7.0
 target_move_max_spread_angle_degrees = 3.0
-headshot_chance = 0.6
 headshot_stagger_seconds = 3.0
 melee_damage = 10.0
 metadata/_custom_type_script = "uid://b7iqg2tyib57x"

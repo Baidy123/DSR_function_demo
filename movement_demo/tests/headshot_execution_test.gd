@@ -124,7 +124,7 @@ func _enemy(at: Vector3, protected: bool):
 
 func _snapshot_case() -> void:
 	gun.fire_mode = WeaponData.FireMode.SHOTGUN
-	gun.headshot_chance = 1
+	gun.headshot_enabled = true
 	gun.headshot_instant_kill_enabled = true
 	gun.shotgun.pellet_damage = 10
 	gun.shotgun.pattern = ShotgunPattern.new()
@@ -135,7 +135,7 @@ func _snapshot_case() -> void:
 	var left = _enemy(Vector3(-0.7, 0, -4), true)
 	var right = _enemy(Vector3(0.7, 0, -4), true)
 	var mutation := func(_damage, _source):
-		gun.headshot_chance = 0
+		gun.headshot_enabled = false
 		gun.headshot_damage_multiplier = 8
 		gun.headshot_stagger_seconds = 4
 		gun.headshot_movement_multiplier = 0.7
@@ -147,8 +147,8 @@ func _snapshot_case() -> void:
 	check(left.health == 9970 and right.health == 9970 and is_equal_approx(right.get_stagger_remaining_seconds(), 0.6), "First target callback cannot alter this shot's later damage, protection or stagger snapshot")
 	check(right.get_hit_reaction_state().movement_multiplier == 0 and right.get_hit_reaction_state().accuracy_cap == 0, "This shot also freezes movement and accuracy effects before callbacks")
 	_shoot(1)
-	check(left.health == 9960 and right.health == 9960, "Next shot reads externally modified chance rather than reusing the old snapshot")
-	gun.headshot_chance = 1
+	check(left.health == 9960 and right.health == 9960, "Next shot reads externally modified headshot switch rather than reusing the old snapshot")
+	gun.headshot_enabled = true
 	gun.headshot_instant_kill_enabled = false
 	_shoot(1)
 	check(left.health == 9880 and right.health == 9880 and right.get_stagger_remaining_seconds() == 4, "Next shot applies externally modified non-default damage multiplier and duration")
@@ -204,7 +204,7 @@ func _vault_case() -> void:
 
 func _resource_case() -> void:
 	var data := WeaponData.new()
-	data.headshot_chance = 0.15
+	data.headshot_accuracy_threshold = 0.85
 	data.headshot_instant_kill_enabled = false
 	data.headshot_damage_multiplier = 2.5
 	data.headshot_stagger_seconds = 1.4

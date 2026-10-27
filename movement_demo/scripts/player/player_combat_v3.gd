@@ -656,6 +656,12 @@ func get_effective_accuracy() -> float:
 	return clampf(accuracy, 0.0, 1.0) if is_finite(accuracy) else 0.0
 
 
+## UI查询与实际命中共用规则；不掷骰、不消费敌人的破绽。
+func get_target_headshot_chance(target: Node3D) -> float:
+	if weapon == null or not is_instance_valid(target): return 0.0
+	return Headshots.get_target_chance(weapon.get_headshot_settings(get_effective_accuracy()), target)
+
+
 ## 相对于原角度区间的弹道稳定度，仅供散布采样与准星大小读取，不用于爆头。
 ## 在原弹道接口前换算端点，因此不用修改共享采样器或敌人执行流程。
 func get_spread_stability() -> float:
@@ -766,6 +772,8 @@ func request_melee() -> bool:
 		"duration": maxf(0.05, weapon.melee_knockback_seconds),
 		"effects": weapon.get_attack_effects(true),
 	}
+	# 只由玩家攻击附带；敌人使用同一武器也不会把破绽施加给玩家。
+	_melee_settings.effects["player_melee_stun"] = weapon.get_melee_stun_settings()
 	melee_direction = -player.global_basis.z
 	melee_direction.y = 0.0
 	melee_direction = melee_direction.normalized()

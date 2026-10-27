@@ -16,11 +16,11 @@ func _run() -> void:
 	for frame in 20: await process_frame
 	check(_fields(gun).has("damage") and not _fields(gun).has("shotgun"), "Legacy weapon inspector stays unchanged")
 	var critical_fields := _fields(gun)
-	check(critical_fields.has("headshot_enabled") and critical_fields.has("headshot_chance") and critical_fields.has("headshot_damage_multiplier"), "Headshot settings are exposed on the original weapon resource")
+	check(critical_fields.has("headshot_enabled") and critical_fields.has("headshot_accuracy_threshold") and critical_fields.has("headshot_damage_multiplier"), "Headshot settings are exposed on the original weapon resource")
 	for property in _descendants(EditorInterface.get_inspector(), "EditorProperty"):
-		if property.get_edited_object() == gun and property.get_edited_property() == "headshot_chance":
+		if property.get_edited_object() == gun and property.get_edited_property() == "headshot_accuracy_threshold":
 			var spin: SpinBox = _descendants(property, "SpinBox")[0]
-			check(spin.value == 10 and not spin.tooltip_text.is_empty(), "Headshot chance displays 10 percent with hover help")
+			check(spin.value == 90 and not spin.tooltip_text.is_empty(), "Headshot threshold displays 90 percent with hover help")
 	var option: OptionButton
 	for property in _descendants(EditorInterface.get_inspector(), "EditorProperty"):
 		if property.get_edited_object() == gun and property.get_edited_property() == "fire_mode":
@@ -32,7 +32,7 @@ func _run() -> void:
 	var fields := _fields(gun)
 	check(gun.fire_mode == WeaponData.FireMode.SHOTGUN and gun.shotgun != null and gun.shotgun.get_pattern_points().size() == 9, "Choosing 霰弹 initializes a usable nine-pellet configuration")
 	check(fields.has("shotgun") and fields.has("magazine_capacity") and fields.has("fire_mode"), "Shotgun mode keeps common controls and exposes its settings")
-	check(fields.has("headshot_chance") and fields.has("headshot_damage_multiplier"), "Shotgun retains the same headshot settings")
+	check(fields.has("headshot_accuracy_threshold") and fields.has("headshot_damage_multiplier"), "Shotgun retains the same headshot settings")
 	check(not fields.has("damage") and not fields.has("initial_accuracy") and not fields.has("min_spread_angle_degrees"), "Shotgun mode hides unused single-projectile parameters")
 	gun.shotgun.pellet_damage = 11
 	var saved_settings = gun.shotgun
@@ -51,6 +51,7 @@ func _run() -> void:
 	var history = manager.get_history_undo_redo(manager.get_object_history_id(gun))
 	check(history.undo() and gun.fire_mode == WeaponData.FireMode.SEMI_AUTO, "Native inspector undo restores original Fire Mode")
 	check(history.redo() and gun.fire_mode == WeaponData.FireMode.SHOTGUN, "Native inspector redo restores shotgun mode")
+	await _check_opening_controls(gun, manager)
 	await _check_spread_mode(gun.shotgun, manager)
 	EditorInterface.edit_resource(gun)
 	for frame in 20: await process_frame
@@ -86,6 +87,40 @@ func _run() -> void:
 	for frame in 5: await process_frame
 	print("SHOTGUN INSPECTOR: %d/%d passed" % [checks - failures, checks])
 	quit(1 if failures else 0)
+
+func _check_opening_controls(gun: WeaponData, manager: EditorUndoRedoManager) -> void:
+	EditorInterface.edit_resource(gun)
+	for frame in 20: await process_frame
+	var fields := _fields(gun)
+	check(not fields.has("headshot_chance") and not fields.has("headshot_curve") and not fields.has("headshot_exponent"), "Fixed probability and non-linear probability controls are absent")
+	check(fields.has("melee_headshot_opening_enabled") and fields.has("melee_headshot_accuracy_threshold"), "Original weapon melee section exposes the opening switch and threshold")
+	var threshold = _property(gun, "melee_headshot_accuracy_threshold")
+	check(threshold != null, "Opening threshold has a real inspector editor")
+	if threshold == null: return
+	var spin: SpinBox = _descendants(threshold, "SpinBox")[0]
+	check(spin.value == 70 and spin.max_value == 99 and spin.suffix == "%" and not spin.tooltip_text.is_empty(), "Opening threshold displays seventy percent, caps at ninety-nine and explains its target")
+	spin.value = 61
+	for frame in 5: await process_frame
+	check(is_equal_approx(gun.melee_headshot_accuracy_threshold, 0.61), "Opening editor writes normalized threshold into the original resource")
+	var history = manager.get_history_undo_redo(manager.get_object_history_id(gun))
+	check(history.undo() and is_equal_approx(gun.melee_headshot_accuracy_threshold, 0.7), "Native undo restores the opening threshold")
+	check(history.redo() and is_equal_approx(gun.melee_headshot_accuracy_threshold, 0.61), "Native redo restores the edited opening threshold")
+	var toggle = _property(gun, "melee_headshot_opening_enabled")
+	toggle.emit_changed(&"melee_headshot_opening_enabled", false)
+	for frame in 20: await process_frame
+	threshold = _property(gun, "melee_headshot_accuracy_threshold")
+	var unavailable := threshold == null
+	if threshold != null: unavailable = not _descendants(threshold, "SpinBox")[0].editable
+	check(unavailable and is_equal_approx(gun.melee_headshot_accuracy_threshold, 0.61), "Disabling the opening hides or disables its editor without losing the saved threshold")
+	var data_fields := []
+	for entry in gun.get_property_list(): data_fields.append(entry.name)
+	check(not data_fields.has("headshot_chance"), "Old fixed-probability property is removed from the resource, not merely hidden")
+	DirAccess.make_dir_recursive_absolute("res://logs/shotgun_inspector")
+	var path := "res://logs/shotgun_inspector/opening.tres"
+	var saved := ResourceSaver.save(gun, path)
+	var restored = ResourceLoader.load(path, "", ResourceLoader.CACHE_MODE_IGNORE)
+	check(saved == OK and not restored.melee_headshot_opening_enabled and is_equal_approx(restored.melee_headshot_accuracy_threshold, 0.61) and is_equal_approx(restored.headshot_accuracy_threshold, 0.9), "Both thresholds and the disabled opening survive save and reload")
+	gun.melee_headshot_opening_enabled = true
 
 func _check_spread_mode(settings: ShotgunSettings, manager: EditorUndoRedoManager) -> void:
 	EditorInterface.edit_resource(settings)

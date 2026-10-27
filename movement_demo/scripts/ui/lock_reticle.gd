@@ -4,10 +4,16 @@ extends Control
 @export var minimum_radius: float = 12.0
 ## 稳定度为 0.0 时准星的半径（屏幕像素）；中间稳定度在两个半径之间插值，通常不小于 Minimum Radius。
 @export var maximum_radius: float = 52.0
+## 爆头概率接近0／达到100%时，金色菱形的半尺寸（屏幕像素）。
+@export_range(2.0, 20.0, 0.5) var headshot_minimum_size: float = 4.0
+@export_range(2.0, 30.0, 0.5) var headshot_maximum_size: float = 10.0
 var radius: float = 52.0
 var tint: Color = Color.WHITE
 var _draw_aim := false
 var _headshot_ready := false
+var _headshot_probability := 0.0
+var _headshot_full_precision := false
+var _headshot_size := 10.0
 var _headshot_markers: Array[Dictionary] = []
 const HEADSHOT_COLOR := Color(1.0, 0.8, 0.25)
 const HEADSHOT_SECONDS := 0.65
@@ -32,8 +38,12 @@ func _on_headshot_resolved(point: Vector3, outcome: StringName) -> void:
 func _process(delta: float) -> void:
 	if combat.player.is_in_dialogue or combat.player.is_dead():
 		_headshot_markers.clear()
+		_headshot_ready = false
+		_headshot_probability = 0.0
+		_headshot_full_precision = false
 		hide()
 		return
+	if get_tree().paused: return
 	var target = combat.locked_target
 	var camera := get_viewport().get_camera_3d()
 	if camera == null:
@@ -49,6 +59,8 @@ func _process(delta: float) -> void:
 			marker.screen = camera.unproject_position(marker.point)
 	_draw_aim = combat.is_aiming and is_instance_valid(target)
 	_headshot_ready = false
+	_headshot_probability = 0.0
+	_headshot_full_precision = false
 	if _draw_aim:
 		var point: Vector3 = combat.get_locked_aim_point()
 		# UI 跟随渲染插值；弹道仍使用物理位置。
@@ -60,7 +72,10 @@ func _process(delta: float) -> void:
 			# 姿态影响大小；颜色与爆头菱形仍取基础收敛进度，不能因蹲下提前亮起。
 			radius = lerpf(maximum_radius, minimum_radius, combat.get_spread_stability())
 			tint = Color(1.0, 0.55, 0.2).lerp(Color(0.35, 1.0, 0.55), stability)
-			_headshot_ready = combat.weapon != null and combat.weapon.get_headshot_chance(stability) > 0.0
+			_headshot_probability = combat.get_target_headshot_chance(target)
+			_headshot_ready = _headshot_probability > 0.0
+			_headshot_full_precision = _headshot_ready and stability >= 1.0 - 0.000001
+			_headshot_size = lerpf(maxf(headshot_maximum_size, headshot_minimum_size), headshot_minimum_size, _headshot_probability)
 	visible = _draw_aim or not _headshot_markers.is_empty()
 	queue_redraw()
 
@@ -73,8 +88,7 @@ func _draw() -> void:
 		for direction in [Vector2.LEFT, Vector2.RIGHT, Vector2.UP, Vector2.DOWN]:
 			draw_line(direction * (radius - 5.0), direction * (radius + 6.0), tint, 2.0, true)
 		if _headshot_ready:
-			var top := Vector2(0, -radius - 13)
-			draw_polyline(PackedVector2Array([top + Vector2(0, -4), top + Vector2(4, 0), top + Vector2(0, 4), top + Vector2(-4, 0), top + Vector2(0, -4)]), HEADSHOT_COLOR, 2.0, true)
+			_draw_headshot_marker(Vector2(0, -radius - _headshot_size - 9.0))
 	for marker in _headshot_markers:
 		var center: Vector2 = marker.screen - position
 		var color := HEADSHOT_COLOR
@@ -85,3 +99,17 @@ func _draw() -> void:
 		var label_position := center + Vector2(-70, -22)
 		draw_string_outline(get_theme_default_font(), label_position, marker.text, HORIZONTAL_ALIGNMENT_CENTER, 140, 18, 4, Color(0, 0, 0, color.a))
 		draw_string(get_theme_default_font(), label_position, marker.text, HORIZONTAL_ALIGNMENT_CENTER, 140, 18, color)
+
+
+func _draw_headshot_marker(center: Vector2) -> void:
+	var points := PackedVector2Array()
+	for direction in [Vector2.UP, Vector2.RIGHT, Vector2.DOWN, Vector2.LEFT, Vector2.UP]:
+		points.append(center + direction * _headshot_size)
+	if _headshot_full_precision:
+		# 2D柔和外光不依赖3D Bloom，兼容当前OpenGL渲染器。
+		for layer in [3, 2, 1]:
+			var glow := HEADSHOT_COLOR
+			glow.a = 0.08 + (3 - layer) * 0.06
+			draw_polyline(points, glow, 2.0 + layer * 3.0, true)
+		draw_colored_polygon(points.slice(0, 4), Color(1.0, 0.9, 0.5, 0.3))
+	draw_polyline(points, Color(1.0, 0.96, 0.72) if _headshot_full_precision else HEADSHOT_COLOR, 2.0, true)

@@ -73,7 +73,7 @@ func _case(level: int) -> void:
 	gun.fire_range = 50
 	gun.min_spread_angle_degrees = 0
 	gun.max_spread_angle_degrees = 0
-	gun.headshot_chance = 1
+	gun.headshot_enabled = true
 	gun.headshot_stagger_seconds = 2
 	gun.shot_noise = null
 	var combat = player.get_node("Combat")
@@ -110,10 +110,33 @@ func _case(level: int) -> void:
 		var point: Vector3 = ai.context.perception.visible_aim_position(true)
 		print("Fire diagnostic: can_fire=", actor.can_fire(), " request=", ai.context.fire.request, " lane=", ai.context.fire.has_clear_firing_lane(actor.get_shot_origin(), actor.aim_direction, actor.get_shot_origin().distance_to(point)), " ally_safe=", ai.context.cooperation_line_safe(actor.get_shot_origin(), point), " rounds=", actor.ammo.magazine_rounds, " decision=", ai.context.fire.fire_decision.selected_action, " paused=", ai.context.fire.fire_pause_remaining)
 	check(actor.shot_count > shots_after_expiry and ai.current_action != null, "Level %d: original planner continues valid execution and actual firing after expiry" % level)
+	# 近战破绽使用同一真实AI夹具，确认仅受击状态变化，不取消动作或队伍任务。
+	gun.melee_stamina_cost = 0
+	gun.melee_damage = 1
+	gun.melee_range = 2
+	gun.melee_knockback_distance = 0
+	gun.melee_slow_seconds = 2
+	gun.melee_slow_multiplier = 0.5
+	gun.melee_headshot_accuracy_threshold = 0.7
+	var approach: Vector3 = (player.global_position - actor.global_position).normalized()
+	approach.y = 0
+	player.global_position = actor.global_position + approach.normalized() * 1.2
+	player.look_at(Vector3(actor.global_position.x, player.global_position.y, actor.global_position.z))
+	for frame in 3: await physics_frame
+	check(combat.request_melee(), "Level %d: real player requests melee in the active arena" % level)
+	action_before = ai.current_action
+	assignment_before = ai.context.coordination_assignment().duplicate(true)
+	combat.begin_frame(1, false)
+	check(combat.last_melee_target == actor and actor.get_melee_stun_state().opening_available, "Level %d: actual player melee grants the selected enemy an opening" % level)
+	check(ai.current_action == action_before and ai.context.coordination_assignment() == assignment_before, "Level %d: melee stun preserves the current AI action and team assignment" % level)
+	evidence_before = ai.context.evidence_elapsed_seconds
+	for frame in 12: await physics_frame
+	check(actor.get_melee_stun_state().active and ai.context.evidence_elapsed_seconds > evidence_before and ai.current_action != null, "Level %d: perception and AI continue while melee stun is active" % level)
 	actor.apply_stagger(1)
 	player.is_in_dialogue = true
 	for frame in 3: await physics_frame
 	check(not actor.is_staggered(), "Level %d: dialogue clears reaction state through original lifecycle" % level)
+	check(not actor.get_melee_stun_state().active, "Level %d: dialogue clears the independent melee stun and opening" % level)
 	player.is_in_dialogue = false
 	scene.queue_free()
 	for frame in 4: await physics_frame

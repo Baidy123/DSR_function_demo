@@ -30,6 +30,5 @@ suppression_accuracy_loss = 0.01
 near_miss_radius = 1.0
 hit_speed_loss = 0.25
 hit_speed_loss_seconds = 0.1
-headshot_chance = 0.3
 melee_damage = 2.0
 melee_range = 2.0

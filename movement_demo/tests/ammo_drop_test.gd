@@ -378,7 +378,7 @@ func _shooting_and_models() -> void:
 	var gun := _gun(definition)
 	gun.fire_mode = WeaponData.FireMode.SHOTGUN
 	gun.shot_noise = null
-	gun.headshot_chance = 1
+	gun.headshot_enabled = true
 	gun.shotgun.pattern = ShotgunPattern.new()
 	gun.shotgun.pattern.points = PackedVector2Array([Vector2.ZERO, Vector2.ZERO, Vector2(-1, 0), Vector2(1, 0)])
 	gun.shotgun.pattern_angle_degrees = 8

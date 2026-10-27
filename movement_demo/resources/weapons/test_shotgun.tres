@@ -28,7 +28,6 @@ magazine_capacity = 2
 shotgun = SubResource("Resource_d48b2")
 aim_range = 15.0
 convergence_model = 2
-headshot_chance = 0.2
 headshot_damage_multiplier = 2.5
 headshot_stagger_seconds = 2.0
 visual_model = ExtResource("4")

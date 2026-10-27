@@ -167,10 +167,10 @@ func _validate_property(property: Dictionary) -> void:
 @export_range(0.0, 5.0, 0.05, "suffix:s") var hit_speed_loss_seconds: float = 0.5
 
 @export_subgroup("精准爆头（仅玩家）")
-## 玩家开火前达到最准精度时，实际命中才判定概率爆头；不分身体部位，不额外等待。敌人和近战不使用。
+## 玩家真实命中后按基础准度线性计算爆头；不分身体部位，不额外等待。敌人和近战不使用。
 @export var headshot_enabled: bool = true
-## 最准时每枪对每个实际命中目标判定一次，霰弹也只判定一次。0关闭，1表示100%。
-@export_range(0.0, 1.0, 0.01) var headshot_chance: float = 0.1
+## 在此基础准度时爆头率为0，至满准度线性增加到100%；仍须实际命中。0不是关闭，请使用启用爆头开关。
+@export_range(0.0, 0.99, 0.01) var headshot_accuracy_threshold: float = 0.9
 ## 开启且敌人没有训练“爆头防护”时，爆头走原死亡流程。关闭仍使用倍率伤害和被爆头状态。
 @export var headshot_instant_kill_enabled: bool = true
 ## 未秒杀时的总伤害倍率，3表示普通伤害的300%；霰弹乘实际命中弹丸总伤害。旧资源显式保存的倍率保留。
@@ -207,18 +207,26 @@ func _validate_property(property: Dictionary) -> void:
 @export_range(0.05, 5.0, 0.01) var melee_interval: float = 0.6
 
 @export_subgroup("命中反馈")
+## 近战眩晕持续秒数：原移动减速与敌人头顶眩晕使用本次时长，0关闭持续效果。
+## 重复命中仍刷新原减速，但不延长当前敌人眩晕／破绽；不禁射或暂停AI。
+@export_range(0.0, 5.0, 0.05, "suffix:s") var melee_slow_seconds: float = 0.5
+## 眩晕时目标自主移动保留比例；损失再乘受方速度损失倍率，100%只关闭减速，不关闭破绽。
+@export_range(0.0, 1.0, 0.05) var melee_slow_multiplier: float = 0.5
 ## 附带近战／专用近战命中时的基础精度损失；乘与射击共用的受方命中精度倍率。
 ## 100%且倍率1可降到0；倍率0.5只扣50个百分点，不会再额外强制清零。0关闭精度损失。
 @export_range(0.0, 1.0, 0.01) var melee_accuracy_loss: float = 1.0
+## 仅玩家近战命中的敌人获得一次爆头门槛优惠；不附加到玩家，不改变射手准度。
+@export var melee_headshot_opening_enabled: bool = true:
+	set(value):
+		melee_headshot_opening_enabled = value
+		notify_property_list_changed()
+## 玩家枪击此眩晕敌人时使用的爆头起始准度，与本枪普通门槛取较低者；不增加玩家准度。
+## 本次近战冻结该值；首次有效枪击后消费，当前眩晕期间不能重新授予。
+@export_range(0.0, 0.99, 0.01) var melee_headshot_accuracy_threshold: float = 0.7
 ## 无遮挡且目标不主动移动时的击退参考距离（米）。
 @export_range(0.0, 5.0, 0.05) var melee_knockback_distance: float = 1.0
 ## 击退外力衰减至零的时间（秒）。
 @export_range(0.05, 2.0, 0.01) var melee_knockback_seconds: float = 0.2
-## 近战命中后目标自主移动保留的基础比例；50%表示基础损失50%，再乘与射击共用的受方速度损失倍率。
-## 例如保留50%且受方倍率0.5，实际只损失25%、保留75%；100%不减速，不缩小击退外力。
-@export_range(0.0, 1.0, 0.05) var melee_slow_multiplier: float = 0.5
-## 命中减速持续时间（秒）；0关闭。再次命中刷新本次效果，不叠乘速度。
-@export_range(0.0, 5.0, 0.05, "suffix:s") var melee_slow_seconds: float = 0.5
 
 @export_group("外观与声音")
 @export_subgroup("模型")
@@ -309,9 +317,16 @@ func get_shotgun_settings() -> ShotgunSettings:
 
 ## 只返回配置与精度资格；是否实际命中、掷概率及伤害由玩家原射击流程负责。
 func get_headshot_chance(stability: float) -> float:
-	if not headshot_enabled or fire_mode == FireMode.MELEE or not is_finite(stability) or stability < 1.0 - 0.000001:
-		return 0.0
-	return _valid_fraction(headshot_chance)
+	if not headshot_enabled or fire_mode == FireMode.MELEE: return 0.0
+	return headshot_probability(stability, headshot_accuracy_threshold)
+
+
+## 唯一准度→爆头概率公式；普通命中、破绽命中及UI预览共用，不持有目标或资源状态。
+static func headshot_probability(stability: float, threshold: float) -> float:
+	if not is_finite(stability) or not is_finite(threshold): return 0.0
+	if stability >= 1.0 - 0.000001: return 1.0
+	var start := clampf(threshold, 0.0, 0.99)
+	return clampf((stability - start) / (1.0 - start), 0.0, 1.0)
 
 
 func get_headshot_damage_multiplier() -> float:
@@ -320,11 +335,19 @@ func get_headshot_damage_multiplier() -> float:
 
 ## 一枪一次的纯值快照；外部修改资源从下一枪生效，不改变本枪后续目标。
 func get_headshot_settings(stability: float) -> Dictionary:
-	return {"chance": get_headshot_chance(stability), "instant_kill": headshot_instant_kill_enabled,
+	return {"enabled": headshot_enabled and fire_mode != FireMode.MELEE,
+		"stability": stability, "accuracy_threshold": headshot_accuracy_threshold,
+		"instant_kill": headshot_instant_kill_enabled,
 		"multiplier": get_headshot_damage_multiplier(), "stagger_seconds": _valid_seconds(headshot_stagger_seconds),
 		"movement_multiplier": clampf(headshot_movement_multiplier, 0.0, 1.0) if is_finite(headshot_movement_multiplier) else 0.0,
 		"accuracy_cap": clampf(headshot_accuracy_cap, 0.0, 1.0) if is_finite(headshot_accuracy_cap) else 0.0,
 		"stagger_refresh_mode": StaggerRefresh.RESTART if headshot_stagger_refresh_mode == StaggerRefresh.RESTART else StaggerRefresh.KEEP_LONGER}
+
+
+## 仅玩家近战入口传给敌人；共享武器的敌方攻击不携带此项，玩家受击也不读取它。
+func get_melee_stun_settings() -> Dictionary:
+	return {"seconds": _valid_seconds(melee_slow_seconds), "opening_enabled": melee_headshot_opening_enabled,
+		"accuracy_threshold": clampf(melee_headshot_accuracy_threshold, 0.0, 0.99) if is_finite(melee_headshot_accuracy_threshold) else 0.9}
 
 
 func _angle_to_stability(angle: float, minimum: float, span: float) -> float:
