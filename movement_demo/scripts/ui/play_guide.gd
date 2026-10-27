@@ -9,7 +9,10 @@ const GUIDE_TEXT := """[b][color=#8ed9e8]01  移动与掩体[/color][/b]
 蹲在矮墙后，向墙外瞄准会临时起身，松开右键回蹲；此时按 C 可改为保持站立。
 
 [b][color=#8ed9e8]02  瞄准与交火[/color][/b]
-进入战斗区域后，[b]按住鼠标右键[/b] 瞄准，鼠标指向决定瞄准方向；会自动锁定范围内、方向合适且可见的敌人。
+进入战斗区域后，[b]按住鼠标右键[/b] 瞄准，自动锁定角色朝向附近、范围内且可见的敌人，并持续跟踪。
+[b]锁定时朝另一名敌人所在的屏幕方向拨动鼠标[/b]，即可切换目标，无需把光标放在敌人身上。相邻目标轻拨、远处目标多拨一点；切换后继续移动鼠标可接着换锁，无需停顿。该方向没有合适目标时保持原锁定。
+换锁后角色会平滑转向，转得越多、目标越远，跟枪精度损耗越大。转身中也能立即开枪，按当时朝向和准度射出，未对准时可能打偏。
+浅蓝色“转向中”标记只表示下一个目标；对准后才恢复普通准星和爆头菱形。
 [b]右键瞄准时按左键[/b] 开火：单发／霰弹每次点击一枪，自动武器可按住连射。
 停步、减少连射可让准星收拢；移动、跟枪、开火、受击或近弹压制会干扰精度。锁定不保证命中，墙体会挡子弹。
 [b]精度达到一定程度后，实际命中就有概率爆头；精度越高，爆头概率越大。[/b]金色菱形出现后随概率升高收小，满精准时发光，实际命中必爆头；秒杀仍取决于武器和敌人防护。
@@ -41,9 +44,10 @@ func _ready() -> void:
 	_body.text = GUIDE_TEXT
 	_close_button.pressed.connect(close_guide)
 	_previous_pause = get_tree().paused
-	_previous_mouse_mode = Input.mouse_mode
 	_owns_pause = true
 	get_tree().paused = true
+	# 先让战斗收到暂停并释放临时捕获，再记录界面关闭后应恢复的模式。
+	_previous_mouse_mode = Input.mouse_mode
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 	_close_button.grab_focus()
 

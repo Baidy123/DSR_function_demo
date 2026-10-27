@@ -10,6 +10,7 @@ extends Control
 var radius: float = 52.0
 var tint: Color = Color.WHITE
 var _draw_aim := false
+var _draw_switch_target := false
 var _headshot_ready := false
 var _headshot_probability := 0.0
 var _headshot_full_precision := false
@@ -37,6 +38,8 @@ func _on_headshot_resolved(point: Vector3, outcome: StringName) -> void:
 
 func _process(delta: float) -> void:
 	if combat.player.is_in_dialogue or combat.player.is_dead():
+		_draw_aim = false
+		_draw_switch_target = false
 		_headshot_markers.clear()
 		_headshot_ready = false
 		_headshot_probability = 0.0
@@ -47,6 +50,8 @@ func _process(delta: float) -> void:
 	var target = combat.locked_target
 	var camera := get_viewport().get_camera_3d()
 	if camera == null:
+		_draw_aim = false
+		_draw_switch_target = false
 		_headshot_markers.clear()
 		hide()
 		return
@@ -58,6 +63,7 @@ func _process(delta: float) -> void:
 		else:
 			marker.screen = camera.unproject_position(marker.point)
 	_draw_aim = combat.is_aiming and is_instance_valid(target)
+	_draw_switch_target = false
 	_headshot_ready = false
 	_headshot_probability = 0.0
 	_headshot_full_precision = false
@@ -68,6 +74,9 @@ func _process(delta: float) -> void:
 		_draw_aim = not camera.is_position_behind(point)
 		if _draw_aim:
 			position = camera.unproject_position(point)
+			_draw_switch_target = combat.is_turning_to_target()
+			_draw_aim = not _draw_switch_target
+		if _draw_aim:
 			var stability: float = combat.get_effective_accuracy()
 			# 姿态影响大小；颜色与爆头菱形仍取基础收敛进度，不能因蹲下提前亮起。
 			radius = lerpf(maximum_radius, minimum_radius, combat.get_spread_stability())
@@ -76,11 +85,21 @@ func _process(delta: float) -> void:
 			_headshot_ready = _headshot_probability > 0.0
 			_headshot_full_precision = _headshot_ready and stability >= 1.0 - 0.000001
 			_headshot_size = lerpf(maxf(headshot_maximum_size, headshot_minimum_size), headshot_minimum_size, _headshot_probability)
-	visible = _draw_aim or not _headshot_markers.is_empty()
+	visible = _draw_aim or _draw_switch_target or not _headshot_markers.is_empty()
 	queue_redraw()
 
 
 func _draw() -> void:
+	if _draw_switch_target:
+		# 小方括号只表示正在转向的下一目标，不使用准度圆或爆头菱形。
+		var color := Color(0.55, 0.85, 1.0, 0.9)
+		for corner in [Vector2(-1, -1), Vector2(1, -1), Vector2(-1, 1), Vector2(1, 1)]:
+			var point: Vector2 = corner * 14.0
+			for offset in [Vector2(-corner.x * 6.0, 0), Vector2(0, -corner.y * 6.0)]:
+				draw_line(point, point + offset, Color(0, 0, 0, 0.8), 4.0, true)
+				draw_line(point, point + offset, color, 2.0, true)
+		draw_string_outline(get_theme_default_font(), Vector2(-40, -22), "转向中", HORIZONTAL_ALIGNMENT_CENTER, 80, 14, 3, Color.BLACK)
+		draw_string(get_theme_default_font(), Vector2(-40, -22), "转向中", HORIZONTAL_ALIGNMENT_CENTER, 80, 14, color)
 	if _draw_aim:
 		# 原圆形准星继续只表示精度，不代表实际散布范围。
 		draw_arc(Vector2.ZERO, radius, 0.0, TAU, 64, Color(0.0, 0.0, 0.0, 0.8), 4.0, true)
