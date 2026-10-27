@@ -71,6 +71,13 @@ func _validate_property(property: Dictionary) -> void:
 ## 玩家锁定时的走路速度倍率，锁定期间禁跑；敌人移动由 AI 决定。
 @export_range(0.1, 1.0, 0.05) var locked_move_multiplier: float = 0.5
 
+@export_subgroup("玩家跟枪")
+## 仅玩家持枪时生效：目标沿瞄准连线靠近／远离的免罚半角，默认两侧各25°，合计50°。
+## 范围内不扣目标移动精度；超出后连续增加损失。0使用纯横向投影，敌人不读取。
+@export_range(0.0, 45.0, 0.5, "suffix:°") var tracking_parallel_tolerance_degrees: float = 25.0:
+	set(value):
+		tracking_parallel_tolerance_degrees = clampf(value, 0.0, 45.0) if is_finite(value) else 25.0
+
 @export_subgroup("玩家收敛")
 ## 最大散布到最小散布的函数：线性匀速，二次／指数前快后慢。只改变恢复，不改变惩罚或等待。
 @export_enum("线性:0", "二次:1", "指数:2") var convergence_model: int = ConvergenceModel.LINEAR:

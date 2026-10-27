@@ -20,6 +20,8 @@ func _run() -> void:
 	EditorInterface.get_inspector().expand_all_folding()
 	for frame in 10: await process_frame
 	var ranged := _properties(EditorInterface.get_inspector(), weapon)
+	var tracking_spin := _spin(weapon, "tracking_parallel_tolerance_degrees")
+	check(tracking_spin != null and tracking_spin.value == 25 and tracking_spin.max_value == 45 and not tracking_spin.tooltip_text.is_empty(), "枪械瞄准检查器提供默认25度的玩家跟枪免罚半角与说明")
 	for field in ["hit_accuracy_loss", "suppression_accuracy_loss", "hit_speed_loss", "melee_accuracy_loss"]:
 		var found := false
 		for prop in _descendants(EditorInterface.get_inspector(), "EditorProperty"):
@@ -33,6 +35,7 @@ func _run() -> void:
 	_select_mode(weapon, WeaponData.FireMode.MELEE)
 	for frame in 30: await process_frame
 	var melee := _properties(EditorInterface.get_inspector(), weapon)
+	check(not melee.has("tracking_parallel_tolerance_degrees"), "专用近战武器不展示玩家跟枪半角")
 	check(melee.has("fire_mode") and melee.has("melee_damage") and melee.has("melee_range"), "选近战后Fire Mode仍可修改且近战参数可见")
 	check(not melee.has("magazine_capacity") and not melee.has("shot_accuracy_penalty") and not melee.has("shot_spread_penalty_degrees"), "近战隐藏弹匣及两种远程准度参数")
 	var history = manager.get_history_undo_redo(manager.get_object_history_id(weapon))
@@ -86,6 +89,7 @@ func _run() -> void:
 				picker.resource_selected.emit(nested, false)
 	for frame in 30: await process_frame
 	var nested_before := _properties(EditorInterface.get_inspector(), nested)
+	check(not nested_before.has("tracking_parallel_tolerance_degrees"), "敌人内嵌武器不展示仅玩家有效的跟枪半角")
 	check(not nested_before.has("melee_headshot_opening_enabled") and not nested_before.has("melee_headshot_threshold_multiplier"), "敌人专用内嵌武器面板不展示玩家近战破绽能力")
 	check(nested_before.has("fire_mode") and nested_before.has("magazine_capacity"), "敌人 Weapon 内嵌面板的真实下拉框可操作")
 	_select_mode(nested, WeaponData.FireMode.MELEE, true)

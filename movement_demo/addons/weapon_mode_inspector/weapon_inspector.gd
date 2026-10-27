@@ -39,6 +39,7 @@ const SPREAD_FIELDS := {
 	"spread_target_move_fast_speed": "高速目标速度",
 }
 const COMMON_FIELDS := {
+	"tracking_parallel_tolerance_degrees": "跟枪免罚半角（仅玩家）",
 	"convergence_seconds": "收敛时间（最大→最小）", "convergence_exponent_k": "指数强度 k",
 	"headshot_accuracy_threshold": "爆头起始准度", "headshot_damage_multiplier": "未秒杀时伤害倍率", "headshot_stagger_seconds": "被爆头状态时长",
 	"headshot_movement_multiplier": "被爆头时保留移速", "headshot_accuracy_cap": "被爆头期间精度上限",
@@ -68,6 +69,7 @@ const PERCENT_FIELDS := [
 	"melee_slow_multiplier",
 ]
 const FIREARM_FIELDS := [
+	"tracking_parallel_tolerance_degrees",
 	"convergence_model", "convergence_seconds", "convergence_exponent_k",
 	"headshot_enabled", "headshot_accuracy_threshold", "headshot_damage_multiplier",
 	"headshot_instant_kill_enabled", "headshot_stagger_seconds", "headshot_stagger_refresh_mode",
@@ -80,6 +82,7 @@ const FIREARM_FIELDS := [
 
 ## 自定义数值控件也提供直接提示；脚本的 ## 属性文档同时保留原生检查器帮助。
 const EFFECT_HELP := {
+	"tracking_parallel_tolerance_degrees": "仅玩家使用此枪时有效。目标沿瞄准连线靠近／远离，在两侧各25°（默认）的范围内不扣目标移动精度；超出后连续增加损失。0使用纯横向投影；玩家自身移动、受击等惩罚保持。敌人使用同一枪时不读取此项。",
 	"stabilize_seconds": "仅敌人：从初始概率恢复到100%的秒数；初始100%时按0到100%。继续供原AI恢复与掩体阶段估时使用。玩家不读取，不受玩家公式和收敛时间影响。",
 	"settle_seconds": "仅敌人：霰弹从初始稳定度恢复到最准的秒数；初始100%时按0到100%。玩家不读取；玩家霰弹统一使用所属武器的玩家收敛时间与公式。",
 	"convergence_seconds": "仅玩家：从最大散布到最小散布的完整秒数，不含恢复等待；当前状态从曲线对应位置继续。线性、二次、指数均只用此时间；概率模式对应0到100%，霰弹对应最大到最小随机偏移。默认4秒，最小0.01秒；旧0值按4秒，不再启用旧参数。敌人保持原算法。",
@@ -162,6 +165,7 @@ func _parse_property(object: Object, type: Variant.Type, path: String, hint: Pro
 	if object.fire_mode == WeaponData.FireMode.MELEE and (path in FIREARM_FIELDS or PROBABILITY_FIELDS.has(path) or SPREAD_FIELDS.has(path)):
 		return true
 	if path in ENEMY_RECOVERY_FIELDS and _is_player_context(): return true
+	if path == "tracking_parallel_tolerance_degrees" and _is_enemy_context(): return true
 	if path in PLAYER_CONVERGENCE_FIELDS and _is_enemy_context(): return true
 	if path in MELEE_OPENING_FIELDS and (_is_enemy_context() or object.fire_mode == WeaponData.FireMode.MELEE): return true
 	if path == "melee_headshot_threshold_multiplier" and not object.melee_headshot_opening_enabled: return true

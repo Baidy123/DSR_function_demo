@@ -18,11 +18,6 @@ enum AimMode { PROBABILITY, SPREAD_CONE }
 ## 选择本节点的射击算法；两种模式共用锁定、碰撞和伤害结算。
 @export_enum("旧概率模式:0", "新散布锥模式:1") var aim_mode: int = AimMode.SPREAD_CONE
 
-@export_group("目标跟枪精度")
-## 目标沿瞄准连线靠近／远离时的免罚半角（度），前后对称；默认两侧各15°，合计30°。
-## 超出后按有效横向位移逐渐增加惩罚；0使用纯横向投影。只影响玩家，三种瞄准分支共用。
-@export_range(0.0, 45.0, 0.5, "suffix:°") var tracking_parallel_tolerance_degrees: float = 15.0
-
 @export_group("蹲姿精度")
 ## 蹲姿最大散布乘以(1-n)，最小散布不变；0关闭，n始终小于1。
 ## 霰弹只缩小最大随机偏移，固定图样不变；不修改恢复进度、时间或爆头资格。
@@ -434,7 +429,7 @@ func _apply_target_movement_accuracy_penalty(delta: float) -> bool:
 	var axis := Vector2(relative_midpoint.x, relative_midpoint.z)
 	if moved_distance <= 0.000001 or not axis.is_finite() or axis.length_squared() <= 0.000001: return false
 	var lateral_ratio := clampf(absf(displacement.cross(axis.normalized())) / moved_distance, 0.0, 1.0)
-	var tolerance := sin(deg_to_rad(clampf(tracking_parallel_tolerance_degrees, 0.0, 45.0)))
+	var tolerance := sin(deg_to_rad(weapon.tracking_parallel_tolerance_degrees))
 	var lateral_weight := clampf((lateral_ratio - tolerance) / (1.0 - tolerance), 0.0, 1.0)
 	var tracking_distance := moved_distance * lateral_weight
 	if tracking_distance <= 0.000001: return false
