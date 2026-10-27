@@ -1,6 +1,8 @@
-# 五关游玩说明
+# 游玩操作与五关流程
 
 打开 `movement_demo/project.godot` 后按 **F5**，或直接运行工程，即从第1关开始。无需逐个打开场景按 F6。每关入场会显示同一份 2D 游玩说明：阅读时暂停战斗，正文可用滚轮滚动，底部 **关闭 / 开始游玩** 按钮恢复游戏。界面使用原生锚点随视口铺开，首次全屏、窗口缩放和后续换关均无需手动刷新尺寸。
+
+完整配置入口见[项目总览](../../README.md)，专项说明见[文档导航](../README.md)。
 
 ## 玩家操作
 
@@ -47,8 +49,12 @@
 
 死亡界面原按钮只重开当前关。换关和重开都重新读取该关保存的生命、武器、弹药与医疗包，不继承上一关的剩余状态；对话 GameState 继续遵循原生命周期。本功能不新增跨关存档。原 `scenes/main.tscn` 保留为功能演示，仍可单独 F6 运行。
 
-## 维护入口
+## 界面与维护入口
 
 五关各自增加一个 `LevelFlow` 实例（`scenes/ui/level_flow.tscn`），`level_number` 为1至5；原 Player、Camera3D、EnemyWaves、根脚本和资源引用不变。`scripts/systems/level_flow.gd` 只监听原 `EnemyWaves.encounter_completed` 并在按钮点击后延迟切换场景，不改变敌人、AI、波次完成判定或 Health 的死亡重开实现。第五关显示通关；切换失败时保留重试按钮。
 
 说明组件为 `scenes/ui/play_guide.tscn` 与 `scripts/ui/play_guide.gd`，文案保存在脚本 `GUIDE_TEXT`，修改操作时同步本文。组件只在显示期间持有暂停，关闭或卸载恢复先前状态；正文滚动，关闭按钮独立保留在底部。关卡衔接不是酒馆任务的 StageController，原任务与剧情系统保持各自职责。
+
+## 历史记录
+
+早期配置、实施过程及当时的验证结果保存在[整理前记录](../history/2026-10-28/gameplay/PLAY_GUIDE.md)。历史通过数不代表当前本地配置已重新验证。

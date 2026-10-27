@@ -1,9 +1,8 @@
 # 阶段、任务与 NPC 状态
 
-2026-10-27：工程默认入口已改为连续五关，第1关直接启动；下述酒馆任务循环仍保留在 `scenes/main.tscn` 功能演示中，可单独 F6 运行。五关的按钮切换只订阅波次完成信号，不读写本文三个控制器的状态，见[五关说明](PLAY_GUIDE.md)。
+该系统服务独立任务演示，按配置表表达接任务、进入场地、返回结算和 NPC 状态。连续五关的 LevelFlow 只消费波次完成信号，使用单独的[关卡流程](PLAY_GUIDE.md)，不读写本页三个控制器的任务状态。
 
-这份文档说明“酒馆接任务 → 前往场地 → 战斗 → 返回结算”这条循环现在由谁掌控、任务条件怎么配、
-任务状态怎么看，以及它和对话、交互物、竞技场的关系。设计稿在 `docs/superpowers/specs/`（仅本地保留）。
+配置入口为 **StageStateController → Stage Table**，资源模板是 `resources/stages/stage_table_template.tres`。普通玩法改配置表，扩展条件或状态类型才改对应资源／控制器。
 
 ## 三个控制器
 
@@ -17,19 +16,48 @@
 通过 group 互相查找，不新增全局单例。场景里还需要一个 `TavernZone`（Area3D）表示酒馆范围；
 任务场地直接用竞技场已有的 `Arena/CombatZone`。两者都挂 `scripts/world/zone_volume.gd` 并填 `zone_id`。
 
-## 解耦约定
+## 配置表用法
 
-两个控制器互不触发对方行为，只读对方的查询接口；各自的数据只有一个写入者：
+配置表是 `StageTable` 资源，模板在 `resources/stages/stage_table_template.tres`，已在
+`main.tscn` 的 `StageStateController` 上引用。做法：
 
-| 数据 | 唯一写入者 | 另一方的用法 |
-| --- | --- | --- |
-| 每个任务的运行状态 | `QuestController` | `StageController` 只调用 `status_of(quest_id)` |
-| 阶段序号与环节 | `StageController` | `QuestController` 只调用 `get_stage_index()`，用来判解锁／失效窗口 |
+1. 在编辑器里双击该 `.tres`，在检查器里展开 `Stages`、`Quests`、`Rules` 三个数组。
+2. `Stages` 每项填 `index`（第几个任务）、`display_name`、`quest_id`（对应任务 id）、
+   `target_area`（目标场地标识，如 `arena`）、`note`。
+3. `Quests` 每项填 `id`、`display_name`、`stage_index`、`target_area`，
+   再填阶段窗口 `unlock_stage`／`expire_stage`（0 表示不限），最后加三组条件。
+   手写 `.tres` 时 `source` 用整数：`STATE_FIELD=0`、`FLAG=1`、`ITEM=2`、`INTERACTED=3`、
+   `ZONE_ENTERED=4`、`ZONE_LEFT=5`。
+4. 条件示例：
+   - 对话接取：`source=0`、`key=help_choice`、`state_value=accepted`；
+   - 交互开关：`source=1`、`key=music_playing`（`flag_value` 默认真）；
+   - 拾取物品：`source=2`、`key=keycard`、`min_count=1`；
+   - 去过竞技场又离开：`source=4` + `source=5`、`key=arena` 两条都要填。
+5. 区域要挂 `scripts/world/zone_volume.gd` 并填 `zone_id`（现成：酒馆 `tavern`、竞技场 `arena`）；
+   交互物要填 `interact_id`（留空会回退节点名）；NPC 要填 `npc_id`（`npc_a`、`npc_b`）。
+6. `Rules` 是 NPC 状态规则，按数组顺序生效，**后面的覆盖前面的**。每项填三段：
+   - 条件：`stage_index`（0 表示不限）、`phase`（-1 表示不限）、`quest_id` + `quest_status`
+     （`not_started`／`in_progress`／`refused`／`completed`／`missed`）、`required_flags`、`required_items`。
+   - 目标：`target_npc` 填 NPC 的 `npc_id`，留空表示应用到全部 NPC。
+   - 状态：`present`、`position_set` + `position`、`facing_set` + `facing`、`dialogue`。
+7. 想新增一个任务阶段时，复制整份 `.tres`，改阶段序号、任务 id 与规则，再把新表赋给
+   `StageStateController.stage_table`（多份表的分发规则见[待办](../TODO.md)）。
 
-- 任务控制器不监听 `phase_changed`，「离开场地即完成」由任务自己的区域条件表达，不是靠阶段变化触发。
-- 任务控制器订阅阶段控制器的只读广播 `stage_changed` 来重算窗口；阶段控制器订阅 `quest_changed` 来重推阶段。
-  两边都只读值、不调用对方的行为，重算幂等且只在值变化时广播，所以不会来回震荡。
-- `StageStateController` 只负责把同一张配置表分发给两个控制器，不再做「任务监听阶段」这类接线。
+模板里已按现状填了两个任务：
+
+- `task_a`（帮 A 的忙）：接取 `help_choice == accepted`，拒绝 `help_choice == refused`，
+  完成＝曾进入 `arena` 且曾离开 `arena`（等价于原来的“离开场地返回结算”）。
+- `task_music`（打开唱片机，阶段一内的支线，不占阶段序号）：接取 `music_quest_choice == accepted`，
+  完成＝`music_quest_turnin == done` **且** `music_playing` 为真。所以交差时唱片机被关掉就不会完成，
+  重新打开再交差才会完成；没接取时完成条件根本不参与评估。
+  唱片机在接取前后都能操作，接取前开关音乐只是写旗标，不会推进任务状态。
+  这个任务**没有拒绝条件**：B 对话里的“现在不行”只把 `music_quest_choice` 写成 `refused` 供对话分支使用，
+  任务状态保持未接；再找 B 会看到拒绝台词，并可以直接“我改主意了”重新接取。
+
+### 开关：先检测，再决定是否落地
+
+`StageStateController.apply_enabled` 默认关闭。关闭时只检测、只记录，游戏表现和接入前完全一致；
+表填好、确认无误后再打开，NPC 的在场、站位与对话才会真正按表变化。
 
 ## 阶段与环节
 
@@ -111,7 +139,7 @@
 
 ## 任务面板
 
-2026-10-23 按用户要求，主场景已移除任务面板及任务状态调试框。
+主场景已移除任务面板及任务状态调试框。
 `scenes/ui/quest_panel.tscn` + `scripts/ui/quest_panel.gd` 保留为可单独装配的组件，仅组件测试显式挂载，
 半透明样式与调试面板一致，鼠标事件忽略、不抢对话与交互按键。面板只读任务控制器：
 
@@ -120,6 +148,20 @@
 - 监听 `quest_changed` 刷新，并在启动时延迟补刷一次，兜住控制器晚接线。
 
 当前主场景不再挂载 `GameStateDebug`；任务控制器与配置表接口保持原归属。
+
+## 解耦约定
+
+两个控制器互不触发对方行为，只读对方的查询接口；各自的数据只有一个写入者：
+
+| 数据 | 唯一写入者 | 另一方的用法 |
+| --- | --- | --- |
+| 每个任务的运行状态 | `QuestController` | `StageController` 只调用 `status_of(quest_id)` |
+| 阶段序号与环节 | `StageController` | `QuestController` 只调用 `get_stage_index()`，用来判解锁／失效窗口 |
+
+- 任务控制器不监听 `phase_changed`，「离开场地即完成」由任务自己的区域条件表达，不是靠阶段变化触发。
+- 任务控制器订阅阶段控制器的只读广播 `stage_changed` 来重算窗口；阶段控制器订阅 `quest_changed` 来重推阶段。
+  两边都只读值、不调用对方的行为，重算幂等且只在值变化时广播，所以不会来回震荡。
+- `StageStateController` 只负责把同一张配置表分发给两个控制器，不再做「任务监听阶段」这类接线。
 
 ## 记录
 
@@ -133,74 +175,12 @@
 默认写入 `res://logs/stage_state.log`（`logs/` 已被 Git 忽略），可用 `log_to_file`、`print_log`、
 `log_path` 调整。
 
-## 怎么配置配置表
+## 维护与验证
 
-配置表是 `StageTable` 资源，模板在 `resources/stages/stage_table_template.tres`，已在
-`main.tscn` 的 `StageStateController` 上引用。做法：
+配置资源与控制器位于 `scripts/systems/stage/`，场景控制器是普通节点，通过组查找；NPC 通过稳定 `npc_id` 与状态接口接入。`StageStateController.reload_table()` 重新分发表，`get_snapshot()`／`snapshot_changed` 提供只读状态；调试接口不能替代运行时真实事件验证。
 
-1. 在编辑器里双击该 `.tres`，在检查器里展开 `Stages`、`Quests`、`Rules` 三个数组。
-2. `Stages` 每项填 `index`（第几个任务）、`display_name`、`quest_id`（对应任务 id）、
-   `target_area`（目标场地标识，如 `arena`）、`note`。
-3. `Quests` 每项填 `id`、`display_name`、`stage_index`、`target_area`，
-   再填阶段窗口 `unlock_stage`／`expire_stage`（0 表示不限），最后加三组条件。
-   手写 `.tres` 时 `source` 用整数：`STATE_FIELD=0`、`FLAG=1`、`ITEM=2`、`INTERACTED=3`、
-   `ZONE_ENTERED=4`、`ZONE_LEFT=5`。
-4. 条件示例：
-   - 对话接取：`source=0`、`key=help_choice`、`state_value=accepted`；
-   - 交互开关：`source=1`、`key=music_playing`（`flag_value` 默认真）；
-   - 拾取物品：`source=2`、`key=keycard`、`min_count=1`；
-   - 去过竞技场又离开：`source=4` + `source=5`、`key=arena` 两条都要填。
-5. 区域要挂 `scripts/world/zone_volume.gd` 并填 `zone_id`（现成：酒馆 `tavern`、竞技场 `arena`）；
-   交互物要填 `interact_id`（留空会回退节点名）；NPC 要填 `npc_id`（`npc_a`、`npc_b`）。
-6. `Rules` 是 NPC 状态规则，按数组顺序生效，**后面的覆盖前面的**。每项填三段：
-   - 条件：`stage_index`（0 表示不限）、`phase`（-1 表示不限）、`quest_id` + `quest_status`
-     （`not_started`／`in_progress`／`refused`／`completed`／`missed`）、`required_flags`、`required_items`。
-   - 目标：`target_npc` 填 NPC 的 `npc_id`，留空表示应用到全部 NPC。
-   - 状态：`present`、`position_set` + `position`、`facing_set` + `facing`、`dialogue`。
-7. 想新增一个任务阶段时，复制整份 `.tres`，改阶段序号、任务 id 与规则，再把新表赋给
-   `StageStateController.stage_table`（多份表的分发规则尚未定稿，见 `docs/TODO.md`）。
+对应条件、任务状态、阶段接线、面板和交互支线测试列于[测试说明](../testing.md)。原场景未挂载的任务面板和交互物由独立夹具装配，不能把旧演示位置当作当前主场景配置。
 
-模板里已按现状填了两个任务：
+## 历史记录
 
-- `task_a`（帮 A 的忙）：接取 `help_choice == accepted`，拒绝 `help_choice == refused`，
-  完成＝曾进入 `arena` 且曾离开 `arena`（等价于原来的“离开场地返回结算”）。
-- `task_music`（打开唱片机，阶段一内的支线，不占阶段序号）：接取 `music_quest_choice == accepted`，
-  完成＝`music_quest_turnin == done` **且** `music_playing` 为真。所以交差时唱片机被关掉就不会完成，
-  重新打开再交差才会完成；没接取时完成条件根本不参与评估。
-  唱片机在接取前后都能操作，接取前开关音乐只是写旗标，不会推进任务状态。
-  这个任务**没有拒绝条件**：B 对话里的“现在不行”只把 `music_quest_choice` 写成 `refused` 供对话分支使用，
-  任务状态保持未接；再找 B 会看到拒绝台词，并可以直接“我改主意了”重新接取。
-
-### 开关：先检测，再决定是否落地
-
-`StageStateController.apply_enabled` 默认关闭。关闭时只检测、只记录，游戏表现和接入前完全一致；
-表填好、确认无误后再打开，NPC 的在场、站位与对话才会真正按表变化。
-
-## 验证
-
-```powershell
-& E:/Godot/Godot_v4.7.2-stable_win64_console.exe --headless --path movement_demo --script res://tests/quest_conditions_test.gd
-& E:/Godot/Godot_v4.7.2-stable_win64_console.exe --headless --path movement_demo --script res://tests/quest_system_test.gd
-& E:/Godot/Godot_v4.7.2-stable_win64_console.exe --headless --path movement_demo --script res://tests/stage_system_test.gd
-& E:/Godot/Godot_v4.7.2-stable_win64_console.exe --headless --path movement_demo --script res://tests/quest_panel_test.gd
-& E:/Godot/Godot_v4.7.2-stable_win64_console.exe --headless --path movement_demo --script res://tests/record_player_quest_test.gd
-```
-
-macOS 上用 `Godot.app/Contents/MacOS/Godot` 替换可执行文件路径。
-
-- `quest_conditions_test.gd`：六种条件的构造与描述文本。
-- `quest_system_test.gd`：阶段窗口（未解锁不评估、到阶段失效、终态不回退）、条件驱动的接取／拒绝／完成、
-  `get_quest_entries()` 的内容与排序，以及任务状态变化不会推进阶段序号。
-- `stage_system_test.gd`：阶段判定的全部转移与次序、拒绝与接取的区分、失效处理、规则匹配与覆盖顺序、
-  开关关闭／打开的行为差异、快照字段、记录内容与去重信号，并在最后加载真实 `main.tscn` 检查控制器、
-  区域绑定、`npc_id` 对应与“默认不落表现”。
-- `quest_panel_test.gd`：面板列出全部任务与状态、随 `quest_changed` 刷新、空表占位、不接收鼠标、
-  真实 `main.tscn` 里能找到面板与控制器。
-- `record_player_quest_test.gd`：接取前后都能操作唱片机、接取前操作不推进任务状态、
-  关闭状态下交差失败、重新打开后点“交差”完成任务、拒绝只改对话不改任务状态且可重新接取，
-  以及任务面板显示对应状态。
-
-## 后续
-
-多份配置表的分发、任务二的场地与内容、酒馆场景整体变化、真正的场景切换都还没做；
-进度持久化本轮也未做（场景重开后已完成会退回），都记录在 [待办](../TODO.md)。
+早期配置、实施过程及当时的验证结果保存在[整理前记录](../history/2026-10-28/gameplay/STAGE_STATE.md)。历史通过数不代表当前本地配置已重新验证。

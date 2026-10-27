@@ -1,34 +1,8 @@
-# 模型动画与命中特效接入
+# 模型、动画与命中特效接入
 
-更新：2026-10-27。
+表现组件把真实玩法状态转换为模型、动画和视觉反馈。模型挂点、动画播放或特效不能代替身体碰撞、枪口射线、伤害与 AI 决策；缺少表现资源时玩法仍按原接口执行。
 
-## 近战眩晕星环与爆头准星
-
-`enemy_actor.gd.get_melee_stun_state()` 提供只读的 `active`、`remaining_seconds`、`elapsed_seconds`、`generation`、`life_generation`、`opening_available`、`threshold_multiplier`。破绽保存倍率，准星查询用当前枪械普通门槛乘它；不再返回绝对门槛 `accuracy_threshold`。近战状态与原被爆头状态独立；身体独占时钟，UI／特效不推进玩法。破绽消费后仍可有剩余眩晕时间，星环不会因此提前消失。
-
-原敌人 **EnemyPresentation** 节点（`enemy_presentation.gd`）的 **Melee Stun Effect Scene** 默认引用 `scenes/effects/melee_stun.tscn`。纯表现 `scripts/systems/effects/melee_stun_effect.gd` 绘制金色星点环，按身体高度和状态经过时间跟随；位于头顶与血条之间，保留真实深度遮挡。效果按敌人实例分别创建，暂停冻结，死亡／复位及时隐藏，随角色卸载回收。玩家不接入这项敌人专属效果，空正式模型仍能显示默认星环。
-
-原 `lock_reticle.gd` 读取 Combat 的目标概率：0隐藏金色菱形，正概率由大到小，100%基础准度增加多层透明亮边，不依赖3D Bloom。**Headshot Minimum Size / Maximum Size** 调整菱形半尺寸，默认4／10像素。颜色和原瞄准圆沿原规则；实际概率下降、目标改变、破绽消费／到期立即更新。死亡自动暂停仍优先清理反馈。发光只代表命中后的爆头确定性，不代替防护或实际弹道判定。
-
-## 被爆头状态接口
-
-敌人身体提供 `stagger_started(seconds)`、`stagger_finished` 和只读 `get_hit_reaction_state()`，后者返回 `kind`（`headshot`／`none`）、`staggered`、`remaining_seconds`、`movement_multiplier`、`accuracy_cap`。可供未来动画读取；本轮没有新增动画或修改动画状态机。连续命中更新时长与效果，不重复发进入信号；需要实时进度时读取状态。死亡优先使用原死亡流程，结束信号不代表一定恢复战斗。表现层不得控制伤害、时钟或动作解锁。
-
-当前被爆头状态按攻击武器限制移速和精度，默认1秒、两项均为0%；不禁止开枪，保留原AI动作、转向、姿态、换弹与近战。武器时长0表示不进入状态；说明见[精准爆头](COMBAT.md#精准爆头2026-10-25)。
-
-## 临时敌人血条与波次尸体（2026-10-25）
-
-敌人公共场景已带 **HealthBar** 子节点。正常显示为头顶一条血量比例条，没有生命数字；受伤后缩短并变色，死亡隐藏，战斗复位恢复满条。它读取身体原来的生命与受击／死亡／复位信号，不另存一份生命状态。血条朝向实际相机，受场景深度遮挡，蹲姿时跟随头顶高度。
-
-需要调整时，对敌人实例开启“可编辑子节点”，选 **HealthBar**：`Enabled` 控制是否显示，`Bar Width / Bar Height` 调宽高，`Head Offset` 调离头顶的距离。修改公共 `scenes/enemy/enemy.tscn` 会影响全部继承敌人；只改某一敌人时使用实例覆盖。原调试生命标签仍只由调试开关控制。
-
-按用户要求，一波全灭后保留尸体外观。控制器先从敌人复制网格与材质，再回收原身体、AI、导航、碰撞、动画播放器和血条。当前胶囊若尚未倒完，会从当时姿态接着完成原0.3秒倒地的剩余部分，再静止保留，不跳到倒地终点；一次性的外观Tween不保留AI。配置 Presentation 模型时保留回收瞬间的可见网格姿态。尸体不计入存活人数，也不阻挡后续刷新和移动；保留至本轮战斗离场复位、手动重置或场景卸载。普通非波次敌人的原死亡／区域复位流程保持。
-
-这些外观只保留显示所需网格、材质和变换，不运行角色脚本。当前验收以占位胶囊为主；未来正式模型的完整死亡动画、同时蒙皮与混合形状、动态布料等需要另行验收，当前不会让死亡动画播放器继续运行。
-
-接口已经接入玩家、敌人、NPC 和掩体。**角色模型、动画和特效默认留空，直接运行仍使用原胶囊、方块和敌人倒地效果；装备武器且未配置武器模型时，自动显示方块武器。** 不需要添加素材才能继续试玩。现有移动、弹道、弹药、AI、对话与碰撞仍由原组件负责。
-
-## 先看示例
+## 资源示例与入口
 
 打开 `res://scenes/presentation/presentation_preview.tscn`，按 F6。蓝色简单模型每两秒切换动作，右侧墙面显示命中粒子。当前演示23种状态，包含蹲起、蹲姿战斗、翻越、下落和落地，手中使用方块武器；站高1.75米、蹲高1米。这是接口演示，不是正式角色美术；不影响 F5 启动的主场景。
 
@@ -46,7 +20,7 @@
 
 | 对象 | 在场景树中选择 |
 | --- | --- |
-| 玩家 | Main → Player → Visual → Presentation |
+| 玩家 | Player → Visual → Presentation |
 | 敌人 | enemy.tscn → Presentation，或竞技场实例的对应节点 |
 | NPC | Main → NPC → Presentation，NPCB 同理 |
 | 掩体 | cover.tscn / low_cover.tscn → Presentation，或地图中该实例的对应节点 |
@@ -140,30 +114,42 @@ Vault 跟随真实翻越进度，Vault Fall 在身体下落期间独立循环；
 
 新建 ImpactProfile，把特效场景填入 Effect Scene，Surface Offset 控制离表面的少量偏移，Max Lifetime 是超时回收上限。示例根脚本的 Duration 应覆盖所有粒子的可见寿命。自定义根脚本需提供 `start(event)` 和 `finished` 信号。
 
-粒子在管理器下独立播放，完成或超时自动释放；默认最多64个活动实例，超过后回收最早实例。暂停时寿命与粒子一起暂停，离场复位只清理所属区域，重开随场景清理。音效、附着弹孔和掩体破坏不在本轮实现范围。
+粒子在管理器下独立播放，完成或超时自动释放；默认最多64个活动实例，超过后回收最早实例。暂停时寿命与粒子一起暂停，离场复位只清理所属区域，重开随场景清理。本命中特效入口不提供音效、附着弹孔或掩体破坏。
+
+## 近战眩晕星环与爆头准星
+
+`enemy_actor.gd.get_melee_stun_state()` 提供只读的 `active`、`remaining_seconds`、`elapsed_seconds`、`generation`、`life_generation`、`opening_available`、`threshold_multiplier`。破绽保存倍率，准星查询用当前枪械普通门槛乘它；不再返回绝对门槛 `accuracy_threshold`。近战状态与原被爆头状态独立；身体独占时钟，UI／特效不推进玩法。破绽消费后仍可有剩余眩晕时间，星环不会因此提前消失。
+
+原敌人 **EnemyPresentation** 节点（`enemy_presentation.gd`）的 **Melee Stun Effect Scene** 默认引用 `scenes/effects/melee_stun.tscn`。纯表现 `scripts/systems/effects/melee_stun_effect.gd` 绘制金色星点环，按身体高度和状态经过时间跟随；位于头顶与血条之间，保留真实深度遮挡。效果按敌人实例分别创建，暂停冻结，死亡／复位及时隐藏，随角色卸载回收。玩家不接入这项敌人专属效果，空正式模型仍能显示默认星环。
+
+原 `lock_reticle.gd` 读取 Combat 的目标概率：0隐藏金色菱形，正概率由大到小，100%基础准度增加多层透明亮边，不依赖3D Bloom。**Headshot Minimum Size / Maximum Size** 调整菱形半尺寸，默认4／10像素。颜色和原瞄准圆沿原规则；实际概率下降、目标改变、破绽消费／到期立即更新。死亡自动暂停仍优先清理反馈。发光只代表命中后的爆头确定性，不代替防护或实际弹道判定。
+
+## 被爆头状态接口
+
+敌人身体提供 `stagger_started(seconds)`、`stagger_finished` 和只读 `get_hit_reaction_state()`，后者返回 `kind`（`headshot`／`none`）、`staggered`、`remaining_seconds`、`movement_multiplier`、`accuracy_cap`。可供动画读取；该状态接口本身不配置动画。连续命中更新时长与效果，不重复发进入信号；需要实时进度时读取状态。死亡优先使用原死亡流程，结束信号不代表一定恢复战斗。表现层不得控制伤害、时钟或动作解锁。
+
+当前被爆头状态按攻击武器限制移速和精度，默认1秒、两项均为0%；不禁止开枪，保留原AI动作、转向、姿态、换弹与近战。武器时长0表示不进入状态；说明见[精准爆头](COMBAT.md#精准爆头2026-10-25)。
+
+<a id="临时敌人血条与波次尸体2026-10-25"></a>
+
+## 临时敌人血条与波次尸体
+
+敌人公共场景已带 **HealthBar** 子节点。正常显示为头顶一条血量比例条，没有生命数字；受伤后缩短并变色，死亡隐藏，战斗复位恢复满条。它读取身体原来的生命与受击／死亡／复位信号，不另存一份生命状态。血条朝向实际相机，受场景深度遮挡，蹲姿时跟随头顶高度。
+
+需要调整时，对敌人实例开启“可编辑子节点”，选 **HealthBar**：`Enabled` 控制是否显示，`Bar Width / Bar Height` 调宽高，`Head Offset` 调离头顶的距离。修改公共 `scenes/enemy/enemy.tscn` 会影响全部继承敌人；只改某一敌人时使用实例覆盖。原调试生命标签仍只由调试开关控制。
+
+按用户要求，一波全灭后保留尸体外观。控制器先从敌人复制网格与材质，再回收原身体、AI、导航、碰撞、动画播放器和血条。当前胶囊若尚未倒完，会从当时姿态接着完成原0.3秒倒地的剩余部分，再静止保留，不跳到倒地终点；一次性的外观Tween不保留AI。配置 Presentation 模型时保留回收瞬间的可见网格姿态。尸体不计入存活人数，也不阻挡后续刷新和移动；保留至本轮战斗离场复位、手动重置或场景卸载。普通非波次敌人的原死亡／区域复位流程保持。
+
+这些外观只保留显示所需网格、材质和变换，不运行角色脚本。当前验收以占位胶囊为主；未来正式模型的完整死亡动画、同时蒙皮与混合形状、动态布料等需要另行验收，当前不会让死亡动画播放器继续运行。
+
+接口已经接入玩家、敌人、NPC 和掩体。**角色模型、动画和特效默认留空，直接运行仍使用原胶囊、方块和敌人倒地效果；装备武器且未配置武器模型时，自动显示方块武器。** 不需要添加素材才能继续试玩。现有移动、弹道、弹药、AI、对话与碰撞仍由原组件负责。
 
 ## 维护与验证
 
-相机遮挡透明是独立的外观消费流程：原 `Camera3D` 仅查询 `camera_fadeable` 组标记的天花板／装饰模型，包括专用容器下的 Presentation 内部模型；纯 Mesh 不需要碰撞体。现有高、低掩体与角色始终排除。使用独立的 StandardMaterial3D / ORMMaterial3D 副本渐变，恢复时还原原引用，不修改模型资源或物理碰撞；自定义 ShaderMaterial 需另行提供适配。模型分支可用 `camera_occlusion_ignore` 组排除，完整配置及主场景试玩区见 [相机说明](CAMERA.md)。
+资源分别位于 `scenes/presentation/`、`resources/animations/`、`resources/effects/` 和 `scenes/effects/`。接入新模型时核对根类型、缩放、挂点、动画映射、暂停与销毁；命中特效使用 ImpactProfile，不更改共享原材质或物理模型。
 
-通用挂载、动画后端及状态类型放在 `scripts/systems/presentation/`；命中快照、表面配置与特效管理在 `scripts/systems/effects/`。玩家、敌人和 NPC 各自的 Presentation 适配器读取已有状态。敌人 AI 和战术模块不引用模型、素材名称或粒子。
+验证同时覆盖缺资源回退、运行状态隔离和实际渲染。动画／命中特效／相机／准星专项按变更选择，入口见[测试说明](../testing.md)。历史截图、阶段通过数与退出诊断保留于历史记录，不能代替新美术资源的验收。
 
-`weapon_presentation.gd` 只负责装备外观的实例生命周期、挂点跟随及方块回退；配置保留在既有 `WeaponData`，由 `visual_presentation.gd` 消费状态中的 `weapon` 和相对本节点的 `weapon_mount_position`。它不读取 Ammo 或修改装备、身体、战术，原场景节点路径不变。
+## 历史记录
 
-玩家与敌人身体公开 `get_posture_presentation_state()`，返回独立字典，包含 `amount`、`transition`、`vaulting`、`vault_progress`、`vault_falling`。敌人委托原 BodyMotion 服务生成；表现适配器不直接读取私有阶段字段。双方 `vault_landed` 无参信号仅在活体实际完成翻越落地时触发一次；开始、空中、死亡取消或复位不伪造落地通知。适配器先同步真实状态再提交 `play_event(&"land")`，由后端选择蹲姿／站姿片段。信号不控制物理和攻击许可。
-
-新增公开通知：Enemy 的 shot_fired、died；Player Health 的 damage_applied、died；DialogueUI 的 dialogue_started、dialogue_ended（携带发起 NPC）；区域控制脚本的 presentation_reset。原有信号签名和 open_dialogue 三参数调用保持兼容。
-
-VisualPresentation 的 `apply_state`、`play_event`、`reset_presentation` 是表现入口。动画实例及被动画修改的嵌套资源独立，轨道不能调用方法或指向模型之外的节点。动画不应直接改变武器、生命或碰撞。配置资源只保存静态设置，不保存播放进度。
-
-压制仍复用真实 `shot_fired` 通知，不把 Utility 战术名称写进动画层。当前接口还未实现 AnimationTree 混合、IK、根运动或骨骼重定向。`NoiseData.audio_stream` 已留资源字段，但当前声音感知不播放该音频；不能将其视为已接入的脚步音效播放器。
-
-DialogueUI 用会话标识拒绝旧异步结果，并在关闭、来源移除和卸载时清理。当前 Dialogue Manager 会在源台词字典注入资源自身；UI 在取得独立 DialogueLine 后移除该临时回链，避免结束对话后的资源循环，不改第三方插件源码。
-
-运行表现回归：
-
-```powershell
-python movement_demo/tests/run_combat_regressions.py --godot E:/Godot/Godot_v4.7.2-stable_win64_console.exe presentation_interfaces_test presentation_movement_compatibility_test presentation_range_reset_test posture_animation_profile_test posture_animation_adapter_test weapon_presentation_test
-```
-
-编辑器预览与保存验证使用 `--headless --editor --path movement_demo --script res://tests/presentation_editor_test.gd`。其检查结果与编辑器自定义 SceneTree 退出时已有的 RID 提示分开记录。已有敌人和战斗回归见 [敌人测试](../enemy-tests.md)，完整结果见 [本次实施记录](../superpowers/plans/2026-09-30-presentation-interfaces.md)。
+早期配置、实施过程及当时的验证结果保存在[整理前记录](../history/2026-10-28/gameplay/PRESENTATION.md)。历史通过数不代表当前本地配置已重新验证。
