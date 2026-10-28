@@ -18,6 +18,10 @@ F5从第1关开始连续五关。每关先显示可关闭的2D游玩说明并暂
 
 本关预设引用 `resources/enemy/training/levels/lvl_N/` 下同名训练，同关同兵种通常共享。复制／继承敌人场景不会自动分离外部训练或武器资源。仅修改单关／单实例时先另存训练与武器再替换引用；地图里已有跨关引用保留，不自动按地图名重配。完整配置见[敌人AI](../enemy-ai.md)。
 
+## 第3关当前保存配置
+
+`HalfCover03` 的可见网格与碰撞宽度为4.5米，导航烘焙障碍同步为左右各2.25米，配套保存 `lvl_3_navigation.tres`。玩家Equipment显式保存四种初始共享备弹：步枪90、手枪48、冲锋枪120、霰弹20；这是本关当前配置，不是固定难度要求。三种本关训练资源移除已停用的个人Cooperation字段，团队意识仍由所属Squad的Profile控制。
+
 ## 场景结构与维护
 
 关卡根继续使用scripts/world/shooting_range.gd，CombatZone、NavigationRegion3D、Player、Camera3D及Squad路径保持；原EnemyWaves仅改名SceneDirector并更新必要引用，子层级不动。总调度统一开场、死亡、完成与加载，LevelFlow保留五关表和结果视图；区域与波次执行各自业务。新配置见[教程](SCENE_DIRECTOR.md)。

@@ -1,7 +1,6 @@
 [gd_resource type="Resource" script_class="EnemyTrainingProfile" format=3 uid="uid://b126v0ly4t7ps"]
 
 [ext_resource type="Script" uid="uid://b0j3a627844ku" path="res://scripts/enemy/config/module_settings.gd" id="1_frhl0"]
-[ext_resource type="Script" uid="uid://cqdvipxtj05rx" path="res://scripts/enemy/config/cooperation_settings.gd" id="3_8446m"]
 [ext_resource type="Script" uid="uid://lauyebht4oxa" path="res://scripts/enemy/config/ai_settings.gd" id="ai"]
 [ext_resource type="Script" uid="uid://c2eu2biwoikls" path="res://scripts/enemy/config/cover_settings.gd" id="cover"]
 [ext_resource type="Script" uid="uid://d1ra7e76dnl5k" path="res://scripts/enemy/config/exit_suppression_settings.gd" id="exit_suppression"]
@@ -15,10 +14,6 @@
 
 [sub_resource type="Resource" id="ai"]
 script = ExtResource("ai")
-overridden = PackedStringArray()
-
-[sub_resource type="Resource" id="Resource_tsrkt"]
-script = ExtResource("3_8446m")
 overridden = PackedStringArray()
 
 [sub_resource type="Resource" id="cover"]
@@ -82,4 +77,3 @@ exit_suppression = SubResource("exit_suppression")
 fire_decision = SubResource("fire_decision")
 perception = SubResource("perception")
 selection = SubResource("selection")
-cooperation = SubResource("Resource_tsrkt")
