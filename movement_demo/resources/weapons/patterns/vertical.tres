@@ -1,8 +1,8 @@
-[gd_resource type="Resource" script_class="ShotgunPattern" load_steps=2 format=3]
+[gd_resource type="Resource" script_class="ShotgunPattern" format=3 uid="uid://ddoasvny1hipd"]
 
-[ext_resource type="Script" path="res://scripts/weapons/shotgun_pattern.gd" id="1"]
+[ext_resource type="Script" uid="uid://dtlyd5wwxx0oa" path="res://scripts/weapons/shotgun_pattern.gd" id="1"]
 
 [resource]
 script = ExtResource("1")
 display_name = "纵向九点"
-points = PackedVector2Array(0, 0, 0.12, -0.92, -0.22, -0.70, 0.26, -0.46, -0.12, -0.23, 0.12, 0.23, -0.26, 0.46, 0.22, 0.70, -0.12, 0.92)
+points = PackedVector2Array(0, 0, 0.14, -0.83, 0.16, 0.56, -0.21, 0.81, -0.25, -0.12, 0.23, 0.12, 0.26, -0.47, -0.21, 0.29, -0.14999999, -0.44)

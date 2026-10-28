@@ -58,7 +58,7 @@ func _run() -> void:
 	_check("无效槽位请求被拒绝", not slots.select_slot(-1) and not slots.select_slot(2))
 	# 使用真实射线确认两槽的配置进入伤害、射程和冷却流程。
 	var primary = slots.primary_weapon.duplicate()
-	var secondary = load("res://resources/weapons/test_sidearm.tres").duplicate()
+	var secondary = load("res://resources/weapons/test_smg.tres").duplicate()
 	primary.min_spread_angle_degrees = 0.0
 	primary.max_spread_angle_degrees = 0.0
 	secondary.min_spread_angle_degrees = 0.0

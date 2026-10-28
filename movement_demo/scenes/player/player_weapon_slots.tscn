@@ -1,11 +1,11 @@
-[gd_scene load_steps=8 format=3]
+[gd_scene format=3]
 
-[ext_resource type="Script" path="res://scripts/player/player_weapon_slots.gd" id="1_slots"]
-[ext_resource type="Resource" path="res://resources/weapons/test_pistol.tres" id="2_primary"]
-[ext_resource type="Resource" path="res://resources/weapons/test_sidearm.tres" id="3_secondary"]
-[ext_resource type="Script" path="res://scripts/ui/medkit_stock_label.gd" id="4_medkit_stock"]
-[ext_resource type="Script" path="res://scripts/player/player_medkit.gd" id="3_medkit"]
-[ext_resource type="Script" path="res://scripts/ui/medkit_indicator.gd" id="4_medkit_indicator"]
+[ext_resource type="Script" uid="uid://dsup06rkp2mli" path="res://scripts/player/player_weapon_slots.gd" id="1_slots"]
+[ext_resource type="Resource" uid="uid://b6bap6hpl63cp" path="res://resources/weapons/test_pistol.tres" id="2_primary"]
+[ext_resource type="Resource" uid="uid://l7t4snve8h85" path="res://resources/weapons/test_smg.tres" id="3_secondary"]
+[ext_resource type="Script" uid="uid://bfibmwmeqttxw" path="res://scripts/ui/medkit_stock_label.gd" id="4_medkit_stock"]
+[ext_resource type="Script" uid="uid://d34eejhle2uqr" path="res://scripts/player/player_medkit.gd" id="3_medkit"]
+[ext_resource type="Script" uid="uid://srwhldqj0bcw" path="res://scripts/ui/medkit_indicator.gd" id="4_medkit_indicator"]
 [ext_resource type="Resource" path="res://resources/player/default_medkit.tres" id="5_medkit_settings"]
 
 [node name="Equipment" type="CanvasLayer"]
