@@ -2,9 +2,41 @@
 class_name SceneFlowAction
 extends Resource
 
-enum Kind { WAIT, REQUEST_WAVE, WAIT_WAVE_CLEARED, PRESENT_TARGET, GUIDE, COMPLETE_SCENE, RESTART, CHANGE_SCENE, CALL_METHOD, WAIT_SIGNAL }
-## 先选动作类型，再填出现的参数。配置教程：docs/gameplay/SCENE_DIRECTOR.md。
-## REQUEST_WAVE 等真实生成才继续；PRESENT_TARGET 只看指定节点；CALL_METHOD 调用已有公开接口。
+## 场景规则依次执行的动作类型。各动作需要的参数会随 Kind 自动显示。
+enum Kind {
+	## 等待 Seconds 秒后继续。普通暂停及演出镜头期间不累计等待时间。
+	WAIT,
+	## 请求 Target Path 指定的 Wave 出场，等真实生成成功后继续；可用 Present Spawn 展示增援。
+	REQUEST_WAVE,
+	## 等待 Target Path 指定的 Wave 全灭后继续；本动作不会请求该波出场。
+	WAIT_WAVE_CLEARED,
+	## 展示 Target Path 指定的 Marker3D/Node3D，暂停战斗，镜头返回后继续；不生成敌人。
+	PRESENT_TARGET,
+	## 启动 Target Path 指定的引导，调用 begin() 并等待 finished；Guide Pauses World 控制是否暂停。
+	GUIDE,
+	## 请求当前场景完成；必要镜头结束后显示已绑定的结果界面，同帧死亡优先，不自动切关。
+	COMPLETE_SCENE,
+	## 重载当前场景，从该场景的保存配置重新开始；加载失败保留暂停并允许重试。
+	RESTART,
+	## 切换到 Scene Path 指定的场景；加载失败重试原目标，不改用五关的下一关路径。
+	CHANGE_SCENE,
+	## 调用 Target Path 对象的公开 Method，传入 Arguments；可用 Completed Trigger 等待异步完成。
+	CALL_METHOD,
+	## 等待 Completed Trigger 指定的信号及过滤条件满足后继续；只等待，不主动调用目标方法。
+	WAIT_SIGNAL
+}
+## 选择本步骤要做什么；下面只显示该类型需要填写的参数。[br]
+## [b]WAIT（等待时间）[/b]：填写 Seconds，等待结束后执行下一步。[br]
+## [b]REQUEST_WAVE（请求出场）[/b]：Target Path 选 Wave，等实际生成；Present Spawn 可附带出场镜头。[br]
+## [b]WAIT_WAVE_CLEARED（等待清空）[/b]：Target Path 选 Wave，等它全灭；不会主动刷出这一波。[br]
+## [b]PRESENT_TARGET（展示目标）[/b]：Target Path 选 Marker3D/Node3D，配置移动、停留、返回时间，返回后继续。[br]
+## [b]GUIDE（启动引导）[/b]：Target Path 选引导节点，等待 finished；可选择是否暂停世界。[br]
+## [b]COMPLETE_SCENE（完成场景）[/b]：请求通关结果，等待必要镜头收尾，不自动切换关卡。[br]
+## [b]RESTART（重开当前场景）[/b]：重新加载当前场景，无需填写目标路径。[br]
+## [b]CHANGE_SCENE（切换场景）[/b]：Scene Path 选择要加载的 .tscn 文件。[br]
+## [b]CALL_METHOD（调用方法）[/b]：填写目标、公开方法名和参数；异步完成通知填 Completed Trigger。[br]
+## [b]WAIT_SIGNAL（等待信号）[/b]：填写 Completed Trigger，等待其来源信号与过滤结果。[br]
+## 所有 Target Path 相对 SceneDirector。普通等待遇暂停会冻结；详细接线见 docs/gameplay/SCENE_DIRECTOR.md。
 @export var kind: Kind = Kind.WAIT:
 	set(value):
 		kind = value
