@@ -26,7 +26,6 @@ var debug_invincible: bool:
 
 var health: float = 0.0
 var is_dead: bool = false
-var restart_pending: bool = false
 
 @onready var player = get_parent()
 @onready var health_label: Label = $Status/Content/HealthLabel
@@ -35,13 +34,10 @@ var restart_pending: bool = false
 @onready var stamina_label: Label = $Status/Content/Stamina/Label
 @onready var invincible_toggle: CheckBox = $Debug/Controls/Invincible
 @onready var damage_button: Button = $Debug/Controls/Damage
-@onready var death_screen: ColorRect = $DeathScreen
-@onready var restart_button: Button = $DeathScreen/Center/Panel/Content/Restart
 
 
 func _ready() -> void:
 	health = maxf(1.0, max_health)
-	death_screen.hide()
 	$Debug.visible = OS.is_debug_build()
 	invincible_toggle.toggled.connect(_set_debug_invincible)
 	$Debug/Controls/NoiseRanges.toggled.connect($NoiseRanges.set_enabled)
@@ -50,7 +46,6 @@ func _ready() -> void:
 	debug_settings.set_enabled(debug_mode)
 	_apply_debug_mode(debug_settings.enabled)
 	damage_button.pressed.connect(_debug_damage)
-	restart_button.pressed.connect(_request_restart)
 	_update_display()
 	_update_stamina_display()
 
@@ -88,10 +83,7 @@ func receive_hit(damage: float) -> void:
 		if player.combat != null:
 			player.combat.cancel_aim()
 			player.combat.cancel_reload()
-		# 暂停敌人和对话输入；本节点及重开按钮使用 Always，暂停时仍可点击。
-		get_tree().paused = true
-		death_screen.show()
-		restart_button.grab_focus()
+		# 场景流程由调度器订阅死亡事实；此处只停止玩家自身动作。
 		died.emit()
 	damage_applied.emit(previous_health - health)
 	_update_display()
@@ -133,25 +125,3 @@ func _update_display() -> void:
 		health_label.text += "  [无敌]"
 	invincible_toggle.set_pressed_no_signal(is_invincible())
 	damage_button.disabled = is_dead
-
-
-func _request_restart() -> void:
-	if not is_dead or restart_pending:
-		return
-	restart_pending = true
-	restart_button.disabled = true
-	# 避免在按钮信号或物理回调中释放当前场景。
-	_restart.call_deferred()
-
-
-func _restart() -> void:
-	var tree: SceneTree = get_tree()
-	# 仅重载场景；不清空 GameState 中的对话选择。
-	var result: Error = tree.reload_current_scene()
-	if result == OK:
-		tree.paused = false
-	else:
-		restart_pending = false
-		restart_button.disabled = false
-		$DeathScreen/Center/Panel/Content/Message.text = "重新开始失败，请重试"
-		push_error("无法重新加载当前场景：%s" % error_string(result))

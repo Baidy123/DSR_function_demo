@@ -60,7 +60,8 @@
 
 - [x] 通用关卡敌人波次：第一关已接入，支持逐波选择全灭后等待或按时间加入，多波独立统计、固定点占位等待和离场重置；独立提交副本运行73/73，编辑器功能断言9/9，退出RID提示单独记录。见[使用说明](gameplay/ENEMY_WAVES.md)与[实施记录](superpowers/plans/2026-10-25-level-enemy-waves.md)。
 
-- [ ] 场景总调度器设计与后续接入：收拢可选开场引导（当前临时PlayGuide，可由教程替换或移除）、Health死亡UI／重开、LevelFlow通关／切关、EnemyWaves刷新及区域清理衔接，新增场景事件与独立演出相机，建议与CombatZone区域检测保持分工；玩家跨场景数据另由数据服务／角色绑定负责，当前各关配置保留。见[设计文档](superpowers/specs/2026-10-25-enemy-wave-event-triggers-design_todo.md)，原事件波次方案保留于附录。当前仅设计，尚未实现，不自动进入开发。
+- [x] 2026-10-28 场景总调度接入：原EnemyWaves入口改名SceneDirector，原Wave/Squad层级及CombatZone区域服务保留；统一可选引导、Health死亡UI/重开、LevelFlow结果/切关、暂停拥有者与取消；SceneEvent节点绑定来源或手动trigger，Wave直接选择事件；独立相机只看用户绑定的Marker3D/Node3D。检查器中文提示与[节点接线教程](gameplay/SCENE_DIRECTOR.md)已补充，验证见[实施记录](superpowers/plans/2026-10-28-scene-director-implementation.md)。
+- [ ] 连续玩家模式：按原[设计第10节](superpowers/specs/2026-10-25-enemy-wave-event-triggers-design_todo.md#10-玩家跨场景数据独立负责调度器安排时机)另行确认跨关携带/重开基线，再实现PlayerSession与角色绑定；当前各关装备与生命初始化规则保留。
 
 - [x] 2026-10-24 修复玩家走路时受击／擦过精度不恢复：额外损失经过等待后边走边恢复到武器移动限制，停步且未瞄准恢复到初始值；保留正常移动惩罚和新攻击刷新等待。真实玩家两种模式专项57/57通过，检查器提示同步，见[精度说明](gameplay/COMBAT.md)。
 

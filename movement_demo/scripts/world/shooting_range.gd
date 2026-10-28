@@ -4,6 +4,7 @@ signal presentation_reset(region: Node)
 
 const EnemyWaves = preload("res://scripts/world/enemy_wave_controller.gd")
 var _enemy_waves: Node
+var _standalone_director: Node
 
 ## Match members by faction and communication group; only team awareness is shared.
 @export var team_cooperation_bindings: Array[EnemyTeamCooperationBinding] = []
@@ -50,6 +51,27 @@ func _enter_tree() -> void:
 
 func _ready() -> void:
 	_bind_combat_zone()
+	if not is_instance_valid(_enemy_waves): _bind_standalone_director.call_deferred()
+
+
+func _bind_standalone_director() -> void:
+	# Legacy Main has no EnemyWaves. Bind the same core once to the scene's player.
+	var scope: Node = self
+	var health: Node
+	while scope != null:
+		health = scope.get_node_or_null("Player/Health")
+		if health != null: break
+		scope = scope.get_parent()
+	if health == null: return
+	if health.has_meta(&"scene_director"):
+		var existing = health.get_meta(&"scene_director").get_ref()
+		if is_instance_valid(existing): return
+	_standalone_director = preload("res://scripts/systems/scene_director.gd").new()
+	_standalone_director.name = "SceneDirector"
+	_standalone_director.configure(scope, {"health": health})
+	health.set_meta(&"scene_director", weakref(_standalone_director))
+	scope.add_child(_standalone_director, false, Node.INTERNAL_MODE_BACK)
+	_standalone_director.initialize()
 
 
 func _physics_process(delta: float) -> void:
@@ -58,6 +80,8 @@ func _physics_process(delta: float) -> void:
 	_bind_combat_zone()
 	if has_active_player():
 		if is_instance_valid(_enemy_waves): _enemy_waves.advance_from_region(delta)
+		# A committed reinforcement can freeze the scene before cooperation advances.
+		if get_tree().paused: return
 		cooperation.advance(delta)
 
 

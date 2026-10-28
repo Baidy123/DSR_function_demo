@@ -16,7 +16,7 @@
 [ext_resource type="Script" uid="uid://cqdvipxtj05rx" path="res://scripts/enemy/config/cooperation_settings.gd" id="19_0l8lu"]
 [ext_resource type="Script" uid="uid://dcc2vkow4q8cl" path="res://scripts/world/shooting_range.gd" id="area"]
 [ext_resource type="PackedScene" path="res://scenes/world/enemy_wave.tscn" id="enemy_wave"]
-[ext_resource type="PackedScene" path="res://scenes/world/enemy_waves.tscn" id="enemy_waves"]
+[ext_resource type="PackedScene" path="res://scenes/world/scene_director.tscn" id="enemy_waves"]
 [ext_resource type="NavigationMesh" uid="uid://btxb3k7w6l2on" path="res://resources/navigation/lvl_1_navigation.tres" id="navigation"]
 [ext_resource type="PackedScene" path="res://scenes/world/squad.tscn" id="squad"]
 [ext_resource type="Script" uid="uid://by7iy6ibrwkth" path="res://scripts/world/zone_volume.gd" id="zone"]
@@ -330,22 +330,22 @@ transform = Transform3D(0.9063078, 0.38302225, -0.1786062, 0, 0.42261824, 0.9063
 light_energy = 1.2
 shadow_enabled = true
 
-[node name="EnemyWaves" parent="." unique_id=1358056580 instance=ExtResource("enemy_waves")]
+[node name="SceneDirector" parent="." unique_id=1358056580 instance=ExtResource("enemy_waves")]
 
-[node name="Wave1" parent="EnemyWaves" unique_id=1212189418 instance=ExtResource("enemy_wave")]
+[node name="Wave1" parent="SceneDirector" unique_id=1212189418 instance=ExtResource("enemy_wave")]
 editor_description = "第一波引用关卡根目录的 Squad，所以这里没有子小队。请到 Lvl1/Squad 修改第一波敌人；引用在 Existing Squads 中。"
 existing_squads = Array[NodePath]([NodePath("../../Squad")])
 
-[node name="Wave2" parent="EnemyWaves" unique_id=1773581671 instance=ExtResource("enemy_wave")]
+[node name="Wave2" parent="SceneDirector" unique_id=1773581671 instance=ExtResource("enemy_wave")]
 editor_description = "第二波为可调示例：直接移动、替换或删除下方小队与敌人。"
 
-[node name="Squad" parent="EnemyWaves/Wave2" unique_id=1473184881 instance=ExtResource("squad")]
+[node name="Squad" parent="SceneDirector/Wave2" unique_id=1473184881 instance=ExtResource("squad")]
 profile = SubResource("Resource_psy3o")
 
-[node name="Enemy" parent="EnemyWaves/Wave2/Squad" unique_id=49567852 instance=ExtResource("7_rjb0k")]
+[node name="Enemy" parent="SceneDirector/Wave2/Squad" unique_id=49567852 instance=ExtResource("7_rjb0k")]
 transform = Transform3D(1, 0, 1.7484555e-07, 0, 1, 0, -1.7484555e-07, 0, 1, -1.3228133, 0, 5.8238573)
 
-[node name="Enemy2" parent="EnemyWaves/Wave2/Squad" unique_id=1859977113 instance=ExtResource("7_rjb0k")]
+[node name="Enemy2" parent="SceneDirector/Wave2/Squad" unique_id=1859977113 instance=ExtResource("7_rjb0k")]
 transform = Transform3D(0.9659258, 0, 0.25881922, 0, 1, 0, -0.25881922, 0, 0.9659258, 1.526789, 0, 5.8921547)
 
 [editable path="Camera3D"]
@@ -354,8 +354,8 @@ transform = Transform3D(0.9659258, 0, 0.25881922, 0, 1, 0, -0.25881922, 0, 0.965
 [editable path="NavigationRegion3D/Environment/FullCover/FullCover02"]
 [editable path="NavigationRegion3D/Environment/HalfCover/HalfCover01"]
 [editable path="NavigationRegion3D/Environment/HalfCover/HalfCover02"]
-[editable path="EnemyWaves"]
-[editable path="EnemyWaves/Wave1"]
+[editable path="SceneDirector"]
+[editable path="SceneDirector/Wave1"]
 
 [node name="LevelFlow" parent="." instance=ExtResource("level_flow")]
 level_number = 1

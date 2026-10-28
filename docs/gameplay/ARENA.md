@@ -11,7 +11,7 @@
 | 个人生命、移动、装备 | 对应敌人根节点 |
 | 兵种与训练 | 敌人 UnitType／Training 节点 |
 | 小队配合 | Squad → Profile → Level |
-| 多波部署 | EnemyWaves → Wave → Squad，见[波次说明](ENEMY_WAVES.md) |
+| 多波部署 | SceneDirector → Wave → Squad，见[波次说明](ENEMY_WAVES.md) |
 | 掩体大小 | 掩体 MeshInstance3D 的 Mesh Size 与 CollisionShape3D 的 Shape Size |
 | 掩体候选区域 | 掩体根节点的 Wall Gap、Hide Depth、攻击区参数 |
 | 导航 | NavigationRegion3D 的外部 NavigationMesh 资源 |

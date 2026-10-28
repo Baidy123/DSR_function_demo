@@ -24,6 +24,7 @@
 | [竞技场](gameplay/ARENA.md) | 区域激活、离场与复位 |
 | [关卡地图](gameplay/LEVEL_MAPS.md) | 保存关卡、部署与导航维护 |
 | [敌人波次](gameplay/ENEMY_WAVES.md) | 编排小队、延迟、出生搜索与排错 |
+| [场景总调度教程](gameplay/SCENE_DIRECTOR.md) | SceneEvent节点接线、Wave事件、手摆镜头目标、死亡与通关控制 |
 | [敌人武器](gameplay/ENEMY_WEAPON.md) | 武器绑定、射击与换弹 |
 | [敌人命中概率](gameplay/ENEMY_PROBABILITY.md) | 敌人瞄准与精度恢复 |
 | [听觉](gameplay/HEARING.md) | 声源、遮挡、听觉响应与显示 |

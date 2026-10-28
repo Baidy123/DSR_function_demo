@@ -27,6 +27,16 @@
 
 当前 `PhantomCamera3D` 的 `Camera3D Resource` 留空，由插件控制跟随位置、由 `Camera3D` 脚本控制 Size。不要同时给 Phantom Camera 配置另一套镜头覆盖；以后需要多镜头切换时，应统一视野的控制入口。本轮不修改插件源码或原 `Follow Offset`。
 
+## 独立演出相机与手动目标
+
+SceneDirector的Wave“出场镜头”可选择Marker3D或现有Node3D作为画面中心，并配置移过去、停留、返回时间。缺少绑定时诊断并跳过，不自动替用户选敌人中心。详细摆放和路径见[场景调度教程](SCENE_DIRECTOR.md#三手摆目标展示真实增援)。
+
+专用 `presentation_camera.tscn` 初始非当前，默认首次展示时由入口创建同级内部实例，也可手动绑定。它复制原相机实际可见transform、投影、Size/FOV、偏移、裁剪、环境等参数后切入，保持俯视倾角并移动；返回时对齐玩家最新画面再切回。原Phantom绑定不变，也不复制整个玩家相机子树。
+
+树暂停期间，演出只由场景核心显式advance推进。返回前由相机侧有限同步锚点/Host/武器视野，不短暂恢复战斗；遮挡辅助通过原相机适配器交接，不能两套缓存争写材质。原相机失效或其他相机接管时取消旧演出，不抢回显示。镜头看到敌人不构成AI感知证据。
+
+`presentation_camera_test`覆盖参数/像素交接、返回、取消和真实Phantom；`scene_reinforcement_test`验证真实生成后的冻结与恢复。已有原玩家相机/遮挡专项继续保留。
+
 ## 遮挡透明参数与支持范围
 
 在 `Camera3D → 遮挡透明` 调整：

@@ -11,6 +11,7 @@ from regression_runner import run_tests, validate_names
 DIRECTORY = Path(__file__).resolve().parent
 PROJECT = DIRECTORY.parent
 SYSTEM_TESTS = [
+    "scene_director_test", "scene_event_node_test", "scene_reinforcement_test",
     "movement_test", "sprint_test", "interaction_test", "hearing_test",
     "movement_noise_modes_test", "debug_mode_test", "noise_debug_test",
     "presentation_interfaces_test", "presentation_movement_compatibility_test",

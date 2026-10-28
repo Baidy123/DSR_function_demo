@@ -1,6 +1,6 @@
 # 玩家生命、医疗包与重开
 
-Health 保存玩家生命，Player 保存耐力；Equipment 保存医疗包库存，Medkit 执行治疗，UI 只读显示。生命归零后进入死亡界面，点击按钮重开当前场景；五关流程按当前关重开。对话和剧情状态仍遵循 GameState 的原生命周期。
+Health 保存玩家生命，Player 保存耐力；Equipment 保存医疗包库存，Medkit 执行治疗。Health归零后只结算自身失能并发died；[SceneDirector](SCENE_DIRECTOR.md)收到后暂停、取消场景动作并显示原死亡UI，再接收按钮请求重开当前关。对话和剧情状态仍遵循GameState原生命周期。
 
 ## 配置入口
 
@@ -44,7 +44,8 @@ Debug 总开关控制玩家无敌及诊断显示；右上“测试受伤”使�
 
 | 文件／组件 | 职责 |
 | --- | --- |
-| `player_health.gd` / Health | 生命、有效命中、治疗结算、死亡与重开 |
+| `player_health.gd` / Health | 生命、有效命中、治疗结算与死亡通知，不自行暂停或重载 |
+| `scene_director.gd` / `scene_result_view.gd` | 调度死亡、取消、重开及加载失败；视图复用原Health死亡UI节点 |
 | `player_weapon_slots.gd` / Equipment | Medkit 资源与唯一库存 `medkit_count` |
 | `player_medkit.gd` / Equipment/Medkit | 输入守卫、条件复核、冻结参数、计时和耗包 |
 | `medkit_indicator.gd`、`medkit_stock_label.gd` | 进度与库存显示 |

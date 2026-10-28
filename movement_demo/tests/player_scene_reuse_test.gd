@@ -18,7 +18,7 @@ func _run() -> void:
 	# An authored level uses normal editable-child overrides, rather than
 	# changing ownership of nested CanvasLayers while packing runtime nodes.
 	var pistol = load("res://resources/weapons/test_pistol.tres").duplicate(true)
-	var rifle = load("res://resources/weapons/test_sidearm.tres").duplicate(true)
+	var rifle = load("res://resources/weapons/test_rifle.tres").duplicate(true)
 	pistol.aim_range = 18.0
 	rifle.aim_range = 22.0
 	var error := ResourceSaver.save(pistol, "res://logs/player_prefab_work/pistol.tres")

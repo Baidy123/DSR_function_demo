@@ -35,7 +35,7 @@ func _run() -> void:
 	if not await _wave(1): return
 	for actor in scene.enemies.duplicate(): actor.receive_hit(100000.0)
 	if not await _wave(2): return
-	var squad = scene.get_node("EnemyWaves/Wave2/Squad")
+	var squad = scene.get_node("SceneDirector/Wave2/Squad")
 	var actors: Array = squad.get_children().filter(func(node): return node.has_node("AI"))
 	check(actors.size() >= 6, "Saved second wave supplies the captured six-member squad")
 	if actors.size() < 6:
@@ -208,7 +208,7 @@ func _yield_lifecycle() -> void:
 
 func _wave(number: int) -> bool:
 	for frame in 600:
-		var state: Dictionary = scene.get_node("EnemyWaves").debug_snapshot()
+		var state: Dictionary = scene.get_node("SceneDirector").debug_snapshot()
 		if state.wave == number and state.state == "ACTIVE": return true
 		await physics_frame
 	check(false, "Requested wave becomes active")
@@ -216,7 +216,7 @@ func _wave(number: int) -> bool:
 	return false
 
 func _finish() -> void:
-	scene.get_node("EnemyWaves").reset_encounter()
+	scene.get_node("SceneDirector").reset_encounter()
 	scene.free()
 	current_scene = null
 	print("SQUAD CONTACT RECOVERY: %d/%d passed" % [checks - failures, checks])

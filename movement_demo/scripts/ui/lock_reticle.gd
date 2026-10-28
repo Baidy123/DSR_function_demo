@@ -36,6 +36,12 @@ func _on_headshot_resolved(point: Vector3, outcome: StringName) -> void:
 	if _headshot_markers.size() > 12: _headshot_markers.pop_front()
 
 
+func _notification(what: int) -> void:
+	# A paused HUD may not tick again until camera presentation has finished.
+	# Hide immediately; retain timers and recompute from actual state on resume.
+	if what == NOTIFICATION_PAUSED: hide()
+
+
 func _process(delta: float) -> void:
 	if combat.player.is_in_dialogue or combat.player.is_dead():
 		_draw_aim = false
@@ -46,7 +52,9 @@ func _process(delta: float) -> void:
 		_headshot_full_precision = false
 		hide()
 		return
-	if get_tree().paused: return
+	if get_tree().paused:
+		hide()
+		return
 	var target = combat.locked_target
 	var camera := get_viewport().get_camera_3d()
 	if camera == null:

@@ -40,7 +40,7 @@ python movement_demo/tests/run_regressions.py --godot "C:\Godot\Godot_console.ex
 | 团队任务、地图与同步 | squad_command_contract_test、squad_command_runtime_test、squad_map_observation_test、squad_cover_breach_test、squad_mixed_cooperation_test |
 | 接敌恢复与派发连续性 | squad_contact_recovery_test、squad_dispatch_continuity_test、squad_melee_contact_test |
 | 巡逻与队友通行 | squad_patrol_test、enemy_ally_spacing_runtime_test、enemy_ally_navigation_integration_test、enemy_ally_route_autonomous_test |
-| 波次与出生搜索 | enemy_wave_test、enemy_wave_search_test；关卡衔接另跑根测试目录level_flow_test |
+| 波次与出生搜索 | enemy_wave_test、enemy_wave_search_test、enemy_wave_events_test；关卡衔接另跑level_flow_test，真实增援屏障跑scene_reinforcement_test |
 | 敌人眩晕／玩家近战破绽 | headshot_stagger_runtime_test；根测试目录melee_headshot_opening_test、player_enemy_melee_hit_test |
 | 玩家锁定与精度兼容 | 根测试目录target_switch_test、directional_tracking_test、combat_compatibility_test |
 | 听觉与声音显示 | 根测试目录hearing_test、movement_noise_modes_test、noise_debug_test |

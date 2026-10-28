@@ -3,6 +3,7 @@ extends SceneTree
 ## 使用真实保存关卡、真实死亡和 GUI 鼠标事件；不伪造 encounter_completed。
 const Flow = preload("res://scripts/systems/level_flow.gd")
 const GuideScene = preload("res://scenes/ui/play_guide.tscn")
+const Director = preload("res://scripts/systems/scene_director.gd")
 var checks := 0
 var failures := 0
 var _capture := false
@@ -71,7 +72,7 @@ func _run() -> void:
 			await process_frame
 		await _click(guide.get_node("Backdrop/Panel/Content/Close"))
 		if guide.visible or paused or combat.ammo.magazine_rounds != rounds_before:
-			print("CLOSE DIAGNOSTIC: ", number, " visible=", guide.visible, " paused=", paused, " previous_pause=", guide._previous_pause, " ammo=", combat.ammo.magazine_rounds, "/", rounds_before, " button=", guide.get_node("Backdrop/Panel/Content/Close").get_global_rect(), " viewport=", root.get_visible_rect())
+			print("CLOSE DIAGNOSTIC: ", number, " visible=", guide.visible, " paused=", paused, " director=", scene.get_node("SceneDirector").director.debug_snapshot(), " ammo=", combat.ammo.magazine_rounds, "/", rounds_before, " button=", guide.get_node("Backdrop/Panel/Content/Close").get_global_rect(), " viewport=", root.get_visible_rect())
 		check(not guide.visible and not paused and combat.ammo.magazine_rounds == rounds_before, "第%d关真实关闭按钮恢复游玩且不误开火" % number)
 		if number == 2:
 			health.debug_mode = false
@@ -92,7 +93,7 @@ func _run() -> void:
 		for frame in range(1800):
 			if result.visible: break
 			var movement := [&"move_right", &"move_down", &"move_left", &"move_up"]
-			var blocked: bool = scene.get_node("EnemyWaves").debug_snapshot().state == "BLOCKED"
+			var blocked: bool = scene.get_node("SceneDirector").debug_snapshot().state == "BLOCKED"
 			for index in range(movement.size()):
 				if blocked and index == (frame / 90) % movement.size(): Input.action_press(movement[index])
 				else: Input.action_release(movement[index])
@@ -105,7 +106,7 @@ func _run() -> void:
 		Engine.time_scale = 1.0
 		check(result.visible and paused, "第%d关全部真实波次死亡后显示过关按钮并暂停" % number)
 		if not result.visible:
-			print(scene.get_node("EnemyWaves").debug_snapshot())
+			print(scene.get_node("SceneDirector").debug_snapshot())
 			break
 		for frame in range(5): await process_frame
 		check(current_scene == scene, "第%d关等待按钮点击，不自动切关" % number)
@@ -119,12 +120,20 @@ func _run() -> void:
 	await process_frame
 	check(not paused, "说明打开时卸载场景不遗留暂停")
 	paused = true
+	var guide_host := Node.new()
+	root.add_child(guide_host)
 	var guide = GuideScene.instantiate()
-	root.add_child(guide)
+	guide_host.add_child(guide)
+	var director := Director.new()
+	director.configure(guide_host, {"guide": guide})
+	guide_host.add_child(director)
 	await process_frame
+	check(guide.visible and director.is_guide_pending(guide), "独立说明由调度器显式启动")
 	await _click(guide.get_node("Backdrop/Panel/Content/Close"))
+	check(not guide.visible and not director.is_guide_pending(guide), "独立说明完成通知调度器")
 	check(paused, "说明关闭保留原本已经存在的暂停")
-	guide.free()
+	guide_host.free()
+	check(paused, "独立调度器退出不解除外部暂停")
 	paused = false
 	print("LEVEL FLOW: %d/%d passed" % [checks - failures, checks])
 	quit(1 if failures else 0)

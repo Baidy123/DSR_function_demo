@@ -27,6 +27,7 @@ var _transition_seconds: float = 0.0
 var _elapsed: float = 0.0
 var _weapon: WeaponData
 var _occlusion = Occlusion.new()
+var _presentation_occlusion_owner: WeakRef
 
 
 func _ready() -> void:
@@ -65,11 +66,73 @@ func _process(delta: float) -> void:
 
 
 func _physics_process(delta: float) -> void:
-	if not occlusion_enabled or not is_current() or not is_instance_valid(_actor):
+	if _presentation_occlusion_owner != null:
+		if is_instance_valid(_presentation_occlusion_owner.get_ref()): return
+		_presentation_occlusion_owner = null
+		_occlusion.clear()
+	if not occlusion_enabled or not is_current() or not is_instance_valid(_actor) or not _actor.is_inside_tree() or _actor.is_queued_for_deletion():
 		_occlusion.clear()
 		return
 	var height: float = _actor.get_body_height() if _actor.has_method("get_body_height") else 1.75
 	_occlusion.update(self, _actor, height, delta, occluded_opacity, occlusion_fade_seconds, occlusion_mask)
+
+
+## 演出相机借用同一个材质写入者；保留已有淡出缓存以避免切入闪烁。
+func begin_presentation_occlusion(camera: Camera3D) -> bool:
+	if not is_instance_valid(camera) or not camera.is_inside_tree(): return false
+	if _presentation_occlusion_owner != null and is_instance_valid(_presentation_occlusion_owner.get_ref()):
+		return false
+	_presentation_occlusion_owner = weakref(camera)
+	return true
+
+
+func update_presentation_occlusion(camera: Camera3D, focus: Node3D, delta: float) -> void:
+	if not _owns_presentation_occlusion(camera): return
+	if not occlusion_enabled or not camera.is_current() or not is_instance_valid(focus):
+		_occlusion.clear()
+		return
+	var height: float = 1.75
+	if is_instance_valid(_actor) and _actor.has_method("get_body_height"):
+		height = float(_actor.call("get_body_height"))
+	_occlusion.update(camera, focus, height, delta, occluded_opacity, occlusion_fade_seconds, occlusion_mask)
+
+
+func end_presentation_occlusion(camera: Camera3D) -> void:
+	if not _owns_presentation_occlusion(camera): return
+	_presentation_occlusion_owner = null
+	_occlusion.clear()
+	# Pause can prevent the next physics tick; restore the source appearance in this handoff.
+	if is_inside_tree() and not is_queued_for_deletion() and is_current() and occlusion_enabled and is_instance_valid(_actor) and _actor.is_inside_tree() and not _actor.is_queued_for_deletion():
+		var height: float = float(_actor.call("get_body_height")) if _actor.has_method("get_body_height") else 1.75
+		_occlusion.update(self, _actor, height, 0.0, occluded_opacity, 0.0, occlusion_mask)
+
+
+func _owns_presentation_occlusion(camera: Camera3D) -> bool:
+	return _presentation_occlusion_owner != null and _presentation_occlusion_owner.get_ref() == camera
+
+
+## 只同步暂停的相机链，绝不临时恢复场景、角色、武器或其他玩法时钟。
+func prepare_presentation_return() -> void:
+	if not is_inside_tree(): return
+	var host: Node = get_node_or_null("PhantomCameraHost")
+	if host != null and not host.can_process():
+		var anchor: Node = get_node_or_null("CameraGroundAnchor")
+		if anchor != null and anchor.has_method("refresh_follow_position"):
+			anchor.call("refresh_follow_position")
+		if host.has_method("get_active_pcam"):
+			var phantom: Node = host.call("get_active_pcam") as Node
+			if is_instance_valid(phantom) and phantom.has_method("teleport_position"):
+				# Finish a pending camera-only entrance tween so unpausing cannot replay its old pose.
+				var camera_delta: float = 0.0
+				if bool(host.call("get_trigger_pcam_tween")):
+					camera_delta = maxf(0.0, float(phantom.call("get_tween_duration")))
+				host.call("process", camera_delta)
+				phantom.call("teleport_position")
+		reset_physics_interpolation()
+	if not can_process():
+		_on_weapon_changed(_weapon)
+		size = _target_size
+		_elapsed = _transition_seconds
 
 
 func _on_weapon_changed(data: WeaponData) -> void:

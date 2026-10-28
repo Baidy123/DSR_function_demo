@@ -1,6 +1,8 @@
 extends CanvasLayer
 
-## 五关共用的入场说明；仅在显示期间持有暂停，关闭或退树时恢复原状态。
+## 可选入场说明适配；暂停和鼠标模式由场景调度器统一管理。
+signal finished
+
 const GUIDE_TEXT := """[b][color=#8ed9e8]01  移动与掩体[/color][/b]
 [b]W / A / S / D[/b] 按画面方向移动；换方向时角色需要转身，并有加减速。
 [b]按住 Shift[/b] 奔跑，消耗体力。耗尽后要回满才能再次奔跑；松开后可恢复。
@@ -43,36 +45,30 @@ const GUIDE_TEXT := """[b][color=#8ed9e8]01  移动与掩体[/color][/b]
 @onready var _body: RichTextLabel = $Backdrop/Panel/Content/Body
 @onready var _close_button: Button = $Backdrop/Panel/Content/Close
 
-var _owns_pause := false
-var _previous_pause := false
-var _previous_mouse_mode: Input.MouseMode
+var _active := false
 
 
 func _ready() -> void:
 	_body.text = GUIDE_TEXT
 	_close_button.pressed.connect(close_guide)
-	_previous_pause = get_tree().paused
-	_owns_pause = true
-	get_tree().paused = true
-	# 先让战斗收到暂停并释放临时捕获，再记录界面关闭后应恢复的模式。
-	_previous_mouse_mode = Input.mouse_mode
-	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+	hide()
+
+
+func begin() -> void:
+	if _active: return
+	_active = true
+	show()
 	_close_button.grab_focus()
 
 
 func close_guide() -> void:
-	if not visible: return
+	if not _active: return
+	cancel()
+	finished.emit()
+
+
+## 调度器中断引导时只撤下界面，不伪造一次正常完成。
+func cancel() -> void:
+	_active = false
 	hide()
-	_close_button.release_focus()
-	_restore_state()
-
-
-func _exit_tree() -> void:
-	_restore_state()
-
-
-func _restore_state() -> void:
-	if not _owns_pause: return
-	_owns_pause = false
-	get_tree().paused = _previous_pause
-	Input.mouse_mode = _previous_mouse_mode
+	if _close_button.is_inside_tree(): _close_button.release_focus()

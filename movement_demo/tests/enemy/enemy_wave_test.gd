@@ -451,7 +451,7 @@ func _actual_levels() -> void:
 	var level = load("res://scenes/world/levels/lvl_1.tscn").instantiate()
 	# 此夹具验证原波次与跨区生命周期；入场说明和按钮切关由 level_flow_test 验证。
 	level.get_node("LevelFlow").free()
-	var controller = level.get_node("EnemyWaves")
+	var controller = level.get_node("SceneDirector")
 	var count: int = level.get_node("Squad").get_child_count()
 	var second_count: int = controller.get_node("Wave2/Squad").get_child_count()
 	var poses := {}
@@ -495,7 +495,7 @@ func _actual_levels() -> void:
 	# 只改另一张地图的内存实例，旋转/平移整个区域后沿同一流程部署。
 	var other = load("res://scenes/world/levels/lvl_2.tscn").instantiate()
 	# 跨区用例由第一关同一个玩家移动过去；用户可独立给第二关配置试玩玩家／相机。
-	for path in ["Player", "Camera3D", "EnemyWaves", "LevelFlow"]:
+	for path in ["Player", "Camera3D", "SceneDirector", "LevelFlow"]:
 		var standalone = other.get_node_or_null(path)
 		if standalone != null: standalone.free()
 	for authored_member in other.get_node("Squad").get_children(): authored_member.free()
@@ -529,7 +529,7 @@ func _editor_roundtrip() -> void:
 	EditorInterface.open_scene_from_path("res://scenes/world/levels/lvl_1.tscn")
 	for frame in 30: await process_frame
 	var level := EditorInterface.get_edited_scene_root()
-	var controller = level.get_node("EnemyWaves")
+	var controller = level.get_node("SceneDirector")
 	check(level.has_node("Squad/Enemy") and controller.has_node("Wave2/Squad/Enemy") and not controller.debug_snapshot().captured, "编辑场景保留全部波次可见部署，不执行运行捕获")
 	check(controller._get_configuration_warnings().is_empty(), "实际第一关编辑配置没有波次警告")
 	EditorInterface.get_inspector().edit(controller)
@@ -561,7 +561,7 @@ func _editor_roundtrip() -> void:
 	check(saved != null, "通过原生场景保存写入独立副本")
 	if saved != null:
 		var reopened = saved.instantiate(PackedScene.GEN_EDIT_STATE_INSTANCE)
-		var waves = reopened.get_node("EnemyWaves")
+		var waves = reopened.get_node("SceneDirector")
 		print("Saved wave order: ", waves.get_children().map(func(node): return str(node.name)))
 		check(waves.get_child_count() == 3 and waves.get_child(0).name == "CopiedWave", "保存重开保留复制出的波次与树顺序")
 		check(waves.get_node("Wave2/Squad/Enemy").transform.is_equal_approx(expected_pose) and is_equal_approx(waves.get_node("Wave2").start_delay_seconds, 0.7), "保存重开保留移动、朝向和等待参数")

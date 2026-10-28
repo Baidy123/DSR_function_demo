@@ -23,7 +23,7 @@
 [ext_resource type="Script" uid="uid://k0q37ja4h4tl" path="res://scripts/player/player_presentation.gd" id="24_dgxyq"]
 [ext_resource type="Script" uid="uid://dw52opl8k324b" path="res://scripts/systems/effects/impact_receiver.gd" id="25_f41sv"]
 [ext_resource type="PackedScene" uid="uid://cwypieei7ftdf" path="res://scenes/player/player_camera_rig.tscn" id="26_t40i7"]
-[ext_resource type="PackedScene" path="res://scenes/world/enemy_waves.tscn" id="27_7g8vd"]
+[ext_resource type="PackedScene" path="res://scenes/world/scene_director.tscn" id="27_7g8vd"]
 [ext_resource type="PackedScene" path="res://scenes/world/enemy_wave.tscn" id="28_4nxhg"]
 [ext_resource type="Resource" uid="uid://wf82uaxorlji" path="res://resources/enemy/cooperation/coordinated.tres" id="29_d07f3"]
 [ext_resource type="Script" uid="uid://dcc2vkow4q8cl" path="res://scripts/world/shooting_range.gd" id="area"]
@@ -754,57 +754,57 @@ script = ExtResource("25_f41sv")
 
 [node name="Camera3D" parent="." unique_id=1669516944 instance=ExtResource("26_t40i7")]
 
-[node name="EnemyWaves" parent="." unique_id=1003261056 instance=ExtResource("27_7g8vd")]
+[node name="SceneDirector" parent="." unique_id=1003261056 instance=ExtResource("27_7g8vd")]
 
-[node name="Wave" parent="EnemyWaves" unique_id=1414416577 instance=ExtResource("28_4nxhg")]
+[node name="Wave" parent="SceneDirector" unique_id=1414416577 instance=ExtResource("28_4nxhg")]
 search_on_spawn = false
 spawn_search_error_radius = 0.0
 existing_squads = Array[NodePath]([NodePath("../../Squad")])
 
-[node name="Wave2" parent="EnemyWaves" unique_id=190508222 instance=ExtResource("28_4nxhg")]
+[node name="Wave2" parent="SceneDirector" unique_id=190508222 instance=ExtResource("28_4nxhg")]
 
-[node name="Squad" parent="EnemyWaves/Wave2" unique_id=1228070330 instance=ExtResource("squad")]
+[node name="Squad" parent="SceneDirector/Wave2" unique_id=1228070330 instance=ExtResource("squad")]
 profile = ExtResource("7_p4f50")
 
-[node name="Enemy" parent="EnemyWaves/Wave2/Squad" unique_id=148852351 instance=ExtResource("10_lt1v0")]
+[node name="Enemy" parent="SceneDirector/Wave2/Squad" unique_id=148852351 instance=ExtResource("10_lt1v0")]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -11.785956, 0, 9.8396)
 
-[node name="Enemy2" parent="EnemyWaves/Wave2/Squad" unique_id=442509667 instance=ExtResource("11_p4f50")]
+[node name="Enemy2" parent="SceneDirector/Wave2/Squad" unique_id=442509667 instance=ExtResource("11_p4f50")]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -13.749772, 0, 10.596809)
 
-[node name="Enemy3" parent="EnemyWaves/Wave2/Squad" unique_id=217707852 instance=ExtResource("10_lt1v0")]
+[node name="Enemy3" parent="SceneDirector/Wave2/Squad" unique_id=217707852 instance=ExtResource("10_lt1v0")]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -12.330437, 0, 7.7818117)
 
-[node name="Enemy4" parent="EnemyWaves/Wave2/Squad" unique_id=950003350 instance=ExtResource("11_p4f50")]
+[node name="Enemy4" parent="SceneDirector/Wave2/Squad" unique_id=950003350 instance=ExtResource("11_p4f50")]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -13.919978, 0, 6.8750477)
 
-[node name="Enemy5" parent="EnemyWaves/Wave2/Squad" unique_id=476002285 instance=ExtResource("8_rxe87")]
+[node name="Enemy5" parent="SceneDirector/Wave2/Squad" unique_id=476002285 instance=ExtResource("8_rxe87")]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -15.037823, 0, 8.160746)
 
-[node name="Enemy6" parent="EnemyWaves/Wave2/Squad" unique_id=2049053957 instance=ExtResource("8_rxe87")]
+[node name="Enemy6" parent="SceneDirector/Wave2/Squad" unique_id=2049053957 instance=ExtResource("8_rxe87")]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -13.55292, 0, 9.061869)
 
-[node name="Wave3" parent="EnemyWaves" unique_id=1934248711 instance=ExtResource("28_4nxhg")]
+[node name="Wave3" parent="SceneDirector" unique_id=1934248711 instance=ExtResource("28_4nxhg")]
 
-[node name="Squad" parent="EnemyWaves/Wave3" unique_id=139007605 instance=ExtResource("squad")]
+[node name="Squad" parent="SceneDirector/Wave3" unique_id=139007605 instance=ExtResource("squad")]
 profile = ExtResource("29_d07f3")
 
-[node name="Enemy" parent="EnemyWaves/Wave3/Squad" unique_id=118302091 instance=ExtResource("11_p4f50")]
+[node name="Enemy" parent="SceneDirector/Wave3/Squad" unique_id=118302091 instance=ExtResource("11_p4f50")]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.98012674, 0, -10.404384)
 
-[node name="Enemy2" parent="EnemyWaves/Wave3/Squad" unique_id=1582255601 instance=ExtResource("10_lt1v0")]
+[node name="Enemy2" parent="SceneDirector/Wave3/Squad" unique_id=1582255601 instance=ExtResource("10_lt1v0")]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 2.19665, 0, -10.459749)
 
-[node name="Enemy3" parent="EnemyWaves/Wave3/Squad" unique_id=222295764 instance=ExtResource("9_16kq1")]
+[node name="Enemy3" parent="SceneDirector/Wave3/Squad" unique_id=222295764 instance=ExtResource("9_16kq1")]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -10.361961, 0, 9.992967)
 
-[node name="Enemy4" parent="EnemyWaves/Wave3/Squad" unique_id=315070156 instance=ExtResource("9_16kq1")]
+[node name="Enemy4" parent="SceneDirector/Wave3/Squad" unique_id=315070156 instance=ExtResource("9_16kq1")]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -10.777713, 0, 8.588739)
 
-[node name="Enemy5" parent="EnemyWaves/Wave3/Squad" unique_id=729379314 instance=ExtResource("10_lt1v0")]
+[node name="Enemy5" parent="SceneDirector/Wave3/Squad" unique_id=729379314 instance=ExtResource("10_lt1v0")]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 12.691113, 0, 9.1980715)
 
-[node name="Enemy6" parent="EnemyWaves/Wave3/Squad" unique_id=1755832236 instance=ExtResource("11_p4f50")]
+[node name="Enemy6" parent="SceneDirector/Wave3/Squad" unique_id=1755832236 instance=ExtResource("11_p4f50")]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 12.209784, 0, 7.676222)
 
 [node name="Light" type="DirectionalLight3D" parent="." unique_id=870330444]

@@ -1,22 +1,22 @@
 # 敌人波次配置
 
-每波在场景中摆好小队和敌人，控制器按树中顺序生成；支持等前波全灭或延时加入、多波同场。五关已保存自己的部署，F5进入连续关卡，单关可F6试玩。全部波次完成后，关卡流程显示过关按钮；波次控制器本身只发送完成信号。旧部署和阶段验证见[历史记录](../history/2026-10-28/gameplay/ENEMY_WAVES.md)。
+每波仍在场景中摆好小队和敌人，支持原顺序、多波同场，以及事件节点/显式请求出场。原EnemyWaves入口已改名SceneDirector，内部敌人执行部分报告真实结果，总调度显示过关按钮、处理死亡和镜头。五关部署与F5/F6流程保持。事件接线和手摆目标见[中文教程](SCENE_DIRECTOR.md)，旧部署见[历史记录](../history/2026-10-28/gameplay/ENEMY_WAVES.md)。
 
 ## 第一关在哪里改
 
-第一关保留原 `Lvl1/Squad` 作为第一波，`EnemyWaves/Wave1` 的 **兼容已有场景 → Existing Squads** 保存相对路径 `../../Squad`。Wave1下面没有子小队是正常的。第二波在 `EnemyWaves/Wave2/Squad`。人数、装备和出生位置以当前保存场景为准，不按早期示例固定。
+第一关保留原 `Lvl1/Squad` 作为第一波，`SceneDirector/Wave1` 的 **兼容已有场景 → Existing Squads** 保存相对路径 `../../Squad`。Wave1下面没有子小队是正常的。第二波在 `SceneDirector/Wave2/Squad`。人数、装备和出生位置以当前保存场景为准，不按早期示例固定。
 
 | 修改内容 | 操作 |
 | --- | --- |
 | 第一波敌人 | 修改根节点下原 Squad 及其成员 |
-| 第二波敌人 | 修改 EnemyWaves/Wave2/Squad |
+| 第二波敌人 | 修改 SceneDirector/Wave2/Squad |
 | 增加成员 | 将敌人／兵种预制拖到所属 Squad 下，移开重叠位置 |
 | 改血量、移速、武器 | 敌人根节点 |
 | 改个人训练 | Training → Profile／战术解锁 |
 | 改团队配合 | Squad → Profile → Level |
 | 增加小队 | 在同一 Wave 下放入 `scenes/world/squad.tscn` |
 | 增加波次 | 复制独立部署的 Wave2，或添加 `scenes/world/enemy_wave.tscn` |
-| 改出场顺序 | 调整 EnemyWaves 下同一层 Wave 的上下顺序 |
+| 改顺序模式的先后 | 调整SceneDirector下同一层Wave的顺序；事件/请求模式各自等待 |
 | 删除一波 | 删除对应 Wave，保留有效部署并核对引用 |
 
 复制Wave1会复制同一个外部Squad引用。创建独立新波时，应清空新副本的 Existing Squads 并放入独立小队；同一小队只能属于一波。移动敌人时拖到目标波的Squad下，再改3D位置。节点属性可单实例覆盖，武器／训练／Profile资源则可能共享，单独修改前先设为唯一或另存。
@@ -25,12 +25,15 @@
 
 | Wave字段 | 默认值 | 语义 |
 | --- | --- | --- |
+| Start Mode | SEQUENCE | 原顺序；EVENTS监听事件；REQUEST由场景动作/接口请求 |
+| Event Nodes | 空 | 推荐：选择SceneEvent或有无参triggered的节点，路径相对Wave |
+| Triggers / Trigger Combination | 空 / ANY | 高级原信号绑定；与Event Nodes合并，ANY任一、ALL全部 |
 | Wait For Previous Clear | 开启 | 等紧邻上一波全灭并完成清理后开始等待 |
 | Start Delay Seconds | 0秒 | 条件满足后的等待时间 |
 | Search On Spawn | 开启 | 后续波实际出生时取得一次玩家大概位置并进入搜索 |
 | Spawn Search Error Radius | 3米 | 该一次性提示的最大水平误差，0为精确快照 |
 
-关闭 Wait For Previous Clear 时，从紧邻上一波**实际出场**起计时，允许多波同场。第一波始终从本轮战斗开始计时。不会越过尚未出场的前波；刷新点被占用使前波延后时，后波不提前启动。暂停、对话、玩家死亡等区域不可运行期间不累计时间。
+SEQUENCE模式关闭Wait For Previous Clear时，从紧邻上一波实际出场起计时；开启则等全灭清理。其首波从战斗开始计时，后波不越过未出场的前波。EVENTS/REQUEST独立满足条件后才开始自己的延时，不受这项前波条件约束；暂停、对话、死亡等区域不可运行期间不累计时间。
 
 “上一波”只指树序紧邻的那一波；第二波先死时，等待第二波的第三波可以加入，即使第一波尚存活。最终完成要求所有波次已出场且全部敌人死亡。清场信号可能按第二波、第一波的顺序发出。
 
@@ -42,10 +45,10 @@
 
 ## 给新战斗区域接入
 
-1. 保留区域的 `shooting_range.gd`、战斗区、玩家和导航。在该区域下放一个 `scenes/world/enemy_waves.tscn`，一个区域只放一个控制器。
-2. 在EnemyWaves下放Wave，在Wave下放Squad，在Squad下放敌人／兵种预制。日常无需填写成员名单。
+1. 保留区域的 `shooting_range.gd`、战斗区、玩家和导航。在该区域下放一个 `scenes/world/scene_director.tscn`，一个区域只放一个控制器。
+2. 在SceneDirector下放Wave，在Wave下放Squad，在Squad下放敌人／兵种预制。日常无需填写成员名单。
 3. 在有效导航面上摆好完整身体位置；不要缩放角色。同波成员不能重叠；允许不同波共用刷新位置，但被占时会等待。
-4. 保存场景与引用资源后试玩。已有五关先检查现有EnemyWaves，不能重复添加第二套控制器。
+4. 保存场景与引用资源后试玩。已有五关先检查现有SceneDirector，不能重复添加第二套控制器。
 
 已有小队不便移动时，用Wave的Existing Squads引用。需要修改继承场景子节点时开启“可编辑子节点”，保留原路径与UID。关卡入口和导航维护见[关卡地图](LEVEL_MAPS.md)。
 
@@ -64,12 +67,14 @@
 
 ## 代码接口与验证
 
-实现为 `scripts/world/enemy_wave_definition.gd`、`enemy_wave_controller.gd`、`enemy_wave_spawn_check.gd`。区域在子节点ready前捕获部署模板，统一驱动时钟；波次不另起独立AI或更新循环。
+入口仍使用enemy_wave_controller.gd原脚本UID；执行部分提取为enemy_wave_runtime.gd，定义与合法性检查继续由enemy_wave_definition.gd及enemy_wave_spawn_check.gd负责。区域在子节点ready前捕获模板并统一驱动战斗时钟，场景核心独立处理死亡/引导/镜头，不另起敌人AI循环。
 
 | 入口 | 用途 |
 | --- | --- |
 | `capture_templates(region)` | 收集并校验部署，建立本轮模板 |
 | `start_encounter()` | 请求启动；仍受原区域激活条件限制 |
+| `request_wave(wave)` / `wave_status(wave)` | 请求指定REQUEST波、查询其独立状态；不会绕过区域和出生校验 |
+| Wave的`spawned` / `cleared` | 稳定无参事件，来源节点可直接绑定 |
 | `advance_from_region(delta)` | 仅由区域统一推进，其他脚本不要重复每帧调用 |
 | `reset_encounter()` | 清理运行实例并复位；清理完成前不生成新轮 |
 | `owns_runtime_enemy(enemy)` | 判断受管运行成员 |
@@ -77,7 +82,7 @@
 | `wave_started(index)`／`wave_cleared(index)` | 从1计数的波次事件 |
 | `encounter_completed` | 全部波次完成，由关卡流程接后续界面 |
 
-通用拾取、机关、到达地点触发波次仍属于后续设计，不能按已实现接口使用。专项为 `enemy_wave_test`、`enemy_wave_search_test`，关卡衔接由 `level_flow_test` 验证。历史通过数不代表当前完整五关实跑；已知失败和测试边界见[敌人测试](../enemy-tests.md)。
+拾取/交互/区域/脚本信号可用SceneEvent或高级Triggers接入，不需重写刷新代码。Wave的“出场镜头”可直接绑定手摆Marker3D/Node3D，未绑定不自动猜目的地；出生成功时才冻结和展示。配置步骤见[教程](SCENE_DIRECTOR.md)。专项为enemy_wave_test、enemy_wave_search_test、enemy_wave_events_test及scene_reinforcement_test；五关流程由level_flow_test验证。
 
 ## 旧章节引用
 

@@ -16,8 +16,10 @@ func _run() -> void:
 	scene = preload("res://tests/enemy/enemy_fire_fixture.gd").unbound_scene()
 	# 行为断言使用独立初值；用户在检查器调整备弹不影响测试。
 	var initial_slots = scene.get_node("Player/Equipment")
-	for field in ["starting_rifle_ammo", "starting_pistol_ammo", "starting_smg_ammo", "starting_shotgun_ammo"]:
-		initial_slots.set(field, 36)
+	var supplies: Array[AmmoSupply] = []
+	for kind in range(4):
+		supplies.append(AmmoSupply.create(AmmoDefinition.legacy(kind), 36))
+	initial_slots.initial_ammo = supplies
 	root.add_child(scene)
 	current_scene = scene
 	player = scene.get_node("Player")
@@ -122,7 +124,7 @@ func _run() -> void:
 	check(slots.primary_label.text.contains("3/12"), "非当前槽也显示保留弹量")
 	player.receive_hit(player.get_node("Health").max_health * 2.0)
 	check(player.is_dead() and not combat.ammo.is_reloading, "死亡立即取消换弹")
-	player.get_node("Health")._request_restart()
+	player.get_node("Health/DeathScreen/Center/Panel/Content/Restart").pressed.emit()
 	for frame in range(8):
 		await process_frame
 	player = current_scene.get_node("Player")

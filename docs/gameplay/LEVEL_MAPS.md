@@ -20,7 +20,7 @@ F5从第1关开始连续五关。每关先显示可关闭的2D游玩说明并暂
 
 ## 场景结构与维护
 
-关卡根节点使用原 `scripts/world/shooting_range.gd` 接口，维持CombatZone、NavigationRegion3D、Player、Camera3D、Squad及EnemyWaves等已有节点路径。关卡切换和说明界面由 `scripts/systems/level_flow.gd` 接入，区域和波次继续承担自己的激活与完成职责。
+关卡根继续使用scripts/world/shooting_range.gd，CombatZone、NavigationRegion3D、Player、Camera3D及Squad路径保持；原EnemyWaves仅改名SceneDirector并更新必要引用，子层级不动。总调度统一开场、死亡、完成与加载，LevelFlow保留五关表和结果视图；区域与波次执行各自业务。新配置见[教程](SCENE_DIRECTOR.md)。
 
 地形位于 `NavigationRegion3D/Environment` 下，按FullCover、HalfCover、Walls、Boundary、Ground组织。高低掩体沿用原预制与区域脚本，普通墙和边界不能只因外形相似就加上战术掩体标签。修改大小时同时检查Mesh与碰撞Shape，保持底面落地和原导航辅助；详见[竞技场与掩体](ARENA.md)。
 
@@ -28,7 +28,7 @@ F5从第1关开始连续五关。每关先显示可关闭的2D游玩说明并暂
 
 ## 修改波次和装备
 
-第一关首波通过 `EnemyWaves/Wave1.existing_squads` 引用原根目录Squad，第二波使用 `EnemyWaves/Wave2/Squad`。修改第一波仍选原Squad；复制新波优先复制独立部署的Wave，避免复制外部引用造成重复。其他关卡先展开已有EnemyWaves，再调整小队与成员，不重复添加控制器。
+第一关首波通过 `SceneDirector/Wave1.existing_squads` 引用原根目录Squad，第二波使用 `SceneDirector/Wave2/Squad`。修改第一波仍选原Squad；复制新波优先复制独立部署的Wave，避免复制外部引用造成重复。其他关卡先展开已有SceneDirector，再调整小队与成员，不重复添加控制器。
 
 波次树序决定出场顺序。Wait For Previous Clear决定在紧邻前波全灭或实际出场后开始计时，Start Delay Seconds决定延时。后续波默认在实际出生时获得一次有误差的玩家位置并持续搜索，树序首波排除。操作、重叠波和不刷怪排查见[波次配置](ENEMY_WAVES.md)。
 

@@ -51,6 +51,8 @@ python movement_demo/tests/run_combat_regressions.py --godot E:/Godot/Godot_v4.7
 | 生命与治疗 | `player_health_test`、`player_medkit_test`、`player_medkit_lifecycle_test` |
 | 相机与独立复用 | `player_camera_test`、`player_scene_reuse_test`、`camera_occlusion_test` |
 | 五关与波次 | `level_flow_test`、敌人波次专项；使用真实保存场景验证 |
+| 场景调度与编辑器接线 | `scene_director_test`、`scene_event_node_test`、`enemy_wave_events_test`；无Wave/无Guide、暂停拥有者、事件过滤/失效、加载失败重试 |
+| 增援与独立演出 | `scene_reinforcement_test`、`presentation_camera_test`；真实生成屏障、手动Marker3D、取消/返回；相机专项另有真实渲染模式 |
 | 任务与交互 | systems 中条件、任务、阶段、面板、唱片机与交互专项 |
 | UI、检查器、美术 | 对应编辑器／渲染入口，不能只用 headless 代替 |
 
@@ -71,6 +73,14 @@ python movement_demo/tests/run_combat_regressions.py --godot E:/Godot/Godot_v4.7
 共用运行器要求退出码为0，且没有 `SCRIPT ERROR:`、行首 `FAIL` 或 `ERROR:`；仅原有 root certificate store 诊断按运行器既定规则例外。超时、启动失败或脚本解析错误均为失败。断言全部通过但存在资源／RID清理错误时，不能记作严格无错误通过。
 
 输出包含每项 `.log`、`_stdout.log` 和 `results.json`；运行器记录首批错误，完整证据看原日志。日志放在 `movement_demo/logs/`，由 `.gdignore` 隔离，不提交缓存、截图或诊断副本。Dialogue Manager 的扫描路径保持只指向实际对话源。
+
+场景调度的真实鼠标交接需渲染模式，不能用headless证明鼠标捕获。可运行：
+
+```powershell
+E:/Godot/Godot_v4.7.2-stable_win64_console.exe --path movement_demo --script res://tests/scene_reinforcement_test.gd -- --mouse-ownership-only
+```
+
+它检查真实右键瞄准捕获→增援暂停→暂停期间松开→返回或死亡后无旧捕获残留。默认headless分支保留真实生成/AI/暂停/镜头测试，并明确跳过此显示服务相关分支。
 
 ## 当前需要保留的验证边界
 

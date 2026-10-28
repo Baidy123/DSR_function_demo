@@ -51,9 +51,9 @@
 
 ## 界面与维护入口
 
-五关各自增加一个 `LevelFlow` 实例（`scenes/ui/level_flow.tscn`），`level_number` 为1至5；原 Player、Camera3D、EnemyWaves、根脚本和资源引用不变。`scripts/systems/level_flow.gd` 只监听原 `EnemyWaves.encounter_completed` 并在按钮点击后延迟切换场景，不改变敌人、AI、波次完成判定或 Health 的死亡重开实现。第五关显示通关；切换失败时保留重试按钮。
+五关各自的LevelFlow实例保留，level_number仍为1至5。原EnemyWaves入口按用户要求改名SceneDirector，Wave/Squad层级不变；总调度接收波次完成和Health.died，统一处理暂停、结果与加载。LevelFlow只保留五关路径表、视图和按钮意图，不再自行监听波次或切场景。第五关仍显示通关，失败保留重试按钮。配置见[场景调度教程](SCENE_DIRECTOR.md)。
 
-说明组件为 `scenes/ui/play_guide.tscn` 与 `scripts/ui/play_guide.gd`，文案保存在脚本 `GUIDE_TEXT`，修改操作时同步本文。组件只在显示期间持有暂停，关闭或卸载恢复先前状态；正文滚动，关闭按钮独立保留在底部。关卡衔接不是酒馆任务的 StageController，原任务与剧情系统保持各自职责。
+临时说明组件仍为scenes/ui/play_guide.tscn与scripts/ui/play_guide.gd，正文保存在GUIDE_TEXT。它提供begin/cancel/finished，由总调度选择是否显示并持有暂停；关闭只报告完成。移除它或清空Guide Path即可省略，以后可换互动教程。正文滚动和底部关闭按钮保持。原酒馆任务与剧情系统仍保持各自职责。
 
 ## 历史记录
 

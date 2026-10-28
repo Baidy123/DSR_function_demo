@@ -41,7 +41,7 @@ movement_demo/
 | `player/player_combat_v3.gd` | 锁定、鼠标辅助、转身、准度、扳机、当前枪弹药、射击和玩家近战 |
 | `player/target_switch_gesture.gd` | 仅累计鼠标净位移、时间和新输入标记，不持有目标或场景 |
 | `player/player_weapon_slots.gd` / Equipment | 装备配置、槽位、每槽运行状态、共享备弹和唯一医疗包库存 |
-| `player/player_health.gd` | 生命、伤害、治疗结算、死亡通知及重开 |
+| `player/player_health.gd` | 生命、伤害、治疗结算、自身失能与死亡通知；场景后续由调度器决定 |
 | `player/player_medkit.gd` | 治疗资格、输入中断、冻结参数与计时，向 Health 交付回血 |
 | `weapons/weapon_data.gd` | 静态枪械参数、收敛和爆头等纯数值规则；不保存角色运行进度 |
 | `weapons/weapon_ammo.gd` | 每枪弹匣与装填计时，玩家／敌人共用；策略由调用方决定 |
@@ -68,8 +68,10 @@ Equipment 交接当前枪给 Combat；相机订阅 `weapon_changed`，表现订�
 
 ## 波次、关卡与补给
 
-- `world/enemy_wave_controller.gd` 在区域中捕获部署模板、推进波次、处理完成与重置；`enemy_wave_definition.gd` 保存等待、延迟、出生搜索和已有小队引用。
-- `systems/level_flow.gd` 消费 `encounter_completed`，显示下一关／通关界面；`ui/play_guide.gd` 管理入场说明期间的暂停与鼠标恢复。任务系统不参与五关按钮流程。
+- `world/enemy_wave_controller.gd` 是 SceneDirector 场景入口兼容脚本，原 UID 保留；五关入口已按用户要求改名，Wave/Squad层级不动。`enemy_wave_runtime.gd` 执行模板、合法出生、各波状态、搜索与清理；`enemy_wave_definition.gd` 保存部署、事件节点与手选镜头配置。
+- `systems/scene_director.gd` 是入口内部的场景核心，不依赖Wave或PlayGuide；`scene_flow_runner.gd` 推进资源规则与动作，`scene_pause_coordinator.gd` 统一记录拥有者。仅内部核心使用Always，区域和敌人保持可暂停。
+- `systems/scene_event.gd` 是可放入场景的事件节点，来源信号或trigger()统一发triggered；`scene_event_trigger/filter/subscription.gd` 适配和过滤，`scene_flow_rule/action.gd` 保存静态配置。接线见[教程](gameplay/SCENE_DIRECTOR.md)。
+- `systems/level_flow.gd` 保留五关表和结果视图，`ui/play_guide.gd` 提供可选begin/cancel/finished，`ui/scene_result_view.gd` 绑定原Health死亡UI；它们只显示并报告请求，暂停与加载由核心决定。旧Main的区域在没有入口时为场景玩家绑定同一核心，避免多区域重复接管。任务系统不参与五关按钮流程。
 - `world/ammo_drop_controller.gd` 管理区域掉落选择、数量与生命周期，`ammo_drop_position.gd` 检查合法落点，`ammo_pickup.gd` 显示并执行一次领取。
 - `scenes/enemy/levels/lvl_N/` 与 `resources/enemy/training/levels/lvl_N/` 保存各关兵种／训练。共享资源仍可能被跨关引用，修改前核对实际使用者。
 - 导航烘焙命令会写资源，属于维护工具；不能作为普通游戏加载流程或默认回归一起执行。
@@ -77,6 +79,8 @@ Equipment 交接当前枪给 Combat；相机订阅 `weapon_changed`，表现订�
 ## 相机、表现与内容
 
 相机根 `systems/player_camera.gd` 统一绑定玩家、读取武器 Aim Range、控制视野过渡；`camera_occlusion.gd` 仅处理显式标记装饰的材质副本与还原。CameraGroundAnchor 过滤翻越抬升。保持原 Phantom Camera 跟随和更新关系。
+
+`systems/presentation_camera.gd` 和 `scenes/player/presentation_camera.tscn` 是独立演出相机。目的地由编辑器绑定Marker3D/Node3D；复制可见画面后切入，返回前通过玩家相机的有限同步接口刷新，再切回。原玩家相机不交给总调度每帧移动，遮挡辅助同一时刻只有一个拥有者。
 
 `systems/presentation/` 读取实际状态驱动模型／动画，`systems/effects/` 管理命中快照、表面配置与特效生命周期。表现不改变伤害、枪口、碰撞或 AI；UI 不替代业务状态的唯一写入者。
 

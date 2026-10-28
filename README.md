@@ -14,7 +14,7 @@
 | 近战 | 枪械附带近战、专用近战兵、击退与眩晕反馈；玩家近战为受击敌人提供一次爆头门槛优惠 |
 | 装备与补给 | 主副武器槽、按弹种共享备弹、整匣／逐发装填、缺弹掉落、医疗包与死亡重开 |
 | 敌人 AI | 巡逻、视觉／听觉、追踪与搜索、掩体、近远程攻击；个人决策与三档小队配合 |
-| 关卡流程 | 场景节点配置敌人波次、连续五关、入场说明、通关按钮与当前关重开 |
+| 场景调度 | SceneDirector统一可选引导、节点事件、波次出场、手选目标的独立镜头、死亡重开与连续五关 |
 | 交互与任务 | 对话、场景交互效果、条件驱动任务、阶段与 NPC 状态；任务演示与五关流程各自独立 |
 | 表现与诊断 | 可替换模型／动画、命中特效、血条与尸体、准星／状态提示、相机遮挡透明和调试视图 |
 
@@ -75,7 +75,8 @@
 | Enemy 根节点 | 生命、速度、Weapon、屏外开火概率 | [敌人武器](docs/gameplay/ENEMY_WEAPON.md) |
 | Enemy → Training → Profile | 感知、搜索、射击及战术解锁；修改后重新加载战斗 | [敌人 AI](docs/enemy-ai.md) |
 | Squad → Profile | 仅视野共享、战术配合、强配合三档及队级参数 | [小队与 AI](docs/enemy-ai.md) |
-| EnemyWaves → Wave | 顺序、等待前波、延迟、出生搜索；Wave 下的小队与敌人决定部署 | [波次](docs/gameplay/ENEMY_WAVES.md) |
+| SceneDirector → Wave | 顺序/事件节点/请求出场、延迟、出生搜索、手动镜头目标；原小队部署保持 | [波次](docs/gameplay/ENEMY_WAVES.md) |
+| SceneEvent、SceneDirector → Scene Rules | 选择来源信号或手动trigger；Wave/规则直接选择事件节点，配置动作 | [节点接线教程](docs/gameplay/SCENE_DIRECTOR.md) |
 | `scenes/world/levels/` | 地形、导航、出生点、玩家装备和敌人部署；LevelFlow 保存关卡编号 | [关卡](docs/gameplay/LEVEL_MAPS.md) |
 | Interactable、StageStateController | 交互条件与效果、Stage Table、任务及 NPC 状态 | [交互](docs/gameplay/INTERACTION.md)、[任务](docs/gameplay/STAGE_STATE.md) |
 | Presentation、武器外观、ImpactProfile | 模型、动画映射与命中特效 | [表现接入](docs/gameplay/PRESENTATION.md) |
@@ -90,7 +91,8 @@
 | Combat | `get_effective_accuracy()`、`get_target_headshot_chance(target)`、`is_turning_to_target()` | UI 读取基础准度、目标爆头率和转身状态 |
 | Combat | `weapon_changed`、`shot_fired`、`headshot_resolved` 信号 | 相机、表现或统计订阅真实装备／射击结果 |
 | Health | `receive_hit(damage)`、`restore_health(amount)`、`died` 信号 | 伤害、治疗与死亡通知 |
-| EnemyWaves | `start_encounter()`、`reset_encounter()`；`wave_started`、`wave_cleared`、`encounter_completed` | 波次控制及完成通知；日常部署用场景节点 |
+| SceneDirector | `start_encounter()`、`request_wave(wave)`、`reset_encounter()`、`debug_snapshot()`；原波次信号保留 | 场景调度入口与波次兼容接口；核心通过director访问 |
+| SceneEvent | `trigger()`、无参`triggered`；来源节点/信号/过滤由检查器配置 | 统一通知Wave或场景规则，不要求每种事件重写刷怪代码 |
 | Interactable / InteractionEffect | `can_interact(player)`、`interact(player)`、`apply(context)` | 查询与执行交互、扩展单一效果 |
 | StageStateController | `reload_table()`、`get_snapshot()`、`snapshot_changed` | 重新装配任务配置及只读状态展示 |
 
@@ -98,8 +100,8 @@
 
 - **新增武器**：新建或复制 WeaponData，配置开火、弹药、精度与近战参数，保存到 `resources/weapons/`，拖入 Equipment 的槽位。玩家槽不接受专用近战武器；玩家近战使用手持枪械的附带参数。
 - **新增弹种**：创建 AmmoDefinition，填写唯一 ID；让武器引用它，并在 Equipment 的 `Initial Ammo` 中添加 AmmoSupply。掉落开关、数量和模型在弹种资源内设置。
-- **新增敌人或波次**：选择兵种场景，按需另存训练资源；将敌人放入 Squad，再放到 Wave 下。配合等级由 Squad 决定，先后顺序由 Wave 的树序决定。
-- **接入新战斗地图**：复用带区域控制器的关卡结构，保留 CombatZone 与导航；放入玩家、独立相机及 EnemyWaves，设置相机 `Player Path`，部署并烘焙导航。完整步骤见[关卡](docs/gameplay/LEVEL_MAPS.md)和[波次](docs/gameplay/ENEMY_WAVES.md)。
+- **新增敌人或波次**：兵种放入Squad，再放到Wave；选择原顺序模式、事件节点模式或显式请求。事件和手摆镜头按[SceneDirector教程](docs/gameplay/SCENE_DIRECTOR.md)配置，无需迁移部署层。
+- **接入新战斗地图**：复用带区域控制器的结构，保留CombatZone与导航；放入玩家、独立相机及SceneDirector，设置相机Player Path、部署并烘焙导航。见[关卡](docs/gameplay/LEVEL_MAPS.md)和[波次](docs/gameplay/ENEMY_WAVES.md)。
 - **新增交互或表现**：交互物组合已有 InteractionEffect，新增效果通过 InteractionContext 使用注入的状态；模型、动画与特效通过表现组件接入。具体资源契约见对应专项说明。
 
 ## 文档与维护
