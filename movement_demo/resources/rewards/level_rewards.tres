@@ -1,0 +1,149 @@
+[gd_resource type="Resource" script_class="RewardTable" load_steps=25 format=3]
+
+[ext_resource type="Script" path="res://scripts/rewards/reward_table.gd" id="1_table"]
+[ext_resource type="Script" path="res://scripts/rewards/reward_level.gd" id="2_level"]
+[ext_resource type="Script" path="res://scripts/rewards/reward_option.gd" id="3_option"]
+
+[sub_resource type="Resource" id="L1_Heal"]
+script = ExtResource("3_option")
+id = &"first_aid"
+display_name = "急救包"
+description = "恢复 35 点生命"
+effect = 0
+amount = 35
+
+[sub_resource type="Resource" id="L1_Ammo"]
+script = ExtResource("3_option")
+id = &"ammo"
+display_name = "弹药补给"
+description = "补满弹匣与备弹"
+effect = 1
+
+[sub_resource type="Resource" id="L1_Progress"]
+script = ExtResource("3_option")
+id = &"system_progress"
+display_name = "系统进度"
+description = "任务进度 +20"
+effect = 2
+amount = 20
+
+[sub_resource type="Resource" id="Level_1"]
+script = ExtResource("2_level")
+level = 1
+options = Array[ExtResource("3_option")]([SubResource("L1_Heal"), SubResource("L1_Ammo"), SubResource("L1_Progress")])
+
+[sub_resource type="Resource" id="L2_Heal"]
+script = ExtResource("3_option")
+id = &"first_aid"
+display_name = "急救包"
+description = "恢复 35 点生命"
+effect = 0
+amount = 35
+
+[sub_resource type="Resource" id="L2_Ammo"]
+script = ExtResource("3_option")
+id = &"ammo"
+display_name = "弹药补给"
+description = "补满弹匣与备弹"
+effect = 1
+
+[sub_resource type="Resource" id="L2_Progress"]
+script = ExtResource("3_option")
+id = &"system_progress"
+display_name = "系统进度"
+description = "任务进度 +20"
+effect = 2
+amount = 20
+
+[sub_resource type="Resource" id="Level_2"]
+script = ExtResource("2_level")
+level = 2
+options = Array[ExtResource("3_option")]([SubResource("L2_Heal"), SubResource("L2_Ammo"), SubResource("L2_Progress")])
+
+[sub_resource type="Resource" id="L3_Heal"]
+script = ExtResource("3_option")
+id = &"first_aid"
+display_name = "急救包"
+description = "恢复 35 点生命"
+effect = 0
+amount = 35
+
+[sub_resource type="Resource" id="L3_Ammo"]
+script = ExtResource("3_option")
+id = &"ammo"
+display_name = "弹药补给"
+description = "补满弹匣与备弹"
+effect = 1
+
+[sub_resource type="Resource" id="L3_Progress"]
+script = ExtResource("3_option")
+id = &"system_progress"
+display_name = "系统进度"
+description = "任务进度 +20"
+effect = 2
+amount = 20
+
+[sub_resource type="Resource" id="Level_3"]
+script = ExtResource("2_level")
+level = 3
+options = Array[ExtResource("3_option")]([SubResource("L3_Heal"), SubResource("L3_Ammo"), SubResource("L3_Progress")])
+
+[sub_resource type="Resource" id="L4_Heal"]
+script = ExtResource("3_option")
+id = &"first_aid"
+display_name = "急救包"
+description = "恢复 35 点生命"
+effect = 0
+amount = 35
+
+[sub_resource type="Resource" id="L4_Ammo"]
+script = ExtResource("3_option")
+id = &"ammo"
+display_name = "弹药补给"
+description = "补满弹匣与备弹"
+effect = 1
+
+[sub_resource type="Resource" id="L4_Progress"]
+script = ExtResource("3_option")
+id = &"system_progress"
+display_name = "系统进度"
+description = "任务进度 +20"
+effect = 2
+amount = 20
+
+[sub_resource type="Resource" id="Level_4"]
+script = ExtResource("2_level")
+level = 4
+options = Array[ExtResource("3_option")]([SubResource("L4_Heal"), SubResource("L4_Ammo"), SubResource("L4_Progress")])
+
+[sub_resource type="Resource" id="L5_Heal"]
+script = ExtResource("3_option")
+id = &"first_aid"
+display_name = "急救包"
+description = "恢复 35 点生命"
+effect = 0
+amount = 35
+
+[sub_resource type="Resource" id="L5_Ammo"]
+script = ExtResource("3_option")
+id = &"ammo"
+display_name = "弹药补给"
+description = "补满弹匣与备弹"
+effect = 1
+
+[sub_resource type="Resource" id="L5_Progress"]
+script = ExtResource("3_option")
+id = &"system_progress"
+display_name = "系统进度"
+description = "任务进度 +20"
+effect = 2
+amount = 20
+
+[sub_resource type="Resource" id="Level_5"]
+script = ExtResource("2_level")
+level = 5
+options = Array[ExtResource("3_option")]([SubResource("L5_Heal"), SubResource("L5_Ammo"), SubResource("L5_Progress")])
+
+[resource]
+script = ExtResource("1_table")
+levels = Array[ExtResource("2_level")]([SubResource("Level_1"), SubResource("Level_2"), SubResource("Level_3"), SubResource("Level_4"), SubResource("Level_5")])

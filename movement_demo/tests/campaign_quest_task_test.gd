@@ -77,8 +77,8 @@ func _run() -> void:
 	await process_frame
 	check(quests.status_of(&"task_level_2") == QuestControllerScript.Status.COMPLETED,
 		"完成第2关后第2关任务完成")
-	check(not controller.can_offer_reward(), "完成第2关后不能再领取第1关奖励")
-	check(not bool(state.task_a_reward_claimed), "奖励资格关闭不伪造已领取状态")
+	check(controller.can_offer_reward(), "完成第2关后可领取本关奖励")
+	check(not bool(state.task_a_reward_claimed), "第2关奖励资格不伪造第1关领取状态")
 
 	for number in range(3, 6):
 		state.available_level = number
@@ -90,7 +90,7 @@ func _run() -> void:
 		check(quests.status_of(StringName("task_level_%d" % number)) == QuestControllerScript.Status.COMPLETED,
 			"完成第%d关后任务完成" % number)
 	check(quests.status_of(&"task_level_5") == QuestControllerScript.Status.COMPLETED, "五关任务最终全部完成")
-	check(not controller.can_offer_reward(), "完成全部关卡后奖励仍不可领取")
+	check(controller.can_offer_reward(), "完成全部关卡后仍可领取第5关奖励")
 
 	if checks_run != EXPECTED_CHECKS:
 		failures += 1

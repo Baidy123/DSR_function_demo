@@ -8,7 +8,7 @@ const QuestControllerScript := preload("res://scripts/systems/stage/quest_contro
 
 const WATCHDOG_SECONDS := 30.0
 const MAX_FRAMES := 120
-const EXPECTED_CHECKS := 16
+const EXPECTED_CHECKS := 17
 
 var failures := 0
 var checks_run := 0
@@ -115,6 +115,14 @@ func _run() -> void:
 	await process_frame
 	check(not reloaded.get_node("RewardBoard").visible and int(state.system_progress) == previous_progress,
 		"酒馆重载后奖励仍不可重复领取")
+	state.completed_level = 2
+	await process_frame
+	await process_frame
+	_press_interact()
+	await process_frame
+	await process_frame
+	check(reloaded.get_node("RewardBoard").visible and paused,
+		"第1关已领取不死锁，第2关返回后仍可打开三选一")
 
 	if checks_run != EXPECTED_CHECKS:
 		failures += 1

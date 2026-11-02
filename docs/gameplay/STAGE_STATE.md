@@ -74,10 +74,10 @@
 效果上等于“首次触发”。条件每次在下列事件后重新评估：状态字段变化、拾取物品、旗标变化、
 交互物报告交互、区域进出、阶段变化、换表。
 
-## 第1关返回与酒馆奖励闭环
+## 关卡返回与酒馆奖励闭环
 
-第1关现在由 `EncounterController`（`scripts/systems/stage/encounter_controller.gd`）
-配合任务完成状态和酒馆 `RewardNPC` 串起“第一关清场 → 返回酒馆 → 找 NPC 领奖”：
+每关由 `EncounterController`（`scripts/systems/stage/encounter_controller.gd`）
+配合关卡完成状态和酒馆 `RewardNPC` 串起“清场 → 返回酒馆 → 找 NPC 领取本关奖励”：
 
 1. A 的对话说明逐关解锁目标。接受后 `help_choice` 写为 `accepted`、`available_level = 1`，任务进入进行中；
    酒馆门口 `Interactables/LevelPortal` 随后解锁，按 E 可切换到 `scenes/world/levels/lvl_1.tscn`。
@@ -86,16 +86,14 @@
 2. 酒馆重新加载后，任务控制器按 `completed_level >= 1` 把“通关第1关”任务判为已完成；
    `task_a_returned == returned` 继续写入供旧任务逻辑兼容。酒馆内的蓝色 `RewardNPC` 使用 `scripts/world/reward_npc.gd`；
    任务未完成时按 E 只显示普通提示，不会打开奖励。
-3. 玩家完成任务且尚未领取时，靠近 `RewardNPC` 按 E 会通过 `EncounterController.open_reward_for_player()`
-   暂停场景并显示 `scenes/ui/reward_board.tscn`。面板 `process_mode` 为 ALWAYS，暂停时仍能处理按钮输入；
-   每次显示只能发出一个 `reward_selected`：
-   - `first_aid`：恢复 35 点生命（超过上限按上限截断）；
-   - `ammo`：补满两把已装备枪械的弹匣，并把初始共享备弹恢复到各自配置初值；
-   - `system_progress`：给 `GameState.system_progress` 增加 20，累计上限 100。
-4. 选定后控制器结算奖励、隐藏面板、解除自己持有的暂停，并把 `GameState.task_a_reward_claimed`
-   写为真。面板本身仍只回传奖励 id，不直接写生命、弹药或任务进度。
-5. 领取状态保存在 `GameState` 自动加载中，因此酒馆或关卡场景重载后仍不可重复领取；重新运行游戏才会重置。
-   已领取后再次与 NPC 交互只显示“已经领过”的普通提示。
+3. 玩家完成任意关卡且本关尚未领取时，靠近 `RewardNPC` 按 E 会通过
+   `EncounterController.open_reward_for_player()` 暂停并显示 `scenes/ui/reward_board.tscn`。
+   面板从 `resources/rewards/level_rewards.tres` 读取当前关三项配置，`process_mode` 为 ALWAYS。
+4. 每项配置包含显示名称、说明、效果类型和数值。默认第1～5关均为急救包、弹药补给、系统进度，
+   但每关条目独立，可分别修改而互不影响。
+5. 选定后按配置结算，并把 `completed_level` 写入 `GameState.claimed_reward_levels`。
+   同一关不能重复领取；下一关完成后重新开放本次三选一。
+6. 领取状态跨场景保留，重新运行游戏才重置。`task_a_reward_claimed` 仅保留为第1关旧接口镜像。
 
 `main.tscn` 中的竞技场仍可独立进入和清场，但 `Arena.combat_cleared` 不再自动打开奖励，
 也没有旧的 `Arena/CombatZone/ReturnPortal`。
@@ -130,8 +128,8 @@
 整数下限条件使用 `QuestCondition.int_at_least(key, value)`；手写 `.tres` 时
 `source=6`、`min_value=N`。该来源追加在枚举末尾，原有字段、旗标、物品、交互和区域条件的整数索引保持不变。
 
-奖励控制器还要求 `completed_level == 1`。因此第1关返回后可领取；一旦完成第2关，奖励资格关闭。
-`task_a_reward_claimed` 仍在首次成功领取后置位，整次运行只开放一次。
+奖励控制器按 `completed_level` 查询本关奖励；`claimed_reward_levels` 只记录对应关卡。
+第1关领取后第2关仍可领取，第2关领取后第3～5关同理。具体配置说明见[关卡奖励](REWARDS.md)。
 
 正式切场景统一经过 `SceneTransition`。切换前先把 `World3D` 的环境恢复为中性回退值，避免酒馆环境光残留到没有
 自己的 `WorldEnvironment` 的关卡；传送门、关卡按钮和死亡重开不会各自复制渲染清理代码。
@@ -257,6 +255,7 @@
 & E:/Godot/Godot_v4.7.2-stable_win64_console.exe --headless --path movement_demo --script res://tests/campaign_flow_test.gd
 & E:/Godot/Godot_v4.7.2-stable_win64_console.exe --headless --path movement_demo --script res://tests/campaign_quest_task_test.gd
 & E:/Godot/Godot_v4.7.2-stable_win64_console.exe --headless --path movement_demo --script res://tests/debug_complete_level_test.gd
+& E:/Godot/Godot_v4.7.2-stable_win64_console.exe --headless --path movement_demo --script res://tests/reward_per_level_test.gd
 ```
 
 macOS 上用 `Godot.app/Contents/MacOS/Godot` 替换可执行文件路径。
@@ -278,7 +277,8 @@ macOS 上用 `Godot.app/Contents/MacOS/Godot` 替换可执行文件路径。
   面板暂停与关闭、任务完成并切到第2关未接任务、旧竞技场返回传送门已移除。
 - `campaign_flow_test.gd`：验证五关返程门、A 逐关解锁、动态传送门、跨关生命/双武器/弹匣/备弹/医疗包，
   以及死亡重开不消费跨关快照。
-- `campaign_quest_task_test.gd`：验证五条关卡任务随 A 解锁与通关更新、任务面板名称，以及第2关完成后奖励资格关闭。
+- `campaign_quest_task_test.gd`：验证五条关卡任务随 A 解锁与通关更新、任务面板名称，以及各关奖励资格互相独立。
+- `reward_per_level_test.gd`：验证第1～5关均可领取一次、领取状态互不影响，以及自定义标题、说明与数值。
 - `debug_complete_level_test.gd`：验证 Debug 总开关、一键完成当前关、单次完成信号和返程门流程。
 
 ## 后续

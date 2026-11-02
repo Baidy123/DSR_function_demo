@@ -43,13 +43,19 @@ var task_a_returned: String = "":
 			return
 		task_a_returned = value
 		value_changed.emit(&"task_a_returned", value)
-# 任务一的三选一奖励领取状态：跨关卡场景切换保留，整次运行只能领取一次。
+# 第1关领取状态兼容镜像；新的逐关状态以 claimed_reward_levels 为准。
 var task_a_reward_claimed: bool = false:
 	set(value):
 		if task_a_reward_claimed == value:
 			return
 		task_a_reward_claimed = value
+		if value:
+			claimed_reward_levels[1] = true
+		else:
+			claimed_reward_levels.erase(1)
 		value_changed.emit(&"task_a_reward_claimed", value)
+## 已完成关卡 -> 是否已领取该关奖励。每关独立，只允许领取一次。
+var claimed_reward_levels: Dictionary = {}
 # 五关主线：最近完成关卡与当前已由 A 解锁的关卡。完成关卡不会自动解锁下一关。
 var completed_level: int = 0:
 	set(value):
@@ -67,6 +73,9 @@ var available_level: int = 1:
 		value_changed.emit(&"available_level", value)
 ## 下一次新玩家实例就绪后消费一次；正常进入关卡或返回酒馆时由传送门写入。
 var pending_player_state: Dictionary = {}
+var completed_reward_claimed: bool:
+	get:
+		return has_claimed_reward(completed_level)
 ## 只读镜像：对话剧本按属性名读取唱片机旗标；旗标本身仍是唯一来源，由交互物写入。
 var music_playing: bool:
 	get:
@@ -145,6 +154,25 @@ func take_pending_player_state() -> Dictionary:
 	var snapshot := pending_player_state
 	pending_player_state = {}
 	return snapshot
+
+
+func has_claimed_reward(level_number: int) -> bool:
+	return bool(claimed_reward_levels.get(level_number, false))
+
+
+func mark_reward_claimed(level_number: int) -> void:
+	if level_number < 1 or has_claimed_reward(level_number):
+		return
+	claimed_reward_levels[level_number] = true
+	if level_number == 1:
+		task_a_reward_claimed = true
+	value_changed.emit(&"claimed_reward_levels", claimed_reward_levels.duplicate())
+
+
+func reset_reward_claims() -> void:
+	claimed_reward_levels.clear()
+	task_a_reward_claimed = false
+	value_changed.emit(&"claimed_reward_levels", {})
 
 
 ## 供测试与重开流程使用；正常死亡重开不清空。

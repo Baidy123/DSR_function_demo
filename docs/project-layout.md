@@ -8,7 +8,7 @@
 
 五关往返与跨关状态（2026-11-02）：所有关卡 `LevelFlow` 只听波次完成并启用本关 `TavernReturnPortal`；返程门写入 `completed_level` 与待消费玩家快照后回到酒馆。`QuestPortal` 在 A 更新 `available_level` 后动态切换下一关目标。`scripts/player/player_campaign_state.gd` 只搬运生命、当前槽位、双武器、弹匣、共享备弹和医疗包；`player.gd` 在新实例就绪时消费一次，死亡重开不携带旧关卡快照。详见[游玩指南](gameplay/PLAY_GUIDE.md)和[阶段状态](gameplay/STAGE_STATE.md)。
 
-五关任务链与 Debug 通关（2026-11-02）：`resources/stages/stage_table_template.tres` 登记五条主线任务，分别由 `available_level` 与 `completed_level` 的整数下限条件接取、完成。`QuestCondition` 新增可复用 `int_at_least()`，原六种条件的枚举索引保持兼容。奖励控制器仅在 `completed_level == 1` 时开放奖励。`player_health.tscn` 的原 Debug 控制栏增加当前关一键通关按钮，调用 `EnemyWaveController.debug_complete_encounter()` 并继续使用原完成信号和返程门。
+五关任务链、逐关奖励与 Debug 通关（2026-11-02）：`resources/stages/stage_table_template.tres` 登记五条主线任务，分别由 `available_level` 与 `completed_level` 的整数下限条件接取、完成。`QuestCondition` 新增可复用 `int_at_least()`，原六种条件的枚举索引保持兼容。`resources/rewards/level_rewards.tres` 使用 `RewardTable → RewardLevel → RewardOption` 保存五关独立奖励；`RewardBoard` 动态显示当前关标题与说明，`GameState.claimed_reward_levels` 按关卡记录一次领取。`player_health.tscn` 的原 Debug 控制栏增加当前关一键通关按钮，调用 `EnemyWaveController.debug_complete_encounter()` 并继续使用原完成信号和返程门。
 
 五关试玩配置（2026-10-27）：`scenes/world/levels/lvl_1.tscn` 至 `lvl_5.tscn` 均由用户保存玩家、相机、灯光、小队与波次。`scenes/enemy/levels/lvl_4/`、`lvl_5/` 各保存近战、手枪、冲锋枪和霰弹四种预设，训练在 `resources/enemy/training/levels/` 下同关目录；公共霰弹兵位于 `scenes/enemy/types/shotgun.tscn`，新增武器为 `resources/weapons/test_rifle.tres` 与 `enemy_test_shotgun.tres`。这些是用户关卡和资源配置的归档，保持原身体、AI、导航、波次与装备接口；详见[关卡说明](gameplay/LEVEL_MAPS.md)。
 
@@ -73,6 +73,7 @@ movement_demo/
 │   │   └── services/      感知、记忆、上下文、射击、搜索提示/覆盖和空间查询
 │   ├── player/            玩家移动、战斗、生命和装备
 │   ├── weapons/           武器数据与弹药执行
+│   ├── rewards/           关卡、选项与奖励表资源脚本
 │   ├── world/             掩体、训练靶、区域、门、NPC、交互物与屏障
 │   │   ├── quest_portal.gd       按任务与 A 解锁进度进入对应关卡
 │   │   ├── tavern_return_portal.gd 记录关卡完成与玩家快照并返回酒馆
@@ -94,6 +95,7 @@ movement_demo/
 │   ├── noise/             移动声、枪声配置
 │   ├── animations/        动画对应表
 │   ├── effects/           表面命中特效配置
+│   ├── rewards/           五关独立的三选一奖励配置
 │   ├── navigation/        烘焙导航资源
 │   ├── stages/            阶段／任务／NPC 状态规则配置表
 │   └── dialogue/          NPC 对话、导入元数据与原有剧情源文件
@@ -186,7 +188,7 @@ Spatial 的路线样本层仅在同步候选比较中复用同路径已实际观
 
 支援时序查询由 Context `cooperation_support_snapshot()` 接入区域 `enemy_cooperation.gd` 的精简 `support_snapshot()`；区域与完整快照共用实时资格、新鲜度及火力检查，精简读取不复制无关成员、身体、威胁和声明字段。`squad_coordination.gd` 仍持有任务并补齐有效请求，以静止／可移动两类最长覆盖计算压力。Context 只沿用既有候选预览观察，不新增缓存生命周期或调度节点。`enemy_cooperation_query_test.gd` 对照原完整快照算法，验证状态失效、不同目标、只读投影、声明与接受计划的期限。
 
-`main.tscn` 的任务奖励闭环由 `scripts/systems/stage/encounter_controller.gd`、`scripts/world/reward_npc.gd` 与 `GameState` 共同承担：第一关返回传送门写入 `task_a_returned` 并切回酒馆；任务完成后与 `RewardNPC` 按 E 交互才会暂停并打开三选一面板，分发急救包／弹药／系统进度三种奖励，并把 `task_a_reward_claimed` 写入共享运行态。返回酒馆的玩家状态可被奖励直接修改，门口传送门进入下一关前再次捕获，因此治疗和补给会延续。竞技场 `combat_cleared` 不再触发奖励。
+`main.tscn` 的任务奖励闭环由 `scripts/systems/stage/encounter_controller.gd`、`scripts/world/reward_npc.gd` 与 `GameState` 共同承担：每关返回后与 `RewardNPC` 按 E 交互，控制器按当前 `completed_level` 读取该关奖励并打开三选一。选定后写入对应关卡的 `claimed_reward_levels`，只关闭本关资格。返回酒馆的玩家状态可被奖励直接修改，门口传送门进入下一关前再次捕获，因此治疗和补给会延续。竞技场 `combat_cleared` 不再触发奖励。
 
 奖励面板 `scenes/ui/reward_board.tscn` + `scripts/ui/reward_board.gd` 是默认隐藏的三选一界面；`process_mode` 设为 ALWAYS，因此场景树暂停时仍能处理输入，每次显示只允许发出一个 `reward_selected`。面板本身不写玩家、弹药或进度，只回传所选奖励 id 给遭遇控制器。对应测试有 `tests/reward_npc_test.gd`（NPC 交互与跨重载防重复）、`tests/quest_encounter_loop_test.gd`（三条奖励路径）、`tests/encounter_controller_edge_test.gd`（资格、死亡、暂停和缺面板边界）与 `tests/reward_board_test.gd`（面板单次选择）。
 

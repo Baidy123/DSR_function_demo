@@ -1,18 +1,17 @@
 class_name EncounterController
 extends Node
 
-## 任务奖励控制器：第一关返回酒馆后由奖励 NPC 请求打开三选一面板。
-## 只管理奖励展示、暂停和结算；任务完成状态仍由 QuestController 权威判定。
+## 关卡奖励控制器：每关返回酒馆后由奖励 NPC 打开该关独立的三选一配置。
 
-@export var quest_id: StringName = &"task_a"
-@export var heal_amount: float = 35.0
-@export var system_progress_amount: int = 20
+@export var reward_table: RewardTable
 @export var reward_board_path: NodePath
 
 @onready var reward_board: CanvasLayer = get_node_or_null(reward_board_path)
 
 var _reward_open := false
 var _pause_owned := false
+var _reward_level := 0
+var _options: Array[RewardOption] = []
 
 
 func _ready() -> void:
@@ -21,15 +20,22 @@ func _ready() -> void:
 		reward_board.reward_selected.connect(_on_reward_selected)
 
 
-## NPC 在玩家靠近并按下交互键时调用；只有已完成且未领取时接管输入。
+## NPC 在玩家靠近并按下交互键时调用；当前已完成关卡尚未领取时接管输入。
 func open_reward_for_player(player: Node3D) -> bool:
 	if player == null or not is_instance_valid(player) or not player.is_in_group(&"player"):
 		return false
 	if not can_offer_reward():
 		return false
-	if reward_board == null or not reward_board.has_method(&"show_board"):
-		push_error("EncounterController: reward board is missing or does not implement show_board()")
+	if reward_board == null or not reward_board.has_method(&"show_board") \
+			or not reward_board.has_method(&"configure"):
+		push_error("EncounterController: reward board is missing or incomplete")
 		return false
+	var options := _options_for_level(_completed_level())
+	if options.size() != 3 or not reward_board.configure(options):
+		push_error("EncounterController: level reward config must provide exactly three options")
+		return false
+	_reward_level = _completed_level()
+	_options = options
 	var tree := get_tree()
 	_reward_open = true
 	_pause_owned = not tree.paused
@@ -40,31 +46,39 @@ func open_reward_for_player(player: Node3D) -> bool:
 
 
 func can_offer_reward() -> bool:
-	return _reward_open or (
-		_completed_level() == 1
-		and _quest_status() == QuestController.Status.COMPLETED
-		and not _reward_claimed()
+	if _reward_open:
+		return true
+	var level := _completed_level()
+	return level >= 1 and level <= 5 \
+		and not _reward_claimed(level) \
+		and _options_for_level(level).size() == 3 \
 		and _player_alive()
-	)
 
 
 func _on_reward_selected(reward_id: StringName) -> void:
 	select_reward(reward_id)
 
 
-## 奖励只能提交一次；成功后在共享运行态记录领取结果。
+## 每个已完成关卡只能提交一次。
 func select_reward(reward_id: StringName) -> bool:
-	if not _reward_open or _reward_claimed():
+	if not _reward_open or _reward_claimed(_reward_level):
 		return false
 	if not _player_alive():
 		return false
-	match reward_id:
-		&"first_aid":
-			_heal_player()
-		&"ammo":
+	var option: RewardOption = null
+	for candidate in _options:
+		if candidate != null and candidate.id == reward_id:
+			option = candidate
+			break
+	if option == null:
+		return false
+	match option.effect:
+		RewardOption.Effect.HEAL:
+			_heal_player(float(option.amount))
+		RewardOption.Effect.REFILL_AMMO:
 			_refill_ammo()
-		&"system_progress":
-			_add_progress()
+		RewardOption.Effect.SYSTEM_PROGRESS:
+			_add_progress(option.amount)
 		_:
 			return false
 	var tree := get_tree()
@@ -75,19 +89,26 @@ func select_reward(reward_id: StringName) -> bool:
 		reward_board.visible = false
 	var state := _state()
 	if state != null:
-		state.set(&"task_a_reward_claimed", true)
+		state.mark_reward_claimed(_reward_level)
 	if owned_pause:
 		tree.paused = false
 	return true
 
 
-func _heal_player() -> void:
+func _options_for_level(level_number: int) -> Array[RewardOption]:
+	if reward_table == null:
+		return []
+	var level := reward_table.for_level(level_number)
+	return [] if level == null else level.options
+
+
+func _heal_player(amount: float) -> void:
 	var player := _player()
 	if player == null:
 		return
 	var health := player.get_node_or_null("Health")
 	if health != null and health.has_method(&"heal"):
-		health.heal(heal_amount)
+		health.heal(amount)
 
 
 func _refill_ammo() -> void:
@@ -99,10 +120,10 @@ func _refill_ammo() -> void:
 		slots.refill_all_ammo()
 
 
-func _add_progress() -> void:
+func _add_progress(amount: int) -> void:
 	var state := _state()
 	if state != null and state.has_method(&"add_system_progress"):
-		state.add_system_progress(system_progress_amount)
+		state.add_system_progress(amount)
 
 
 func _player() -> Node3D:
@@ -124,21 +145,9 @@ func _state() -> Node:
 	return get_node_or_null("/root/GameState")
 
 
-func _quests() -> Node:
-	var tree := get_tree() if is_inside_tree() else null
-	return tree.get_first_node_in_group(&"quest_controller") if tree != null else null
-
-
-func _quest_status() -> int:
-	var quests := _quests()
-	if quests == null or not quests.has_method(&"status_of"):
-		return QuestController.Status.NOT_STARTED
-	return int(quests.status_of(quest_id))
-
-
-func _reward_claimed() -> bool:
+func _reward_claimed(level_number: int) -> bool:
 	var state := _state()
-	return state != null and bool(state.get(&"task_a_reward_claimed"))
+	return state != null and state.has_claimed_reward(level_number)
 
 
 func _completed_level() -> int:

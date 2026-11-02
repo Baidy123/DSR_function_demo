@@ -132,6 +132,7 @@ func _prepare_completed_scene() -> Dictionary:
 	state.help_choice = "accepted"
 	await _wait_until(tree, func() -> bool:
 		return quests.status_of(&"task_a") == QuestControllerScript.Status.IN_PROGRESS)
+	state.completed_level = 1
 	state.task_a_returned = "returned"
 	await _wait_until(tree, func() -> bool:
 		return quests.status_of(&"task_a") == QuestControllerScript.Status.COMPLETED)
@@ -152,7 +153,7 @@ func _prepare_scene() -> Dictionary:
 	state.help_choice = ""
 	state.task_a_returned = ""
 	state.task_a_reward_claimed = false
-	state.completed_level = 1
+	state.completed_level = 0
 	state.available_level = 1
 	state.system_progress = 0
 	state.clear_interaction_state()
