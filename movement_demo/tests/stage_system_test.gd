@@ -265,7 +265,7 @@ func _check_scene_wiring() -> void:
 	check(stage.get_player_zone() == &"tavern", "玩家初始被识别为在酒馆内")
 	check(stage.get_phase() == StagePhases.Id.TAVERN_IDLE, "主场景初始环节为酒馆待命")
 	var snapshot: Dictionary = state_ctl.get_snapshot()
-	check(str(snapshot["stage"]["name"]) == "任务一", "主场景读取配置表模板")
+	check(str(snapshot["stage"]["name"]) == "第1关任务", "主场景读取五关任务表模板")
 	check(snapshot["npcs"].size() == 3, "主场景快照列出全部三个 NPC")
 	check(
 		str(snapshot["npcs"][&"npc_a"]["dialogue"]) == dialogue_a.resource_path,

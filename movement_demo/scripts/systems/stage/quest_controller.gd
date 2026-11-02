@@ -305,6 +305,8 @@ func _condition_met(condition: QuestCondition) -> bool:
 	match condition.source:
 		QuestCondition.Source.STATE_FIELD:
 			return _state_has(condition.key) and str(_state.get(condition.key)) == condition.state_value
+		QuestCondition.Source.STATE_INT_AT_LEAST:
+			return _state_has(condition.key) and int(_state.get(condition.key)) >= condition.min_value
 		QuestCondition.Source.FLAG:
 			return _flag_value(condition.key) == condition.flag_value
 		QuestCondition.Source.ITEM:

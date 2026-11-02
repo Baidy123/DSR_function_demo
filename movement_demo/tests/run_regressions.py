@@ -17,7 +17,8 @@ SYSTEM_TESTS = [
     "presentation_range_reset_test", "dialogue_cache_test",
     "quest_conditions_test", "quest_system_test", "stage_system_test",
     "quest_panel_test", "record_player_quest_test",
-    "quest_encounter_loop_test", "reward_npc_test", "reward_board_test", "campaign_flow_test", "combat_clear_signal_test",
+    "quest_encounter_loop_test", "reward_npc_test", "reward_board_test", "campaign_flow_test",
+    "campaign_quest_task_test", "debug_complete_level_test", "combat_clear_signal_test",
     "quest_portal_test",
 ]
 # The optional interaction prototype is absent from some local project baselines.

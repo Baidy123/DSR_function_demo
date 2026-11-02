@@ -27,7 +27,8 @@ const GUIDE_TEXT := """[b][color=#8ed9e8]01  移动与掩体[/color][/b]
 利用掩体换弹和治疗，留意左下角生命与体力。敌人会听声音、搜索和配合，不要长时间暴露。
 清空本关全部波次后，从返回传送门回到酒馆；再次与 A 交互解锁下一关，再从门口传送门出发。
 跨关保留生命、当前武器、弹匣、备弹和医疗包；第 5 关完成后回到酒馆与 A 交互即可结束挑战。
-死亡后仍重开当前关，并按该关保存配置恢复。"""
+任务面板会依次记录通关第 1～5 关。奖励只在第 1 关后开放一次。
+死亡后仍重开当前关，并按该关保存配置恢复；Debug 总开关开启后可一键通关当前关。"""
 
 @onready var _body: RichTextLabel = $Backdrop/Panel/Content/Body
 @onready var _close_button: Button = $Backdrop/Panel/Content/Close

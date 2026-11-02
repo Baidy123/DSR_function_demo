@@ -37,6 +37,7 @@ var restart_pending: bool = false
 @onready var stamina_label: Label = $Status/Content/Stamina/Label
 @onready var invincible_toggle: CheckBox = $Debug/Controls/Invincible
 @onready var damage_button: Button = $Debug/Controls/Damage
+@onready var complete_level_button: Button = $Debug/Controls/CompleteLevel
 @onready var death_screen: ColorRect = $DeathScreen
 @onready var restart_button: Button = $DeathScreen/Center/Panel/Content/Restart
 
@@ -52,6 +53,7 @@ func _ready() -> void:
 	debug_settings.set_enabled(debug_mode)
 	_apply_debug_mode(debug_settings.enabled)
 	damage_button.pressed.connect(_debug_damage)
+	complete_level_button.pressed.connect(_debug_complete_level)
 	restart_button.pressed.connect(_request_restart)
 	_update_display()
 	_update_stamina_display()
@@ -139,12 +141,22 @@ func _set_debug_invincible(enabled: bool) -> void:
 func _apply_debug_mode(enabled: bool) -> void:
 	debug_mode = enabled
 	$Debug/Controls/NoiseRanges.disabled = not enabled
+	complete_level_button.disabled = not enabled
 	_update_display()
 
 
 func _debug_damage() -> void:
 	if OS.is_debug_build():
 		player.receive_hit(25.0)
+
+
+func _debug_complete_level() -> void:
+	if not OS.is_debug_build() or not debug_settings.enabled or is_dead:
+		return
+	var scene := get_tree().current_scene
+	var waves := scene.get_node_or_null("EnemyWaves") if scene != null else null
+	if waves != null and waves.has_method(&"debug_complete_encounter"):
+		waves.debug_complete_encounter()
 
 
 func _update_display() -> void:

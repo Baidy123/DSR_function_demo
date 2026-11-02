@@ -36,7 +36,7 @@ scenes/ui/game_state_debug.tscn               调试面板
 | 唱片机 | 主房间东南 | 使用，可重复 | 开／关音乐，写入 `music_playing`；接取任务前后都能操作，接取前操作不会推进任务状态 |
 | 关卡传送门 | 酒馆东侧门口 | 进入 | 未接 A 任务时提示并拒绝；A 每次解锁下一关后，按 E 切换到对应关卡 |
 | 酒馆返回传送门 | 各关出生点附近 | 返回 | 本关清空后出现；记录完成关卡与玩家状态并返回酒馆 |
-| 结算奖励 NPC | 酒馆东侧房间 | 交互 | 第一关完成并回到酒馆后按 E 打开三选一；未完成或已领取时只显示提示 |
+| 结算奖励 NPC | 酒馆东侧房间 | 交互 | 第1关完成并回到酒馆后按 E 打开三选一；第二关完成、已领取或尚未完成第1关时不再开放 |
 
 关卡传送门在首次进入时读取 `QuestController.status_of("task_a")`；后续按
 `GameState.completed_level` 与 `available_level` 判定是否已由 A 解锁。目标场景由
@@ -49,7 +49,8 @@ scenes/ui/game_state_debug.tscn               调试面板
 
 结算奖励 NPC 由 `scripts/world/reward_npc.gd` 扩展普通 NPC。普通对话前，NPC 会发出
 `interaction_requested(player)`；专用 NPC 可接管本次输入。奖励 NPC 在任务完成且
-`GameState.task_a_reward_claimed` 尚未置位时调用 `EncounterController`，否则继续普通对话。
+`GameState.completed_level == 1`、`GameState.task_a_reward_claimed` 尚未置位时调用
+`EncounterController`，否则继续普通对话。完成第2关后 `completed_level` 为2，奖励不再开放。
 
 对话影响是打开交互物自己的对话资源，不动 NPC 对话；音乐声音事件继续进入既有听觉系统。
 

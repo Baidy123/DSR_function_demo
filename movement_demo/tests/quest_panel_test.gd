@@ -92,7 +92,7 @@ func _check_live_scene() -> void:
 	check(_is_open(panel), "主场景按 Tab 显示任务面板")
 	var quests = get_first_node_in_group(&"quest_controller")
 	check(quests != null and quests.get_quest_entries().size() >= 1, "主场景配置表里已有任务")
-	check(_text(panel).contains("帮 A 的忙"), "面板列出主线任务")
+	check(_text(panel).contains("通关第1关"), "面板列出第1关通关任务")
 	check(_text(panel).contains("未接"), "面板显示未接状态")
 
 	var state = root.get_node("GameState")

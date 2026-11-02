@@ -152,6 +152,8 @@ func _prepare_scene() -> Dictionary:
 	state.help_choice = ""
 	state.task_a_returned = ""
 	state.task_a_reward_claimed = false
+	state.completed_level = 1
+	state.available_level = 1
 	state.system_progress = 0
 	state.clear_interaction_state()
 	quests.reset_progress()

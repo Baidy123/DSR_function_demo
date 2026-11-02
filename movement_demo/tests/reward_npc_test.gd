@@ -54,6 +54,8 @@ func _run() -> void:
 	state.help_choice = ""
 	state.task_a_returned = ""
 	state.set("task_a_reward_claimed", false)
+	state.set("completed_level", 1)
+	state.set("available_level", 1)
 	state.system_progress = 0
 	state.clear_interaction_state()
 	quests.reset_progress()

@@ -41,7 +41,8 @@ func open_reward_for_player(player: Node3D) -> bool:
 
 func can_offer_reward() -> bool:
 	return _reward_open or (
-		_quest_status() == QuestController.Status.COMPLETED
+		_completed_level() == 1
+		and _quest_status() == QuestController.Status.COMPLETED
 		and not _reward_claimed()
 		and _player_alive()
 	)
@@ -138,3 +139,8 @@ func _quest_status() -> int:
 func _reward_claimed() -> bool:
 	var state := _state()
 	return state != null and bool(state.get(&"task_a_reward_claimed"))
+
+
+func _completed_level() -> int:
+	var state := _state()
+	return int(state.get(&"completed_level")) if state != null else 0

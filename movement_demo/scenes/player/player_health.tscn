@@ -99,7 +99,7 @@ show_percentage = false
 anchors_preset = 1
 anchor_left = 1.0
 anchor_right = 1.0
-offset_left = -430.0
+offset_left = -620.0
 offset_top = 16.0
 offset_right = -16.0
 offset_bottom = 67.0
@@ -123,6 +123,13 @@ layout_mode = 2
 focus_mode = 0
 tooltip_text = "模拟受到 25 点伤害，用于测试生命、无敌与死亡重开。"
 text = "测试受伤 -25"
+
+[node name="CompleteLevel" type="Button" parent="Debug/Controls"]
+layout_mode = 2
+focus_mode = 0
+disabled = true
+tooltip_text = "Debug 总开关开启后，跳过当前关卡剩余全部波次并开放返酒馆传送门。"
+text = "一键通关当前关"
 
 [node name="NoiseRanges" type="CheckBox" parent="Debug/Controls"]
 layout_mode = 2

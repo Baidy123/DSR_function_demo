@@ -8,6 +8,8 @@
 
 五关往返与跨关状态（2026-11-02）：所有关卡 `LevelFlow` 只听波次完成并启用本关 `TavernReturnPortal`；返程门写入 `completed_level` 与待消费玩家快照后回到酒馆。`QuestPortal` 在 A 更新 `available_level` 后动态切换下一关目标。`scripts/player/player_campaign_state.gd` 只搬运生命、当前槽位、双武器、弹匣、共享备弹和医疗包；`player.gd` 在新实例就绪时消费一次，死亡重开不携带旧关卡快照。详见[游玩指南](gameplay/PLAY_GUIDE.md)和[阶段状态](gameplay/STAGE_STATE.md)。
 
+五关任务链与 Debug 通关（2026-11-02）：`resources/stages/stage_table_template.tres` 登记五条主线任务，分别由 `available_level` 与 `completed_level` 的整数下限条件接取、完成。`QuestCondition` 新增可复用 `int_at_least()`，原六种条件的枚举索引保持兼容。奖励控制器仅在 `completed_level == 1` 时开放奖励。`player_health.tscn` 的原 Debug 控制栏增加当前关一键通关按钮，调用 `EnemyWaveController.debug_complete_encounter()` 并继续使用原完成信号和返程门。
+
 五关试玩配置（2026-10-27）：`scenes/world/levels/lvl_1.tscn` 至 `lvl_5.tscn` 均由用户保存玩家、相机、灯光、小队与波次。`scenes/enemy/levels/lvl_4/`、`lvl_5/` 各保存近战、手枪、冲锋枪和霰弹四种预设，训练在 `resources/enemy/training/levels/` 下同关目录；公共霰弹兵位于 `scenes/enemy/types/shotgun.tscn`，新增武器为 `resources/weapons/test_rifle.tres` 与 `enemy_test_shotgun.tres`。这些是用户关卡和资源配置的归档，保持原身体、AI、导航、波次与装备接口；详见[关卡说明](gameplay/LEVEL_MAPS.md)。
 
 弹药置顶与数量上限（2026-10-27）：原 `ammo_pickup.gd` 为模型表面复制前景材质，原Label3D关闭深度测试并提高绘制优先级，保留地面位置／碰撞。原 `ammo_drop_controller.gd` 在实际死亡受理时为延迟生成预留名额，每区地面有效包＋待生成包合计最多2；拾取即释放名额，生成失败和复位清理预约，不增加全局服务或循环。原专项含实际OpenGL遮挡截图及像素对照；见[实施记录](superpowers/plans/2026-10-26-ammo-drops-and-types.md)。

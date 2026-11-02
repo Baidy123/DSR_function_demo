@@ -1,6 +1,6 @@
 extends SceneTree
 
-## 任务控制器检查：阶段窗口、六种条件来源、终态不回退、查询接口与只读阶段接口。
+## 任务控制器检查：阶段窗口、条件来源、终态不回退、查询接口与只读阶段接口。
 ## 运行：godot --headless --path movement_demo --script res://tests/quest_system_test.gd
 
 const QuestConditionScript := preload("res://scripts/systems/stage/quest_condition.gd")

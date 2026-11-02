@@ -4,7 +4,6 @@ extends SceneTree
 ## 运行：godot --headless --path movement_demo --script res://tests/quest_encounter_loop_test.gd
 
 const MAIN_SCENE := preload("res://scenes/main.tscn")
-const StagePhases := preload("res://scripts/systems/stage/stage_phase.gd")
 const QuestControllerScript := preload("res://scripts/systems/stage/quest_controller.gd")
 
 const WATCHDOG_SECONDS := 30.0
@@ -68,7 +67,8 @@ func _check_main_npc_flow() -> void:
 	await tree.process_frame
 	check(board.visible and tree.paused, "返回酒馆后奖励 NPC 打开三选一")
 	check(quests.status_of(&"task_a") == QuestControllerScript.Status.COMPLETED, "领取时任务保持已完成")
-	check(stage.get_phase() == StagePhases.Id.RETURNED, "领取时阶段处于返回结算")
+	check(stage.get_stage_index() == 2 and quests.status_of(&"task_level_2") == QuestControllerScript.Status.NOT_STARTED,
+		"领取时主线推进到第2关任务且尚未由 A 接取")
 
 	var reward_ids: Array = board.REWARD_IDS
 	check(reward_ids == [&"first_aid", &"ammo", &"system_progress"], "面板保留三项奖励")
@@ -162,6 +162,8 @@ func _prepare_reward_ready() -> Dictionary:
 	state.help_choice = ""
 	state.task_a_returned = ""
 	state.task_a_reward_claimed = false
+	state.completed_level = 1
+	state.available_level = 1
 	state.system_progress = 0
 	state.clear_interaction_state()
 	quests.reset_progress()

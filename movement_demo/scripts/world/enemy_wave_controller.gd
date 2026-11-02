@@ -331,6 +331,29 @@ func reset_encounter() -> void:
 	_reason = "; ".join(_configuration_errors)
 	_state = State.WAITING if _configuration_errors.is_empty() else State.ERROR
 
+
+## 调试入口：只跳过当前区域本轮的剩余波次，仍通过正式完成信号开放关卡结果。
+func debug_complete_encounter() -> bool:
+	if Engine.is_editor_hint() or not _captured or _waves.is_empty():
+		return false
+	if _state == State.COMPLETED or _state == State.ERROR:
+		return false
+	_generation += 1
+	_retire_runtime()
+	_owned.clear()
+	_free_pending()
+	_cleared.clear()
+	for index in range(_waves.size()):
+		_cleared[index] = true
+	_index = _waves.size() - 1
+	_spawned = _waves.size()
+	_remaining = 0.0
+	_reason = "调试一键通关"
+	_state = State.COMPLETED
+	encounter_completed.emit()
+	return true
+
+
 func _retire_runtime() -> void:
 	for wave in _runtime.values(): _retire_deployments(wave.deployments)
 	_runtime.clear()
