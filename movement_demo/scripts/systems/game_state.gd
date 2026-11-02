@@ -36,7 +36,7 @@ var music_quest_turnin: String = "":
 			return
 		music_quest_turnin = value
 		value_changed.emit(&"music_quest_turnin", value)
-# 任务一交差提交：returned＝已从竞技场经传送门返回酒馆。
+# 任务一交差提交：returned＝已从第1关经传送门返回酒馆。
 var task_a_returned: String = "":
 	set(value):
 		if task_a_returned == value:
@@ -50,6 +50,23 @@ var task_a_reward_claimed: bool = false:
 			return
 		task_a_reward_claimed = value
 		value_changed.emit(&"task_a_reward_claimed", value)
+# 五关主线：最近完成关卡与当前已由 A 解锁的关卡。完成关卡不会自动解锁下一关。
+var completed_level: int = 0:
+	set(value):
+		value = maxi(0, value)
+		if completed_level == value:
+			return
+		completed_level = value
+		value_changed.emit(&"completed_level", value)
+var available_level: int = 1:
+	set(value):
+		value = clampi(value, 1, 5)
+		if available_level == value:
+			return
+		available_level = value
+		value_changed.emit(&"available_level", value)
+## 下一次新玩家实例就绪后消费一次；正常进入关卡或返回酒馆时由传送门写入。
+var pending_player_state: Dictionary = {}
 ## 只读镜像：对话剧本按属性名读取唱片机旗标；旗标本身仍是唯一来源，由交互物写入。
 var music_playing: bool:
 	get:
@@ -118,6 +135,16 @@ func get_flag(flag: StringName, fallback: bool = false) -> bool:
 
 func is_flag_set(flag: StringName) -> bool:
 	return get_flag(flag)
+
+
+func set_pending_player_state(snapshot: Dictionary) -> void:
+	pending_player_state = snapshot.duplicate()
+
+
+func take_pending_player_state() -> Dictionary:
+	var snapshot := pending_player_state
+	pending_player_state = {}
+	return snapshot
 
 
 ## 供测试与重开流程使用；正常死亡重开不清空。

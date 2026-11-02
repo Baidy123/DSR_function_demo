@@ -1,6 +1,7 @@
 [gd_scene format=3 uid="uid://gdihu3wsksn5"]
 
 [ext_resource type="PackedScene" path="res://scenes/ui/level_flow.tscn" id="level_flow"]
+[ext_resource type="PackedScene" path="res://scenes/world/objects/tavern_return_portal.tscn" id="tavern_return_portal"]
 [ext_resource type="PackedScene" path="res://scenes/world/cover.tscn" id="1_full"]
 [ext_resource type="PackedScene" uid="uid://ruy4wd5vjpqt" path="res://scenes/world/low_cover.tscn" id="2_low"]
 [ext_resource type="PackedScene" uid="uid://dij4dt65i70vj" path="res://scenes/enemy/levels/lvl_2/pistol.tscn" id="5_ox2wm"]
@@ -375,6 +376,13 @@ script = ExtResource("14_m5sew")
 
 [node name="Camera3D" parent="." unique_id=1669516944 instance=ExtResource("15_7wdgd")]
 
+[node name="TavernReturnPortal" parent="." instance=ExtResource("tavern_return_portal")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -8.834172, 0, 5.5)
+visible = false
+enabled = false
+monitoring = false
+level_number = 2
+
 [node name="EnemyWaves" parent="." unique_id=879045671 instance=ExtResource("17_d48b2")]
 
 [node name="Wave1" parent="EnemyWaves" unique_id=974050490 instance=ExtResource("18_m5sew")]
@@ -406,3 +414,4 @@ transform = Transform3D(-4.371139e-08, 0, -1, 0, 1, 0, 1, 0, -4.371139e-08, -9.7
 
 [node name="LevelFlow" parent="." instance=ExtResource("level_flow")]
 level_number = 2
+return_portal_path = NodePath("../TavernReturnPortal")

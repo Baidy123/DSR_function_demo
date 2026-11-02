@@ -6,7 +6,7 @@
 
 接敌恢复（2026-10-27）：`scripts/enemy/services/squad_contact_recovery.gd` 是小队协调器私有的值记录服务，只维护持续警戒历史、有限候选轮次及最近受阻提案；不读取场景、不新增节点或时钟。原 `squad_combat_tactics.gd` 生成恢复站位，原 `squad_coordination.gd` 分帧准备、校验并原子提交整队任务；`enemy_ai.gd` 只将恢复原因用于状态显示。接口和默认值见[接敌恢复](enemy-ai.md#接敌后的持续警戒恢复2026-10-27)，真实保存地图专项为 `tests/enemy/squad_contact_recovery_test.gd`。
 
-酒馆入口与关卡说明（2026-10-27）：`project.godot` 默认启动 `scenes/main.tscn`，F5 进入酒馆；接取 A 的任务后，门口 `LevelPortal` 使用 `ChangeSceneEffect` 切换到第1关。第一关的 `LevelFlow` 在波次完成后启用 `TavernReturnPortal`，玩家交互返回酒馆并完成 A 任务；第2～5关继续使用原按钮切关与结果面板。内嵌 `scenes/ui/play_guide.tscn`／`scripts/ui/play_guide.gd` 提供共用的启动说明、暂停恢复和可滚动正文；布局采用原生全屏锚点，关闭按钮固定在正文外。原区域、身体、AI、波次、Health及酒馆任务职责保持，详见[游玩说明](gameplay/PLAY_GUIDE.md)。
+五关往返与跨关状态（2026-11-02）：所有关卡 `LevelFlow` 只听波次完成并启用本关 `TavernReturnPortal`；返程门写入 `completed_level` 与待消费玩家快照后回到酒馆。`QuestPortal` 在 A 更新 `available_level` 后动态切换下一关目标。`scripts/player/player_campaign_state.gd` 只搬运生命、当前槽位、双武器、弹匣、共享备弹和医疗包；`player.gd` 在新实例就绪时消费一次，死亡重开不携带旧关卡快照。详见[游玩指南](gameplay/PLAY_GUIDE.md)和[阶段状态](gameplay/STAGE_STATE.md)。
 
 五关试玩配置（2026-10-27）：`scenes/world/levels/lvl_1.tscn` 至 `lvl_5.tscn` 均由用户保存玩家、相机、灯光、小队与波次。`scenes/enemy/levels/lvl_4/`、`lvl_5/` 各保存近战、手枪、冲锋枪和霰弹四种预设，训练在 `resources/enemy/training/levels/` 下同关目录；公共霰弹兵位于 `scenes/enemy/types/shotgun.tscn`，新增武器为 `resources/weapons/test_rifle.tres` 与 `enemy_test_shotgun.tres`。这些是用户关卡和资源配置的归档，保持原身体、AI、导航、波次与装备接口；详见[关卡说明](gameplay/LEVEL_MAPS.md)。
 
@@ -60,7 +60,7 @@ movement_demo/
 │   ├── player/            独立 player.tscn、player_camera_rig.tscn 与战斗／生命／装备子场景
 │   ├── world/             掩体、训练区域、墙体、交互物与场景入口
 │   │   ├── levels/        Lvl_1–5 独立地图，含区域、导航、空 Squad 及地图实体
-│   │   └── objects/       具体交互物：关卡传送门、酒杯、终端、唱片机
+│   │   └── objects/       具体交互物：酒馆关卡门、五关返程门、酒杯、终端、唱片机
 │   ├── presentation/      模型包装场景和独立接口演示
 │   ├── effects/           共用命中特效管理器和粒子场景
 │   └── ui/                对话、任务／奖励、关卡流程与游玩说明场景
@@ -72,7 +72,8 @@ movement_demo/
 │   ├── player/            玩家移动、战斗、生命和装备
 │   ├── weapons/           武器数据与弹药执行
 │   ├── world/             掩体、训练靶、区域、门、NPC、交互物与屏障
-│   │   ├── quest_portal.gd       按任务进行中状态放行的场景传送门
+│   │   ├── quest_portal.gd       按任务与 A 解锁进度进入对应关卡
+│   │   ├── tavern_return_portal.gd 记录关卡完成与玩家快照并返回酒馆
 │   │   └── interactions/  交互效果基类、注入上下文与各效果实现
 │   ├── ui/                对话、锁定准星、任务／奖励、关卡流程与游玩说明
 │   ├── debug/             调试开关、协调器路径；声音圈及旧攻击区域预览默认关闭
@@ -113,7 +114,7 @@ movement_demo/
 
 阶段、任务与 NPC 状态规则集中在 `scripts/systems/stage/`：阶段判定、任务状态与状态解析各一个控制器，配置表资源脚本与 `resources/stages/` 下的 `.tres` 配套维护。控制器挂在 `main.tscn`、按 group 互相查找，不新增全局单例；NPC 只按 `npc_id` 与接收接口被驱动，不反向依赖控制器。见 [阶段与任务](gameplay/STAGE_STATE.md)。
 
-正式场景切换统一经过 `scripts/systems/scene_transition.gd`。该入口在释放当前场景前，把 `World3D.environment` 与 `fallback_environment` 恢复为显式中性环境，避免 GL Compatibility 在目标场景没有 `WorldEnvironment` 时沿用上一场景的环境光。酒馆传送门、五关按钮切换和死亡重开都使用这一入口；目标场景自身配置的 `WorldEnvironment` 仍可在加载后覆盖该中性回退。
+正式场景切换统一经过 `scripts/systems/scene_transition.gd`。该入口在释放当前场景前，把 `World3D.environment` 与 `fallback_environment` 恢复为显式中性环境，避免 GL Compatibility 在目标场景没有 `WorldEnvironment` 时沿用上一场景的环境光。酒馆关卡门、五关返程门和死亡重开都使用这一入口；目标场景自身配置的 `WorldEnvironment` 仍可在加载后覆盖该中性回退。
 
 `scripts/debug/coordinator_paths.gd` 保留 DebugSettings 入口，使用世界空间 Mesh 绘制 RTS 路线、箭头和站位，以及面积观察状态、责任预约和未来路线。每秒最多十次读取公开副本，不调用导航、规划或补写观察；成员颜色在死亡减员后保持稳定。当前 `main.tscn` 按用户确认保留任务面板、奖励面板及交互演示物；五关场景不挂载这套酒馆任务节点，交互组件仍可由 `tests/interaction_fixture.gd` 独立装配验证。
 
@@ -183,11 +184,11 @@ Spatial 的路线样本层仅在同步候选比较中复用同路径已实际观
 
 支援时序查询由 Context `cooperation_support_snapshot()` 接入区域 `enemy_cooperation.gd` 的精简 `support_snapshot()`；区域与完整快照共用实时资格、新鲜度及火力检查，精简读取不复制无关成员、身体、威胁和声明字段。`squad_coordination.gd` 仍持有任务并补齐有效请求，以静止／可移动两类最长覆盖计算压力。Context 只沿用既有候选预览观察，不新增缓存生命周期或调度节点。`enemy_cooperation_query_test.gd` 对照原完整快照算法，验证状态失效、不同目标、只读投影、声明与接受计划的期限。
 
-`main.tscn` 的任务奖励闭环由 `scripts/systems/stage/encounter_controller.gd`、`scripts/world/reward_npc.gd` 与 `GameState` 共同承担：第一关返回传送门写入 `task_a_returned` 并切回酒馆；任务完成后与 `RewardNPC` 按 E 交互才会暂停并打开三选一面板，分发急救包／弹药／系统进度三种奖励，并把 `task_a_reward_claimed` 写入共享运行态。领取后场景重载仍不能重复领取。控制器只读 `QuestController` 状态，不改任务与阶段的权威判定；竞技场 `combat_cleared` 不再触发奖励。五关场景继续使用 `level_flow.gd` 和 `EnemyWaves.encounter_completed`。
+`main.tscn` 的任务奖励闭环由 `scripts/systems/stage/encounter_controller.gd`、`scripts/world/reward_npc.gd` 与 `GameState` 共同承担：第一关返回传送门写入 `task_a_returned` 并切回酒馆；任务完成后与 `RewardNPC` 按 E 交互才会暂停并打开三选一面板，分发急救包／弹药／系统进度三种奖励，并把 `task_a_reward_claimed` 写入共享运行态。返回酒馆的玩家状态可被奖励直接修改，门口传送门进入下一关前再次捕获，因此治疗和补给会延续。竞技场 `combat_cleared` 不再触发奖励。
 
 奖励面板 `scenes/ui/reward_board.tscn` + `scripts/ui/reward_board.gd` 是默认隐藏的三选一界面；`process_mode` 设为 ALWAYS，因此场景树暂停时仍能处理输入，每次显示只允许发出一个 `reward_selected`。面板本身不写玩家、弹药或进度，只回传所选奖励 id 给遭遇控制器。对应测试有 `tests/reward_npc_test.gd`（NPC 交互与跨重载防重复）、`tests/quest_encounter_loop_test.gd`（三条奖励路径）、`tests/encounter_controller_edge_test.gd`（资格、死亡、暂停和缺面板边界）与 `tests/reward_board_test.gd`（面板单次选择）。
 
-`scripts/world/quest_portal.gd` 是酒馆门口的任务条件传送门：只读 `QuestController`，`task_a` 进行中时才允许执行 `ChangeSceneEffect`。原门禁卡、门禁读卡器和屏障资源已删除；任务面板默认隐藏，Tab 切换，系统进度以 0～100 进度条显示。
+`scripts/world/quest_portal.gd` 是酒馆门口的五关传送门：首次进入仍要求 `task_a` 进行中，之后只读 `GameState.completed_level`／`available_level`，A 未解锁下一关时阻止进入。它按可用关卡更新 `ChangeSceneEffect.scene_path`，交互前捕获玩家状态。原门禁卡、门禁读卡器和屏障资源已删除；任务面板默认隐藏，Tab 切换。
 
 `docs/enemy-ai.md` 是敌人结构、维护和使用部署说明；`docs/gameplay/` 保留移动、武器、掩体等专项说明，`docs/TODO.md` 记录后续方向，`docs/superpowers/` 保存仍有价值的设计与验收记录。第三方插件自带文档留在插件目录，以保留其使用说明和许可。
 

@@ -12,14 +12,15 @@
 
 ```text
 scripts/world/interactable.gd                 交互物节点（范围、提示、输入、条件、效果派发）
-scripts/world/quest_portal.gd                 任务状态传送门，接取 A 任务后才允许操作
+scripts/world/quest_portal.gd                 按任务和 A 解锁进度更新目标的酒馆关卡门
+scripts/world/tavern_return_portal.gd         记录关卡完成与玩家状态并返回酒馆
 scripts/world/interactions/change_scene_effect.gd  交互后切换目标场景
 scripts/world/interactions/interaction_context.gd   一次交互的注入上下文
 scripts/world/interactions/interaction_effect.gd    效果基类
 scripts/world/interactions/*_effect.gd              具体效果
 scenes/world/interactable.tscn                可复用交互物场景
 scenes/world/objects/quest_portal.tscn        酒馆门口的任务传送门
-scenes/world/objects/tavern_return_portal.tscn 第一关完成后的返回传送门
+scenes/world/objects/tavern_return_portal.tscn 五关共用的返回酒馆传送门
 scenes/world/objects/                         各个具体交互物场景
 scenes/ui/game_state_debug.tscn               调试面板
 ```
@@ -33,16 +34,18 @@ scenes/ui/game_state_debug.tscn               调试面板
 | 酒杯 | 主房间南侧 | 查看 | 打开线索对话，置 `saw_wine_clue` |
 | 终端 | 主房间东侧 | 使用一次 | 打开通道信息对话，置 `terminal_read` |
 | 唱片机 | 主房间东南 | 使用，可重复 | 开／关音乐，写入 `music_playing`；接取任务前后都能操作，接取前操作不会推进任务状态 |
-| 关卡传送门 | 酒馆东侧门口 | 进入 | 未接 A 任务时提示并拒绝；任务进行中后按 E 切换到第1关 |
-| 酒馆返回传送门 | 第一关出生点附近 | 返回 | 第一关清空后出现；交互写入 `task_a_returned=returned` 并返回酒馆 |
+| 关卡传送门 | 酒馆东侧门口 | 进入 | 未接 A 任务时提示并拒绝；A 每次解锁下一关后，按 E 切换到对应关卡 |
+| 酒馆返回传送门 | 各关出生点附近 | 返回 | 本关清空后出现；记录完成关卡与玩家状态并返回酒馆 |
 | 结算奖励 NPC | 酒馆东侧房间 | 交互 | 第一关完成并回到酒馆后按 E 打开三选一；未完成或已领取时只显示提示 |
 
-关卡传送门读取 `QuestController.status_of("task_a")`，不读取物品或自行修改任务状态。目标场景由
-`ChangeSceneEffect.scene_path` 配置，`quest_portal.tscn` 指向第1关。效果通过共享 `SceneTransition` 切换，
-切换前恢复中性 `World3D` 回退环境，防止目标关卡沿用酒馆的环境光。
+关卡传送门在首次进入时读取 `QuestController.status_of("task_a")`；后续按
+`GameState.completed_level` 与 `available_level` 判定是否已由 A 解锁。目标场景由
+`ChangeSceneEffect.scene_path` 按可用关卡动态更新。交互前会把当前玩家状态写入一次性快照，
+再由共享 `SceneTransition` 切换并恢复中性 `World3D` 回退环境。
 
-第一关返回传送门默认隐藏，由 `LevelFlow` 在本关波次全部完成后启用。效果依次用 `SetStateValueEffect` 写入任务交差字段，
-再用 `ChangeSceneEffect` 返回酒馆；酒馆的任务控制器据此把任务 A 判为已完成。
+五关返回传送门默认隐藏，由 `LevelFlow` 在本关波次全部完成后启用。`TavernReturnPortal`
+写入本关 `level_number`、保存生命/武器/弹匣/备弹/医疗包快照；第1关还写入
+`task_a_returned=returned`。随后 `ChangeSceneEffect` 返回酒馆，新玩家实例只消费一次快照。
 
 结算奖励 NPC 由 `scripts/world/reward_npc.gd` 扩展普通 NPC。普通对话前，NPC 会发出
 `interaction_requested(player)`；专用 NPC 可接管本次输入。奖励 NPC 在任务完成且

@@ -1,6 +1,7 @@
 [gd_scene format=3 uid="uid://bw7cys6btdo2j"]
 
 [ext_resource type="PackedScene" path="res://scenes/ui/level_flow.tscn" id="level_flow"]
+[ext_resource type="PackedScene" path="res://scenes/world/objects/tavern_return_portal.tscn" id="tavern_return_portal"]
 [ext_resource type="PackedScene" path="res://scenes/world/cover.tscn" id="1_full"]
 [ext_resource type="PackedScene" uid="uid://ruy4wd5vjpqt" path="res://scenes/world/low_cover.tscn" id="2_low"]
 [ext_resource type="Resource" uid="uid://bbrb41p0fx1x5" path="res://resources/enemy/cooperation/intel_only.tres" id="7_8uhlw"]
@@ -713,6 +714,13 @@ transform = Transform3D(0.9063078, 0.38302225, -0.1786062, 0, 0.42261824, 0.9063
 light_energy = 1.2
 shadow_enabled = true
 
+[node name="TavernReturnPortal" parent="." instance=ExtResource("tavern_return_portal")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -17.993977, 0, 11.1)
+visible = false
+enabled = false
+monitoring = false
+level_number = 4
+
 [editable path="NavigationRegion3D/Environment/FullCover/FullCover01"]
 [editable path="NavigationRegion3D/Environment/FullCover/FullCover05"]
 [editable path="NavigationRegion3D/Environment/FullCover/FullCover06"]
@@ -733,3 +741,4 @@ shadow_enabled = true
 
 [node name="LevelFlow" parent="." instance=ExtResource("level_flow")]
 level_number = 4
+return_portal_path = NodePath("../TavernReturnPortal")

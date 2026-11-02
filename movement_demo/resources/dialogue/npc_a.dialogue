@@ -1,21 +1,63 @@
 ~ start
 if GameState.help_choice == "accepted"
-	A: 竞技场里的敌人还在等你。
+	if GameState.completed_level >= 5
+		A: 五关挑战全部完成，辛苦了。
+		=> END
+	elif GameState.completed_level >= 1
+		if GameState.available_level > GameState.completed_level
+			A: 下一关入口已经解锁，准备好就从门口传送门出发。
+			=> END
+		elif GameState.completed_level == 1
+			A: 第1关已经完成。准备继续后，我会解锁第2关入口。
+			- 前往第2关
+				$> GameState.available_level = 2
+				A: 第2关入口已经解锁。
+			- 稍后再去
+				A: 准备好再来找我。
+			=> END
+		elif GameState.completed_level == 2
+			A: 第2关已经完成。准备继续后，我会解锁第3关入口。
+			- 前往第3关
+				$> GameState.available_level = 3
+				A: 第3关入口已经解锁。
+			- 稍后再去
+				A: 准备好再来找我。
+			=> END
+		elif GameState.completed_level == 3
+			A: 第3关已经完成。准备继续后，我会解锁第4关入口。
+			- 前往第4关
+				$> GameState.available_level = 4
+				A: 第4关入口已经解锁。
+			- 稍后再去
+				A: 准备好再来找我。
+			=> END
+		elif GameState.completed_level == 4
+			A: 第4关已经完成。准备继续后，我会解锁第5关入口。
+			- 前往第5关
+				$> GameState.available_level = 5
+				A: 第5关入口已经解锁。
+			- 稍后再去
+				A: 准备好再来找我。
+			=> END
+		=> END
+	A: 第1关的入口已经解锁，准备好就从门口传送门出发。
 	=> END
 elif GameState.help_choice == "refused"
-	A: 想通了再找我，竞技场的敌人还在。
+	A: 想通了再找我，门口传送门还在等你。
 	- 我改主意了
 		$> GameState.help_choice = "accepted"
+		$> GameState.available_level = 1
 		$> GameState.talked_to_a = true
-		A: 谢谢。竞技场入口已解锁，消灭那里的敌人再回来。
+		A: 谢谢。第1关入口已解锁，清空全部敌人后回来找我。
 	- 回头再说
 		=> END
 	=> END
-A: 竞技场里有一批敌人，能帮我去消灭他们吗？
+A: 五个关卡的入口需要逐关解锁。先去第1关清空敌人，完成后回来找我。
 - 接受任务
 	$> GameState.help_choice = "accepted"
+	$> GameState.available_level = 1
 	$> GameState.talked_to_a = true
-	A: 谢谢。竞技场入口已解锁，消灭那里的敌人再回来。
+	A: 谢谢。第1关入口已解锁，清空全部敌人后回来找我。
 - 暂时拒绝
 	$> GameState.help_choice = "refused"
 	$> GameState.talked_to_a = true

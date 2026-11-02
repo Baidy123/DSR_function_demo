@@ -85,6 +85,66 @@ func refill_all_ammo() -> void:
 		state.magazine_rounds = data.magazine_capacity
 	_update_display()
 
+
+func campaign_snapshot() -> Dictionary:
+	var magazines: Array[int] = [0, 0]
+	for slot in range(2):
+		var data := _weapon_at(slot)
+		if data == null:
+			continue
+		var state = _ammo_states[slot]
+		magazines[slot] = state.magazine_rounds if state != null and state.weapon == data else data.magazine_capacity
+	return {
+		"primary_weapon": primary_weapon,
+		"secondary_weapon": secondary_weapon,
+		"medkit": medkit,
+		"medkit_count": medkit_count,
+		"active_slot": active_slot,
+		"reserve_ammo": reserve_ammo.duplicate(),
+		"magazines": magazines,
+	}
+
+
+func apply_campaign_snapshot(snapshot: Dictionary) -> void:
+	if snapshot.is_empty():
+		return
+	primary_weapon = snapshot.get("primary_weapon", primary_weapon)
+	secondary_weapon = snapshot.get("secondary_weapon", secondary_weapon)
+	medkit = snapshot.get("medkit", medkit)
+	medkit_count = maxi(0, int(snapshot.get("medkit_count", medkit_count)))
+	var saved_reserve: Dictionary = snapshot.get("reserve_ammo", {})
+	var magazines: Array = snapshot.get("magazines", [0, 0])
+
+	_slot_weapons = [null, null]
+	_slot_definitions = [null, null]
+	_ammo_states = [null, null]
+	_reload_modes = [false, false]
+	_aim_states = [{}, {}]
+	_initialize_ammo()
+	reserve_ammo.clear()
+	for key in saved_reserve:
+		reserve_ammo[StringName(key)] = maxi(0, int(saved_reserve[key]))
+	for slot in range(2):
+		var data := _weapon_at(slot)
+		if data == null:
+			continue
+		var definition: AmmoDefinition = _slot_definitions[slot]
+		var ammo_state = Ammo.new(data, reserve_ammo, false, definition.ammo_id if definition != null else &"")
+		var saved_rounds := int(magazines[slot]) if slot < magazines.size() else data.magazine_capacity
+		ammo_state.magazine_rounds = clampi(saved_rounds, 0, data.magazine_capacity)
+		_ammo_states[slot] = ammo_state
+
+	active_slot = -1
+	var selected := clampi(int(snapshot.get("active_slot", starting_slot)), 0, 1)
+	if _weapon_at(selected) == null:
+		selected = 1 - selected
+	if _weapon_at(selected) != null:
+		_equip_slot(selected)
+	else:
+		combat.equip_weapon(null)
+	_update_display()
+
+
 func _resolved_initial_ammo() -> Array[AmmoSupply]:
 	var result: Array[AmmoSupply] = _initial_ammo.duplicate()
 	var explicit: Dictionary = {}

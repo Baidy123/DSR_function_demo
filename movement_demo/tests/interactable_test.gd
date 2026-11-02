@@ -146,7 +146,7 @@ func run_checks() -> void:
 
 	await ui.open_dialogue(player, npc_a.dialogue_resource, "start")
 	await settle()
-	check(ui.dialogue_text.text.contains("竞技场"), "A 的对话说明竞技场目标")
+	check(ui.dialogue_text.text.contains("第1关"), "A 的对话说明第1关目标")
 	var refuse_index := _choice_index(ui, "暂时拒绝")
 	check(refuse_index >= 0, "A 的任务提供拒绝选项")
 	if refuse_index >= 0:

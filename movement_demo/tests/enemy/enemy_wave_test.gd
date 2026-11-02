@@ -449,7 +449,7 @@ func _actual_levels() -> void:
 		check(level.get_script() == Region and level.has_node("CombatZone/CollisionShape3D") and level.has_node("NavigationRegion3D"), "第%d关继续共用原区域接口" % number)
 		level.free()
 	var level = load("res://scenes/world/levels/lvl_1.tscn").instantiate()
-	# 此夹具验证原波次与跨区生命周期；入场说明和按钮切关由 level_flow_test 验证。
+	# 此夹具验证原波次与跨区生命周期；入场说明和返酒馆进度由 level_flow_test 验证。
 	level.get_node("LevelFlow").free()
 	var controller = level.get_node("EnemyWaves")
 	var count: int = level.get_node("Squad").get_child_count()

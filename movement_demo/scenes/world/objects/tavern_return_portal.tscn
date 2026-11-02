@@ -1,14 +1,9 @@
-[gd_scene load_steps=11 format=3]
+[gd_scene load_steps=9 format=3]
 
 [ext_resource type="PackedScene" path="res://scenes/world/interactable.tscn" id="1_interactable"]
-[ext_resource type="Script" path="res://scripts/world/interactions/set_state_value_effect.gd" id="2_set_state"]
+[ext_resource type="Script" path="res://scripts/world/tavern_return_portal.gd" id="2_level_return"]
 [ext_resource type="Script" path="res://scripts/world/interactions/change_scene_effect.gd" id="3_change_scene"]
 [ext_resource type="Script" path="res://scripts/world/interactions/interaction_effect.gd" id="4_effect"]
-
-[sub_resource type="Resource" id="Effect_complete_task"]
-script = ExtResource("2_set_state")
-key = &"task_a_returned"
-value = "returned"
 
 [sub_resource type="Resource" id="Effect_return_to_tavern"]
 script = ExtResource("3_change_scene")
@@ -39,10 +34,8 @@ rings = 48
 ring_segments = 12
 
 [node name="TavernReturnPortal" instance=ExtResource("1_interactable")]
-interact_id = &"tavern_return_portal"
-display_name = "酒馆"
-verb = "返回"
-effects = Array[ExtResource("4_effect")]([SubResource("Effect_complete_task"), SubResource("Effect_return_to_tavern")])
+script = ExtResource("2_level_return")
+effects = Array[ExtResource("4_effect")]([SubResource("Effect_return_to_tavern")])
 
 [node name="CollisionShape3D" parent="." index="0"]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.1, 0)

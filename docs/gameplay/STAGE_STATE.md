@@ -1,6 +1,6 @@
 # 阶段、任务与 NPC 状态
 
-2026-10-27：工程默认入口为 `scenes/main.tscn`，F5 直接进入酒馆。接取 A 的任务后，酒馆门口的传送门解锁并切换到第1关；五关的按钮切换只订阅波次完成信号，不读写本文三个控制器的状态，见[五关说明](PLAY_GUIDE.md)。
+2026-11-02：工程默认入口为 `scenes/main.tscn`，F5 直接进入酒馆。五关都通过返程门回到酒馆，再由 A 解锁下一关并从门口传送门出发。关卡进度由 `GameState` 的 `completed_level`／`available_level` 管理；任务 A 仍由 `task_a_returned` 驱动，见[五关说明](PLAY_GUIDE.md)。
 
 这份文档说明“酒馆接任务 → 前往场地 → 战斗 → 返回结算”这条循环现在由谁掌控、任务条件怎么配、
 任务状态怎么看，以及它和对话、交互物、竞技场的关系。设计稿在 `docs/superpowers/specs/`（仅本地保留）。
@@ -78,7 +78,7 @@
 任务一现在不只是“进过竞技场又离开”，而是由 `EncounterController`（`scripts/systems/stage/encounter_controller.gd`）
 配合任务完成状态和酒馆 `RewardNPC` 串起“第一关清场 → 返回酒馆 → 找 NPC 领奖”：
 
-1. A 的对话说明目标是消灭竞技场里的敌人。接受后 `help_choice` 写为 `accepted`，任务进入进行中；
+1. A 的对话说明逐关解锁目标。接受后 `help_choice` 写为 `accepted`、`available_level = 1`，任务进入进行中；
    酒馆门口 `Interactables/LevelPortal` 随后解锁，按 E 可切换到 `scenes/world/levels/lvl_1.tscn`。
    旧门禁卡与门禁屏障已删除。
    第一关清空后，出生点附近的 `TavernReturnPortal` 出现；交互会写入 `task_a_returned = returned` 并返回酒馆。
@@ -96,10 +96,28 @@
 5. 领取状态保存在 `GameState` 自动加载中，因此酒馆或关卡场景重载后仍不可重复领取；重新运行游戏才会重置。
    已领取后再次与 NPC 交互只显示“已经领过”的普通提示。
 
-酒馆门口到第1关以及第一关返回酒馆都使用真实场景切换。`main.tscn` 中的竞技场仍可独立进入和清场，
-但 `Arena.combat_cleared` 不再自动打开奖励，也没有旧的 `Arena/CombatZone/ReturnPortal`。第2～5关继续保留原按钮过关流程，
-完整五关后的统一返回尚未接入。
+`main.tscn` 中的竞技场仍可独立进入和清场，但 `Arena.combat_cleared` 不再自动打开奖励，
+也没有旧的 `Arena/CombatZone/ReturnPortal`。
 `system_progress` 目前只累计并显示在任务面板上，尚未用于章节解锁或后续内容门槛。
+
+## 五关进度与跨关玩家状态
+
+五关共用 `LevelFlow`、`TavernReturnPortal` 和酒馆 `QuestPortal`：
+
+1. 任意关卡清空后，`LevelFlow` 只启用本关 `TavernReturnPortal`，不显示按钮切关，也不暂停。
+2. 返程门把本关编号写入 `GameState.completed_level`，并用 `PlayerCampaignState.capture()`
+   保存一次待恢复状态；第1关同时写入 `task_a_returned = returned`。
+3. 新玩家实例在 `player.gd::_ready()` 中消费一次 `pending_player_state`。因此回酒馆时，
+   同一个角色逻辑上的生命、当前槽位、双武器、各自弹匣、共享备弹和医疗包会出现在新 Player 节点上；
+   瞄准、换弹进度、受击减速、体力和蹲姿等临时过程不跨场景。
+4. 关卡刚完成时 `available_level == completed_level`，门口传送门保持锁定。A 对话把
+   `available_level` 改为已完成关卡 +1 后，`QuestPortal` 才更新 `ChangeSceneEffect` 的目标并允许进入。
+5. 由酒馆进入下一关前，门口传送门再次捕获当前玩家状态，所以酒馆中的治疗、弹药奖励会带入下一关。
+   快照被新玩家实例消费后立即清空。
+6. 第5关完成后 `completed_level == available_level == 5`，A 显示五关完成，不再提供下一关。
+
+死亡不写入跨关快照，仍由 `PlayerHealth` 重开当前关；重开场景按该关保存配置恢复生命、武器、弹药和医疗包，
+不会把上一个场景残留的快照再次带入。正常跨关和死亡重开因此使用不同状态来源。
 
 正式切场景统一经过 `SceneTransition`。切换前先把 `World3D` 的环境恢复为中性回退值，避免酒馆环境光残留到没有
 自己的 `WorldEnvironment` 的关卡；传送门、关卡按钮和死亡重开不会各自复制渲染清理代码。
@@ -221,6 +239,7 @@
 & E:/Godot/Godot_v4.7.2-stable_win64_console.exe --headless --path movement_demo --script res://tests/record_player_quest_test.gd
 & E:/Godot/Godot_v4.7.2-stable_win64_console.exe --headless --path movement_demo --script res://tests/reward_npc_test.gd
 & E:/Godot/Godot_v4.7.2-stable_win64_console.exe --headless --path movement_demo --script res://tests/quest_encounter_loop_test.gd
+& E:/Godot/Godot_v4.7.2-stable_win64_console.exe --headless --path movement_demo --script res://tests/campaign_flow_test.gd
 ```
 
 macOS 上用 `Godot.app/Contents/MacOS/Godot` 替换可执行文件路径。
@@ -240,10 +259,12 @@ macOS 上用 `Godot.app/Contents/MacOS/Godot` 替换可执行文件路径。
   验证领取状态跨酒馆重载保留且不能重复领取。
 - `quest_encounter_loop_test.gd`：真实主场景端到端验证任务一返回酒馆后的 NPC 奖励——三条奖励路径、
   面板暂停与关闭、任务完成和 `RETURNED` 阶段保持、旧竞技场返回传送门已移除。
+- `campaign_flow_test.gd`：验证五关返程门、A 逐关解锁、动态传送门、跨关生命/双武器/弹匣/备弹/医疗包，
+  以及死亡重开不消费跨关快照。
 
 ## 后续
 
 多份配置表的分发、任务二的场地与内容、酒馆场景整体变化还没做；
-任务一已经使用“酒馆 → 第1关 → 酒馆”的真实场景切换。
-进度持久化本轮也未做（场景重开后已完成会退回），`system_progress` 只累计并显示、未用于章节门槛，
+五关已经使用真实场景往返酒馆，并由 A 控制逐关解锁。
+跨场景运行状态已保留，但退出游戏后的进度持久化仍未做；`system_progress` 只累计并显示、未用于章节门槛，
 都记录在 [待办](../TODO.md)。

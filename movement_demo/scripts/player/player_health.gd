@@ -113,6 +113,21 @@ func heal(amount: float) -> float:
 	return restore_health(amount)
 
 
+func campaign_snapshot() -> Dictionary:
+	return {"health": health}
+
+
+func apply_campaign_snapshot(snapshot: Dictionary) -> void:
+	if snapshot.is_empty():
+		return
+	is_dead = false
+	restart_pending = false
+	health = clampf(float(snapshot.get("health", max_health)), 1.0, max_health)
+	death_screen.hide()
+	restart_button.disabled = false
+	_update_display()
+
+
 func is_invincible() -> bool:
 	return debug_settings.enabled
 

@@ -354,6 +354,7 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 4.2)
 visible = false
 enabled = false
 monitoring = false
+level_number = 1
 
 [editable path="Camera3D"]
 [editable path="Squad/Enemy"]

@@ -1,8 +1,7 @@
 extends CanvasLayer
 
-const SceneTransition = preload("res://scripts/systems/scene_transition.gd")
+## 五关共用：清场后只开放返回酒馆，下一关由 A 在酒馆中解锁。
 
-## 只衔接已保存的五关；完成仍由 EnemyWaves 判定，死亡重开仍由 Health 执行。
 const LEVELS: Array[String] = [
 	"res://scenes/world/levels/lvl_1.tscn",
 	"res://scenes/world/levels/lvl_2.tscn",
@@ -12,87 +11,33 @@ const LEVELS: Array[String] = [
 ]
 
 @export_range(1, 5) var level_number: int = 1
-## 第一关完成后启用的返回传送门；其他关卡留空时继续使用结果面板。
 @export_node_path("Interactable") var return_portal_path: NodePath
 
 @onready var _health = get_parent().get_node("Player/Health")
 @onready var _return_portal = get_node_or_null(return_portal_path) as Interactable
-@onready var _result: ColorRect = $Result
-@onready var _title: Label = $Result/Center/Panel/Content/Title
-@onready var _message: Label = $Result/Center/Panel/Content/Message
-@onready var _continue_button: Button = $Result/Center/Panel/Content/Continue
 
-var _transition_pending := false
-var _owns_pause := false
-var _previous_pause := false
-var _target_scene := ""
+var _completion_pending := false
 
 
 func _ready() -> void:
-	$Progress.text = "第 %d 关 / %d" % [level_number, LEVELS.size()]
+	$Progress.text = "第 %d 关 / 5" % level_number
 	get_parent().get_node("EnemyWaves").encounter_completed.connect(_on_encounter_completed)
-	_continue_button.pressed.connect(_continue)
 
 
 func _on_encounter_completed() -> void:
-	if _transition_pending or _result.visible: return
-	_transition_pending = true
-	# 完成来自物理更新，界面留到回调结束后；同帧死亡优先，不自动切关。
+	if _completion_pending or (_return_portal != null and _return_portal.visible):
+		return
+	_completion_pending = true
 	_show_completion.call_deferred()
 
 
 func _show_completion() -> void:
-	_transition_pending = false
-	if _health.is_dead: return
-	if level_number == 1:
-		if _return_portal == null:
-			push_error("第一关完成但未配置返回酒馆传送门")
-			return
-		_return_portal.visible = true
-		_return_portal.enabled = true
-		_return_portal.monitoring = true
+	_completion_pending = false
+	if _health.is_dead:
 		return
-	if level_number < LEVELS.size():
-		_show_result("第 %d 关完成" % level_number, "全部敌人波次已清空。准备好后进入下一关。", "进入第 %d 关" % (level_number + 1), LEVELS[level_number])
-	else:
-		_show_result("五关挑战完成", "你已完成全部 5 关。可以从第 1 关重新挑战。", "从第 1 关重新开始", LEVELS[0])
-
-
-func _show_result(title: String, message: String, button_text: String, target: String) -> void:
-	_title.text = title
-	_message.text = message
-	_continue_button.text = button_text
-	_continue_button.disabled = false
-	_target_scene = target
-	_result.show()
-	if not _owns_pause:
-		_previous_pause = get_tree().paused
-		_owns_pause = true
-	get_tree().paused = true
-	_continue_button.grab_focus()
-
-
-func _continue() -> void:
-	if _transition_pending: return
-	_transition_pending = true
-	_continue_button.disabled = true
-	_change_scene.call_deferred(_target_scene)
-
-
-func _change_scene(path: String) -> void:
-	_restore_pause()
-	var result: Error = await SceneTransition.change_scene(get_tree(), path)
-	if result != OK:
-		_transition_pending = false
-		_show_result("关卡加载失败", "无法加载下一关，请重试。", "重试", path)
-		push_error("无法切换到 %s：%s" % [path, error_string(result)])
-
-
-func _exit_tree() -> void:
-	_restore_pause()
-
-
-func _restore_pause() -> void:
-	if not _owns_pause: return
-	_owns_pause = false
-	get_tree().paused = _previous_pause
+	if _return_portal == null:
+		push_error("第%d关完成但未配置返回酒馆传送门" % level_number)
+		return
+	_return_portal.visible = true
+	_return_portal.enabled = true
+	_return_portal.monitoring = true
