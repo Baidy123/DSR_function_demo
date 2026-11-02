@@ -1,0 +1,6 @@
+~ start
+if GameState.task_a_reward_claimed == true
+	N: 本关的报酬已经领过了。
+	=> END
+N: 完成关卡并回到酒馆后，再来找我领取结算奖励。
+=> END

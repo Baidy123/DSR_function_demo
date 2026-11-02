@@ -178,6 +178,9 @@ Main
 - 临时交互球半径为 1.8，可选中 NPC/InteractionArea/CollisionShape3D，在检查器展开 Shape 调整 Radius。检测依据碰撞形状重叠，不是两个节点中心的精确距离。
 - 已通过 7 项无窗口交互检查（tests/interaction_test.gd）；实际画面与距离手感尚待试玩。
 
+通用 NPC 在进入对话前发出 `interaction_requested(player)`。专用 NPC（例如酒馆结算奖励 NPC）可以消费事件并接管输入；
+未接管时继续原对话流程，因此普通 NPC 不需要额外脚本。
+
 
 ## 对话 UI 与移动锁定（2026-09-15）
 

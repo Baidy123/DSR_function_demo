@@ -43,6 +43,13 @@ var task_a_returned: String = "":
 			return
 		task_a_returned = value
 		value_changed.emit(&"task_a_returned", value)
+# 任务一的三选一奖励领取状态：跨关卡场景切换保留，整次运行只能领取一次。
+var task_a_reward_claimed: bool = false:
+	set(value):
+		if task_a_reward_claimed == value:
+			return
+		task_a_reward_claimed = value
+		value_changed.emit(&"task_a_reward_claimed", value)
 ## 只读镜像：对话剧本按属性名读取唱片机旗标；旗标本身仍是唯一来源，由交互物写入。
 var music_playing: bool:
 	get:

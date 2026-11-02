@@ -1,5 +1,7 @@
 extends StaticBody3D
 
+signal interaction_requested(player: Node3D)
+
 ## 状态控制器使用的稳定 id；留空时回退到节点名，场景里换名字不会打断配置表。
 @export var npc_id: StringName = &""
 ## 该 NPC 使用的 Dialogue Manager 对话资源；留空时按 E 不启动对话。
@@ -49,6 +51,10 @@ func _unhandled_input(event: InputEvent) -> void:
 
 	for body in interaction_area.get_overlapping_bodies():
 		if body.is_in_group("player"):
+			interaction_requested.emit(body)
+			# 专用 NPC 可以在对话前接管这次交互；普通 NPC 继续原有对话流程。
+			if get_viewport().is_input_handled():
+				return
 			body.set_dialogue_active(true)
 			body.face_npc(global_position)
 			pending_player = body

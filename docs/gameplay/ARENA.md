@@ -2,7 +2,7 @@
 
 `scenes/main.tscn` 实例化 `scenes/arena.tscn`。当前敌人在 `Arena/Squad/Enemy`，玩家进入区域后启用 AI，离场按区域规则复位。当前敌人结构与战术勾选见 [敌人模块化 AI](../enemy-ai.md)。
 
-旧门禁卡和门禁屏障已删除。酒馆东侧门口现在由 `Interactables/LevelPortal` 在接取 `task_a` 后切换至第1关；同一场景内的竞技场奖励流程保留，清空敌人后等待默认 5 秒显示奖励面板，完整流程见 [阶段与任务](STAGE_STATE.md)。
+旧门禁卡和门禁屏障已删除。酒馆东侧门口现在由 `Interactables/LevelPortal` 在接取 `task_a` 后切换至第1关。`main.tscn` 中的竞技场仍用于独立演示战斗，但清场不再自动打开奖励或激活旧返回门；真实任务奖励改为返回酒馆后与 `RewardNPC` 交互领取，完整流程见 [阶段与任务](STAGE_STATE.md)。
 
 ## 编辑场景
 

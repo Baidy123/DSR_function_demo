@@ -178,10 +178,11 @@
   配置表模板见 `resources/stages/stage_table_template.tres`，填法与字段见 [STAGE_STATE.md](gameplay/STAGE_STATE.md)。
   场景落地开关默认关闭，当前表现与接入前一致。
 
-- 任务一完整闭环已实现：在酒馆接取 `task_a`，前往竞技场清空敌人后弹出“战斗奖励 · 三选一”面板
-  （急救包恢复 35 点生命、弹药补给补满弹匣与备弹、系统进度 +20，每次只能选一项），清场后等待 5 秒显示，选定后激活返回传送门；
-  交互传送门写入 `task_a_returned`，把玩家传送到 `TavernReturnPoint`，任务完成并进入返回结算。
-  见 [STAGE_STATE.md](gameplay/STAGE_STATE.md) 的“任务一的奖励与返回闭环”。
+- 任务一完整闭环已实现：在酒馆接取 `task_a`，进入第1关清空敌人，经返回传送门写
+  `task_a_returned` 并回到酒馆，任务完成并进入返回结算；随后与酒馆 `RewardNPC` 交互打开三选一
+  （急救包恢复 35 点生命、弹药补给补满弹匣与备弹、系统进度 +20，每次只能选一项）。
+  领取状态保存在本次运行的 `GameState` 中，不能重复领取；竞技场清场不再自动弹窗。
+  见 [STAGE_STATE.md](gameplay/STAGE_STATE.md) 的“任务一的返回与酒馆奖励闭环”。
 
 ## 后续方向
 

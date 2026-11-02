@@ -266,10 +266,14 @@ func _check_scene_wiring() -> void:
 	check(stage.get_phase() == StagePhases.Id.TAVERN_IDLE, "主场景初始环节为酒馆待命")
 	var snapshot: Dictionary = state_ctl.get_snapshot()
 	check(str(snapshot["stage"]["name"]) == "任务一", "主场景读取配置表模板")
-	check(snapshot["npcs"].size() == 2, "主场景快照列出两个 NPC")
+	check(snapshot["npcs"].size() == 3, "主场景快照列出全部三个 NPC")
 	check(
 		str(snapshot["npcs"][&"npc_a"]["dialogue"]) == dialogue_a.resource_path,
 		"主场景 NPC 与配置表 id 对应"
+	)
+	check(
+		str(snapshot["npcs"][&"reward_npc"]["dialogue"]) == "res://resources/dialogue/reward_npc.dialogue",
+		"主场景快照包含结算奖励 NPC"
 	)
 	check(state_ctl.apply_enabled == false, "默认不把状态落到表现上")
 	scene.queue_free()

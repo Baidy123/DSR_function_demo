@@ -54,7 +54,7 @@
 movement_demo/
 ├── project.godot          Godot 工程入口
 ├── scenes/
-│   ├── main.tscn          酒馆主场景，F5 入口；含任务、竞技场与关卡传送门
+│   ├── main.tscn          酒馆主场景，F5 入口；含任务、奖励 NPC、竞技场与关卡传送门
 │   ├── arena.tscn         战斗区域与敌人实例
 │   ├── enemy/             公共 enemy.tscn，types/兵种继承场景，levels/lvl_N/关卡预设
 │   ├── player/            独立 player.tscn、player_camera_rig.tscn 与战斗／生命／装备子场景
@@ -183,9 +183,9 @@ Spatial 的路线样本层仅在同步候选比较中复用同路径已实际观
 
 支援时序查询由 Context `cooperation_support_snapshot()` 接入区域 `enemy_cooperation.gd` 的精简 `support_snapshot()`；区域与完整快照共用实时资格、新鲜度及火力检查，精简读取不复制无关成员、身体、威胁和声明字段。`squad_coordination.gd` 仍持有任务并补齐有效请求，以静止／可移动两类最长覆盖计算压力。Context 只沿用既有候选预览观察，不新增缓存生命周期或调度节点。`enemy_cooperation_query_test.gd` 对照原完整快照算法，验证状态失效、不同目标、只读投影、声明与接受计划的期限。
 
-`main.tscn` 的任务战斗遭遇闭环由 `scripts/systems/stage/encounter_controller.gd` 承担：监听竞技场 `combat_cleared`，等待默认 5 秒后暂停并打开奖励面板，分发急救包／弹药／系统进度三种奖励，激活返回传送门，并在玩家交互传送门时写入 `task_a_returned`、把玩家传送到 `TavernReturnPoint`。它只读 `QuestController`／`StageController` 的查询接口，不改任务与阶段的权威判定。五关场景使用 `level_flow.gd` 和 `EnemyWaves.encounter_completed`，不挂载这套任务奖励控制器。
+`main.tscn` 的任务奖励闭环由 `scripts/systems/stage/encounter_controller.gd`、`scripts/world/reward_npc.gd` 与 `GameState` 共同承担：第一关返回传送门写入 `task_a_returned` 并切回酒馆；任务完成后与 `RewardNPC` 按 E 交互才会暂停并打开三选一面板，分发急救包／弹药／系统进度三种奖励，并把 `task_a_reward_claimed` 写入共享运行态。领取后场景重载仍不能重复领取。控制器只读 `QuestController` 状态，不改任务与阶段的权威判定；竞技场 `combat_cleared` 不再触发奖励。五关场景继续使用 `level_flow.gd` 和 `EnemyWaves.encounter_completed`。
 
-奖励面板 `scenes/ui/reward_board.tscn` + `scripts/ui/reward_board.gd` 是默认隐藏的三选一界面；`process_mode` 设为 ALWAYS，因此场景树暂停时仍能处理输入，每次显示只允许发出一个 `reward_selected`。面板本身不写玩家、弹药或进度，只回传所选奖励 id 给遭遇控制器。对应测试有 `tests/quest_encounter_loop_test.gd`（端到端闭环）和 `tests/reward_board_test.gd`（面板单次选择）。
+奖励面板 `scenes/ui/reward_board.tscn` + `scripts/ui/reward_board.gd` 是默认隐藏的三选一界面；`process_mode` 设为 ALWAYS，因此场景树暂停时仍能处理输入，每次显示只允许发出一个 `reward_selected`。面板本身不写玩家、弹药或进度，只回传所选奖励 id 给遭遇控制器。对应测试有 `tests/reward_npc_test.gd`（NPC 交互与跨重载防重复）、`tests/quest_encounter_loop_test.gd`（三条奖励路径）、`tests/encounter_controller_edge_test.gd`（资格、死亡、暂停和缺面板边界）与 `tests/reward_board_test.gd`（面板单次选择）。
 
 `scripts/world/quest_portal.gd` 是酒馆门口的任务条件传送门：只读 `QuestController`，`task_a` 进行中时才允许执行 `ChangeSceneEffect`。原门禁卡、门禁读卡器和屏障资源已删除；任务面板默认隐藏，Tab 切换，系统进度以 0～100 进度条显示。
 

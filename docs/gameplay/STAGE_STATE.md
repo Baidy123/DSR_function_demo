@@ -73,30 +73,32 @@
 效果上等于“首次触发”。条件每次在下列事件后重新评估：状态字段变化、拾取物品、旗标变化、
 交互物报告交互、区域进出、阶段变化、换表。
 
-## 任务一的奖励与返回闭环
+## 任务一的返回与酒馆奖励闭环
 
 任务一现在不只是“进过竞技场又离开”，而是由 `EncounterController`（`scripts/systems/stage/encounter_controller.gd`）
-串起“清场 → 奖励 → 返回”：
+配合任务完成状态和酒馆 `RewardNPC` 串起“第一关清场 → 返回酒馆 → 找 NPC 领奖”：
 
 1. A 的对话说明目标是消灭竞技场里的敌人。接受后 `help_choice` 写为 `accepted`，任务进入进行中；
    酒馆门口 `Interactables/LevelPortal` 随后解锁，按 E 可切换到 `scenes/world/levels/lvl_1.tscn`。
    旧门禁卡与门禁屏障已删除。
    第一关清空后，出生点附近的 `TavernReturnPortal` 出现；交互会写入 `task_a_returned = returned` 并返回酒馆。
-2. 竞技场所有已注册敌人死亡时，`Arena` 发出 `combat_cleared`。控制器只在玩家存活、`task_a` 进行中且玩家在
-   `site` 区域时响应；等待 5 秒后再次复核，再把场景树暂停并显示奖励面板。重复清场不会启动第二个结算。
-3. 奖励面板 `scenes/ui/reward_board.tscn`（`scripts/ui/reward_board.gd`）默认隐藏，`process_mode` 设为 ALWAYS，
-   暂停时仍能处理按钮输入；每次显示只能发出一个 `reward_selected`：
+2. 酒馆重新加载后，任务控制器按 `task_a_returned == returned` 把任务判为已完成，阶段进入
+   `RETURNED`（返回结算）。酒馆内的蓝色 `RewardNPC` 使用 `scripts/world/reward_npc.gd`；
+   任务未完成时按 E 只显示普通提示，不会打开奖励。
+3. 玩家完成任务且尚未领取时，靠近 `RewardNPC` 按 E 会通过 `EncounterController.open_reward_for_player()`
+   暂停场景并显示 `scenes/ui/reward_board.tscn`。面板 `process_mode` 为 ALWAYS，暂停时仍能处理按钮输入；
+   每次显示只能发出一个 `reward_selected`：
    - `first_aid`：恢复 35 点生命（超过上限按上限截断）；
    - `ammo`：补满两把已装备枪械的弹匣，并把初始共享备弹恢复到各自配置初值；
    - `system_progress`：给 `GameState.system_progress` 增加 20，累计上限 100。
-4. 选定后控制器解除暂停、隐藏面板，并激活 `Arena/CombatZone/ReturnPortal`（默认关闭，位于竞技场入口附近）。
-5. 玩家交互返回传送门时，控制器把 `task_a_returned` 写为 `returned`，清零玩家移动状态，并把玩家传送到
-   `TavernReturnPoint`（位于原始出生点），同时关闭传送门；重复返回会被拒绝。
-6. 配置表里 `task_a` 的完成条件因此是 `task_a_returned == returned`（`STATE_FIELD`），写入后任务完成，
-   阶段进入 `RETURNED`（返回结算）。
+4. 选定后控制器结算奖励、隐藏面板、解除自己持有的暂停，并把 `GameState.task_a_reward_claimed`
+   写为真。面板本身仍只回传奖励 id，不直接写生命、弹药或任务进度。
+5. 领取状态保存在 `GameState` 自动加载中，因此酒馆或关卡场景重载后仍不可重复领取；重新运行游戏才会重置。
+   已领取后再次与 NPC 交互只显示“已经领过”的普通提示。
 
-酒馆门口到第1关以及第一关返回酒馆都使用真实场景切换；上述竞技场奖励闭环仍保存在同一 `main.tscn` 内，
-`ReturnPortal` 和 `TavernReturnPoint` 是其中的两个位置。第2～5关继续保留原按钮过关流程，完整五关后的统一返回尚未接入。
+酒馆门口到第1关以及第一关返回酒馆都使用真实场景切换。`main.tscn` 中的竞技场仍可独立进入和清场，
+但 `Arena.combat_cleared` 不再自动打开奖励，也没有旧的 `Arena/CombatZone/ReturnPortal`。第2～5关继续保留原按钮过关流程，
+完整五关后的统一返回尚未接入。
 `system_progress` 目前只累计并显示在任务面板上，尚未用于章节解锁或后续内容门槛。
 
 正式切场景统一经过 `SceneTransition`。切换前先把 `World3D` 的环境恢复为中性回退值，避免酒馆环境光残留到没有
@@ -182,7 +184,8 @@
    - 拾取物品：`source=2`、`key=quest_item`、`min_count=1`；
    - 去过竞技场又离开：`source=4` + `source=5`、`key=arena` 两条都要填。
 5. 区域要挂 `scripts/world/zone_volume.gd` 并填 `zone_id`（现成：酒馆 `tavern`、竞技场 `arena`）；
-   交互物要填 `interact_id`（留空会回退节点名）；NPC 要填 `npc_id`（`npc_a`、`npc_b`）。
+   交互物要填 `interact_id`（留空会回退节点名）；NPC 要填 `npc_id`
+   （现有人物为 `npc_a`、`npc_b`、`reward_npc`）。
 6. `Rules` 是 NPC 状态规则，按数组顺序生效，**后面的覆盖前面的**。每项填三段：
    - 条件：`stage_index`（0 表示不限）、`phase`（-1 表示不限）、`quest_id` + `quest_status`
      （`not_started`／`in_progress`／`refused`／`completed`／`missed`）、`required_flags`、`required_items`。
@@ -216,6 +219,7 @@
 & E:/Godot/Godot_v4.7.2-stable_win64_console.exe --headless --path movement_demo --script res://tests/stage_system_test.gd
 & E:/Godot/Godot_v4.7.2-stable_win64_console.exe --headless --path movement_demo --script res://tests/quest_panel_test.gd
 & E:/Godot/Godot_v4.7.2-stable_win64_console.exe --headless --path movement_demo --script res://tests/record_player_quest_test.gd
+& E:/Godot/Godot_v4.7.2-stable_win64_console.exe --headless --path movement_demo --script res://tests/reward_npc_test.gd
 & E:/Godot/Godot_v4.7.2-stable_win64_console.exe --headless --path movement_demo --script res://tests/quest_encounter_loop_test.gd
 ```
 
@@ -232,13 +236,14 @@ macOS 上用 `Godot.app/Contents/MacOS/Godot` 替换可执行文件路径。
 - `record_player_quest_test.gd`：接取前后都能操作唱片机、接取前操作不推进任务状态、
   关闭状态下交差失败、重新打开后点“交差”完成任务、拒绝只改对话不改任务状态且可重新接取，
   以及任务面板显示对应状态。
-- `quest_encounter_loop_test.gd`：真实主场景端到端验证任务一闭环——接取、进入竞技场、真实敌人死亡后等待 5 秒再暂停并显示
-  奖励面板、三选一奖励、重复选择被拒、奖励后面板隐藏且传送门激活、经传送门返回写入 `task_a_returned`、
-  传送到 `TavernReturnPoint`、任务完成且阶段进入 `RETURNED`、任务面板显示系统进度。
+- `reward_npc_test.gd`：真实主场景验证竞技场清场不再弹窗，任务完成后与 `RewardNPC` 交互才打开三选一；
+  验证领取状态跨酒馆重载保留且不能重复领取。
+- `quest_encounter_loop_test.gd`：真实主场景端到端验证任务一返回酒馆后的 NPC 奖励——三条奖励路径、
+  面板暂停与关闭、任务完成和 `RETURNED` 阶段保持、旧竞技场返回传送门已移除。
 
 ## 后续
 
-多份配置表的分发、任务二的场地与内容、酒馆场景整体变化、真正的跨场景切换都还没做；
-当前“酒馆 ↔ 竞技场”往返由同场景内的 `ReturnPortal` 与 `TavernReturnPoint` 传送模拟。
+多份配置表的分发、任务二的场地与内容、酒馆场景整体变化还没做；
+任务一已经使用“酒馆 → 第1关 → 酒馆”的真实场景切换。
 进度持久化本轮也未做（场景重开后已完成会退回），`system_progress` 只累计并显示、未用于章节门槛，
 都记录在 [待办](../TODO.md)。
