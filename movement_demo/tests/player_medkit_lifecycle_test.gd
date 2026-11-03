@@ -76,8 +76,12 @@ func _run() -> void:
 	await process_frame
 	_check("treatment can begin again after knockback ends", medkit.request_use())
 	var ui = scene.get_node("DialogueUI")
+	var game_state = root.get_node("GameState")
+	var previous_turnin: String = game_state.music_quest_turnin
 	# 本夹具验证单句对话结束后的治疗状态，显式选择 NPC B 的已交差分支。
-	root.get_node("GameState").music_quest_turnin = "done"
+	# Use the single-line completion branch so E is a real close event rather than
+	# being consumed while a response choice is visible.
+	game_state.music_quest_turnin = "done"
 	await ui.open_dialogue(player, load("res://resources/dialogue/npc_b.dialogue"), "start")
 	await _frames(2)
 	_check("real dialogue flow cancels treatment and hides status", player.is_in_dialogue and not medkit.is_using() and not health.get_node("Status").visible)
@@ -86,6 +90,7 @@ func _run() -> void:
 	_key(KEY_E, false)
 	await _frames(2)
 	_check("closing dialogue does not revive a pending heal", not player.is_in_dialogue and not medkit.is_using())
+	game_state.music_quest_turnin = previous_turnin
 	medkit.request_use()
 	player.receive_hit(1000.0)
 	_check("actual death pauses world and clears treatment", health.is_dead and paused and not medkit.is_using() and medkit.remaining_count == 2)

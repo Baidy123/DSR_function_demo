@@ -549,6 +549,33 @@ func reset_encounter() -> void:
 		wave.ready_frame = -1
 	if reconnect_events: prepare_events()
 
+## 调试完成仍走正式整理与完成通知，但不逐个击杀在场敌人或伪造波次清除。
+func debug_complete_encounter() -> bool:
+	if Engine.is_editor_hint() or _released or not _captured or _waves.is_empty():
+		return false
+	if _state in [State.COMPLETED, State.ERROR]:
+		return false
+	reset_encounter()
+	# 完成后不应再由事件、规则或残留身份推进本轮生命周期。
+	_clear_subscriptions()
+	_owned.clear()
+	_cleared.clear()
+	for index in _waves.size():
+		var wave: Dictionary = _waves[index]
+		_cleared[index] = true
+		wave.state = &"cleared"
+		wave.ready_frame = -1
+		wave.reason = "调试一键通关"
+		wave.focus = null
+	_started = true
+	_index = _waves.size() - 1
+	_spawned = _waves.size()
+	_remaining = 0.0
+	_reason = "调试一键通关"
+	_state = State.COMPLETED
+	encounter_completed.emit()
+	return true
+
 func _retire_runtime() -> void:
 	for wave in _runtime.values(): _retire_deployments(wave.deployments)
 	_runtime.clear()

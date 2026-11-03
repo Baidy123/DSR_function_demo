@@ -1,0 +1,110 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" uid="uid://bqki6hihwjacw" path="res://scripts/ui/reward_board.gd" id="1_reward_board"]
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_reward_panel"]
+bg_color = Color(0.06, 0.08, 0.1, 0.94)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0.85, 0.68, 0.22, 0.9)
+content_margin_left = 24.0
+content_margin_top = 20.0
+content_margin_right = 24.0
+content_margin_bottom = 20.0
+
+[node name="RewardBoard" type="CanvasLayer"]
+layer = 10
+process_mode = 3
+visible = false
+script = ExtResource("1_reward_board")
+
+[node name="Dimmer" type="ColorRect" parent="."]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 0
+color = Color(0, 0, 0, 0.62)
+
+[node name="Panel" type="PanelContainer" parent="."]
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -360.0
+offset_top = -160.0
+offset_right = 360.0
+offset_bottom = 160.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_styles/panel = SubResource("StyleBoxFlat_reward_panel")
+
+[node name="Margin" type="MarginContainer" parent="Panel"]
+layout_mode = 2
+theme_override_constants/margin_left = 12
+theme_override_constants/margin_top = 8
+theme_override_constants/margin_right = 12
+theme_override_constants/margin_bottom = 8
+
+[node name="Content" type="VBoxContainer" parent="Panel/Margin"]
+layout_mode = 2
+theme_override_constants/separation = 16
+
+[node name="Title" type="Label" parent="Panel/Margin/Content"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 28
+text = "战斗奖励 · 三选一"
+horizontal_alignment = 1
+
+[node name="Buttons" type="HBoxContainer" parent="Panel/Margin/Content"]
+layout_mode = 2
+theme_override_constants/separation = 16
+
+[node name="FirstAid" type="VBoxContainer" parent="Panel/Margin/Content/Buttons"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 8
+
+[node name="Button" type="Button" parent="Panel/Margin/Content/Buttons/FirstAid"]
+layout_mode = 2
+text = "急救包"
+
+[node name="Description" type="Label" parent="Panel/Margin/Content/Buttons/FirstAid"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 18
+text = "恢复 35 点生命"
+horizontal_alignment = 1
+
+[node name="Ammo" type="VBoxContainer" parent="Panel/Margin/Content/Buttons"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 8
+
+[node name="Button" type="Button" parent="Panel/Margin/Content/Buttons/Ammo"]
+layout_mode = 2
+text = "弹药补给"
+
+[node name="Description" type="Label" parent="Panel/Margin/Content/Buttons/Ammo"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 18
+text = "补满弹匣与备弹"
+horizontal_alignment = 1
+
+[node name="SystemProgress" type="VBoxContainer" parent="Panel/Margin/Content/Buttons"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 8
+
+[node name="Button" type="Button" parent="Panel/Margin/Content/Buttons/SystemProgress"]
+layout_mode = 2
+text = "系统进度"
+
+[node name="Description" type="Label" parent="Panel/Margin/Content/Buttons/SystemProgress"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 18
+text = "任务进度 +20"
+horizontal_alignment = 1

@@ -85,7 +85,8 @@ func _ready() -> void:
 		"guide_required": guide_required, "guide_pauses_world": guide_pauses_world,
 		"camera": get_node_or_null(presentation_camera_path) if not presentation_camera_path.is_empty() else null,
 		"rules": scene_rules, "wave_runtime": _runtime,
-		"auto_complete_waves": complete_when_all_waves_cleared and not result_view_path.is_empty() and get_node_or_null(result_view_path) != null,
+		"auto_complete_waves": complete_when_all_waves_cleared
+			and not result_view_path.is_empty() and get_node_or_null(result_view_path) != null,
 		"present_spawned_waves": present_spawned_waves,
 		"presentation_target_path": presentation_target_path,
 		"presentation_options": {"move_seconds": camera_move_seconds, "hold_seconds": camera_hold_seconds, "return_seconds": camera_return_seconds}})
@@ -102,6 +103,12 @@ func advance_from_region(delta: float) -> void:
 func reset_encounter() -> void:
 	if is_instance_valid(director): director.reset_region()
 	if _runtime != null: _runtime.reset_encounter()
+
+## 调试入口：只跳过当前区域本轮的剩余波次，仍通过正式完成信号开放关卡结果。
+func debug_complete_encounter() -> bool:
+	_ensure_runtime()
+	return _runtime.debug_complete_encounter()
+
 
 func request_wave(wave: Node) -> bool:
 	_ensure_runtime()

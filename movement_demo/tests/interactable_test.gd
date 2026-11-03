@@ -3,6 +3,8 @@ extends SceneTree
 ## 场景交互物检查：输入守卫、条件、效果、实例结果与解耦注入。
 ## 运行：godot --headless --path movement_demo --script res://tests/interactable_test.gd
 
+const QuestControllerScript := preload("res://scripts/systems/stage/quest_controller.gd")
+
 var failures: int = 0
 
 
@@ -89,12 +91,12 @@ func run_checks() -> void:
 	player.set_physics_process(false)
 	var state = root.get_node("GameState")
 	var ui = scene.get_node("DialogueUI")
-	var keycard = scene.get_node("Interactables/Keycard") as Interactable
+	var npc_a = scene.get_node("NPC")
+	var quests = scene.get_node("QuestController")
+	var portal = scene.get_node("Interactables/LevelPortal") as Interactable
 	var wine = scene.get_node("Interactables/WineGlass") as Interactable
 	var terminal = scene.get_node("Interactables/Terminal") as Interactable
 	var record = scene.get_node("Interactables/RecordPlayer") as Interactable
-	var reader = scene.get_node("Interactables/AccessGate/Reader") as Interactable
-	var barrier = scene.get_node("Interactables/AccessGate/Barrier")
 	var probe := NoiseProbe.new()
 	probe.add_to_group(&"hearing_listener")
 	root.add_child(probe)
@@ -102,13 +104,12 @@ func run_checks() -> void:
 
 	check(state != null, "GameState 已注册")
 	check(
-		keycard != null and wine != null and terminal != null and record != null
-		and reader != null and barrier != null,
-		"五个交互物实例都在主场景里"
+		portal != null and wine != null and terminal != null and record != null,
+		"四个保留交互物实例都在主场景里"
 	)
 	check(
-		keycard.effects.size() == 2 and wine.effects.size() == 2 and terminal.effects.size() == 2
-		and record.effects.size() == 2 and reader.effects.size() == 2,
+		portal.effects.size() == 1 and wine.effects.size() == 2 and terminal.effects.size() == 2
+		and record.effects.size() == 2,
 		"每个交互物的效果资源都装配成功"
 	)
 	var standalone: Node = load("res://scenes/world/interactable.tscn").instantiate()
@@ -136,30 +137,42 @@ func run_checks() -> void:
 	check(not terminal.has_interacted, "对话中按 E 不触发交互物")
 	await finish_dialogue(ui)
 
-	# 条件交互：缺门禁卡时读卡器拒绝，屏障保持关闭。
-	stand_at(player, reader)
+	# 传送门条件：未接取 A 的任务时拒绝，接取后才允许进入。
+	stand_at(player, portal)
 	await settle()
-	check(reader.prompt.visible and reader.prompt.text == "需要门禁卡", "缺条件时显示阻断提示")
-	check(press_key(KEY_E), "缺条件时仍消费按键")
-	check(not barrier.is_open, "缺门禁卡时屏障不打开")
-	check(not state.is_flag_set(&"arena_access"), "缺门禁卡时不置位通行旗标")
+	check(portal.prompt.visible and portal.prompt.text == "需要先接取 A 的任务", "未接任务时显示传送门阻断提示")
+	check(press_key(KEY_E), "未接任务时仍消费按键")
+	check(not portal.has_interacted, "未接任务时传送门不执行")
 
-	# 拾取门禁卡。
-	stand_at(player, keycard)
+	await ui.open_dialogue(player, npc_a.dialogue_resource, "start")
 	await settle()
-	check(keycard.prompt.text == "E 拾取 门禁卡", "拾取提示使用配置的动词")
-	check(press_key(KEY_E), "按 E 拾取门禁卡")
-	check(state.has_item(&"keycard") and state.get_item_count(&"keycard") == 1, "门禁卡写入物品栏")
-	check(not keycard.visible, "拾取后交互物隐藏")
-	check(not keycard.can_interact(player), "拾取后不再重复触发")
+	check(ui.dialogue_text.text.contains("第1关"), "A 的对话说明第1关目标")
+	var refuse_index := _choice_index(ui, "暂时拒绝")
+	check(refuse_index >= 0, "A 的任务提供拒绝选项")
+	if refuse_index >= 0:
+		ui.choices.get_child(refuse_index).pressed.emit()
+		await settle()
+		await settle()
+	check(state.help_choice == "refused", "拒绝 A 后写入拒绝状态")
+	ui._close_dialogue()
+	await settle()
 
-	# 满足条件后读卡器放行。
-	stand_at(player, reader)
+	await ui.open_dialogue(player, npc_a.dialogue_resource, "start")
 	await settle()
-	check(reader.prompt.text == "E 刷卡 门禁读卡器", "满足条件后显示可交互提示")
-	check(press_key(KEY_E), "持卡刷卡")
-	check(barrier.is_open, "持卡后屏障打开")
-	check(state.is_flag_set(&"arena_access"), "持卡后置位通行旗标")
+	var reaccept_index := _choice_index(ui, "我改主意了")
+	check(reaccept_index >= 0, "拒绝后 A 重新提供任务入口")
+	if reaccept_index >= 0:
+		ui.choices.get_child(reaccept_index).pressed.emit()
+		await settle()
+		await settle()
+	check(state.help_choice == "accepted", "接受 A 的任务写入接取状态")
+	check(quests.status_of(&"task_a") == QuestControllerScript.Status.IN_PROGRESS, "接受后任务进入进行中")
+	ui._close_dialogue()
+	await settle()
+
+	stand_at(player, portal)
+	await settle()
+	check(portal.prompt.text == "E 进入 关卡1", "接取任务后传送门变为可进入")
 
 	# 唱片机：接取任务前后都能操作，重复使用在开／关之间切换。
 	stand_at(player, record)
@@ -206,3 +219,10 @@ func run_checks() -> void:
 	scene.free()
 	print("Interactable checks finished; failures: ", failures)
 	quit(1 if failures else 0)
+
+
+func _choice_index(ui, keyword: String) -> int:
+	for index in ui.choices.get_child_count():
+		if ui.choices.get_child(index).text.contains(keyword):
+			return index
+	return -1

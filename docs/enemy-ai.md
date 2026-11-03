@@ -6,7 +6,7 @@
 
 ## 配置与部署
 
-将 `scenes/enemy/enemy.tscn` 或兵种继承预制放到对应Squad下，在有玩家、导航、CombatZone与原区域脚本的场景中运行。F5默认连续五关；竞技场单独打开 `scenes/main.tscn` 按F6。部署步骤见[竞技场](gameplay/ARENA.md)、[五关地图](gameplay/LEVEL_MAPS.md)和[波次](gameplay/ENEMY_WAVES.md)。
+将 `scenes/enemy/enemy.tscn` 或兵种继承预制放到对应Squad下，在有玩家、导航、CombatZone与原区域脚本的场景中运行。F5 从酒馆进入五关流程；竞技场单独打开 `scenes/main.tscn` 按F6。部署步骤见[竞技场](gameplay/ARENA.md)、[五关地图](gameplay/LEVEL_MAPS.md)和[波次](gameplay/ENEMY_WAVES.md)。
 
 | 要修改的内容 | 配置入口 |
 | --- | --- |
@@ -152,6 +152,14 @@
 <a id="个人与团队共用的翻越导航2026-10-24"></a>
 
 个人与团队共用的翻越导航（2026-10-24）：[整理前对应章节](history/2026-10-28/enemy-ai.md#个人与团队共用的翻越导航2026-10-24)。
+
+## 五关流程下的部署与试玩
+
+1. 使用当前验证的 Godot 4.7.2 标准版导入 `movement_demo/project.godot`，等待资源扫描完成。
+2. 默认 F5 从酒馆开始，接取 A 任务后经门口传送门进入第1关；编辑敌人时打开 `res://scenes/arena.tscn`。
+3. 给 `Enemy/UnitType.profile` 选择 `res://resources/enemy/units/ranged.tres` 或自己的兵种；给 `Enemy/Training.profile` 选择训练资源。
+4. 在 Training 顶部“战术解锁”勾选动作，保存场景及修改的外部资源。武器在 Enemy 的 Weapon 中调整，现有示例位于 `resources/weapons/`。
+5. 运行后进入 CombatZone，观察初次接敌、失视、搜索、换弹、死亡和离场复位。检查器无战术选项时，确认插件启用、同一敌人的 UnitType 与 Training 都有资源；不要在停止运行后继续查看旧 Remote 节点。
 
 <a id="个人训练如何参与团队决策"></a>
 

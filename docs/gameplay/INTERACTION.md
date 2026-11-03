@@ -33,12 +33,15 @@
 
 ```text
 scripts/world/interactable.gd                 交互物节点（范围、提示、输入、条件、效果派发）
+scripts/world/quest_portal.gd                 按任务和 A 解锁进度更新目标的酒馆关卡门
+scripts/world/tavern_return_portal.gd         记录关卡完成与玩家状态并返回酒馆
+scripts/world/interactions/change_scene_effect.gd  交互后切换目标场景
 scripts/world/interactions/interaction_context.gd   一次交互的注入上下文
 scripts/world/interactions/interaction_effect.gd    效果基类
 scripts/world/interactions/*_effect.gd              具体效果
-scripts/world/sliding_barrier.gd              纯位移屏障，由交互物通过方法调用驱动
 scenes/world/interactable.tscn                可复用交互物场景
-scenes/world/access_gate.tscn                 门禁读卡器 + 屏障
+scenes/world/objects/quest_portal.tscn        酒馆门口的任务传送门
+scenes/world/objects/tavern_return_portal.tscn 五关共用的返回酒馆传送门
 scenes/world/objects/                         各个具体交互物场景
 scenes/ui/game_state_debug.tscn               调试面板
 ```
@@ -49,10 +52,41 @@ scenes/ui/game_state_debug.tscn               调试面板
 
 `can_interact(player)` 查询资格，`interact(player)` 执行并返回结果；`interacted`／`blocked` 通知成功或受阻。效果继承 `InteractionEffect.apply(context)`，通过 InteractionContext 获取注入的状态及目标，不直接依赖全局节点或其他系统内部实现。
 
+酒馆主场景已按用户要求删除门禁卡和对应门禁屏障，改为门口任务传送门；酒杯、终端和唱片机继续保留。
+
+| 实例 | 位置 | 交互 | 结果 |
+| --- | --- | --- | --- |
+| 酒杯 | 主房间南侧 | 查看 | 打开线索对话，置 `saw_wine_clue` |
+| 终端 | 主房间东侧 | 使用一次 | 打开通道信息对话，置 `terminal_read` |
+| 唱片机 | 主房间东南 | 使用，可重复 | 开／关音乐，写入 `music_playing`；接取任务前后都能操作，接取前操作不会推进任务状态 |
+| 关卡传送门 | 酒馆东侧门口 | 进入 | 未接 A 任务时提示并拒绝；A 每次解锁下一关后，按 E 切换到对应关卡 |
+| 酒馆返回传送门 | 各关出生点附近 | 返回 | 本关清空后出现；记录完成关卡与玩家状态并返回酒馆 |
+| 结算奖励 NPC | 酒馆东侧房间 | 交互 | 任一本关完成并回到酒馆后按 E 打开该关三选一；同一关领取一次后关闭，不影响其他关 |
+
+关卡传送门在首次进入时读取 `QuestController.status_of("task_a")`；后续按
+`GameState.completed_level` 与 `available_level` 判定是否已由 A 解锁。目标场景由
+`ChangeSceneEffect.scene_path` 按可用关卡动态更新。交互前会把当前玩家状态写入一次性快照，
+再由共享 `SceneTransition` 切换并恢复中性 `World3D` 回退环境。
+
+五关返回传送门默认隐藏，由 `LevelFlow` 在本关波次全部完成后启用。`TavernReturnPortal`
+写入本关 `level_number`、保存生命/武器/弹匣/备弹/医疗包快照；第1关还写入
+`task_a_returned=returned`。随后 `ChangeSceneEffect` 返回酒馆，新玩家实例只消费一次快照。
+
+结算奖励 NPC 由 `scripts/world/reward_npc.gd` 扩展普通 NPC。普通对话前，NPC 会发出
+`interaction_requested(player)`；专用 NPC 可接管本次输入。奖励 NPC 在
+`GameState.completed_level` 对应关卡尚未领取时调用 `EncounterController`，否则继续普通对话。
+领取记录保存在 `claimed_reward_levels`，每关独立；第1关领取不会阻止第2关继续三选一。
+
+对话影响是打开交互物自己的对话资源，不动 NPC 对话；音乐声音事件继续进入既有听觉系统。
+
 ## 验证
 
 `interactable_test` 核对输入、条件、效果和注入替身，任务联动由任务及交互专项覆盖。运行结果同时看断言、进程和脚本／资源诊断；已有退出资源问题单独记录，不用“断言通过”覆盖它们。统一入口见[测试说明](../testing.md)。
 
 ## 历史记录
+
+`quest_portal_test.gd` 使用真实酒馆与 `QuestController` 检查未接任务时阻断、接取后进入第1关，并确认门禁卡和旧门禁实例已删除。
+
+Godot 4.7.2 下，只要进程里打开过对话，退出时就会报告 Dialogue Manager 的少量资源未释放（`resources still in use at exit`），与本功能无关；判断通过与否看 `FAIL` 与 `SCRIPT ERROR` 行。
 
 早期配置、实施过程及当时的验证结果保存在[整理前记录](../history/2026-10-28/gameplay/INTERACTION.md)。历史通过数不代表当前本地配置已重新验证。

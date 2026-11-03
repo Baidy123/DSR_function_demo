@@ -155,7 +155,8 @@ String 不等于 StringName，整数1不等于布尔true。需要“事件发生
 
 - 清空 **Guide Path** 或移除 PlayGuide 即可跳过临时说明。未来教程适配 `begin()/cancel()/finished`；允许走动的教程关闭 Guide Pauses World。核心不依赖 PlayGuide 类型。
 - Health 只结算生命、停止玩家自身动作并发 `died`。调度器先取得死亡暂停，再取消镜头/动作，独立视图控制原 `Player/Health/DeathScreen`；按钮只报告重开请求。
-- 当前五关仍按全部波次完成显示原按钮，第5关回第1关。无结果UI的旧独立波次场景只报告完成，不强制通关暂停；没有任何 Wave 不自动通关。
+- 配置了 `LevelFlow.return_portal_path` 的五关在全部波次完成后只开放本关 `TavernReturnPortal`，不暂停世界，也不显示直接进入下一关的按钮。没有返程门的结果界面仍可暂停并显示原按钮；没有任何 Wave 不自动通关。
+- `LevelFlow.completion_pauses_world()` 决定完成时是否取得暂停所有权：有返程门时返回 false，保留结果按钮时返回 true。该接口只影响完成，不改变死亡暂停。
 - 离区仍由区域服务清理敌人、掉落与协同，调度器取消 REGION 规则和镜头。SCENE 开场和结果不重播；若 SCENE 规则正等旧轮波次，该等待明确取消诊断，不自动跨轮重投。
 - 关闭说明、结束镜头、旧场景卸载只释放自己的暂停，不清除别的拥有者。重开不清空 GameState。
 - 加载失败保留暂停并恢复重试按钮；事件切场景失败重试原路径，不误用五关路径表。自定义无UI流程可读核心诊断并调用 `request_load_retry()`。

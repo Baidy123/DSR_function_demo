@@ -1,0 +1,16 @@
+[remap]
+
+importer="dialogue_manager"
+importer_version=18
+type="Resource"
+uid="uid://bgpft3bcvxtk6"
+path="res://.godot/imported/reward_npc.dialogue-a43949a8b9baeed1528d95a5c51fc699.tres"
+
+[deps]
+
+source_file="res://resources/dialogue/reward_npc.dialogue"
+dest_files=["res://.godot/imported/reward_npc.dialogue-a43949a8b9baeed1528d95a5c51fc699.tres"]
+
+[params]
+
+defaults=true

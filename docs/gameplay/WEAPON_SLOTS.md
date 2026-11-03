@@ -48,6 +48,8 @@ Equipment 是玩家装备的配置入口，管理主副武器、共享备弹和�
 
 配置保存在 WeaponData，运行进度由 Equipment／WeaponAmmo／Combat 按职责持有。现有资源与节点 UID 不迁移。更多规则见[开火方式](PLAYER_FIRE_MODES.md)、[弹药](AMMO.md)、[近战](MELEE.md)及[相机](CAMERA.md)。
 
+试玩：打开 `scenes/main.tscn` 后按 F6，按2或滚轮确认右下角高亮和左上角枪名同步；进入靶场后分别开枪，比较伤害、间隔与散布。要换成自己的资源，停止运行后修改 Equipment 的两个槽，再重新运行。
+
 ## 验证
 
 相关入口为 `weapon_slots_test`、`player_scene_reuse_test` 及弹药／换弹专项。武器槽测试已随副武器重命名更新资源路径，原断言保持；其他历史资源假设与验证边界见[测试说明](../testing.md)。

@@ -2,6 +2,18 @@
 
 本页说明如何查询和运行已有验证，以及如何解释结果。AI 的真实场景、行为／性能边界见[敌人验证](enemy-tests.md)，模块职责见[项目结构](project-layout.md)。本轮文档整理不代表重新执行全部游戏测试。
 
+## 当前五关定向记录
+
+2026-11-02 五关任务链、逐关奖励与 Debug 一键通关：新增 `campaign_quest_task_test` 22/22，验证任务面板五条主线、A 解锁后的进行中状态和返程后的完成状态。新增 `reward_per_level_test` 39/39，验证第1～5关分别开放一次三选一、领取状态互不影响，以及每关独立标题、说明和数值配置。`debug_complete_level_test` 现为10/10，验证按钮受 Debug 总开关控制、只完成当前关、重复点击不重复发信号、开放返程门、保持可操作且不直接切场景。`quest_conditions_test` 扩至 19/19，覆盖整数状态字段下限条件。
+
+2026-11-02 五关酒馆往返与跨关状态：`campaign_flow_test` 46/46，覆盖五关返程门、A 逐关解锁、门口动态目标和跨关生命/当前槽位/双武器/双弹匣/共享备弹/医疗包；死亡仍重开当前关并恢复该关配置。`level_flow_test` 现为87/87，使用五张真实保存地图和真实敌人死亡逐关清场，验证每关只开放返程门、返回酒馆、与 A 交互后再进入下一关，第5关结束后停在酒馆。`player_health_test` 30/30 与 `weapon_slots_test` 35/35 保持；旧波次卸载警告仍存在。
+
+2026-11-03 合并 upstream/main 后定向复验：`scene_director_test` 137/137、`scene_event_node_test` 99/99、`scene_reinforcement_test` 111/111、`level_flow_test` 87/87、`debug_complete_level_test` 10/10、`player_health_test` 30/30、`player_medkit_lifecycle_test` 20/20、`weapon_slots_test` 35/35、`enemy_wave_test` 80/80、`enemy_wave_events_test` 118/118，`campaign_flow_test` 全部通过。`run_regressions.py --check` 为 `Catalog OK`。统一系统组在当前 macOS 环境把 `get_system_ca_certificates` 的 `Condition "ret != noErr"` 判为错误，并同时列出既有移动输入、Debug Overlay 与声音专项失败，因此该轮报告为0/29；上述直接专项进程均以0退出，不能据此宣称整个系统组全绿。
+
+2026-11-02 酒馆结算奖励 NPC：`reward_npc_test`，17/17 验证竞技场清场不再弹窗、完成后按 E 打开三选一、领取状态跨酒馆重载保留，以及第1关已领取后第2关仍能重新打开；`quest_encounter_loop_test` 22/22 覆盖急救包／弹药／系统进度三条路径，`encounter_controller_edge_test` 19/19 覆盖资格、死亡、外部暂停、缺面板和重复领取，`reward_board_test` 14/14 保持单次选择。真实主场景 `stage_system_test`、`quest_portal_test`（10/10）与 `combat_clear_signal_test`（9/9）通过。`interaction_test` 仍为 6/7，唯一失败是文档已记录的“离开后按 E 不触发”，修改前基线相同。
+
+2026-10-27 接敌派发：`squad_dispatch_continuity_test` 使用保存第五关第二波六人队、原训练装备和持续移动玩家，检查完整玩家胶囊路径、首次整表派发／真实移动时间、全警戒和全员无实际动作窗口、实际移动／挥击及原P99／峰值门槛。`-- --contract-only` 单独运行14项目标更新、成员候选完成、提前事务拒绝及搜索隔离边界；`-- --trace` 追加前180帧准备／组合／提交记录。原始失败、最终结果与性能限制见[敌人测试](enemy-tests.md#接敌派发空窗2026-10-27)，不以“任务版本没变”单独认定全队停工。
+
 ## 验证原则
 
 - 优先验证用户遇到的实际问题和本次直接影响的接口；必要检查通过后停止，不默认跑全量。
@@ -55,6 +67,11 @@ python movement_demo/tests/run_combat_regressions.py --godot E:/Godot/Godot_v4.7
 | 增援与独立演出 | `scene_reinforcement_test`、`presentation_camera_test`；真实生成屏障、手动Marker3D、取消/返回；相机专项另有真实渲染模式 |
 | 任务与交互 | systems 中条件、任务、阶段、面板、唱片机与交互专项 |
 | UI、检查器、美术 | 对应编辑器／渲染入口，不能只用 headless 代替 |
+| `systems` | 移动、奔跑、NPC 交互、听觉、声音模式、Debug、表现接口／复位、对话文件扫描，以及任务条件、五关任务链、阶段接线、任务面板、唱片机支线、五关酒馆往返、跨关玩家状态、逐关奖励配置、Debug 一键通关、竞技场清场、奖励板和酒馆奖励 NPC；由统一入口登记 |
+| `combat` | `tests/run_combat_regressions.py` 的原玩家战斗清单 |
+| `enemy` | `tests/enemy/run_enemy_regressions.py` 的原敌人清单 |
+
+酒馆传送门专项检查正式切换后的 `World3D` 中性回退环境；关卡流程专项使用真实五关逐波清敌，检查每关返程门、A 解锁、动态门口传送和死亡重开。当前五关仍使用返程门，不依赖按钮直接切关；SceneDirector 的加载能力由独立场景调度专项验证。
 
 ## 特殊入口与会写入的维护工具
 

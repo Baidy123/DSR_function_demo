@@ -9,6 +9,7 @@
 [ext_resource type="PackedScene" uid="uid://bo1umuc15khr4" path="res://scenes/player/combat.tscn" id="5_jjvc5"]
 [ext_resource type="PackedScene" path="res://scenes/player/player_weapon_slots.tscn" id="6_0l8lu"]
 [ext_resource type="Resource" uid="uid://bbrb41p0fx1x5" path="res://resources/enemy/cooperation/intel_only.tres" id="6_rjb0k"]
+[ext_resource type="PackedScene" path="res://scenes/world/objects/tavern_return_portal.tscn" id="8_return_portal"]
 [ext_resource type="PackedScene" path="res://scenes/player/player_health.tscn" id="7_gui0x"]
 [ext_resource type="PackedScene" uid="uid://dlqqj3q00vsu3" path="res://scenes/enemy/levels/lvl_1/melee.tscn" id="7_rjb0k"]
 [ext_resource type="Script" uid="uid://k0q37ja4h4tl" path="res://scripts/player/player_presentation.gd" id="8_l44ss"]
@@ -348,6 +349,13 @@ transform = Transform3D(1, 0, 1.7484555e-07, 0, 1, 0, -1.7484555e-07, 0, 1, -1.3
 [node name="Enemy2" parent="SceneDirector/Wave2/Squad" unique_id=1859977113 instance=ExtResource("7_rjb0k")]
 transform = Transform3D(0.9659258, 0, 0.25881922, 0, 1, 0, -0.25881922, 0, 0.9659258, 1.526789, 0, 5.8921547)
 
+[node name="TavernReturnPortal" parent="." instance=ExtResource("8_return_portal")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 4.2)
+visible = false
+enabled = false
+monitoring = false
+level_number = 1
+
 [editable path="Camera3D"]
 [editable path="Squad/Enemy"]
 [editable path="NavigationRegion3D/Environment/FullCover/FullCover01"]
@@ -359,3 +367,4 @@ transform = Transform3D(0.9659258, 0, 0.25881922, 0, 1, 0, -0.25881922, 0, 0.965
 
 [node name="LevelFlow" parent="." instance=ExtResource("level_flow")]
 level_number = 1
+return_portal_path = NodePath("../TavernReturnPortal")

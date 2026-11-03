@@ -1,6 +1,8 @@
 # 竞技场与掩体编辑
 
-项目 F5 默认进入连续五关。要单独测试竞技场，打开 `movement_demo/scenes/main.tscn` 后按 F6；竞技场本体为 `scenes/arena.tscn`，在 Main 中以 Arena 实例接入。五关另见[关卡地图](LEVEL_MAPS.md)。旧场景布局和阶段记录见[历史记录](../history/2026-10-28/gameplay/ARENA.md)。
+项目 F5 默认进入酒馆并开启五关流程。要单独测试竞技场，打开 `movement_demo/scenes/main.tscn` 后按 F6；竞技场本体为 `scenes/arena.tscn`，在 Main 中以 Arena 实例接入。五关另见[关卡地图](LEVEL_MAPS.md)。旧场景布局和阶段记录见[历史记录](../history/2026-10-28/gameplay/ARENA.md)。
+
+`scenes/main.tscn` 实例化 `scenes/arena.tscn`。当前敌人部署在所属 `Squad` 下；玩家进入区域后启用 AI，离场按区域规则复位。旧门禁卡和门禁屏障已删除。酒馆东侧门口由 `Interactables/LevelPortal` 在接取 `task_a` 后切换至第1关；五关仍通过清场后的 `TavernReturnPortal` 返回酒馆。`main.tscn` 中的竞技场用于独立演示战斗，清场不再自动打开奖励或激活旧返回门；真实奖励由返回酒馆后的 `RewardNPC` 提供，完整流程见[阶段与任务](STAGE_STATE.md)。
 
 ## 场景与日常配置
 
@@ -31,3 +33,9 @@
 竞技场使用外部 `resources/navigation/arena_navigation.tres`。改墙体或可行走范围后重新烘焙，并同时保存场景与外部导航资源；`tests/bake_arena.gd` 是会写入导航的维护工具，不是只读测试。角色站高按1.75米维护，不能只凭导航线穿过就认定完整胶囊可通过。
 
 候选带不保证在地图边界处自动裁成全部合法区域。有限采样或绿色预览不能代替实际通行、转角、射线与翻越验证。验证方法见[敌人测试](../enemy-tests.md)；本次文档整理未重新运行场景或烘焙导航。
+
+半身掩体补充蹲藏与同一落点站起射击候选；实际姿态、枪口与视线各自检测。高掩体墙角区域几何与参数见[攻击位置](ATTACK_POINTS.md)。攻击占位在训练中开放后参与统一评分，旧版本的目击触发概率和固定优先级已被替代。低墙站姿射界检查已知头肩／躯干采样，避免只因躯干被墙挡住而漏掉能越墙射击的站位；真实开火仍复核当前枪口与可见目标。
+
+## 试玩
+
+默认 F5 进入酒馆；接取任务后可经门口传送门进入第1关。每关清空后仍先开放返程门，回酒馆与 A 交互后才解锁下一关。要单独观察竞技场，打开 `main.tscn` 的 `Arena/CombatZone` 按 F6，检查交战、换弹、绕掩体、失视搜索及重新目击。游戏内 Debug 总开关可显示攻击候选、声音范围和敌人状态；需要时启用无敌。

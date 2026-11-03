@@ -25,6 +25,30 @@ func _run() -> void:
 	_check("数字2切换副武器且不暂停", slots.active_slot == 1 and combat.weapon == slots.secondary_weapon and not paused)
 	_check("装备栏显示当前副武器", slots.get_node("Panel/Content/Slots/Secondary/Name").text.contains(slots.secondary_weapon.display_name))
 	_check("当前槽位有箭头高亮", slots.get_node("Panel/Content/Slots/Secondary/Name").text.begins_with("▶") and not slots.get_node("Panel/Content/Slots/Primary/Name").text.begins_with("▶"))
+	for slot in range(2):
+		var state = slots._ammo_states[slot]
+		if state != null:
+			state.magazine_rounds = 0
+			state.is_reloading = true
+	for ammo_type in slots.reserve_ammo.keys():
+		slots.reserve_ammo[ammo_type] = 0
+	slots.refill_all_ammo()
+	_check("弹药奖励恢复步枪备弹", slots.reserve_ammo[&"rifle"] == slots.starting_rifle_ammo)
+	_check("弹药奖励恢复手枪备弹", slots.reserve_ammo[&"pistol"] == slots.starting_pistol_ammo)
+	_check("弹药奖励恢复冲锋枪备弹", slots.reserve_ammo[&"smg"] == slots.starting_smg_ammo)
+	_check("弹药奖励恢复霰弹备弹", slots.reserve_ammo[&"shotgun"] == slots.starting_shotgun_ammo)
+	var expected_reserve := {
+		&"rifle": slots.starting_rifle_ammo,
+		&"pistol": slots.starting_pistol_ammo,
+		&"smg": slots.starting_smg_ammo,
+		&"shotgun": slots.starting_shotgun_ammo,
+	}
+	for slot in range(2):
+		var data = slots._weapon_at(slot)
+		if data != null:
+			var state = slots._ammo_states[slot]
+			_check("弹药奖励补满槽%d并取消换弹" % slot, state.magazine_rounds == data.magazine_capacity and not state.is_reloading)
+			_check("弹药奖励同步已初始化槽%d备弹" % slot, state.reserve_count() == expected_reserve[data.get_ammo_definition().ammo_id])
 	combat.accuracy = 0.05
 	combat.accuracy_recovery_timer = 0.6
 	combat.shot_cooldown = 0.7
@@ -61,11 +85,14 @@ func _run() -> void:
 	var secondary = load("res://resources/weapons/test_smg.tres").duplicate()
 	primary.min_spread_angle_degrees = 0.0
 	primary.max_spread_angle_degrees = 0.0
+	primary.headshot_enabled = false
 	secondary.min_spread_angle_degrees = 0.0
 	secondary.max_spread_angle_degrees = 0.0
+	secondary.headshot_enabled = false
 	slots.primary_weapon = primary
 	slots.secondary_weapon = secondary
-	_key(KEY_1)
+	# 当前已经选中主槽；替换资源后强制重绑，才能用无散布的测试资源开火。
+	slots._equip_slot(0)
 	player.global_position = Vector3(0, 0, -1)
 	player.rotation = Vector3.ZERO
 	var target = scene.get_node("CombatTest/TargetB")

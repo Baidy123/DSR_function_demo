@@ -1,0 +1,60 @@
+[gd_scene load_steps=10 format=3]
+
+[ext_resource type="PackedScene" path="res://scenes/world/interactable.tscn" id="1_interactable"]
+[ext_resource type="Script" path="res://scripts/world/quest_portal.gd" id="2_portal"]
+[ext_resource type="Script" path="res://scripts/world/interactions/change_scene_effect.gd" id="3_change_scene"]
+[ext_resource type="Script" path="res://scripts/world/interactions/interaction_effect.gd" id="4_effect"]
+
+[sub_resource type="Resource" id="Effect_enter_level"]
+script = ExtResource("3_change_scene")
+scene_path = "res://scenes/world/levels/lvl_1.tscn"
+
+[sub_resource type="StandardMaterial3D" id="Material_portal"]
+transparency = 1
+shading_mode = 0
+albedo_color = Color(0.18, 0.85, 1, 0.42)
+emission_enabled = true
+emission = Color(0.12, 0.68, 1, 1)
+emission_energy_multiplier = 2.5
+
+[sub_resource type="QuadMesh" id="Mesh_portal"]
+material = SubResource("Material_portal")
+size = Vector2(1.45, 2.15)
+
+[sub_resource type="StandardMaterial3D" id="Material_frame"]
+albedo_color = Color(0.22, 0.34, 0.42, 1)
+metallic = 0.65
+roughness = 0.25
+
+[sub_resource type="TorusMesh" id="Mesh_frame"]
+material = SubResource("Material_frame")
+inner_radius = 0.68
+outer_radius = 0.86
+rings = 48
+ring_segments = 12
+
+[node name="LevelPortal" instance=ExtResource("1_interactable")]
+script = ExtResource("2_portal")
+interact_id = &"level_1_portal"
+display_name = "关卡1"
+verb = "进入"
+blocked_hint = "需要先接取 A 的任务"
+effects = Array[ExtResource("4_effect")]([SubResource("Effect_enter_level")])
+
+[node name="CollisionShape3D" parent="." index="0"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.1, 0)
+
+[node name="Body" parent="." index="1"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.2, 0)
+mesh = SubResource("Mesh_portal")
+
+[node name="Frame" type="MeshInstance3D" parent="." index="2"]
+transform = Transform3D(1, 0, 0, 0, 0, -1, 0, 1, 0, 0, 1.2, 0)
+mesh = SubResource("Mesh_frame")
+
+[node name="Name" parent="." index="3"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 2.65, 0)
+text = "关卡1"
+
+[node name="Prompt" parent="." index="4"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 2.2, 0)

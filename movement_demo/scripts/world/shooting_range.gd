@@ -1,6 +1,7 @@
 extends Node3D
 
 signal presentation_reset(region: Node)
+signal combat_cleared(region: Node)
 
 const EnemyWaves = preload("res://scripts/world/enemy_wave_controller.gd")
 var _enemy_waves: Node
@@ -14,6 +15,7 @@ var enemies: Array[CharacterBody3D] = []
 var _combat_zone: Area3D
 var tactical_map = preload("res://scripts/enemy/services/enemy_tactical_map.gd").new()
 var cooperation = preload("res://scripts/enemy/services/enemy_cooperation.gd").new()
+var _encounter_cleared: bool = false
 var vault_navigation = preload("res://scripts/world/vault_navigation.gd").new()
 var ammo_drops = preload("res://scripts/world/ammo_drop_controller.gd").new()
 
@@ -31,9 +33,15 @@ func register_enemy(enemy: CharacterBody3D) -> void:
 	if not enemies.has(enemy):
 		enemies.append(enemy)
 		ammo_drops.register_enemy(enemy)
+	var died_callback := Callable(self, "_on_enemy_died")
+	if enemy.has_signal("died") and not enemy.is_connected("died", died_callback):
+		enemy.connect("died", died_callback)
 
 
 func unregister_enemy(enemy: CharacterBody3D) -> void:
+	var died_callback := Callable(self, "_on_enemy_died")
+	if enemy.has_signal("died") and enemy.is_connected("died", died_callback):
+		enemy.disconnect("died", died_callback)
 	ammo_drops.unregister_id(enemy.get_instance_id())
 	enemies.erase(enemy)
 	cooperation.unregister(enemy.get_instance_id())
@@ -47,6 +55,8 @@ func _enter_tree() -> void:
 		if child is EnemyWaves: controllers.append(child)
 	if not controllers.is_empty(): _enemy_waves = controllers[0]
 	for controller in controllers: controller.capture_templates(self)
+	if is_instance_valid(_enemy_waves) and not _enemy_waves.encounter_completed.is_connected(_on_enemy_waves_completed):
+		_enemy_waves.encounter_completed.connect(_on_enemy_waves_completed)
 
 
 func _ready() -> void:
@@ -83,6 +93,7 @@ func _physics_process(delta: float) -> void:
 		# A committed reinforcement can freeze the scene before cooperation advances.
 		if get_tree().paused: return
 		cooperation.advance(delta)
+	_check_combat_cleared()
 
 
 func has_active_player() -> bool:
@@ -129,6 +140,7 @@ func _reset_targets() -> void:
 	if is_instance_valid(_enemy_waves): _enemy_waves.reset_encounter()
 	cooperation.reset()
 	tactical_map.reset()
+	_encounter_cleared = false
 	presentation_reset.emit(self)
 	# 直接子靶与注册的嵌套敌人去重，只刷新本区域。
 	var targets: Array[Node] = []
@@ -142,8 +154,39 @@ func _reset_targets() -> void:
 		if target.is_inside_tree() and target.has_method("reset_target"):
 			target.reset_target()
 
-
 func _exit_tree() -> void:
 	ammo_drops.release()
 	tactical_map.release()
 	vault_navigation.release()
+
+
+func _on_enemy_died() -> void:
+	_check_combat_cleared()
+
+
+func _on_enemy_waves_completed() -> void:
+	if has_active_player():
+		_emit_combat_cleared()
+
+
+## 无波次区域沿用登记敌人清空；有波次时由 EnemyWaves 确认全部波次完成。
+func _check_combat_cleared() -> void:
+	if _encounter_cleared or not has_active_player() or is_instance_valid(_enemy_waves):
+		return
+	var registered_enemies: Array[CharacterBody3D] = []
+	for enemy in enemies:
+		if is_instance_valid(enemy) and enemy.is_inside_tree():
+			registered_enemies.append(enemy)
+	if registered_enemies.is_empty():
+		return
+	for enemy in registered_enemies:
+		if not enemy.get("is_dead"):
+			return
+	_emit_combat_cleared()
+
+
+func _emit_combat_cleared() -> void:
+	if _encounter_cleared or not has_active_player():
+		return
+	_encounter_cleared = true
+	combat_cleared.emit(self)

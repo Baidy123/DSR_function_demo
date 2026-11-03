@@ -126,6 +126,11 @@ func _ready() -> void:
 		body.mesh = _body_mesh
 	_apply_body_posture()
 	if health != null: health.died.connect(_on_posture_death)
+	var game_state := get_node_or_null("/root/GameState")
+	if game_state != null and game_state.has_method(&"take_pending_player_state"):
+		var snapshot: Dictionary = game_state.take_pending_player_state()
+		if not snapshot.is_empty():
+			PlayerCampaignState.apply(self, snapshot)
 
 
 func _unhandled_input(event: InputEvent) -> void:

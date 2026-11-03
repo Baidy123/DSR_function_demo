@@ -4,6 +4,8 @@
 
 [功能](#已实现的功能) · [操作](#玩家操作) · [配置接口](#配置接口) · [脚本接口](#常用脚本接口) · [扩展方法](#如何扩展) · [完整文档](docs/README.md)
 
+直接运行工程或按 **F5** 即进入酒馆。接取 A 的任务后，酒馆门口的传送门会解锁，按 E 进入第1关。任务面板依次记录“通关第1关”至“通关第5关”：A 解锁关卡时对应任务进入进行中，清场返回酒馆后完成任务。每关清空都会先返回酒馆，再次与 A 交互后才解锁下一关。每次返回后都可由蓝色“结算奖励”NPC 领取本关三选一；第1～5关分别配置、分别记录一次领取。跨关保留生命、当前武器、两把枪的弹匣与共享备弹、医疗包；死亡仍按原规则重开当前关。Debug 总开关开启后可一键完成当前关。完整操作见[五关游玩说明](docs/gameplay/PLAY_GUIDE.md)，奖励配置见[关卡奖励](docs/gameplay/REWARDS.md)。
+
 ## 已实现的功能
 
 | 模块 | 当前能力 |
@@ -109,6 +111,42 @@
 [文档总目录](docs/README.md)按玩法、配置、结构和验证分类。[项目结构](docs/project-layout.md)说明文件职责与维护约束；[测试说明](docs/testing.md)列出运行器和验证方式；[敌人测试](docs/enemy-tests.md)记录 AI 专项与已知限制；[当前待办](docs/TODO.md)跟踪进度。
 
 `movement_demo/scenes/` 保存场景，`scripts/` 保存运行代码，`resources/` 保存配置，`tests/` 保存验证，`logs/` 保存不提交的运行输出。Dialogue Manager、Phantom Camera、Godot AI 及项目自有检查器插件位于 `addons/`，第三方许可证随插件保留。
+
+## 当前实现补充
+
+医疗包操作：松开动作键后按 **H** 治疗，无需等待惯性停稳；默认两秒完成、恢复50生命，初始3个。动作输入或受击立即打断，中断不消耗。选中 `Player → Equipment`，在“医疗包”分组配置 **Medkit Count** 与 **Medkit** 资源，展开资源调整回血量／时间；Equipment（装备）为原 WeaponSlots 节点，统一管理武器与医疗包，见 [生命与医疗包](docs/gameplay/PLAYER_HEALTH.md)。
+
+攻击武器可配置命中／压制精度损失（百分比）、擦过范围和击中速度损失。玩家 `Combat → 受击反应倍率`、敌人 `Training → Profile → tactics → 受击反应倍率` 各有三个可在检查器修改的倍率，射击与附带近战共用对应倍率；字段提示解释公式和关闭方式，见 [命中效果与倍率](docs/gameplay/COMBAT.md#命中压制与击中减速2026-10-24)。
+
+酒馆门口现在串联五关流程：首次接取 A 任务后进入第1关；每关清场后先返回酒馆，再次与 A 对话才解锁下一关，门口传送门随解锁进度更新目标。跨关状态由 `GameState` 的一次性快照携带，酒馆中的奖励治疗和补给会继续带入下一关。死亡仍只重开当前关并使用该关保存配置。任务面板默认隐藏，按 Tab 显示。
+
+## 打开工程
+
+1. 使用本工程已验证的 Godot 4.7.2 标准版。
+2. 在 Godot 项目管理器中导入 `movement_demo/project.godot`。
+3. 等待资源和插件首次导入完成，按 F5 进入酒馆；接取 A 的任务后，从门口传送门进入第1关。也可打开任意 `scenes/world/levels/lvl_N.tscn` 按 F6 单独试玩。
+
+所需的 Dialogue Manager、Phantom Camera 和 Godot AI 插件源码及各自许可证随工程保存。Godot 可执行程序、导入缓存和临时文件不纳入仓库。
+
+## 项目说明
+
+- [后续总待办](docs/TODO.md)
+- [五关游玩说明与连续闯关](docs/gameplay/PLAY_GUIDE.md)
+- [操作与移动说明](docs/gameplay/MOVEMENT.md)
+- [战斗说明](docs/gameplay/COMBAT.md)
+- [玩家近战、近战兵战术与武器参数](docs/gameplay/MELEE.md)
+- [竞技场说明](docs/gameplay/ARENA.md)
+- [五张关卡地图与导航](docs/gameplay/LEVEL_MAPS.md)
+- [场景交互物说明](docs/gameplay/INTERACTION.md)
+- [关卡奖励配置](docs/gameplay/REWARDS.md)
+- [阶段、任务与 NPC 状态](docs/gameplay/STAGE_STATE.md)
+- [模型、动画与命中特效接入](docs/gameplay/PRESENTATION.md)
+- [相机视野、武器绑定与遮挡透明](docs/gameplay/CAMERA.md)
+- [敌人 AI 结构、维护与使用部署](docs/enemy-ai.md)
+- [项目目录结构](docs/project-layout.md)
+- [统一测试入口与维护](docs/testing.md)
+
+运行脚本按职责位于 `movement_demo/scripts/`，敌人测试集中在 `movement_demo/tests/enemy/`。旧敌人实现和未引用的玩家射击原型已清理。
 
 ## 历史记录
 

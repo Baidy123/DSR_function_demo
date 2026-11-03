@@ -2,6 +2,8 @@
 
 该系统服务独立任务演示，按配置表表达接任务、进入场地、返回结算和 NPC 状态。连续五关的 LevelFlow 只消费波次完成信号，使用单独的[关卡流程](PLAY_GUIDE.md)，不读写本页三个控制器的任务状态。
 
+2026-11-02 的本地五关接入把两套职责同时保留：工程默认 F5 进入酒馆，五关都通过返程门回到酒馆，再由 A 解锁下一关并从门口传送门出发。关卡进度由 `GameState` 的 `completed_level`／`available_level` 管理；酒馆主线任务仍由任务控制器读取这些状态来标记“通关第N关”。独立任务演示继续按配置表表达接任务、进入场地、返回结算和 NPC 状态；连续五关的 `LevelFlow` 只消费波次信号并启用返程门，不自行切换下一关。详见[五关说明](PLAY_GUIDE.md)。
+
 配置入口为 **StageStateController → Stage Table**，资源模板是 `resources/stages/stage_table_template.tres`。普通玩法改配置表，扩展条件或状态类型才改对应资源／控制器。
 
 ## 三个控制器
@@ -43,21 +45,23 @@
 7. 想新增一个任务阶段时，复制整份 `.tres`，改阶段序号、任务 id 与规则，再把新表赋给
    `StageStateController.stage_table`（多份表的分发规则见[待办](../TODO.md)）。
 
-模板里已按现状填了两个任务：
+- 任务控制器不监听 `phase_changed`；五关通关任务都由 `completed_level` 的整数下限条件驱动，不是靠阶段变化触发。
+- 任务控制器订阅阶段控制器的只读广播 `stage_changed` 来重算窗口；阶段控制器订阅 `quest_changed` 来重推阶段。
+  两边都只读值、不调用对方的行为，重算幂等且只在值变化时广播，所以不会来回震荡。
+- `StageStateController` 只负责把同一张配置表分发给两个控制器，不再做「任务监听阶段」这类接线。
 
-- `task_a`（帮 A 的忙）：接取 `help_choice == accepted`，拒绝 `help_choice == refused`，
-  完成＝曾进入 `arena` 且曾离开 `arena`（等价于原来的“离开场地返回结算”）。
-- `task_music`（打开唱片机，阶段一内的支线，不占阶段序号）：接取 `music_quest_choice == accepted`，
-  完成＝`music_quest_turnin == done` **且** `music_playing` 为真。所以交差时唱片机被关掉就不会完成，
-  重新打开再交差才会完成；没接取时完成条件根本不参与评估。
-  唱片机在接取前后都能操作，接取前开关音乐只是写旗标，不会推进任务状态。
-  这个任务**没有拒绝条件**：B 对话里的“现在不行”只把 `music_quest_choice` 写成 `refused` 供对话分支使用，
-  任务状态保持未接；再找 B 会看到拒绝台词，并可以直接“我改主意了”重新接取。
+独立任务示例中的唱片机支线仍由同一张表表达：`task_music` 在阶段一内不占阶段序号，接取条件为
+`music_quest_choice == accepted`，完成要求 `music_quest_turnin == done` **且** `music_playing` 为真。
+因此交差时关掉唱片机不会完成，重新打开后再交差才完成；未接取时完成条件不参与评估。唱片机在接取前后都能操作，
+接取前开关音乐只写旗标。该任务没有拒绝条件，B 对话里的“现在不行”只写 `music_quest_choice = refused`
+供对话分支使用，任务状态保持未接，再找 B 可以重新接取。
 
 ### 开关：先检测，再决定是否落地
 
 `StageStateController.apply_enabled` 默认关闭。关闭时只检测、只记录，游戏表现和接入前完全一致；
 表填好、确认无误后再打开，NPC 的在场、站位与对话才会真正按表变化。
+
+本地合并基线还把五条关卡主线登记在同一张表中：`task_a` 与 `task_level_2` 至 `task_level_5` 分别按 `available_level >= N` 接取、`completed_level >= N` 完成。该扩展不改变上面独立任务演示与五关流程的职责边界。
 
 ## 阶段与环节
 
@@ -73,7 +77,7 @@
 | 返回结算 | 已离开场地 | 任务已完成／已失效，或到过场地后离开 |
 
 阶段序号是“第一个尚未完成的阶段”，本阶段任务处于**已完成或已失效**都算结束，不会因为任务失效卡在原处。
-任务二接入时，阶段序号会自动落到“第一个尚未完成的阶段”；表里全部完成则停在最后一个阶段。
+新增任务阶段时，阶段序号会自动落到“第一个尚未完成的阶段”；五关表全部完成则停在最后一个阶段。
 
 ## 任务条件
 
@@ -91,6 +95,7 @@
 | `source` | 判定 | 用到的字段 |
 | --- | --- | --- |
 | `STATE_FIELD` | 状态字段的字符串值相等 | `key`、`state_value` |
+| `STATE_INT_AT_LEAST` | 状态字段整数值 ≥ 下限 | `key`、`min_value` |
 | `FLAG` | 旗标等于给定真假 | `key`、`flag_value` |
 | `ITEM` | 持有物品数量 ≥ 给定值 | `key`、`min_count` |
 | `INTERACTED` | 曾与 `key` 标识的交互物交互过 | `key` |
@@ -100,6 +105,66 @@
 `key` 留空的条件视为不满足。区域与交互用“曾经”语义：一次进入或交互即长期成立；因为任务状态不回退，
 效果上等于“首次触发”。条件每次在下列事件后重新评估：状态字段变化、拾取物品、旗标变化、
 交互物报告交互、区域进出、阶段变化、换表。
+
+## 关卡返回与酒馆奖励闭环
+
+每关由 `EncounterController`（`scripts/systems/stage/encounter_controller.gd`）
+配合关卡完成状态和酒馆 `RewardNPC` 串起“清场 → 返回酒馆 → 找 NPC 领取本关奖励”：
+
+1. A 的对话说明逐关解锁目标。接受后 `help_choice` 写为 `accepted`、`available_level = 1`，任务进入进行中；
+   酒馆门口 `Interactables/LevelPortal` 随后解锁，按 E 可切换到 `scenes/world/levels/lvl_1.tscn`。
+   旧门禁卡与门禁屏障已删除。
+   第一关清空后，出生点附近的 `TavernReturnPortal` 出现；交互会写入 `task_a_returned = returned` 并返回酒馆。
+2. 酒馆重新加载后，任务控制器按 `completed_level >= 1` 把“通关第1关”任务判为已完成；
+   `task_a_returned == returned` 继续写入供旧任务逻辑兼容。酒馆内的蓝色 `RewardNPC` 使用 `scripts/world/reward_npc.gd`；
+   任务未完成时按 E 只显示普通提示，不会打开奖励。
+3. 玩家完成任意关卡且本关尚未领取时，靠近 `RewardNPC` 按 E 会通过
+   `EncounterController.open_reward_for_player()` 暂停并显示 `scenes/ui/reward_board.tscn`。
+   面板从 `resources/rewards/level_rewards.tres` 读取当前关三项配置，`process_mode` 为 ALWAYS。
+4. 每项配置包含显示名称、说明、效果类型和数值。默认第1～5关均为急救包、弹药补给、系统进度，
+   但每关条目独立，可分别修改而互不影响。
+5. 选定后按配置结算，并把 `completed_level` 写入 `GameState.claimed_reward_levels`。
+   同一关不能重复领取；下一关完成后重新开放本次三选一。
+6. 领取状态跨场景保留，重新运行游戏才重置。`task_a_reward_claimed` 仅保留为第1关旧接口镜像。
+
+`main.tscn` 中的竞技场仍可独立进入和清场，但 `Arena.combat_cleared` 不再自动打开奖励，
+也没有旧的 `Arena/CombatZone/ReturnPortal`。
+`system_progress` 目前只累计并显示在任务面板上，尚未用于章节解锁或后续内容门槛。
+
+## 五关进度与跨关玩家状态
+
+五关共用 `LevelFlow`、`TavernReturnPortal` 和酒馆 `QuestPortal`：
+
+1. 任意关卡清空后，`LevelFlow` 只启用本关 `TavernReturnPortal`，不显示按钮切关，也不暂停。
+2. 返程门把本关编号写入 `GameState.completed_level`，并用 `PlayerCampaignState.capture()`
+   保存一次待恢复状态；第1关同时写入 `task_a_returned = returned`。
+3. 新玩家实例在 `player.gd::_ready()` 中消费一次 `pending_player_state`。因此回酒馆时，
+   同一个角色逻辑上的生命、当前槽位、双武器、各自弹匣、共享备弹和医疗包会出现在新 Player 节点上；
+   瞄准、换弹进度、受击减速、体力和蹲姿等临时过程不跨场景。
+4. 关卡刚完成时 `available_level == completed_level`，门口传送门保持锁定。A 对话把
+   `available_level` 改为已完成关卡 +1 后，`QuestPortal` 才更新 `ChangeSceneEffect` 的目标并允许进入。
+5. 由酒馆进入下一关前，门口传送门再次捕获当前玩家状态，所以酒馆中的治疗、弹药奖励会带入下一关。
+   快照被新玩家实例消费后立即清空。
+6. 第5关完成后 `completed_level == available_level == 5`，A 显示五关完成，不再提供下一关。
+
+死亡不写入跨关快照，仍由 `PlayerHealth` 重开当前关；重开场景按该关保存配置恢复生命、武器、弹药和医疗包，
+不会把上一个场景残留的快照再次带入。正常跨关和死亡重开因此使用不同状态来源。
+
+主线任务表现在有五关条目：
+
+- `task_a` 显示“通关第1关”，由 `help_choice == accepted` 接取，`completed_level >= 1` 完成。
+- `task_level_2` 至 `task_level_5` 显示“通关第2关”至“通关第5关”；分别在
+  `available_level >= N` 时接取、`completed_level >= N` 时完成。
+- 任务完成是终态；A 后一次解锁不会回退已完成任务。任务面板按同一任务表更新。
+
+整数下限条件使用 `QuestCondition.int_at_least(key, value)`；手写 `.tres` 时
+`source=6`、`min_value=N`。该来源追加在枚举末尾，原有字段、旗标、物品、交互和区域条件的整数索引保持不变。
+
+奖励控制器按 `completed_level` 查询本关奖励；`claimed_reward_levels` 只记录对应关卡。
+第1关领取后第2关仍可领取，第2关领取后第3～5关同理。具体配置说明见[关卡奖励](REWARDS.md)。
+
+正式切场景统一经过 `SceneTransition`。切换前先把 `World3D` 的环境恢复为中性回退值，避免酒馆环境光残留到没有
+自己的 `WorldEnvironment` 的关卡；传送门、关卡按钮和死亡重开不会各自复制渲染清理代码。
 
 ## 阶段窗口
 
@@ -139,15 +204,14 @@
 
 ## 任务面板
 
-主场景已移除任务面板及任务状态调试框。
-`scenes/ui/quest_panel.tscn` + `scripts/ui/quest_panel.gd` 保留为可单独装配的组件，仅组件测试显式挂载，
-半透明样式与调试面板一致，鼠标事件忽略、不抢对话与交互按键。面板只读任务控制器：
+当前合并基线在 `main.tscn` 挂载 `scenes/ui/quest_panel.tscn` 与 `scripts/ui/quest_panel.gd`，默认隐藏，按 Tab 显示或隐藏；五关场景不挂载这套酒馆任务界面。上游保留的“可独立装配组件”能力仍有效，组件测试可显式挂载。面板半透明、鼠标事件忽略，不抢对话与交互按键；Tab 使用运行时输入动作绑定，不依赖 `project.godot` 中的输入条目。面板只读任务控制器和状态节点：
 
 - 一行一个任务，格式“任务名：状态”，`target_area` 非空时附“（场地 xxx）”；
 - 未解锁显示“未解锁”，配置表为空时显示“暂无任务”；
+- 系统进度使用最大值 100 的 `ProgressBar`，并显示“当前值 / 100”；
 - 监听 `quest_changed` 刷新，并在启动时延迟补刷一次，兜住控制器晚接线。
 
-当前主场景不再挂载 `GameStateDebug`；任务控制器与配置表接口保持原归属。
+当前 `main.tscn` 不再挂载 `GameStateDebug`；任务控制器与配置表接口保持原归属。
 
 ## 解耦约定
 
@@ -179,7 +243,38 @@
 
 配置资源与控制器位于 `scripts/systems/stage/`，场景控制器是普通节点，通过组查找；NPC 通过稳定 `npc_id` 与状态接口接入。`StageStateController.reload_table()` 重新分发表，`get_snapshot()`／`snapshot_changed` 提供只读状态；调试接口不能替代运行时真实事件验证。
 
-对应条件、任务状态、阶段接线、面板和交互支线测试列于[测试说明](../testing.md)。原场景未挂载的任务面板和交互物由独立夹具装配，不能把旧演示位置当作当前主场景配置。
+## 当前模板条目
+
+模板已按现状填了五条主线和一个支线：
+
+- `task_a`（通关第1关）：接取 `help_choice == accepted`，拒绝 `help_choice == refused`，
+  完成＝`completed_level >= 1`。
+- `task_level_2` 至 `task_level_5`：分别在 `available_level >= N` 时接取、
+  `completed_level >= N` 时完成。
+- `task_music`（打开唱片机，阶段一内的支线，不占阶段序号）：接取 `music_quest_choice == accepted`，
+  完成＝`music_quest_turnin == done` **且** `music_playing` 为真。所以交差时唱片机被关掉就不会完成，
+  重新打开再交差才会完成；没接取时完成条件根本不参与评估。
+  唱片机在接取前后都能操作，接取前开关音乐只是写旗标，不会推进任务状态。
+  这个任务**没有拒绝条件**：B 对话里的“现在不行”只把 `music_quest_choice` 写成 `refused` 供对话分支使用，
+  任务状态保持未接；再找 B 会看到拒绝台词，并可以直接“我改主意了”重新接取。
+
+## 验证
+
+对应条件、任务状态、阶段接线、面板和交互支线测试列于[测试说明](../testing.md)。本地五关新增记录包括：
+
+- `campaign_quest_task_test`：五条关卡任务随 A 解锁与通关更新、任务面板名称，以及各关奖励资格互相独立。
+- `campaign_flow_test`：五关返程门、A 逐关解锁、动态传送门、跨关生命／双武器／弹匣／备弹／医疗包，以及死亡重开不消费跨关快照。
+- `reward_per_level_test`：第1～5关均可领取一次、领取状态互不影响，以及自定义标题、说明与数值。
+- `debug_complete_level_test`：Debug 总开关、一键完成当前关、单次完成信号和返程门流程。
+
+任务面板、交互物和 NPC 的独立夹具仍可用于隔离测试，但不能把夹具中的旧演示位置当成当前主场景配置；当前 `main.tscn` 已挂载任务面板。
+
+## 后续
+
+多份配置表的分发、任务二的场地与内容、酒馆场景整体变化还没做；
+五关已经使用真实场景往返酒馆，并由 A 控制逐关解锁。
+跨场景运行状态已保留，但退出游戏后的进度持久化仍未做；`system_progress` 只累计并显示、未用于章节门槛，
+都记录在 [待办](../TODO.md)。
 
 ## 历史记录
 

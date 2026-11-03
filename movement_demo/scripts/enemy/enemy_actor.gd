@@ -58,7 +58,7 @@ var _melee_hit_used := false
 ## 身体每秒最多转动的角度（度/秒）。
 @export var turn_speed_degrees: float = 360.0
 ## 出生、离场刷新和重新开始时恢复的生命值。
-@export var max_health: float = 100.0
+@export var max_health: float = 1.0
 
 @export_group("移动声音")
 ## 实际水平移动时发声，0关闭；敌人听觉会忽略自己及队友的声音。
@@ -124,7 +124,7 @@ var _last_visible_point: Vector3 = Vector3.INF
 var _shot_rng := RandomNumberGenerator.new()
 var _offscreen_fire_rng := RandomNumberGenerator.new()
 
-var health: float = 100.0
+var health: float = 1.0
 var is_dead: bool = false
 var initial_transform: Transform3D
 var _spawn_world_before_reparent := Transform3D.IDENTITY

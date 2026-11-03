@@ -34,6 +34,7 @@ var is_dead: bool = false
 @onready var stamina_label: Label = $Status/Content/Stamina/Label
 @onready var invincible_toggle: CheckBox = $Debug/Controls/Invincible
 @onready var damage_button: Button = $Debug/Controls/Damage
+@onready var complete_level_button: Button = $Debug/Controls/CompleteLevel
 
 
 func _ready() -> void:
@@ -46,6 +47,7 @@ func _ready() -> void:
 	debug_settings.set_enabled(debug_mode)
 	_apply_debug_mode(debug_settings.enabled)
 	damage_button.pressed.connect(_debug_damage)
+	complete_level_button.pressed.connect(_debug_complete_level)
 	_update_display()
 	_update_stamina_display()
 
@@ -98,6 +100,23 @@ func restore_health(amount: float) -> float:
 	return restored
 
 
+## 奖励等其他系统的恢复入口；与医疗包共用同一生命结算。
+func heal(amount: float) -> float:
+	return restore_health(amount)
+
+
+func campaign_snapshot() -> Dictionary:
+	return {"health": health}
+
+
+func apply_campaign_snapshot(snapshot: Dictionary) -> void:
+	if snapshot.is_empty():
+		return
+	is_dead = false
+	health = clampf(float(snapshot.get("health", max_health)), 1.0, max_health)
+	_update_display()
+
+
 func is_invincible() -> bool:
 	return debug_settings.enabled
 
@@ -109,12 +128,26 @@ func _set_debug_invincible(enabled: bool) -> void:
 func _apply_debug_mode(enabled: bool) -> void:
 	debug_mode = enabled
 	$Debug/Controls/NoiseRanges.disabled = not enabled
+	complete_level_button.disabled = not enabled
 	_update_display()
 
 
 func _debug_damage() -> void:
 	if OS.is_debug_build():
 		player.receive_hit(25.0)
+
+
+func _debug_complete_level() -> void:
+	if not OS.is_debug_build() or not debug_settings.enabled or is_dead:
+		return
+	var scene := get_tree().current_scene
+	if scene == null:
+		return
+	var waves := scene.get_node_or_null("SceneDirector")
+	if waves == null:
+		waves = scene.get_node_or_null("EnemyWaves")
+	if waves != null and waves.has_method(&"debug_complete_encounter"):
+		waves.debug_complete_encounter()
 
 
 func _update_display() -> void:

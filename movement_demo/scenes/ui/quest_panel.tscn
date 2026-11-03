@@ -22,7 +22,7 @@ script = ExtResource("1_quest_panel")
 offset_left = 16.0
 offset_top = 16.0
 offset_right = 336.0
-offset_bottom = 120.0
+offset_bottom = 210.0
 mouse_filter = 2
 theme_override_styles/panel = SubResource("StyleBoxFlat_quest_panel")
 
@@ -40,6 +40,21 @@ layout_mode = 2
 layout_mode = 2
 theme_override_font_sizes/font_size = 18
 text = "任务状态"
+
+[node name="SystemProgress" type="VBoxContainer" parent="Panel/Margin/Content"]
+layout_mode = 2
+theme_override_constants/separation = 4
+
+[node name="Label" type="Label" parent="Panel/Margin/Content/SystemProgress"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 16
+text = "系统进度：0 / 100"
+
+[node name="Bar" type="ProgressBar" parent="Panel/Margin/Content/SystemProgress"]
+custom_minimum_size = Vector2(260, 18)
+layout_mode = 2
+max_value = 100.0
+show_percentage = false
 
 [node name="QuestList" type="Label" parent="Panel/Margin/Content"]
 layout_mode = 2

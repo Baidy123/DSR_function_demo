@@ -1,6 +1,6 @@
 extends SceneTree
 
-## 任务控制器检查：阶段窗口、六种条件来源、终态不回退、查询接口与只读阶段接口。
+## 任务控制器检查：阶段窗口、条件来源、终态不回退、查询接口与只读阶段接口。
 ## 运行：godot --headless --path movement_demo --script res://tests/quest_system_test.gd
 
 const QuestConditionScript := preload("res://scripts/systems/stage/quest_condition.gd")
@@ -136,7 +136,7 @@ func _build_table() -> Resource:
 	device_quest.display_name = "设备"
 	device_quest.stage_index = 1
 	device_quest.accept_conditions.assign([
-		QuestConditionScript.item(&"keycard", 1),
+		QuestConditionScript.item(&"quest_item", 1),
 		QuestConditionScript.interacted(&"console"),
 	])
 	device_quest.complete_conditions.assign([QuestConditionScript.flag(&"device_fixed")])
@@ -169,7 +169,7 @@ func _check_field_conditions() -> void:
 
 func _check_item_and_interact_conditions() -> void:
 	check(quests.status_of(&"device") == QuestControllerScript.Status.NOT_STARTED, "条件不足时不接取支线")
-	state.add_item(&"keycard", "门禁卡")
+	state.add_item(&"quest_item", "任务物品")
 	check(quests.status_of(&"device") == QuestControllerScript.Status.NOT_STARTED, "只满足物品条件仍不接取")
 	console.interacted.emit(console, player)
 	check(quests.status_of(&"device") == QuestControllerScript.Status.IN_PROGRESS, "物品与交互条件都满足时接取")
@@ -222,5 +222,5 @@ func _check_stage_readonly() -> void:
 
 func _check_stage_independent() -> void:
 	var before: int = stage.get_stage_index()
-	state.add_item(&"keycard", "门禁卡", 1)
+	state.add_item(&"quest_item", "任务物品", 1)
 	check(stage.get_stage_index() == before, "任务状态变化不会推进任务侧持有的阶段序号")

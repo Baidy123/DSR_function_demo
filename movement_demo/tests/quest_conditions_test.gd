@@ -6,7 +6,7 @@ extends SceneTree
 const QuestConditionScript := preload("res://scripts/systems/stage/quest_condition.gd")
 
 ## 断言总数；脚本报错会中断检查函数，最后用它兜住「报错却显示全绿」的假通过。
-const EXPECTED_CHECKS := 16
+const EXPECTED_CHECKS := 19
 
 var failures: int = 0
 var checks_run: int = 0
@@ -46,6 +46,7 @@ func _check_defaults() -> void:
 	check(condition.key == &"", "默认 key 为空")
 	check(condition.flag_value, "旗标默认期望为真")
 	check(condition.min_count == 1, "物品默认最少数量为 1")
+	check(condition.min_value == 1, "整数状态字段默认最小值为 1")
 
 
 func _check_factories() -> void:
@@ -56,6 +57,13 @@ func _check_factories() -> void:
 		and field.state_value == "accepted",
 		"field() 构造状态字段条件"
 	)
+	var numeric = QuestConditionScript.int_at_least(&"completed_level", 2)
+	check(
+		numeric.source == QuestConditionScript.Source.STATE_INT_AT_LEAST
+		and numeric.key == &"completed_level"
+		and numeric.min_value == 2,
+		"int_at_least() 构造整数下限条件"
+	)
 	var flag = QuestConditionScript.flag(&"music_playing", false)
 	check(
 		flag.source == QuestConditionScript.Source.FLAG
@@ -63,10 +71,10 @@ func _check_factories() -> void:
 		and not flag.flag_value,
 		"flag() 构造旗标条件并保留真假"
 	)
-	var item = QuestConditionScript.item(&"keycard", 2)
+	var item = QuestConditionScript.item(&"quest_item", 2)
 	check(
 		item.source == QuestConditionScript.Source.ITEM
-		and item.key == &"keycard"
+		and item.key == &"quest_item"
 		and item.min_count == 2,
 		"item() 构造物品条件并保留数量"
 	)
@@ -90,11 +98,15 @@ func _check_describe() -> void:
 		"状态字段条件描述包含字段与取值"
 	)
 	check(
+		QuestConditionScript.int_at_least(&"completed_level", 2).describe() == "状态字段至少 completed_level >= 2",
+		"整数下限条件描述包含字段与下限"
+	)
+	check(
 		QuestConditionScript.flag(&"music_playing", false).describe() == "旗标 music_playing == 假",
 		"旗标条件描述包含真假"
 	)
 	check(
-		QuestConditionScript.item(&"keycard", 2).describe() == "物品 keycard >= 2",
+		QuestConditionScript.item(&"quest_item", 2).describe() == "物品 quest_item >= 2",
 		"物品条件描述包含数量"
 	)
 	check(

@@ -31,6 +31,7 @@ var _guide_finished := false
 var _guide_scope := 0
 var _completion_pending := false
 var _completion_frame := -1
+var _completion_pauses_world := true
 var _presentation_id := 0
 var _active_presentation := 0
 var _presentation_scope := 0
@@ -65,6 +66,8 @@ func initialize() -> void:
 			return
 		_health.set_meta(&"scene_director", weakref(self))
 	_level_flow = _bindings.get("level_flow")
+	if is_instance_valid(_level_flow) and _level_flow.has_method("completion_pauses_world"):
+		_completion_pauses_world = bool(_level_flow.completion_pauses_world())
 	_waves = _bindings.get("wave_runtime")
 	_camera = _bindings.get("camera")
 	_result_view = _bindings.get("result_view")
@@ -179,7 +182,8 @@ func _finish_completion() -> void:
 		_on_player_died()
 		return
 	_completion_pending = false
-	_terminal_token = _pauses.acquire(self, &"completion", true)
+	if _completion_pauses_world:
+		_terminal_token = _pauses.acquire(self, &"completion", true)
 	_set_state(&"completed")
 	_generation += 1
 	_cancel_actions()

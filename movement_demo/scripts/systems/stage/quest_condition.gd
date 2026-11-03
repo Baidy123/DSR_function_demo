@@ -11,6 +11,7 @@ enum Source {
 	INTERACTED, ## 曾与 key 标识的交互物交互过
 	ZONE_ENTERED, ## 曾进入 key 标识的区域
 	ZONE_LEFT, ## 曾离开 key 标识的区域
+	STATE_INT_AT_LEAST, ## 状态字段整数值不少于 min_value
 }
 
 const SOURCE_NAMES: Dictionary = {
@@ -20,6 +21,7 @@ const SOURCE_NAMES: Dictionary = {
 	Source.INTERACTED: "交互过",
 	Source.ZONE_ENTERED: "曾进入区域",
 	Source.ZONE_LEFT: "曾离开区域",
+	Source.STATE_INT_AT_LEAST: "状态字段至少",
 }
 
 ## 关闭后本条条件不参与判定，便于临时停用。
@@ -29,6 +31,8 @@ const SOURCE_NAMES: Dictionary = {
 @export var key: StringName = &""
 ## STATE_FIELD 用：期望的字符串值。
 @export var state_value: String = ""
+## STATE_INT_AT_LEAST 用：期望的最小整数值。
+@export var min_value: int = 1
 ## FLAG 用：期望的布尔值。
 @export var flag_value: bool = true
 ## ITEM 用：需要的最少数量。
@@ -40,6 +44,12 @@ const SOURCE_NAMES: Dictionary = {
 static func field(field_name: StringName, value: String) -> QuestCondition:
 	var condition := _create(Source.STATE_FIELD, field_name)
 	condition.state_value = value
+	return condition
+
+
+static func int_at_least(field_name: StringName, value: int = 1) -> QuestCondition:
+	var condition := _create(Source.STATE_INT_AT_LEAST, field_name)
+	condition.min_value = value
 	return condition
 
 
@@ -75,6 +85,8 @@ func describe() -> String:
 	match source:
 		Source.STATE_FIELD:
 			return "%s %s == %s" % [source_name, key, state_value]
+		Source.STATE_INT_AT_LEAST:
+			return "%s %s >= %d" % [source_name, key, min_value]
 		Source.FLAG:
 			return "%s %s == %s" % [source_name, key, "真" if flag_value else "假"]
 		Source.ITEM:

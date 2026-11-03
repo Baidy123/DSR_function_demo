@@ -37,3 +37,5 @@
 身体执行在 `scripts/enemy/enemy_actor.gd`，射击节奏在 `services/enemy_fire_controller.gd` 与 `enemy_fire_decision.gd`，参数结构在 `scripts/weapons/weapon_data.gd` 和 `scripts/enemy/config/tactics_settings.gd`。代码路径均相对 `movement_demo/`。
 
 相关入口包括 `enemy_probability_test`、`enemy_firing_cadence_test`、`enemy_offscreen_fire_test`、`enemy_reload_test` 和霰弹测试。概率、射线、节奏与自主战斗是不同验证层次；历史中存在资源预期、节奏及性能失败，不能以某个专项通过代表全量通过。运行方法与已知限制见[敌人测试](../enemy-tests.md)。
+
+要单独观察，打开 `scenes/main.tscn` 后按 F6 进入竞技场，并开启 Player/Health 的无敌模式；可调大每枪概率惩罚、调慢恢复速度来比较连射，再调整移动损失观察跑打。五关正式流程从酒馆进入，具体手感仍需用户试玩确认。
