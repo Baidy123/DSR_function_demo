@@ -150,7 +150,7 @@ func _run() -> void:
 	combat.end_frame(0.1, true)
 	player.receive_hit(player.get_node("Health").max_health * 2.0)
 	check(player.is_dead() and combat.ammo.reload_checkpoint == 0.0 and not combat.ammo.is_reloading, "死亡清理保留阶段")
-	player.get_node("Health")._request_restart()
+	player.get_node("Health/DeathScreen/Center/Panel/Content/Restart").pressed.emit()
 	for frame in range(8): await process_frame
 	var restarted = current_scene.get_node("Player/Combat")
 	check(not paused and restarted.ammo.reload_checkpoint == 0.0 and restarted.ammo.magazine_rounds == restarted.weapon.magazine_capacity, "真实重开恢复满匣且无旧阶段残留")

@@ -4,6 +4,7 @@ extends EditorInspectorPlugin
 var _creating_native_property := false
 const ENEMY_RECOVERY_FIELDS := ["spread_recovery_degrees_per_second", "stabilize_seconds", "settle_seconds"]
 const PLAYER_CONVERGENCE_FIELDS := ["convergence_model", "convergence_seconds", "convergence_exponent_k"]
+const MELEE_OPENING_FIELDS := ["melee_headshot_opening_enabled", "melee_headshot_threshold_multiplier"]
 
 const PatternProperty = preload("res://addons/weapon_mode_inspector/shotgun_pattern_property.gd")
 const CoverageProperty = preload("res://addons/weapon_mode_inspector/shotgun_coverage_property.gd")
@@ -38,12 +39,13 @@ const SPREAD_FIELDS := {
 	"spread_target_move_fast_speed": "高速目标速度",
 }
 const COMMON_FIELDS := {
+	"tracking_parallel_tolerance_degrees": "跟枪免罚半角（仅玩家）",
 	"convergence_seconds": "收敛时间（最大→最小）", "convergence_exponent_k": "指数强度 k",
-	"headshot_chance": "爆头概率", "headshot_damage_multiplier": "未秒杀时伤害倍率", "headshot_stagger_seconds": "被爆头状态时长",
+	"headshot_accuracy_threshold": "爆头起始准度", "headshot_damage_multiplier": "未秒杀时伤害倍率", "headshot_stagger_seconds": "被爆头状态时长",
 	"headshot_movement_multiplier": "被爆头时保留移速", "headshot_accuracy_cap": "被爆头期间精度上限",
 	"hit_accuracy_loss": "命中精度损失", "suppression_accuracy_loss": "被压制精度损失",
 	"near_miss_radius": "擦过检测范围（米）", "hit_speed_loss": "击中速度损失",
-	"hit_speed_loss_seconds": "击中减速时长（秒）", "melee_accuracy_loss": "近战命中精度损失",
+	"hit_speed_loss_seconds": "击中减速时长（秒）", "melee_accuracy_loss": "眩晕命中精度损失",
 	"damage": "单发伤害", "aim_range": "锁定距离", "fire_range": "弹道射程",
 	"cone_angle_degrees": "索敌总角度", "locked_move_multiplier": "锁定移动倍率",
 	"shot_interval": "射击间隔",
@@ -54,10 +56,11 @@ const COMMON_FIELDS := {
 	"melee_windup_seconds": "近战前摇（秒）", "melee_recovery_seconds": "近战收招（秒）",
 	"melee_interval": "近战间隔（秒）", "melee_knockback_distance": "击退距离（米）",
 	"melee_knockback_seconds": "击退时长（秒）",
-	"melee_slow_multiplier": "命中后移动速度", "melee_slow_seconds": "命中减速时长（秒）",
+	"melee_slow_multiplier": "眩晕时保留移速", "melee_slow_seconds": "眩晕持续时间（秒）",
+	"melee_headshot_threshold_multiplier": "眩晕破绽门槛倍率（仅敌人受方）",
 }
 const PERCENT_FIELDS := [
-	"headshot_chance",
+	"headshot_accuracy_threshold",
 	"headshot_movement_multiplier", "headshot_accuracy_cap",
 	"hit_accuracy_loss", "suppression_accuracy_loss", "hit_speed_loss", "melee_accuracy_loss",
 	"initial_accuracy", "moving_accuracy_cap", "shot_accuracy_penalty", "minimum_accuracy",
@@ -66,8 +69,9 @@ const PERCENT_FIELDS := [
 	"melee_slow_multiplier",
 ]
 const FIREARM_FIELDS := [
+	"tracking_parallel_tolerance_degrees",
 	"convergence_model", "convergence_seconds", "convergence_exponent_k",
-	"headshot_enabled", "headshot_chance", "headshot_damage_multiplier",
+	"headshot_enabled", "headshot_accuracy_threshold", "headshot_damage_multiplier",
 	"headshot_instant_kill_enabled", "headshot_stagger_seconds", "headshot_stagger_refresh_mode",
 	"headshot_movement_multiplier", "headshot_accuracy_cap",
 	"hit_accuracy_loss", "suppression_accuracy_loss", "near_miss_radius", "hit_speed_loss", "hit_speed_loss_seconds",
@@ -78,11 +82,13 @@ const FIREARM_FIELDS := [
 
 ## 自定义数值控件也提供直接提示；脚本的 ## 属性文档同时保留原生检查器帮助。
 const EFFECT_HELP := {
+	"tracking_parallel_tolerance_degrees": "仅玩家使用此枪时有效。目标沿瞄准连线靠近／远离，在两侧各25°（默认）的范围内不扣目标移动精度；超出后连续增加损失。0使用纯横向投影；玩家自身移动、受击等惩罚保持。敌人使用同一枪时不读取此项。",
 	"stabilize_seconds": "仅敌人：从初始概率恢复到100%的秒数；初始100%时按0到100%。继续供原AI恢复与掩体阶段估时使用。玩家不读取，不受玩家公式和收敛时间影响。",
 	"settle_seconds": "仅敌人：霰弹从初始稳定度恢复到最准的秒数；初始100%时按0到100%。玩家不读取；玩家霰弹统一使用所属武器的玩家收敛时间与公式。",
 	"convergence_seconds": "仅玩家：从最大散布到最小散布的完整秒数，不含恢复等待；当前状态从曲线对应位置继续。线性、二次、指数均只用此时间；概率模式对应0到100%，霰弹对应最大到最小随机偏移。默认4秒，最小0.01秒；旧0值按4秒，不再启用旧参数。敌人保持原算法。",
 	"convergence_exponent_k": "指数曲线的前后速度差，越大前段越快、尾段越慢；0按线性，默认3。总收敛时间由上一项控制。",
-	"headshot_chance": "仅玩家开火前达到最准时，实际命中才掷概率。普通枪和霰弹都每枪每目标判定一次，不保证命中；0关闭，100%必定触发合格命中。",
+	"headshot_accuracy_threshold": "基础准度在此门槛时爆头率为0，至100%准度线性增加到必爆头；仍须实际命中，不保证秒杀。0表示从0%准度开始增长，关闭请使用启用爆头。",
+	"melee_headshot_threshold_multiplier": "仅玩家近战命中敌人：随后射击武器的普通爆头起始准度×此倍率，例如80%×0.8=64%。0将门槛降至0，1不降低门槛；不增加玩家准度。倍率在近战出手时冻结，首次有效枪击后消费。",
 	"headshot_damage_multiplier": "武器不启用秒杀或敌人开启爆头防护时使用。默认3倍；霰弹乘实际命中该目标的弹丸总伤害，不放大干扰、减速或击退。",
 	"headshot_stagger_seconds": "存活敌人应用本武器移速与精度限制的秒数；默认1秒，0关闭。复用原受击效果，不禁止开枪或取消AI动作；转向、换弹、近战、重力和碰撞继续。",
 	"headshot_movement_multiplier": "状态期间保留多少自主移速；默认0%不能走动，100%不减速。与普通受击减速取较强者，不影响重力或击退；不取消AI动作。",
@@ -98,9 +104,9 @@ const EFFECT_HELP := {
 	"near_miss_radius": "目标胸部到实际弹道线段的最大距离（米）；0关闭擦过检测。弹道在第一碰撞截断，墙后延长线无效；与枪声范围无关。",
 	"hit_speed_loss": "子弹命中损失的自主速度比例。30%×受方速度损失倍率0.5=减速15%、保留85%；0关闭。不影响击退或重力，擦过不减速。",
 	"hit_speed_loss_seconds": "子弹命中减速持续秒数；0关闭。有效新命中刷新强度与时长，不叠乘；受方倍率只改强度，不缩放时间。",
-	"melee_accuracy_loss": "近战基础精度损失，乘与射击共用的受方命中精度倍率。100%×0.5只扣50个百分点，不会再额外强制清零；0关闭。",
-	"melee_slow_multiplier": "近战命中后基础保留速度。保留50%=基础损失50%；受方速度损失倍率0.5时只损失25%、实际保留75%。100%不减速。",
-	"melee_slow_seconds": "近战命中减速持续秒数；0关闭。使用与射击共用的受方速度损失倍率，倍率不改变本时长；无减速命中不清除已有减速。",
+	"melee_accuracy_loss": "眩晕命中时一次扣除的基础精度，乘原受方倍率。100%×0.5只扣50个百分点；不改成持续精度上限，不禁止开枪，0关闭本项损失。",
+	"melee_slow_multiplier": "眩晕时基础保留移速。保留50%且受方倍率0.5时实际保留75%。100%只关闭减速，不关闭敌人的眩晕计时与爆头破绽；击退独立。",
+	"melee_slow_seconds": "近战眩晕与移动减速的初始秒数，0关闭持续效果；不禁止攻击或暂停AI。重复命中仍刷新普通减速，但不延长当前敌人眩晕或补发已消费的破绽。",
 	"moving_accuracy_cap": "正常移动惩罚的概率下限，不会瞬间抬高更差的精度。受击等造成更低概率时，经过恢复等待后可边走边逐渐恢复到本值；未瞄准不超过初始概率。",
 	"accuracy_recovery_delay": "新的精度损失后等多久开始恢复（秒）。低于移动下限时，继续走路不会反复刷新等待；新命中、擦过或射击会重新等待。",
 	"spread_recovery_degrees_per_second": "保留原散布锥恢复接口与保存值，每秒收拢多少度，0不恢复。玩家不读取；当前敌人身体使用概率恢复时间，不读取散布锥角速度。",
@@ -159,7 +165,10 @@ func _parse_property(object: Object, type: Variant.Type, path: String, hint: Pro
 	if object.fire_mode == WeaponData.FireMode.MELEE and (path in FIREARM_FIELDS or PROBABILITY_FIELDS.has(path) or SPREAD_FIELDS.has(path)):
 		return true
 	if path in ENEMY_RECOVERY_FIELDS and _is_player_context(): return true
+	if path == "tracking_parallel_tolerance_degrees" and _is_enemy_context(): return true
 	if path in PLAYER_CONVERGENCE_FIELDS and _is_enemy_context(): return true
+	if path in MELEE_OPENING_FIELDS and (_is_enemy_context() or object.fire_mode == WeaponData.FireMode.MELEE): return true
+	if path == "melee_headshot_threshold_multiplier" and not object.melee_headshot_opening_enabled: return true
 	if path == "convergence_model":
 		var note := Label.new()
 		note.name = "AimRecoveryHelp"
@@ -174,7 +183,8 @@ func _parse_property(object: Object, type: Variant.Type, path: String, hint: Pro
 		return true
 	if path == "convergence_exponent_k" and object.convergence_model != WeaponData.ConvergenceModel.EXPONENTIAL:
 		return true
-	var headshot_labels := {"headshot_enabled": "启用爆头", "headshot_instant_kill_enabled": "启用爆头秒杀", "headshot_stagger_refresh_mode": "连续硬直刷新方式"}
+	var headshot_labels := {"headshot_enabled": "启用爆头", "headshot_instant_kill_enabled": "启用爆头秒杀", "headshot_stagger_refresh_mode": "连续硬直刷新方式",
+		"melee_headshot_opening_enabled": "眩晕爆头破绽（仅玩家近战命中敌人）"}
 	if headshot_labels.has(path):
 		_creating_native_property = true
 		var native := EditorInspector.instantiate_property_editor(object, type, path, hint, hint_text, usage, wide)

@@ -5,7 +5,10 @@ const MotionSample = preload("res://scripts/systems/presentation/motion_sample.g
 @export var presentation_path: NodePath = ^"../Presentation"
 ## 纯表现剑光；留空不影响敌人近战判定。
 @export var melee_effect_scene: PackedScene = preload("res://scenes/effects/melee_slash.tscn")
+## 纯表现眩晕星环，读取敌人身体的近战状态；不控制AI或破绽时长。
+@export var melee_stun_effect_scene: PackedScene = preload("res://scenes/effects/melee_stun.tscn")
 var _melee_effect: Node3D
+var _melee_stun_effect: Node3D
 var state = State.new()
 var motion = MotionSample.new()
 @onready var actor = get_parent()
@@ -35,6 +38,7 @@ func _physics_process(delta: float) -> void:
 
 
 func _sync() -> void:
+	_sync_melee_stun_effect()
 	# 场景卸载仍可能发出近战结束通知；离树后不再查询挂点的世界变换。
 	if not is_instance_valid(presentation) or not presentation.is_inside_tree() or not is_instance_valid(actor) or not actor.is_inside_tree(): return
 	var posture: Dictionary = actor.get_posture_presentation_state()
@@ -56,6 +60,24 @@ func _sync() -> void:
 	state.melee_progress = melee_state.get("progress", 0.0)
 	state.melee_phase = melee_state.get("phase", 0)
 	presentation.apply_state(state)
+
+
+func _sync_melee_stun_effect() -> void:
+	if not is_instance_valid(actor) or not actor.is_inside_tree(): return
+	var stun: Dictionary = actor.get_melee_stun_state()
+	if actor.is_dead or not stun.active:
+		if is_instance_valid(_melee_stun_effect): _melee_stun_effect.hide()
+		return
+	if not is_instance_valid(_melee_stun_effect):
+		if melee_stun_effect_scene == null: return
+		var effect := melee_stun_effect_scene.instantiate()
+		if not effect is Node3D or not effect.has_method("show_state"):
+			effect.free()
+			return
+		_melee_stun_effect = effect
+		add_child(effect)
+	# 位于头顶与原血条之间，真实深度遮挡；无自己的玩法计时器。
+	_melee_stun_effect.show_state(actor.global_position + Vector3.UP * (actor.get_body_height() + 0.22), stun.elapsed_seconds)
 
 
 func _on_melee_struck(_target: Node3D, settings: Dictionary, direction: Vector3) -> void:

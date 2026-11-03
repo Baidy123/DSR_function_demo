@@ -65,6 +65,7 @@ func _run() -> void:
 		await _tick(0.1, Vector3.RIGHT * 0.4)
 		check(is_equal_approx(combat.accuracy, 0.15), "Mode %d: lateral motion neither raises nor further lowers damage below the tracking floor" % mode)
 	await _boundaries()
+	await _weapon_tolerance()
 	await _lifecycle()
 	world.queue_free()
 	await process_frame
@@ -107,7 +108,7 @@ func _prepare(mode: int = 0, point: Vector3 = Vector3(0, 0, -10)) -> void:
 		gun.shotgun.tracking_stability_floor = 0.3
 	combat.aim_mode = combat.AimMode.PROBABILITY if mode == 0 else combat.AimMode.SPREAD_CONE
 	combat.equip_weapon(gun)
-	if combat.get("tracking_parallel_tolerance_degrees") != null: combat.tracking_parallel_tolerance_degrees = 5
+	gun.tracking_parallel_tolerance_degrees = 5
 	player.position = Vector3.ZERO
 	player.visual.rotation = Vector3.ZERO
 	target.position = point
@@ -125,9 +126,10 @@ func _tick(delta: float, offset: Vector3, player_offset: Vector3 = Vector3.ZERO)
 	combat.end_frame(delta, not player_offset.is_zero_approx())
 
 
-func _loss(mode: int, displacement: Vector3, delta: float) -> float:
+func _loss(mode: int, displacement: Vector3, delta: float, tolerance: float = 5.0) -> float:
 	# 前后位置关于连线对称，避免把采样方向差异误认为惩罚左右不对称。
 	await _prepare(mode, Vector3(0, 0, -10) - displacement * 0.5)
+	combat.weapon.tracking_parallel_tolerance_degrees = tolerance
 	combat.accuracy = 1
 	combat.accuracy_recovery_timer = 1
 	await _tick(delta, displacement)
@@ -135,11 +137,11 @@ func _loss(mode: int, displacement: Vector3, delta: float) -> float:
 
 
 func _boundaries() -> void:
-	var has_tolerance: bool = combat.get("tracking_parallel_tolerance_degrees") != null
-	check(has_tolerance, "Player Combat exposes the shared parallel tolerance")
+	var has_tolerance: bool = combat.weapon.get("tracking_parallel_tolerance_degrees") != null
+	check(has_tolerance and combat.get("tracking_parallel_tolerance_degrees") == null, "Weapon owns the only parallel tolerance configuration")
 	if has_tolerance:
 		await _prepare()
-		combat.tracking_parallel_tolerance_degrees = 0
+		combat.weapon.tracking_parallel_tolerance_degrees = 0
 		combat.accuracy_recovery_timer = 1
 		await _tick(0.1, Vector3(0.01, 0, -0.2))
 		check(combat.accuracy < 0.8, "Zero tolerance uses the pure lateral projection")
@@ -184,6 +186,26 @@ func _boundaries() -> void:
 		for frame in fps: await _tick(1.0 / fps, Vector3.RIGHT / fps)
 		results.append(combat.accuracy)
 	check(absf(results.max() - results.min()) < 0.0001 and results[0] < 1, "Equal motion at 30/60/120 steps per second has equal accumulated loss")
+
+
+func _weapon_tolerance() -> void:
+	var gun := WeaponData.new()
+	check(gun.tracking_parallel_tolerance_degrees == 25, "Weapon default is a twenty-five-degree player-only half-angle")
+	for mode in 3:
+		for direction in [-1, 1]:
+			var offset := Vector3(sin(deg_to_rad(24.9)), 0, cos(deg_to_rad(24.9)) * direction)
+			check(is_zero_approx(await _loss(mode, offset, 0.2, 25)), "Mode %d: approach/retreat inside twenty-five degrees is exempt (%d)" % [mode, direction])
+		var outside := Vector3(sin(deg_to_rad(25.1)), 0, -cos(deg_to_rad(25.1)))
+		check(await _loss(mode, outside, 0.2, 25) > 0, "Mode %d: movement beyond twenty-five degrees still loses accuracy" % mode)
+	gun.tracking_parallel_tolerance_degrees = 12
+	DirAccess.make_dir_recursive_absolute("res://logs/directional_tracking")
+	var path := "res://logs/directional_tracking/weapon.tres"
+	var saved := ResourceSaver.save(gun, path)
+	var restored = ResourceLoader.load(path, "", ResourceLoader.CACHE_MODE_IGNORE)
+	check(saved == OK and restored.tracking_parallel_tolerance_degrees == 12 and WeaponData.new().tracking_parallel_tolerance_degrees == 25, "Per-weapon half-angle survives save/reload without changing other guns")
+	var shared_settings := gun.get_aim_settings(false)
+	gun.tracking_parallel_tolerance_degrees = 45
+	check(gun.get_aim_settings(false) == shared_settings, "Player-only angle does not change the shared settings read by enemy aiming")
 
 
 func _lifecycle() -> void:

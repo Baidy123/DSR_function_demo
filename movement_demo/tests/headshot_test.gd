@@ -54,7 +54,7 @@ func _run() -> void:
 	gun.max_spread_angle_degrees = 0
 	gun.damage = 25
 	gun.magazine_capacity = 300
-	gun.headshot_chance = 1
+	gun.headshot_accuracy_threshold = 0.9
 	# 保留旧显式倍率的兼容用例；新默认与秒杀／硬直另行验证。
 	gun.headshot_damage_multiplier = 2.5
 	combat.equip_weapon(gun)
@@ -66,10 +66,10 @@ func _run() -> void:
 		check(is_equal_approx(_shoot(1), 62.5), "Mode %d: full precision applies 2.5x actual hit damage" % mode)
 		check(combat.accuracy < 1 if mode == 0 else true, "Eligibility uses pre-recoil precision")
 	combat.aim_mode = 1
-	check(is_equal_approx(_shoot(0.999), 25), "99.9 percent is not full precision")
-	gun.headshot_chance = 0
-	check(is_equal_approx(_shoot(1), 25), "Zero chance keeps ordinary damage")
-	gun.headshot_chance = 1
+	check(is_equal_approx(_shoot(0.9), 25), "Threshold precision has zero headshot probability")
+	gun.headshot_accuracy_threshold = 0.99
+	check(is_equal_approx(_shoot(0.98), 25), "A configured higher threshold retains ordinary damage below it")
+	gun.headshot_accuracy_threshold = 0.9
 	gun.headshot_enabled = false
 	check(is_equal_approx(_shoot(1), 25), "Per-weapon disable keeps ordinary damage")
 	gun.headshot_enabled = true
@@ -105,7 +105,7 @@ func _additional_checks() -> void:
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 7341
 	combat._headshot_rng.seed = 7341
-	gun.headshot_chance = 0.5
+	gun.headshot_accuracy_threshold = 0.9
 	var critical_count := 0
 	var expected_count := 0
 	var actual_damage := 0.0
@@ -113,7 +113,7 @@ func _additional_checks() -> void:
 	for shot in 64:
 		var expected := rng.randf() < 0.5
 		if expected: expected_count += 1
-		var damage := _shoot(1)
+		var damage := _shoot(0.95)
 		actual_damage += damage
 		if damage > 25: critical_count += 1
 		all_match = all_match and is_equal_approx(damage, 62.5 if expected else 25.0)
@@ -124,7 +124,7 @@ func _additional_checks() -> void:
 	seed(416)
 	_shoot(1)
 	check(randf() == next_ballistic, "Headshot randomness does not consume the ordinary ballistic random stream")
-	gun.headshot_chance = 1
+	gun.headshot_accuracy_threshold = 0.9
 	var bystander := _target(Vector3(0, 0.9, -2))
 	for frame in 3: await physics_frame
 	var locked_before := target.damage_received
@@ -153,19 +153,22 @@ func _additional_checks() -> void:
 	await _enemy_checks()
 	await _feedback_checks()
 	var defaults := WeaponData.new()
-	check(defaults.headshot_enabled and defaults.headshot_chance == 0.1 and defaults.headshot_damage_multiplier == 3 and defaults.headshot_instant_kill_enabled and defaults.headshot_stagger_seconds == 1.0, "Existing resources inherit the latest headshot defaults without rewriting tres files")
-	gun.headshot_chance = 0.37
+	check(defaults.headshot_enabled and defaults.headshot_accuracy_threshold == 0.9 and defaults.headshot_damage_multiplier == 3 and defaults.headshot_instant_kill_enabled and defaults.headshot_stagger_seconds == 1.0, "Existing resources inherit the latest headshot defaults without rewriting tres files")
+	gun.headshot_accuracy_threshold = 0.37
 	gun.headshot_damage_multiplier = 3.25
 	DirAccess.make_dir_recursive_absolute("res://logs/headshot")
 	var path := "res://logs/headshot/roundtrip.tres"
 	var saved := ResourceSaver.save(gun, path)
 	var restored = ResourceLoader.load(path, "", ResourceLoader.CACHE_MODE_IGNORE)
-	check(saved == OK and restored.headshot_chance == 0.37 and restored.headshot_damage_multiplier == 3.25, "Per-weapon headshot configuration survives save and reload")
-	gun.headshot_chance = NAN
-	check(gun.get_headshot_chance(1) == 0 and gun.get_headshot_chance(NAN) == 0, "Invalid values never grant eligibility")
+	check(saved == OK and restored.headshot_accuracy_threshold == 0.37 and restored.headshot_damage_multiplier == 3.25, "Per-weapon headshot configuration survives save and reload")
+	gun.headshot_accuracy_threshold = NAN
+	check(gun.get_headshot_chance(1) == 0 and gun.get_headshot_chance(NAN) == 0 and gun.get_headshot_chance(INF) == 0, "Non-finite threshold or precision never grants eligibility")
+	gun.headshot_accuracy_threshold = 0.9
+	for sample in [[0.0, 0.0], [0.9, 0.0], [0.92, 0.2], [0.95, 0.5], [0.98, 0.8], [1.0, 1.0]]:
+		check(is_equal_approx(gun.get_headshot_chance(sample[0]), sample[1]), "Linear probability at precision %.2f" % sample[0])
 	gun.headshot_damage_multiplier = NAN
 	check(gun.get_headshot_damage_multiplier() == 1, "Invalid multiplier cannot propagate NaN into health")
-	gun.headshot_chance = 1
+	gun.headshot_accuracy_threshold = 0.9
 	gun.fire_mode = WeaponData.FireMode.MELEE
 	check(gun.get_headshot_chance(1) == 0, "Melee weapons have no headshot eligibility")
 
@@ -198,19 +201,19 @@ func _shotgun_checks() -> void:
 	var left := _target(Vector3(-0.70, 0.9, -5))
 	var right := _target(Vector3(0.70, 0.9, -5))
 	for frame in 3: await physics_frame
-	gun.headshot_chance = 0.5
+	gun.headshot_accuracy_threshold = 0.9
 	combat._headshot_rng.seed = 138
 	var reference := RandomNumberGenerator.new()
 	reference.seed = 138
 	var expected := [0.0, 0.0, 0.0]
 	for index in 3: expected[index] = (17.5 if reference.randf() < 0.5 else 7.0) * (2 if index == 0 else 1)
 	hits_before = target.hit_events
-	var center_damage := _shoot(1)
+	var center_damage := _shoot(0.95)
 	check(is_equal_approx(center_damage, expected[0]) and is_equal_approx(left.damage_received, expected[1]) and is_equal_approx(right.damage_received, expected[2]), "Each actually hit target rolls once, multiplying only the pellets that hit it")
 	check(target.hit_events == hits_before + 1 and left.hit_events == 1 and right.hit_events == 1, "Multi-target shotgun still calls each receiver only once")
 	check(combat._headshot_rng.state == reference.state, "Exactly one random sample per actual target hit")
-	gun.headshot_chance = 1
-	check(is_equal_approx(_shoot(0.99), 14), "Shotgun below full precision applies no critical pellet damage")
+	gun.headshot_accuracy_threshold = 0.9
+	check(is_equal_approx(_shoot(0.9), 14), "Shotgun at threshold applies no critical pellet damage")
 	var wall := _target(Vector3(0, 0.9, -2))
 	wall.get_child(0).shape.size.x = 0.1
 	wall.remove_from_group("combat_target")
@@ -224,14 +227,14 @@ func _shotgun_checks() -> void:
 	var points := PackedVector2Array()
 	points.resize(64)
 	gun.shotgun.pattern.points = points
-	gun.headshot_chance = 0.5
+	gun.headshot_accuracy_threshold = 0.9
 	combat._headshot_rng.seed = 914
 	reference.seed = 914
 	var expected_damage: float = (17.5 if reference.randf() < 0.5 else 7.0) * 64
 	hits_before = target.hit_events
 	signals_before = headshots.size()
 	var started := Time.get_ticks_usec()
-	var damage := _shoot(1)
+	var damage := _shoot(0.95)
 	print("64-pellet whole shot (including rays/effects): %d us" % (Time.get_ticks_usec() - started))
 	check(is_equal_approx(damage, expected_damage) and target.hit_events == hits_before + 1 and headshots.size() == signals_before + (1 if expected_damage > 448 else 0) and combat._headshot_rng.state == reference.state, "64 pellets on one target still use one roll, one damage call and at most one feedback event")
 	# Same pattern RNG seed yields the same stream whether headshots are enabled or disabled.
@@ -252,7 +255,7 @@ func _enemy_checks() -> void:
 	enemy.set_physics_process(false)
 	enemy.global_position = Vector3(0, 0, -3)
 	enemy.look_at(player.global_position)
-	gun.headshot_chance = 1
+	gun.headshot_accuracy_threshold = 0.9
 	gun.headshot_damage_multiplier = 2.5
 	gun.shotgun.pattern.points = PackedVector2Array([Vector2.ZERO, Vector2.ZERO, Vector2.ZERO])
 	gun.fire_mode = WeaponData.FireMode.SEMI_AUTO
@@ -297,13 +300,28 @@ func _feedback_checks() -> void:
 	combat.accuracy = 1
 	reticle._process(0)
 	check(reticle.visible and reticle._headshot_ready and not combat.get_node("HUD/Panel").visible, "Full precision shows eligibility with Debug disabled")
-	gun.headshot_chance = 0
+	check(reticle._headshot_full_precision and reticle._headshot_size == reticle.headshot_minimum_size, "Full precision uses the smallest diamond and enables its glow")
+	combat.accuracy = 0.92
 	reticle._process(0)
-	check(not reticle._headshot_ready, "Disabled chance hides eligibility indicator")
-	gun.headshot_chance = 1
+	var large_diamond: float = reticle._headshot_size
+	check(reticle._headshot_ready and not reticle._headshot_full_precision and is_equal_approx(reticle._headshot_probability, 0.2), "Positive linear chance displays the diamond without premature glow")
+	combat.accuracy = 0.98
+	reticle._process(0)
+	check(reticle._headshot_size < large_diamond and not reticle._headshot_full_precision, "Increasing headshot probability shrinks the existing diamond")
 	combat.accuracy = 0.999
 	reticle._process(0)
-	check(not reticle._headshot_ready, "Eligibility indicator disappears below full precision")
+	check(reticle._headshot_ready and not reticle._headshot_full_precision, "Rounded display precision cannot enable the full-precision glow")
+	combat.accuracy = 0.92
+	reticle._process(0)
+	check(is_equal_approx(reticle._headshot_size, large_diamond), "Losing accuracy immediately expands the diamond again")
+	combat.accuracy = 1
+	gun.headshot_enabled = false
+	reticle._process(0)
+	check(not reticle._headshot_ready, "Disabled headshots hide eligibility indicator")
+	gun.headshot_enabled = true
+	combat.accuracy = 0.9
+	reticle._process(0)
+	check(not reticle._headshot_ready, "Eligibility indicator disappears at the probability threshold")
 	gun.min_spread_angle_degrees = 1
 	gun.max_spread_angle_degrees = 4
 	combat.accuracy = 0.5

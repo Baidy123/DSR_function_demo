@@ -58,7 +58,7 @@ func _check_all_levels_expose_return_portal() -> void:
 			var guide = scene.get_node("LevelFlow/PlayGuide")
 			guide.get_node("Backdrop/Panel/Content/Close").pressed.emit()
 			await process_frame
-			scene.get_node("EnemyWaves").encounter_completed.emit()
+			scene.get_node("SceneDirector").encounter_completed.emit()
 			for _frame in range(4):
 				await process_frame
 			check(portal.visible and portal.enabled and portal.monitoring,
@@ -135,7 +135,7 @@ func _check_campaign_loop_and_player_state() -> void:
 	check(equipment.medkit_count == 1, "进入第1关保留医疗包")
 
 	var return_portal = scene.get_node("TavernReturnPortal")
-	scene.get_node("EnemyWaves").encounter_completed.emit()
+	scene.get_node("SceneDirector").encounter_completed.emit()
 	await _wait_until(func() -> bool: return return_portal.enabled)
 	check(return_portal.interact(player), "第1关完成后返回酒馆")
 	scene = await _wait_for_scene("res://scenes/main.tscn")

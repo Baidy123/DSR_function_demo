@@ -14,6 +14,11 @@ func _ready() -> void:
 func _physics_process(_delta: float) -> void:
 	_update_anchor()
 
+## 有限刷新入口，供演出返回在暂停中同步正常跟随；不推进角色。
+func refresh_follow_position() -> void:
+	_update_anchor()
+	reset_physics_interpolation()
+
 func _update_anchor() -> void:
 	if not is_instance_valid(actor) or not actor.is_inside_tree(): return
 	global_position = actor.global_position

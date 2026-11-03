@@ -4,6 +4,7 @@ extends SceneTree
 const Flow = preload("res://scripts/systems/level_flow.gd")
 const GuideScene = preload("res://scenes/ui/play_guide.tscn")
 const QuestControllerScript = preload("res://scripts/systems/stage/quest_controller.gd")
+const Director = preload("res://scripts/systems/scene_director.gd")
 
 var checks := 0
 var failures := 0
@@ -46,6 +47,14 @@ func _run() -> void:
 	for number in range(1, 6):
 		var scene := current_scene
 		check(scene.scene_file_path == Flow.LEVELS[number - 1], "按顺序进入第%d关" % number)
+		var flow = scene.get_node("LevelFlow")
+		check(not flow.completion_pauses_world(), "第%d关返程门完成策略不暂停世界" % number)
+		if number == 1:
+			var configured_portal_path: NodePath = flow.return_portal_path
+			flow.return_portal_path = NodePath()
+			check(flow.completion_pauses_world(), "无返程门时保留暂停结果面板语义")
+			flow.return_portal_path = configured_portal_path
+			check(flow.next_scene_path() == "res://scenes/main.tscn", "加载重试仍返回酒馆")
 		if number == 2:
 			var fallback: Environment = scene.get_world_3d().fallback_environment
 			check(
@@ -91,7 +100,6 @@ func _run() -> void:
 		await _click(guide.get_node("Backdrop/Panel/Content/Close"))
 		check(not guide.visible and not paused and combat.ammo.magazine_rounds == rounds_before,
 			"第%d关真实关闭按钮恢复游玩且不误开火" % number)
-
 		if number == 2:
 			health.debug_mode = false
 			health.receive_hit(health.max_health)
@@ -114,7 +122,7 @@ func _run() -> void:
 			if return_portal.visible:
 				break
 			var movement := [&"move_right", &"move_down", &"move_left", &"move_up"]
-			var blocked: bool = scene.get_node("EnemyWaves").debug_snapshot().state == "BLOCKED"
+			var blocked: bool = scene.get_node("SceneDirector").debug_snapshot().state == "BLOCKED"
 			for index in range(movement.size()):
 				if blocked and index == (frame / 90) % movement.size():
 					Input.action_press(movement[index])
@@ -130,10 +138,12 @@ func _run() -> void:
 		Engine.time_scale = 1.0
 		check(return_portal.visible and return_portal.enabled and return_portal.monitoring,
 			"第%d关真实清场后启用返回酒馆传送门" % number)
+		check(scene.get_node("SceneDirector").director.state == &"completed",
+			"第%d关完成生命周期由SceneDirector统一推进" % number)
 		check(not paused and not scene.get_node("LevelFlow/Result").visible,
 			"第%d关不再弹出直接进入下一关面板" % number)
 		if not return_portal.visible:
-			print(scene.get_node("EnemyWaves").debug_snapshot())
+			print(scene.get_node("SceneDirector").debug_snapshot())
 			break
 		check(return_portal.interact(player), "第%d关返回传送门可以交互" % number)
 		var returned: Node = await _wait_for_scene("res://scenes/main.tscn")
@@ -174,12 +184,22 @@ func _run() -> void:
 	await process_frame
 	check(not paused, "说明打开时卸载场景不遗留暂停")
 	paused = true
+	var guide_host := Node.new()
+	root.add_child(guide_host)
 	var standalone_guide = GuideScene.instantiate()
-	root.add_child(standalone_guide)
+	guide_host.add_child(standalone_guide)
+	var director := Director.new()
+	director.configure(guide_host, {"guide": standalone_guide})
+	guide_host.add_child(director)
 	await process_frame
+	check(standalone_guide.visible and director.is_guide_pending(standalone_guide),
+		"独立说明由调度器显式启动")
 	await _click(standalone_guide.get_node("Backdrop/Panel/Content/Close"))
+	check(not standalone_guide.visible and not director.is_guide_pending(standalone_guide),
+		"独立说明完成通知调度器")
 	check(paused, "说明关闭保留原本已经存在的暂停")
-	standalone_guide.free()
+	guide_host.free()
+	check(paused, "独立调度器退出不解除外部暂停")
 	paused = false
 	print("LEVEL FLOW: %d/%d passed" % [checks - failures, checks])
 	quit(1 if failures else 0)

@@ -17,7 +17,7 @@ func _run() -> void:
 	if not await _wave(1): return
 	for actor in scene.enemies.duplicate(): actor.receive_hit(100000.0)
 	if not await _wave(2): return
-	var squad = scene.get_node("EnemyWaves/Wave2/Squad")
+	var squad = scene.get_node("SceneDirector/Wave2/Squad")
 	var actors: Array = squad.get_children().filter(func(node): return node.has_node("AI"))
 	check(actors.size() == 6, "Saved Lvl5 wave supplies all six squad members")
 	if actors.size() != 6:

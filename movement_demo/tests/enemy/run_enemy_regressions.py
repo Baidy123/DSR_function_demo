@@ -9,6 +9,7 @@ TESTS = [
     "headshot_stagger_runtime_test",
     "enemy_wave_test",
     "enemy_wave_search_test",
+    "enemy_wave_events_test",
     "squad_mixed_cooperation_test",
     "squad_command_runtime_test",
     "squad_cover_breach_test",

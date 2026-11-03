@@ -78,6 +78,7 @@ func _run() -> void:
 	var ui = scene.get_node("DialogueUI")
 	var game_state = root.get_node("GameState")
 	var previous_turnin: String = game_state.music_quest_turnin
+	# 本夹具验证单句对话结束后的治疗状态，显式选择 NPC B 的已交差分支。
 	# Use the single-line completion branch so E is a real close event rather than
 	# being consumed while a response choice is visible.
 	game_state.music_quest_turnin = "done"

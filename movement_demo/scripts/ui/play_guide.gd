@@ -1,6 +1,8 @@
 extends CanvasLayer
 
-## 五关共用的入场说明；仅在显示期间持有暂停，关闭或退树时恢复原状态。
+## 可选入场说明适配；暂停和鼠标模式由场景调度器统一管理。
+signal finished
+
 const GUIDE_TEXT := """[b][color=#8ed9e8]01  移动与掩体[/color][/b]
 [b]W / A / S / D[/b] 按画面方向移动；换方向时角色需要转身，并有加减速。
 [b]按住 Shift[/b] 奔跑，消耗体力。耗尽后要回满才能再次奔跑；松开后可恢复。
@@ -9,11 +11,23 @@ const GUIDE_TEXT := """[b][color=#8ed9e8]01  移动与掩体[/color][/b]
 蹲在矮墙后，向墙外瞄准会临时起身，松开右键回蹲；此时按 C 可改为保持站立。
 
 [b][color=#8ed9e8]02  瞄准与交火[/color][/b]
-进入战斗区域后，[b]按住鼠标右键[/b] 瞄准，鼠标指向决定瞄准方向；会自动锁定范围内、方向合适且可见的敌人。
+进入战斗区域后，[b]按住鼠标右键[/b] 瞄准。锁定分为以下两种模式，均只能锁定范围内且可见的敌人，锁定后会持续跟踪。
+
+[b]模式一：方向键转向锁定（鼠标辅助关闭）[/b]
+用 [b]W / A / S / D[/b] 调整角色朝向，再按住右键，自动锁定朝向附近的敌人。需要换目标时，松开右键、调整朝向，再重新瞄准；鼠标移动不参与选敌。
+
+[b]模式二：鼠标辅助锁定（默认）[/b]
+保留方向键转向和自动锁定，并可在[b]右键持续按住时拨动鼠标选敌、换锁[/b]，无需把光标放在敌人身上。
+没有锁定时，朝敌人相对玩家的屏幕方向拨动；已有锁定时，朝另一名敌人相对当前目标的屏幕方向拨动。目标死亡后可以继续拨向下一人，无需松开右键重按。
+相邻目标轻拨、远处目标多拨一点；连续换锁无需停顿，拨动方向没有合适目标时保持原状态。
+鼠标选敌后角色会平滑转向，转得越多、目标越远，跟枪精度损耗越大。转身中也能立即开枪，按当时朝向和准度射出，未对准时可能打偏。
+浅蓝色“转向中”标记只表示下一个目标；对准后才恢复普通准星和爆头菱形。
+
 [b]右键瞄准时按左键[/b] 开火：单发／霰弹每次点击一枪，自动武器可按住连射。
 停步、减少连射可让准星收拢；移动、跟枪、开火、受击或近弹压制会干扰精度。锁定不保证命中，墙体会挡子弹。
-最准时的金色菱形表示获得概率爆头资格，并非必定爆头；实际效果取决于武器和敌人防护。
+[b]精度达到一定程度后，实际命中就有概率爆头；精度越高，爆头概率越大。[/b]金色菱形出现后随概率升高收小，满精准时发光，实际命中必爆头；秒杀仍取决于武器和敌人防护。
 [b]V[/b] 向当前朝向近战，消耗体力；瞄准时朝瞄准方向挥击，适合应对贴身敌人。
+[b]近战命中可让敌人短暂眩晕，提高对该敌人的爆头概率。[/b]头顶星环表示眩晕尚未结束；爆头加成在首次枪击命中后消耗，打空不消耗，眩晕结束也会失效。
 
 [b][color=#8ed9e8]03  切枪、换弹与补给[/color][/b]
 [b]1 / 2[/b] 选择主／副武器，[b]鼠标滚轮[/b] 切换。右下角查看各枪弹匣与共享备弹。
@@ -33,35 +47,30 @@ const GUIDE_TEXT := """[b][color=#8ed9e8]01  移动与掩体[/color][/b]
 @onready var _body: RichTextLabel = $Backdrop/Panel/Content/Body
 @onready var _close_button: Button = $Backdrop/Panel/Content/Close
 
-var _owns_pause := false
-var _previous_pause := false
-var _previous_mouse_mode: Input.MouseMode
+var _active := false
 
 
 func _ready() -> void:
 	_body.text = GUIDE_TEXT
 	_close_button.pressed.connect(close_guide)
-	_previous_pause = get_tree().paused
-	_previous_mouse_mode = Input.mouse_mode
-	_owns_pause = true
-	get_tree().paused = true
-	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+	hide()
+
+
+func begin() -> void:
+	if _active: return
+	_active = true
+	show()
 	_close_button.grab_focus()
 
 
 func close_guide() -> void:
-	if not visible: return
+	if not _active: return
+	cancel()
+	finished.emit()
+
+
+## 调度器中断引导时只撤下界面，不伪造一次正常完成。
+func cancel() -> void:
+	_active = false
 	hide()
-	_close_button.release_focus()
-	_restore_state()
-
-
-func _exit_tree() -> void:
-	_restore_state()
-
-
-func _restore_state() -> void:
-	if not _owns_pause: return
-	_owns_pause = false
-	get_tree().paused = _previous_pause
-	Input.mouse_mode = _previous_mouse_mode
+	if _close_button.is_inside_tree(): _close_button.release_focus()

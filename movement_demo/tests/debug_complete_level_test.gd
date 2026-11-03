@@ -6,7 +6,7 @@ extends SceneTree
 const LEVEL_ONE := preload("res://scenes/world/levels/lvl_1.tscn")
 
 const WATCHDOG_SECONDS := 20.0
-const EXPECTED_CHECKS := 9
+const EXPECTED_CHECKS := 10
 
 var failures := 0
 var checks_run := 0
@@ -37,7 +37,7 @@ func _run() -> void:
 	guide.get_node("Backdrop/Panel/Content/Close").pressed.emit()
 	await process_frame
 
-	var waves: Node = scene.get_node("EnemyWaves")
+	var director: Node = scene.get_node("SceneDirector")
 	var return_portal: Interactable = scene.get_node("TavernReturnPortal")
 	var health = scene.get_node("Player/Health")
 	var button := health.get_node_or_null("Debug/Controls/CompleteLevel") as Button
@@ -47,7 +47,7 @@ func _run() -> void:
 		return
 	check(button.visible and button.disabled, "Debug 总开关关闭时一键通关不可用")
 	var completed := [0]
-	waves.encounter_completed.connect(func() -> void: completed[0] += 1)
+	director.encounter_completed.connect(func() -> void: completed[0] += 1)
 
 	health.debug_invincible = true
 	await process_frame
@@ -58,7 +58,8 @@ func _run() -> void:
 	check(completed[0] == 1, "一键通关发出一次原关卡完成信号")
 	check(return_portal.visible and return_portal.enabled and return_portal.monitoring,
 		"一键通关后开放当前关返程门")
-	check(waves.debug_snapshot().state == "COMPLETED", "一键通关将当前波次控制器置为完成")
+	check(not paused, "一键通关后保持可操作以便使用返程门")
+	check(director.debug_snapshot().state == "COMPLETED", "一键通关将当前波次控制器置为完成")
 
 	button.pressed.emit()
 	await process_frame

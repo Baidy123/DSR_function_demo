@@ -42,6 +42,11 @@ func _run() -> void:
 	health.max_health = 100.0
 	health.debug_mode = false
 	scene.add_child(player)
+	# 独立玩家夹具显式接入同一调度器，死亡暂停仍走正式流程。
+	var director = preload("res://scripts/systems/scene_director.gd").new()
+	director.configure(scene, {"health": health})
+	scene.add_child(director)
+	director.initialize()
 	player.global_position = Vector3.ZERO
 	player.set_physics_process(false)
 	combat = player.get_node("Combat")
@@ -236,7 +241,6 @@ func _run() -> void:
 	player.receive_hit(1000.0)
 	_check("death cancels synchronously before the paused world can heal", health.is_dead and paused and not medkit.is_using() and medkit.remaining_count == 2)
 	_check("heal entry cannot resurrect the player", health.restore_health(100.0) == 0.0 and health.health == 0.0)
-	paused = false
 	_finish()
 
 func _settle() -> void:
@@ -276,5 +280,7 @@ func _check(label: String, passed: bool) -> void:
 	print(("PASS " if passed else "FAIL ") + label)
 
 func _finish() -> void:
+	if is_instance_valid(scene): scene.free()
+	current_scene = null
 	print("PLAYER MEDKIT: %d/%d passed" % [checks - failed, checks])
 	quit(0 if failed == 0 else 1)

@@ -1,0 +1,7 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/world/enemy_wave_controller.gd" id="controller"]
+
+[node name="SceneDirector" type="Node3D"]
+script = ExtResource("controller")
+editor_description = "场景总调度入口：配置可选引导、死亡与通关流程、场景事件和增援演出。敌人部署仍按 Wave → Squad → Enemy 组织；与 CombatZone 分开，放在区域根节点下。"

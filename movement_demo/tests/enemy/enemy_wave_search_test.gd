@@ -191,13 +191,14 @@ func _saved_lvl5_search_case() -> void:
 	var region = load("res://scenes/world/levels/lvl_5.tscn").instantiate()
 	root.add_child(region)
 	current_scene = region
+	await process_frame
 	region.get_node("LevelFlow/PlayGuide").close_guide()
 	var player = region.get_node("Player")
 	player.set_physics_process(false)
 	# 内存实例中把玩家留在地图中央的合法空地，隔开出生区与玩家；不改保存场景。
 	player.global_position = region.to_global(Vector3(0, 0, 3))
 	player.get_node("Health").debug_invincible = true
-	var controller = region.get_node("EnemyWaves")
+	var controller = region.get_node("SceneDirector")
 	check(await _await_wave(controller, 1, 180), "第五关保存地图按原流程生成首波")
 	for number in [2, 3]:
 		for enemy in region.enemies.duplicate(): enemy.receive_hit(100000.0)

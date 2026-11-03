@@ -8,6 +8,8 @@ const BodyMotion = preload("res://scripts/enemy/services/enemy_body_motion.gd")
 var body_motion = BodyMotion.new()
 var local_motion = preload("res://scripts/enemy/services/enemy_local_motion.gd").new()
 var _headshot_state = preload("res://scripts/enemy/services/enemy_headshot_state.gd").new()
+var _melee_stun = preload("res://scripts/enemy/services/enemy_melee_stun.gd").new()
+var _life_generation: int = 0
 ## 由原训练Context注入查询，身体不读取AI私有状态或复制训练配置。
 var headshot_protection_query: Callable
 var _local_movement_velocity := Vector3.ZERO
@@ -173,6 +175,7 @@ func _physics_process(delta: float) -> void:
 	_hit_slow_remaining = maxf(0.0, _hit_slow_remaining - maxf(0.0, delta))
 	if is_zero_approx(_hit_slow_remaining): _hit_slow_remaining = 0.0
 	if _headshot_state.advance(delta): stagger_finished.emit()
+	_melee_stun.advance(delta)
 
 
 ## 执行方向与速度；调用者负责决定目的地。
@@ -227,7 +230,9 @@ func configure_local_spacing(enabled: bool, margin: float = 0.45) -> void:
 	local_motion.configure_spacing(enabled, margin)
 
 func _exit_tree() -> void:
+	_life_generation += 1
 	_headshot_state.clear()
+	_melee_stun.clear()
 	var area := _parent_combat_area()
 	if is_node_ready() and area != null:
 		_spawn_world_before_reparent = global_transform * transform.affine_inverse() * initial_transform
@@ -322,8 +327,10 @@ func _apply_damage(damage: float, attacker_position: Vector3, execution: bool = 
 
 func receive_weapon_hit(damage: float, attacker_position: Vector3, effects: Dictionary) -> void:
 	if is_dead or not is_finite(damage) or damage <= 0.0: return
+	var generation: int = _melee_stun.generation
 	receive_hit(damage, attacker_position)
-	if not is_dead: weapon_effects_received.emit(effects)
+	if not is_dead and generation == _melee_stun.generation and not is_queued_for_deletion():
+		weapon_effects_received.emit(effects)
 
 
 func is_headshot_protected() -> bool:
@@ -333,11 +340,15 @@ func is_headshot_protected() -> bool:
 ## 玩家已完成本枪判定，reaction只含冻结的结果；不重新抽签或读取当前武器。
 func receive_headshot_hit(damage: float, attacker_position: Vector3, effects: Dictionary, reaction: Dictionary) -> StringName:
 	if is_dead or get_tree().paused or not is_finite(damage) or damage < 0.0: return &""
+	var generation: int = _melee_stun.generation
+	var life: int = _life_generation
 	if reaction.get("execution", false):
 		_apply_damage(health, attacker_position, true)
-		return &"killed"
+		return &"killed" if life == _life_generation and is_dead else &""
 	receive_weapon_hit(damage, attacker_position, effects)
 	if is_dead: return &"killed"
+	# 同步伤害／效果回调可能复位身体或进入对话，旧状态不得继续施加。
+	if generation != _melee_stun.generation or is_queued_for_deletion(): return &""
 	apply_stagger(float(reaction.get("stagger_seconds", 0.0)), int(reaction.get("stagger_refresh_mode", 0)),
 		float(reaction.get("movement_multiplier", 0.0)), float(reaction.get("accuracy_cap", 0.0)))
 	return &"staggered" if is_staggered() else &"headshot"
@@ -357,6 +368,17 @@ func get_hit_reaction_state() -> Dictionary:
 		"remaining_seconds": get_stagger_remaining_seconds(),
 		"movement_multiplier": _headshot_state.movement_multiplier if is_staggered() else 1.0,
 		"accuracy_cap": _headshot_state.accuracy_cap if is_staggered() else 1.0}
+
+
+## 只读快照：命中结算和头顶表现共享来源，不覆盖原被爆头状态。
+func get_melee_stun_state() -> Dictionary:
+	var state: Dictionary = _melee_stun.snapshot()
+	state["life_generation"] = _life_generation
+	return state
+
+
+func consume_melee_opening(generation: int) -> bool:
+	return _melee_stun.consume(generation) if not is_dead and not get_tree().paused else false
 
 
 func apply_stagger(seconds: float, refresh_mode: int = WeaponData.StaggerRefresh.KEEP_LONGER,
@@ -395,9 +417,14 @@ func receive_melee_hit(damage: float, attacker_position: Vector3, distance: floa
 		effects: Dictionary = {}) -> void:
 	if is_dead or get_tree().paused: return
 	if not is_finite(damage) or damage < 0.0: return
+	var generation: int = _melee_stun.generation
 	receive_hit(damage, attacker_position)
-	if is_dead: return
+	# 受击回调可复位／回收身体，旧近战不能给新生命补加状态。
+	if is_dead or generation != _melee_stun.generation or is_queued_for_deletion(): return
+	_melee_stun.apply(effects.get("player_melee_stun", {}))
+	generation = _melee_stun.generation
 	weapon_effects_received.emit(effects)
+	if is_dead or generation != _melee_stun.generation or is_queued_for_deletion(): return
 	if is_vaulting(): body_motion.interrupt()
 	var direction := global_position - attacker_position
 	direction.y = 0.0
@@ -454,12 +481,14 @@ func get_hit_movement_multiplier() -> float:
 
 func clear_hit_effects() -> void:
 	clear_stagger()
+	_melee_stun.clear()
 	_clear_hit_push()
 	_hit_slow_remaining = 0.0
 	_hit_slow_multiplier = 1.0
 
 
 func reset_target() -> void:
+	_life_generation += 1
 	local_motion.reset()
 	_local_movement_velocity = Vector3.ZERO
 	body_motion.reset()
