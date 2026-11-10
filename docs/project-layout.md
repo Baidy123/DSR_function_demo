@@ -117,6 +117,8 @@ Equipment 交接当前枪给 Combat；相机订阅 `weapon_changed`，表现订�
 
 ## 波次、关卡与补给
 
+统一调度迁移第一阶段：`scene_request.gd` 保存请求身份、弱节点引用与一次性结果，`scene_request_scheduler.gd` 是导演内部的排队／去重／取消管理，不是第二个公开调度入口。酒馆 `main.tscn` 现已明确装配无 Wave 的 SceneDirector；旧区域回退暂留至正式场景与夹具迁移完成。对话、商店和传送旁路仍待后续阶段接入，当前请求入口先覆盖引导、镜头及完成请求。
+
 - `world/enemy_wave_controller.gd` 是 SceneDirector 场景入口兼容脚本，原 UID 保留；五关入口已按用户要求改名，Wave/Squad层级不动。`enemy_wave_runtime.gd` 执行模板、合法出生、各波状态、搜索与清理；`enemy_wave_definition.gd` 保存部署、事件节点与手选镜头配置。
 - `systems/scene_director.gd` 是入口内部的场景核心，不依赖Wave或PlayGuide；`scene_flow_runner.gd` 推进资源规则与动作，`scene_pause_coordinator.gd` 统一记录拥有者。仅内部核心使用Always，区域和敌人保持可暂停。
 - `systems/scene_event.gd` 是可放入场景的事件节点，来源信号或trigger()统一发triggered；`scene_event_trigger/filter/subscription.gd` 适配和过滤，`scene_flow_rule/action.gd` 保存静态配置。接线见[教程](gameplay/SCENE_DIRECTOR.md)。

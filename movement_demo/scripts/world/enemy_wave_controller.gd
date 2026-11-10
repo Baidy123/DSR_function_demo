@@ -92,6 +92,10 @@ func _ready() -> void:
 		"presentation_options": {"move_seconds": camera_move_seconds, "hold_seconds": camera_hold_seconds, "return_seconds": camera_return_seconds}})
 	# Never make the host Always: enemy descendants must remain pausable.
 	add_child(director, false, Node.INTERNAL_MODE_BACK)
+	# Reserve explicit ownership before legacy region deferred setup runs.
+	var health := get_node_or_null(health_path) if not health_path.is_empty() else null
+	if health != null and not health.has_meta(&"scene_director"):
+		health.set_meta(&"scene_director", weakref(director))
 
 func start_encounter() -> void:
 	_ensure_runtime()

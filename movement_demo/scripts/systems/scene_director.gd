@@ -4,6 +4,15 @@ extends Node
 const Pauses = preload("res://scripts/systems/scene_pause_coordinator.gd")
 const Flows = preload("res://scripts/systems/scene_flow_runner.gd")
 const ResultView = preload("res://scripts/ui/scene_result_view.gd")
+const Request = preload("res://scripts/systems/scene_request.gd")
+const Scheduler = preload("res://scripts/systems/scene_request_scheduler.gd")
+const REGISTRATION := &"scene_director_root"
+var _scene_root: Node
+var _requests
+var _next_request := 0
+var _guide_request
+var _camera_request
+var _completion_request
 signal state_changed(value: StringName)
 signal action_failed(rule: String, reason: String)
 var state: StringName = &"preparing"
@@ -56,6 +65,15 @@ func initialize() -> void:
 	if _initialized or not is_inside_tree(): return
 	_initialized = true
 	if not is_instance_valid(_host): _host = get_parent()
+	_scene_root = _bindings.get("scene_root", _host.get_parent() if _host.has_method("capture_templates") else _host)
+	var registered = for_node(_scene_root)
+	if registered != null and registered != self:
+		_initialized = false
+		_set_state(&"error")
+		report_action_error("bindings", "This scene already has a scene director")
+		return
+	_scene_root.set_meta(REGISTRATION, weakref(self))
+	_requests = Scheduler.new(self)
 	_pauses = Pauses.for_tree(get_tree())
 	_health = _bindings.get("health")
 	if is_instance_valid(_health):
@@ -108,6 +126,7 @@ func _process(delta: float) -> void:
 
 func advance(delta: float) -> void:
 	if not _initialized or not is_inside_tree(): return
+	_requests.advance(delta)
 	if _active_presentation != 0 and _pauses.can_advance_presentation(_camera_token):
 		if is_instance_valid(_camera): _camera.advance_presentation(delta)
 		else: _finish_presentation()
@@ -144,6 +163,10 @@ func _on_guide_finished(generation: int, id: int) -> void:
 	_guide_finished = true
 	_clear_guide(false)
 	if state == &"guide": _set_state(&"running")
+	if _guide_request != null:
+		var request = _guide_request
+		_guide_request = null
+		request.complete()
 
 func _on_guide_exiting(generation: int, id: int) -> void:
 	if generation != _generation or not is_instance_valid(_guide) or _guide.get_instance_id() != id: return
@@ -187,12 +210,16 @@ func _finish_completion() -> void:
 		_on_player_died()
 		return
 	_completion_pending = false
+	var completion = _completion_request
+	_completion_request = null
+	if completion != null: _requests._finished(completion)
 	if _completion_pauses_world:
 		_terminal_token = _pauses.acquire(self, &"completion", true)
 	_set_state(&"completed")
 	_generation += 1
 	_cancel_actions()
 	if is_instance_valid(_level_flow): _level_flow.show_completion()
+	if completion != null: completion._settle(&"completed")
 
 func request_restart() -> void:
 	if state != &"dead": return
@@ -365,6 +392,10 @@ func _finish_presentation() -> void:
 	_active_presentation = 0
 	if _camera_token != 0: _pauses.release(_camera_token)
 	_camera_token = 0
+	if _camera_request != null:
+		var request = _camera_request
+		_camera_request = null
+		request.complete()
 
 func is_presentation_pending(id: int) -> bool:
 	return id != 0 and id == _active_presentation
@@ -379,6 +410,7 @@ func _cancel_presentation(restore: bool = true) -> void:
 
 func reset_region() -> void:
 	if not _initialized: return
+	_requests.cancel_scope(_host.get_parent(), &"region_reset")
 	_armed_presentations.clear()
 	if _active_presentation != 0 and _presentation_scope == 1: _cancel_presentation()
 	if _guide != null and _guide_scope == 1:
@@ -388,6 +420,7 @@ func reset_region() -> void:
 	_completion_pending = false
 
 func _cancel_actions() -> void:
+	if _requests != null: _requests.cancel_all(&"scene_interrupted")
 	_armed_presentations.clear()
 	_flows.cancel_all()
 	_clear_guide(true)
@@ -406,11 +439,16 @@ func debug_snapshot() -> Dictionary:
 	return {"state": state, "generation": _generation, "last_error": _last_error,
 		"load_failed": _load_failed, "load_path": _load_path,
 		"presentation": _active_presentation, "guide": is_instance_valid(_guide), "completion_pending": _completion_pending,
-		"pause": _pauses.snapshot() if _pauses != null else {}, "flows": _flows.snapshot() if _flows != null else {}}
+		"pause": _pauses.snapshot() if _pauses != null else {}, "flows": _flows.snapshot() if _flows != null else {},
+		"requests": _requests.snapshot() if _requests != null else {}}
 
 func _exit_tree() -> void:
 	_generation += 1
 	if not _initialized: return
+	if _requests != null: _requests.cancel_all(&"scene_exited")
+	if is_instance_valid(_scene_root) and _scene_root.has_meta(REGISTRATION):
+		var registration: WeakRef = _scene_root.get_meta(REGISTRATION)
+		if registration.get_ref() == self: _scene_root.remove_meta(REGISTRATION)
 	_flows.release()
 	_clear_guide(true)
 	_cancel_presentation(false)
@@ -423,3 +461,96 @@ func _exit_tree() -> void:
 	_connections.clear()
 	if _result_view.has_method("bind"): _result_view.bind(null)
 	if _owns_camera and is_instance_valid(_camera): _camera.queue_free()
+
+static func for_node(node: Node) -> Node:
+	var cursor := node
+	while is_instance_valid(cursor):
+		if cursor.has_meta(REGISTRATION):
+			var registration: WeakRef = cursor.get_meta(REGISTRATION)
+			var director = registration.get_ref()
+			if is_instance_valid(director) and director.is_inside_tree(): return director
+		cursor = cursor.get_parent()
+	return null
+
+func request_action(kind: StringName, context: Dictionary = {}) -> Request:
+	var request = Request.new()
+	_next_request += 1
+	request._id = _next_request
+	request._generation = _generation
+	request._director = weakref(self)
+	request.kind = kind
+	request.origin = context.get("origin", &"system")
+	request.scope = context.get("scope", 0)
+	request.parent_id = context.get("parent_id", 0)
+	request.dedupe_key = context.get("dedupe_key", &"")
+	var parameters: Dictionary = context.get("parameters", {})
+	if _contains_node(parameters):
+		request._settle(&"rejected", &"node_in_parameters")
+		return request
+	request.parameters = parameters.duplicate(true)
+	for key in [&"source", &"target", &"player", &"scope_owner"]:
+		var node = context.get(key, _host if key == &"source" else null)
+		if is_instance_valid(node): request._nodes[key] = weakref(node)
+	if not _initialized or _requests == null or state not in [&"running", &"guide"] or _load_failed:
+		request._settle(&"rejected", &"scene_unavailable")
+		return request
+	if kind not in [&"guide", &"presentation", &"completion"]:
+		request._settle(&"rejected", &"unsupported_kind")
+		return request
+	for key in request._nodes:
+		var node: Node = request.node(key)
+		if not is_instance_valid(node) or not node.is_inside_tree() or (node != _scene_root and not _scene_root.is_ancestor_of(node)):
+			request._settle(&"rejected", &"foreign_target")
+			return request
+	var previous = _requests.duplicate_for(request)
+	if previous != null: return previous
+	_requests.submit(request)
+	return request
+
+func _contains_node(value: Variant) -> bool:
+	if value is Node or value is WeakRef: return true
+	if value is Array:
+		for item in value:
+			if _contains_node(item): return true
+	if value is Dictionary:
+		for key in value:
+			if _contains_node(key) or _contains_node(value[key]): return true
+	return false
+
+func request_is_current(request: Request) -> bool:
+	return _initialized and request.generation == _generation and _requests != null and _requests.owns(request)
+
+func cancel_request(id: int, reason: StringName = &"cancelled") -> void:
+	if _requests != null: _requests.cancel(id, reason)
+
+func execute_request(request: Request) -> void:
+	match request.kind:
+		&"guide":
+			_guide_request = request
+			if not begin_guide(request.node(&"target"), request.parameters.get("pause_world", true), request.scope):
+				_guide_request = null
+				request.fail("invalid_guide")
+		&"presentation":
+			var target := request.node(&"target") as Node3D
+			if target == null:
+				request.fail("invalid_presentation_target")
+				return
+			_camera_request = request
+			if present_target(target.global_position, request.parameters, request.scope) == 0:
+				_camera_request = null
+				request.complete({"skipped": true})
+		&"completion":
+			_completion_request = request
+			request_completion()
+
+func cancel_request_execution(request: Request, _reason: StringName) -> void:
+	if _completion_request == request:
+		_completion_request = null
+		_completion_pending = false
+	if _guide_request == request:
+		_guide_request = null
+		_clear_guide(true)
+		if state == &"guide": _set_state(&"running")
+	if _camera_request == request:
+		_camera_request = null
+		_cancel_presentation()

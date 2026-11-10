@@ -1,5 +1,9 @@
 # 场景总调度：节点接线教程
 
+统一调度迁移正在实施。酒馆现已明确装配无 Wave 的 SceneDirector；核心新增 `request_action(kind, context)`、`cancel_request(id, reason)` 与按本场查找的 `for_node(node)`。第一阶段接入 guide／presentation／completion，请求可查询 queued／running／completed／failed／cancelled／rejected，`await request.wait_result()` 不会漏掉同步完成。重复请求按来源和 dedupe_key 去重；取消先让身份失效再停止执行，其他场景的节点及参数中藏入的节点均被拒绝。
+
+对话、商店、传送及其他规则入口仍按[实施计划](../superpowers/plans/2026-11-10-scene-director-authority.md)逐阶段迁移，不能将新增入口视为全部接管已完成。原公开接口保持兼容，波次、地图和本地数值不由本阶段重配。
+
 `SceneDirector` 是原 `EnemyWaves` 升级后的场景入口，负责可选引导、事件动作、敌人出场、演出镜头、死亡重开／回酒店及通关切关。现有五关只改入口名称和必要引用；CombatZone、Player、Camera3D、Wave → Squad → Enemy 的分工和摆放保持，第一关根上的原 Squad 仍由 Wave1 引用。
 
 新场景使用 `scenes/world/scene_director.tscn`。旧 `enemy_waves.tscn` 和 `enemy_wave_controller.gd` 保留兼容与原脚本 UID，不要在同一区域同时放两套调度器。五关装备、训练、导航和地图数值未由本功能重配。

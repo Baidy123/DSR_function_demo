@@ -106,12 +106,12 @@ python movement_demo/tests/enemy/run_enemy_regressions.py --godot E:/Godot/Godot
 
 **Interfaces:** 产出上述 SceneRequest、for_node／request_action／cancel_request。scheduler 为 RefCounted，`_init(director: Node)`、`submit(request: SceneRequest) -> void`、`advance(delta: float) -> void`、`cancel_all(reason: StringName) -> void`、`cancel_scope(owner: Node, reason: StringName) -> void`、`snapshot() -> Dictionary`，只由导演持有。请求分派先接入现有 presentation／guide／completion，其他 kind 在对应阶段实现前明确拒绝。
 
-- [ ] **1. 写失败测试。** scene_request_test 的 test_synchronous_result／test_cancel_reentrancy／test_duplicate_and_generation／test_scene_local_lookup 分别断言：同步 complete 后 `status == &"completed"` 且 await wait_result 不挂起；取消过程中执行者再次 complete 仍只 finished 一次且 status cancelled；重复来源不二次开始，旧代次无效；两个根的查找互不串场，重复导演被拒绝，准备中请求 rejected。测试注册后首先证明失败在缺失接口。
-- [ ] **2. 跑红测试。** 用模板运行 scene_request_test，预期缺少 SceneRequest／入口而失败；记录输出，不把解析失败视为行为测试完成。
-- [ ] **3. 实现请求与调度。** 在上述签名下实现弱引用与终态读取，死亡／加载先关请求资格再取消；完成清理回调不能依赖 can_run_actions 或 tree.paused 为 false。debug_snapshot 添加 requests／foreground／controls，保留旧键。
-- [ ] **4. 装配酒馆入口。** main 增加 SceneDirector 预制实例，清空 guide_path／result_view_path，设置 complete_when_all_waves_cleared=false、auto_start_on_enter=false；不改变原节点位置和玩家配置。无 Wave 时跳过区域模板依赖，绑定 Player/Health；五关现有入口仍只创建一个内部核心。区域旧回退暂留，到任务6移除，并在文档标明迁移范围。
-- [ ] **5. 验证交付。** names：scene_request_test、scene_director_test、scene_event_node_test、campaign_flow_test、shop_flow_test；新入口不改变无 Wave 不自动完成和商店行为。清单检查必须 Catalog OK；本地已知失败独立报告，不修改玩法参数换绿。
-- [ ] **6. 同步文档并提交推送。** 说明新增请求合同和唯一入口，标明其余旁路仍待迁移；提交建议 `feat: add scene director request lifecycle`。
+- [x] **1. 写失败测试。** scene_request_test 的 test_synchronous_result／test_cancel_reentrancy／test_duplicate_and_generation／test_scene_local_lookup 分别断言：同步 complete 后 `status == &"completed"` 且 await wait_result 不挂起；取消过程中执行者再次 complete 仍只 finished 一次且 status cancelled；重复来源不二次开始，旧代次无效；两个根的查找互不串场，重复导演被拒绝，准备中请求 rejected。测试注册后首先证明失败在缺失接口。
+- [x] **2. 跑红测试。** 用模板运行 scene_request_test，预期缺少 SceneRequest／入口而失败；记录输出，不把解析失败视为行为测试完成。
+- [x] **3. 实现请求与调度。** 在上述签名下实现弱引用与终态读取，死亡／加载先关请求资格再取消；完成清理回调不能依赖 can_run_actions 或 tree.paused 为 false。debug_snapshot 添加 requests／foreground／controls，保留旧键。
+- [x] **4. 装配酒馆入口。** main 增加 SceneDirector 预制实例，清空 guide_path／result_view_path，设置 complete_when_all_waves_cleared=false、auto_start_on_enter=false；不改变原节点位置和玩家配置。无 Wave 时跳过区域模板依赖，绑定 Player/Health；五关现有入口仍只创建一个内部核心。区域旧回退暂留，到任务6移除，并在文档标明迁移范围。
+- [x] **5. 验证交付。** names：scene_request_test、scene_director_test、scene_event_node_test、campaign_flow_test、shop_flow_test；新入口不改变无 Wave 不自动完成和商店行为。清单检查必须 Catalog OK；本地已知失败独立报告，不修改玩法参数换绿。
+- [x] **6. 同步文档并提交推送。** 说明新增请求合同和唯一入口，标明其余旁路仍待迁移；提交建议 `feat: add scene director request lifecycle`。
 
 ## Task 2：导演接管普通对话与商店
 
@@ -191,3 +191,7 @@ GameState 新增纯准备 `prepare_scene_transition(mode: StringName, player_sna
 执行技能是后续阶段的依赖：Native 需要 executing-plans，逐任务子代理路径需要 subagent-driven-development；当前只确认已安装 writing-plans。用户选择方式后核对并补齐对应技能，再开始实施，不以缺少技能为由静默更换流程。
 
 本次仅编写与核对计划，未运行本计划中的游戏回归，也未实现这些接口。书面计划复核及执行方式选择后，再进入实现。
+
+## Implementation evidence
+
+Task 1: scene_request_test 17 checks passed; scene_director_test, scene_event_node_test and shop_flow_test passed. campaign_flow_test retains exactly the three baseline dual-magazine failures; no new errors. Catalog OK. Logs: movement_demo/logs/director-authority-task1/.

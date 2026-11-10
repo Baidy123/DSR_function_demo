@@ -2,7 +2,7 @@
 
 日期：2026-11-10。
 
-状态：总体方向及书面设计已由用户确认；已整理[实施计划](../plans/2026-11-10-scene-director-authority.md)，计划待复核，尚未进入实施。
+状态：总体方向、书面设计及[实施计划](../plans/2026-11-10-scene-director-authority.md)已由用户确认，按 Native 方式实施中；完成范围以实施计划验收记录为准。
 
 依据：[项目结构](../../project-layout.md)、[现行导演教程](../../gameplay/SCENE_DIRECTOR.md)、[原导演设计](2026-10-25-enemy-wave-event-triggers-design_todo.md)、[原实施记录](../plans/2026-10-28-scene-director-implementation.md)。
 
