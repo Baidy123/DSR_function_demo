@@ -151,13 +151,13 @@ var available_level: int = 1:
 		_notify_state(&"value_changed", [&"available_level", value])
 ## 下一次新玩家实例就绪后消费一次；正常进入关卡或返回酒馆时由传送门写入。
 var pending_player_state: Dictionary = {}
-## 最近一次正常完成关卡时的酒馆状态；死亡后选择回酒店时恢复，不随一次性玩家快照消费。
+## 最近一次正常完成关卡时的酒馆状态；死亡后选择回酒馆时恢复，不随一次性玩家快照消费。
 var campaign_checkpoint: Dictionary = {}
-## 已领取任务奖励的任务 ID；与检查点同步，保证死亡回酒店后不重复领取。
+## 已领取任务奖励的任务 ID；与检查点同步，保证死亡回酒馆后不重复领取。
 var rewarded_task_ids: Dictionary = {}
-## 一次性商店商品购买记录；与检查点同步，保证死亡回酒店后恢复未购买状态。
+## 一次性商店商品购买记录；与检查点同步，保证死亡回酒馆后恢复未购买状态。
 var purchased_shop_item_ids: Dictionary = {}
-## 进入当前关卡时的一次性玩家快照；死亡重开当前关时恢复，不等同于酒店检查点。
+## 进入当前关卡时的一次性玩家快照；死亡重开当前关时恢复，不等同于酒馆检查点。
 var level_entry_player_state: Dictionary = {}
 var completed_reward_claimed: bool:
 	get:
@@ -263,7 +263,7 @@ func spend_money(amount: int) -> bool:
 	return true
 
 
-## 领取任务奖励；同一任务只成功一次，并同步到匹配完成级别的酒店检查点。
+## 领取任务奖励；同一任务只成功一次，并同步到匹配完成级别的酒馆检查点。
 func claim_task_reward(task_id: StringName, amount: int, completion_level: int) -> bool:
 	if amount <= 0 or task_id == &"" or has_task_reward(task_id):
 		return false
@@ -335,14 +335,14 @@ func record_campaign_checkpoint(level_number: int, player_snapshot: Dictionary) 
 	}
 
 
-## 死亡后返回酒店沿用最近完成任务的状态；检查点不清空，加载失败后可再次重试。
+## 死亡后返回酒馆沿用最近完成任务的状态；检查点不清空，加载失败后可再次重试。
 func restore_campaign_checkpoint() -> bool:
 	if campaign_checkpoint.is_empty():
 		return false
 	return restore_campaign_state(campaign_checkpoint)
 
 
-## 捕获当前酒店相关状态；场景加载失败时用于撤销尚未完成的检查点恢复。
+## 捕获当前酒馆相关状态；场景加载失败时用于撤销尚未完成的检查点恢复。
 func capture_campaign_state() -> Dictionary:
 	return {
 		"completed_level": completed_level,

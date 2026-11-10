@@ -8,7 +8,7 @@
 
 按用户最新指示上传本地敌人血量／移速／武器／训练／波次配置，Main 玩家最大生命改为 100。只加载核对四个实际暂存场景和本地 Main，6 项配置检查通过；插件、地形等无关本地修改保留。日志只存本地 logs。
 
-2026-11-10 SceneDirector 统一调度：最终选择 25 个系统／玩家专项与 3 个敌人波次专项；其中 26 套通过，2 套保留修改前已捕获的 4 条失败：`campaign_flow_test` 的入关／返酒馆／酒店恢复双弹匣三条，以及 `enemy_wave_test` 的“第一关两波完整结束”。原断言及本地装备、血量和部署未据此修改，不宣称 28 套全绿。检查点、真实五关清场返程、商品与已购武器重试通过。日志位于本地 `movement_demo/logs/director-authority-task6-final/`。
+2026-11-10 SceneDirector 统一调度：最终选择 25 个系统／玩家专项与 3 个敌人波次专项；其中 26 套通过，2 套保留修改前已捕获的 4 条失败：`campaign_flow_test` 的入关／返酒馆／酒馆恢复双弹匣三条，以及 `enemy_wave_test` 的“第一关两波完整结束”。原断言及本地装备、血量和部署未据此修改，不宣称 28 套全绿。检查点、真实五关清场返程、商品与已购武器重试通过。日志位于本地 `movement_demo/logs/director-authority-task6-final/`。
 
 新增专项覆盖请求身份／同步结果、对话首句未加载完的取消、真实 Timer／Tween 停止、复合交互子请求、纯状态准备／真实目标 `_ready()` 提交、所有波次模式授权、多区域取消与六个正式场景唯一导演。`shop_weapon_test` 保留原 27 项，将入关快照检查移至真实切场获准后，符合事务时序。
 
@@ -27,21 +27,21 @@
 
 2026-11-10 按用户纠正移除数值进度，改为 `SET_FLAG` 拥有类商品：思维接入装置售价 500，
 购买后 `has_mind_access_device = true`。商品回归覆盖余额 499 拒绝／500 一次扣款、一次性隐藏、
-已拥有时拒绝重复购买，以及检查点退款同步恢复商品旗标而不影响唱片机旗标。
+已拥有时拒绝重复购买，以及检查点恢复同步恢复商品旗标而不影响唱片机旗标。
 任务面板专项验证已移除进度条，旗标变化不干扰任务状态显示。
 下方此前的进度／旧三选一验证为历史记录，不代表当前玩法或接口。
 
 2026-11-05 商店网格布局：`shop_board_test` 扩至 39/39，验证商品区为 `GridContainer`、默认 3 列、
 6 个商品自动占两行、隐藏商品不创建卡片，以及可用宽度变化时在 3／2／1 列之间切换。
 `shop_flow_test` 与 98 项 `campaign_flow_test` 保持通过，确认网格改造没有改变购买、暂停、
-武器覆盖和死亡退款行为。`run_regressions.py --check` 为 `Catalog OK`；已知 macOS 证书诊断和既有 UID 回退警告仍存在。
+武器覆盖和死亡回档行为。`run_regressions.py --check` 为 `Catalog OK`；已知 macOS 证书诊断和既有 UID 回退警告仍存在。
 
-2026-11-04 货币商店、任务金额与检查点退款：蓝色商店 NPC 取代三选一。定向专项均以退出码 0 通过——
+2026-11-04 货币商店、任务金额与检查点恢复：蓝色商店 NPC 取代三选一。定向专项均以退出码 0 通过——
 `shop_catalog_test` 30 项（初始三商品、顺序、按 ID 查询、重复 ID 过滤、非正效果数值与武器商品校验）、
-`shop_state_test` 42 项（货币增减、一次性任务发奖、检查点退款／一次性购买回滚／入关快照）、
+`shop_state_test` 42 项（货币增减、一次性任务发奖、检查点恢复／一次性购买回滚／入关快照）、
 `shop_weapon_test` 27 项（`replace_weapon_slot` 校验、主副槽覆盖与当前关重试保留已购枪）、
 `shop_board_test` 30 项（面板隐藏、ALWAYS、行渲染、购买意图回传、按钮禁用与武器槽位禁用）、
-`shop_flow_test` 92 项（真实酒馆打开商店、三初始商品购买、武器解锁与一次性隐藏、余额不足、空目录／全锁定不暂停、交易顺序退款、暂停所有权、死亡关闭与边界拒绝）、
+`shop_flow_test` 92 项（真实酒馆打开商店、三初始商品购买、武器解锁与一次性隐藏、余额不足、空目录／全锁定不暂停、购买后的检查点恢复、暂停所有权、死亡关闭与边界拒绝）、
 `quest_money_reward_test` 11 项（默认与主线 100、无奖励支线 0、只发一次、付费支线同步当前检查点）。
 流程专项 `campaign_flow_test` 98 项、`campaign_checkpoint_test` 17/17、`scene_director_test` 150/150、
 `level_flow_test` 87/87 全部通过；兼容专项 `reward_board_test` 14/14、`campaign_quest_task_test` 32 项通过。
@@ -54,7 +54,7 @@
 `reward_npc_test`、`quest_encounter_loop_test`、`reward_per_level_test`
 已退役，不再计入 systems 清单；不据此宣称完整 systems 组全绿。
 
-2026-11-04 二选一重生与酒店检查点：新增 `campaign_checkpoint_test` 9/9，验证最近完成关卡的系统进度和奖励领取记录回退、更早奖励保留，以及完成时玩家快照恢复。`campaign_flow_test` 扩至67/67，使用真实主场景、奖励 NPC/三选一面板和关卡验证“领取第1关系统进度奖励 → 解锁并进入第2关 → 死亡 → 返回酒店”后重新开放第1关三选一、锁回下一关入口并恢复完成时玩家状态；另一条真实流程验证首关未完成时死亡返回酒店仍保留任务接取且可重新进入第1关。`scene_director_test` 扩至149/149，覆盖真实死亡界面的两个按钮、无 LevelFlow 条件、酒店路径、事务式检查点恢复、错误提示与加载失败后切换回当前关重开。直接专项 `level_flow_test` 87/87、`player_health_test` 30/30、`weapon_slots_test` 35/35 通过，`reward_npc_test`、`reward_per_level_test`、`quest_encounter_loop_test` 亦通过；`run_regressions.py --check` 为 `Catalog OK`。本轮仍出现 macOS root certificate store 诊断和既有资源 UID 回退警告，直接专项进程均以0退出；不把该诊断记为干净输出，也不宣称统一系统组全绿。
+2026-11-04 二选一重生与酒馆检查点：新增 `campaign_checkpoint_test` 9/9，验证最近完成关卡的系统进度和奖励领取记录回退、更早奖励保留，以及完成时玩家快照恢复。`campaign_flow_test` 扩至67/67，使用真实主场景、奖励 NPC/三选一面板和关卡验证“领取第1关系统进度奖励 → 解锁并进入第2关 → 死亡 → 返回酒馆”后重新开放第1关三选一、锁回下一关入口并恢复完成时玩家状态；另一条真实流程验证首关未完成时死亡返回酒馆仍保留任务接取且可重新进入第1关。`scene_director_test` 扩至149/149，覆盖真实死亡界面的两个按钮、无 LevelFlow 条件、酒馆路径、事务式检查点恢复、错误提示与加载失败后切换回当前关重开。直接专项 `level_flow_test` 87/87、`player_health_test` 30/30、`weapon_slots_test` 35/35 通过，`reward_npc_test`、`reward_per_level_test`、`quest_encounter_loop_test` 亦通过；`run_regressions.py --check` 为 `Catalog OK`。本轮仍出现 macOS root certificate store 诊断和既有资源 UID 回退警告，直接专项进程均以0退出；不把该诊断记为干净输出，也不宣称统一系统组全绿。
 
 2026-11-02 五关任务链、逐关奖励与 Debug 一键通关：新增 `campaign_quest_task_test` 22/22，验证任务面板五条主线、A 解锁后的进行中状态和返程后的完成状态。新增 `reward_per_level_test` 39/39，验证第1～5关分别开放一次三选一、领取状态互不影响，以及每关独立标题、说明和数值配置。`debug_complete_level_test` 现为10/10，验证按钮受 Debug 总开关控制、只完成当前关、重复点击不重复发信号、开放返程门、保持可操作且不直接切场景。`quest_conditions_test` 扩至 19/19，覆盖整数状态字段下限条件。
 
@@ -126,7 +126,7 @@ python movement_demo/tests/run_combat_regressions.py --godot E:/Godot/Godot_v4.7
 | `combat` | `tests/run_combat_regressions.py` 的原玩家战斗清单 |
 | `enemy` | `tests/enemy/run_enemy_regressions.py` 的原敌人清单 |
 
-酒馆传送门专项检查正式切换后的 `World3D` 中性回退环境；关卡流程专项使用真实五关逐波清敌，检查每关返程门、A 解锁、动态门口传送和当前关重开。检查点专项验证死亡回酒店会恢复最近完成任务时的进度、奖励资格与玩家状态。当前五关仍使用返程门，不依赖按钮直接切关；SceneDirector 的加载能力由独立场景调度专项验证。
+酒馆传送门专项检查正式切换后的 `World3D` 中性回退环境；关卡流程专项使用真实五关逐波清敌，检查每关返程门、A 解锁、动态门口传送和当前关重开。检查点专项验证死亡回酒馆会恢复最近完成任务时的进度、奖励资格与玩家状态。当前五关仍使用返程门，不依赖按钮直接切关；SceneDirector 的加载能力由独立场景调度专项验证。
 
 ## 特殊入口与会写入的维护工具
 

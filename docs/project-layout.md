@@ -2,9 +2,9 @@
 
 本页说明当前目录、场景与代码归属。功能和常用接口见[项目总览](../README.md)，专项用法见[文档导航](README.md)。路径以 `movement_demo/` 为根；现有节点路径、资源引用和脚本 UID 是复用边界，文档整理不迁移它们。
 
-当前合并基线同时保留本地五关任务／货币商店与 upstream 场景调度结构。`LevelFlow` 在清场后只启用本关 `TavernReturnPortal`；返程门写入 `completed_level`、一次性玩家快照和酒店检查点并返回酒馆，A 更新 `available_level` 后门口 `QuestPortal` 才指向下一关。结果按钮和自动加载是 SceneDirector 的可复用能力，当前五关实际没有使用“清场后自动进入下一关”。
+当前合并基线同时保留本地五关任务／货币商店与 upstream 场景调度结构。`LevelFlow` 在清场后只启用本关 `TavernReturnPortal`；返程门写入 `completed_level`、一次性玩家快照和酒馆检查点并返回酒馆，A 更新 `available_level` 后门口 `QuestPortal` 才指向下一关。结果按钮和自动加载是 SceneDirector 的可复用能力，当前五关实际没有使用“清场后自动进入下一关”。
 
-五关任务与任务金额由 `resources/stages/stage_table_template.tres` 保存，商品目录由 `resources/shop/shop_catalog.tres` 保存；`QuestCondition.int_at_least()` 提供整数下限条件，`QuestDefinition.money_reward` 配置完成时的固定货币，`GameState.rewarded_task_ids` 记录一次性任务发奖。货币商店由 `ShopController` 按目录解析可见商品、复核并执行购买，`ShopBoard` 只回传购买意图；`GameState.money`／`purchased_shop_item_ids` 与酒店检查点同步。跨关快照由 `player_campaign_state.gd` 搬运；QuestPortal、返程门、死亡重开／回酒店向导演请求加载，GameState 准备入关状态或最近酒店检查点，加载获准后才提交关卡进度、商店旗标、货币、奖励记录和玩家快照。旧三选一奖励组件仍保留为兼容代码，不再接入主流程。
+五关任务与任务金额由 `resources/stages/stage_table_template.tres` 保存，商品目录由 `resources/shop/shop_catalog.tres` 保存；`QuestCondition.int_at_least()` 提供整数下限条件，`QuestDefinition.money_reward` 配置完成时的固定货币，`GameState.rewarded_task_ids` 记录一次性任务发奖。货币商店由 `ShopController` 按目录解析可见商品、复核并执行购买，`ShopBoard` 只回传购买意图；`GameState.money`／`purchased_shop_item_ids` 与酒馆检查点同步。跨关快照由 `player_campaign_state.gd` 搬运；QuestPortal、返程门、死亡重开／回酒馆向导演请求加载，GameState 准备入关状态或最近酒馆检查点，加载获准后才提交关卡进度、商店旗标、货币、奖励记录和玩家快照。旧三选一奖励组件仍保留为兼容代码，不再接入主流程。
 
 医疗包商品使用 `ADD_MEDKIT`、`medkit_data` 与购买数量 `amount`，由 Equipment 的 `can_add_medkits()`／`add_medkits()` 接收入库，沿用唯一库存与状态通知；检查器仅显示当前商品效果对应的资源槽。拥有类商品使用 `ShopItemDefinition.Effect.SET_FLAG` 与 `flag_key`；购买调用 `GameState.grant_shop_flag()`，旗标值由原 `flags` 字典唯一保存。检查点通过 `shop_flags` 捕获和恢复商店登记的旗标，不回滚唱片机等其他玩法旗标。任务面板只展示任务状态，已移除数值进度与进度条。
 
@@ -37,7 +37,7 @@ movement_demo/
 │   ├── shop/              商品定义、目录与货币商店控制器
 │   ├── world/             掩体、训练靶、区域、门、NPC、交互物与屏障
 │   │   ├── quest_portal.gd       按任务与 A 解锁进度进入对应关卡
-│   │   ├── tavern_return_portal.gd 记录关卡完成、玩家快照与酒店检查点并返回酒馆
+│   │   ├── tavern_return_portal.gd 记录关卡完成、玩家快照与酒馆检查点并返回酒馆
 │   │   └── interactions/  交互效果基类、注入上下文与各效果实现
 │   ├── ui/                对话、锁定准星、任务面板、货币商店、关卡流程与游玩说明
 │   ├── debug/             调试开关、协调器路径；声音圈及旧攻击区域预览默认关闭
@@ -80,7 +80,7 @@ movement_demo/
 
 阶段、任务与 NPC 状态规则集中在 `scripts/systems/stage/`：阶段判定、任务状态与状态解析各一个控制器，配置表资源脚本与 `resources/stages/` 下的 `.tres` 配套维护。控制器挂在 `main.tscn`、按 group 互相查找，不新增全局单例；NPC 只按 `npc_id` 与接收接口被驱动，不反向依赖控制器。见 [阶段与任务](gameplay/STAGE_STATE.md)。
 
-正式场景切换统一经过 `scripts/systems/scene_transition.gd`。该入口在释放当前场景前，把 `World3D.environment` 与 `fallback_environment` 恢复为显式中性环境，避免 GL Compatibility 在目标场景没有 `WorldEnvironment` 时沿用上一场景的环境光。酒馆关卡门、五关返程门、死亡重开和返回酒店都使用这一入口；目标场景自身配置的 `WorldEnvironment` 仍可在加载后覆盖该中性回退。
+正式场景切换统一经过 `scripts/systems/scene_transition.gd`。该入口在释放当前场景前，把 `World3D.environment` 与 `fallback_environment` 恢复为显式中性环境，避免 GL Compatibility 在目标场景没有 `WorldEnvironment` 时沿用上一场景的环境光。酒馆关卡门、五关返程门、死亡重开和返回酒馆都使用这一入口；目标场景自身配置的 `WorldEnvironment` 仍可在加载后覆盖该中性回退。
 
 `scripts/debug/coordinator_paths.gd` 保留 DebugSettings 入口，使用世界空间 Mesh 绘制 RTS 路线、箭头和站位，以及面积观察状态、责任预约和未来路线。每秒最多十次读取公开副本，不调用导航、规划或补写观察；成员颜色在死亡减员后保持稳定。当前 `main.tscn` 按用户确认保留任务面板、商店面板及交互演示物；五关场景不挂载这套酒馆任务节点，交互组件仍可由 `tests/interaction_fixture.gd` 独立装配验证。五关清场后仍只开放返程门，回酒馆与 A 交互后才解锁下一关。
 
@@ -159,7 +159,7 @@ Equipment 交接当前枪给 Combat；相机订阅 `weapon_changed`，表现订�
 
 `main.tscn` 的货币商店闭环由 `scripts/world/reward_npc.gd`（保留 `RewardNPC` 节点路径与脚本 UID，标签为“商店”）、`scripts/shop/shop_controller.gd` 与 `scripts/ui/shop_board.gd` 共同承担：RewardNPC 向导演请求 shop，获准后 ShopController 解析目录、配置面板并执行购买；导演管理暂停和结束。购买时控制器复核余额与效果、修改 `GameState`／玩家／装备、扣款并记录一次性购买，面板只回传 `purchase_requested(item_id, slot)`。死亡或来源离场取消商店请求，只释放本次控制。
 
-任务金额由 `scripts/systems/stage/quest_controller.gd` 在任务首次进入 `COMPLETED` 时调用 `GameState.claim_task_reward(task_id, amount, completed_level)`；`QuestDefinition.money_reward` 默认 100，五个主线任务为 100，不奖励的唱片机支线显式保持 0。发奖同时把该任务 ID 和新增金额补写进当前战役关卡的酒店检查点，不依赖任务 `stage_index`，避免返回酒店后重复发钱或漏写支线奖励。
+任务金额由 `scripts/systems/stage/quest_controller.gd` 在任务首次进入 `COMPLETED` 时调用 `GameState.claim_task_reward(task_id, amount, completed_level)`；`QuestDefinition.money_reward` 默认 100，五个主线任务为 100，不奖励的唱片机支线显式保持 0。发奖同时把该任务 ID 和新增金额补写进当前战役关卡的酒馆检查点，不依赖任务 `stage_index`，避免返回酒馆后重复发钱或漏写支线奖励。
 
 旧三选一组件保留为兼容代码，不再接入主流程：`scripts/rewards/reward_level.gd`／`reward_option.gd`／`reward_table.gd`、`scripts/systems/stage/encounter_controller.gd`、`scripts/ui/reward_board.gd` 与 `scenes/ui/reward_board.tscn`、`resources/rewards/level_rewards.tres` 保留文件与脚本 UID，供独立复用和 `tests/reward_board_test.gd` 验证。旧主流程测试 `reward_npc_test.gd`、`quest_encounter_loop_test.gd`、`reward_per_level_test.gd` 已退役；`encounter_controller_edge_test.gd` 改为隔离夹具兼容专项；新增 `shop_catalog_test`、`shop_state_test`、`shop_weapon_test`、`shop_board_test`、`shop_flow_test`、`quest_money_reward_test` 进入统一 systems 清单。
 

@@ -544,7 +544,7 @@ func _test_real_health_without_level_flow() -> void:
 	var message: Label = health.get_node("DeathScreen/Center/Panel/Content/Message")
 	check(not tavern.visible, "A flow-less scene hides its unusable hotel button")
 	body.receive_hit(25.0)
-	check(message.text.contains("重新挑战") and not message.text.contains("酒店"),
+	check(message.text.contains("重新挑战") and not message.text.contains("酒馆"),
 		"Flow-less death text describes only the available current-level retry")
 	await _dispose(f)
 

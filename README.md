@@ -11,7 +11,7 @@
 3. 与 A 对话接取任务，到门口传送门按 **E** 进入第1关。清场后返回酒馆，再次与 A 交互解锁下一关。
 4. 单独试玩关卡时，打开 `scenes/world/levels/lvl_N.tscn` 后按 **F6**。
 
-完整流程与死亡重生规则见[游玩说明](docs/gameplay/PLAY_GUIDE.md)，商品、任务金额与退款规则见[商店说明](docs/gameplay/REWARDS.md)。
+完整流程与死亡重生规则见[游玩说明](docs/gameplay/PLAY_GUIDE.md)，商品、任务金额与恢复点规则见[商店说明](docs/gameplay/REWARDS.md)。
 
 Dialogue Manager、Phantom Camera 和 Godot AI 插件源码及许可证随工程保存；Godot 可执行程序、导入缓存和临时文件不纳入仓库。
 
@@ -24,7 +24,7 @@ Dialogue Manager、Phantom Camera 和 Godot AI 插件源码及许可证随工程
 | 精度与爆头 | 移动、跟枪、开火和受击损耗；三种收敛公式；按准度线性增加的爆头率 |
 | 近战 | 枪械附带近战、专用近战兵、击退与眩晕反馈；玩家近战为受击敌人提供一次爆头门槛优惠 |
 | 装备与补给 | 主副武器槽、按弹种共享备弹、整匣／逐发装填、缺弹掉落、医疗包与二选一重生 |
-| 货币商店与任务金额 | 资源配置的医疗包、弹药、旗标与武器商品；关卡解锁、任务发钱与检查点退款 |
+| 货币商店与任务金额 | 资源配置的医疗包、弹药、旗标与武器商品；关卡解锁、任务发钱与死亡恢复点 |
 | 敌人 AI | 巡逻、视觉／听觉、追踪与搜索、掩体、近远程攻击；个人决策与三档小队配合 |
 | 场景调度 | SceneDirector 统一对话、商店、交互、事件演出、波次、镜头、出口与切场景，支持排队和真实取消 |
 | 交互与任务 | 对话、场景交互效果、条件驱动任务、阶段与 NPC 状态；任务演示与五关流程各自独立 |
@@ -116,7 +116,7 @@ Dialogue Manager、Phantom Camera 和 Godot AI 插件源码及许可证随工程
 | Combat | `get_effective_accuracy()`、`get_target_headshot_chance(target)`、`is_turning_to_target()` | UI 读取基础准度、目标爆头率和转身状态 |
 | Combat | `weapon_changed`、`shot_fired`、`headshot_resolved` 信号 | 相机、表现或统计订阅真实装备／射击结果 |
 | Health | `receive_hit(damage)`、`restore_health(amount)`、`died` 信号 | 伤害、治疗与死亡通知 |
-| GameState | `record_campaign_checkpoint(level, player_snapshot)`、`restore_campaign_checkpoint()` | 保存并恢复最近完成关卡时的酒店进度与玩家快照 |
+| GameState | `record_campaign_checkpoint(level, player_snapshot)`、`restore_campaign_checkpoint()` | 保存并恢复最近完成关卡时的酒馆进度与玩家快照 |
 | GameState | `add_money(amount)`、`spend_money(amount)`、`claim_task_reward(id, amount, level)`、`has_purchased_shop_item(id)` | 货币增减、一次性任务发奖与商店购买记录 |
 | ShopController | `open_shop_for_player(player)`、`purchase(item_id, slot)`、`close_shop()` | 打开／关闭货币商店、复核并执行购买；面板只回传意图 |
 | SceneDirector 核心 | `for_node(node)`、`request_action(kind, context)`、`cancel_request(id, reason)` | 查找本场导演并请求；`await request.wait_result()` 读取一次性结果 |

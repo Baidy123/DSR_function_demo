@@ -151,7 +151,7 @@ GameState 新增纯准备 `prepare_scene_transition(mode: StringName, player_sna
 - [x] **2. 跑红测试。** names：scene_transition_request_test，明确捕获现有传送门提前写状态及加载失败残留；保留失败现场日志。
 - [x] **3. 接管复合交互。** 先 director 批准再逐项 await effect.execute；parent_id 只由内部执行链赋值，同根子动作共享控制且父动作可等待，每次恢复先检查 context.execution.is_current。effects 顺序保留；已发生业务不由通用取消自动倒退。同步全部成功才发 interacted；含异步效果时在全部成功后发，取消／失败不伪造成功。has_interacted／隐藏在成功时提交，运行中单独防重；interact 返回值只表示本次真正开始，文档同步区分两者。切场成功后原来源已离树，不补发旧节点 interacted 或操作隐藏状态；跨场结果由请求 completed 与 GameState 提交报告，旧场景规则不得被重新激活。异步 ShowDialogue／ChangeScene 的失败不能被默认 apply 当成成功。
 - [x] **4. 把传送准备改为纯数据。** QuestPortal／TavernReturnPortal 不在 interact 前写 GameState；准备函数不触发 value_changed／money_changed／任务发奖。引擎调用前最后校验身份和准备数据；返回 OK 后在同一调用栈内完成已验证的数据提交，必须早于目标 _ready，不能此时才执行可失败的业务校验。用真实切场夹具证明。执行器用 RefCounted 承接预期旧场景退出，为当前加载请求及其父交互保留一次终态收尾，其他旧执行均取消；正常退出不能丢弃成功提交或把本次成功标为 cancelled。失败不提交准备数据，重试重建当前数据。若这一时序验证不成立，本阶段不得交付，须回到已批准事务边界修正加载适配。
-- [x] **5. 统一所有加载。** director 的死亡重开、回酒店、规则 CHANGE_SCENE 和门的加载都经执行器，生产加载最终只调用 `await SceneTransition.change_scene(tree, path)`／reload_scene(tree)。保留 scene_loader(path: String, reload: bool) -> Error 注入兼容并支持 await；每次 await 后核对身份，加载期间只允许一个请求。死亡／结果失败保持可用重试 UI，普通门失败归还控制、显示原因并可再交互；不把普通失败留成永久暂停。
+- [x] **5. 统一所有加载。** director 的死亡重开、回酒馆、规则 CHANGE_SCENE 和门的加载都经执行器，生产加载最终只调用 `await SceneTransition.change_scene(tree, path)`／reload_scene(tree)。保留 scene_loader(path: String, reload: bool) -> Error 注入兼容并支持 await；每次 await 后核对身份，加载期间只允许一个请求。死亡／结果失败保持可用重试 UI，普通门失败归还控制、显示原因并可再交互；不把普通失败留成永久暂停。
 - [x] **6. 验证交付。** names：scene_transition_request_test、scene_interaction_test、scene_director_test、campaign_checkpoint_test、campaign_flow_test、campaign_quest_task_test、quest_portal_test、shop_state_test、shop_flow_test、dialogue_cache_test；interaction_test 同时与原基线比较，原已知离场 E 失败单独记录。真实最小目标测试用例与夹具登记 SPECIAL 或专项内嵌，Catalog OK。
 - [x] **7. 同步文档并提交推送。** 说明“准备 ≠ 完成”和失败策略，保留原业务 API 语义；建议提交 `feat: coordinate interaction and scene transition transactions`。
 
@@ -218,7 +218,7 @@ Task 6: six authored scenes each resolve exactly one explicit director; missing-
 
 用户追加要求改变本地参数的提交范围：上传本地敌人血量／移速／武器／训练／波次配置，并把 Main 玩家生命设为 100。已提交 `f7bd2b8`，只加载核对相关暂存资源及本地 Main（6 项）；不上传插件、地形、其他本地文档或旧撤回记录。
 
-用户再次明确：只有死亡界面可重新挑战当前关，不能返回上一关。现有 request_restart 已检查 dead，五关未配置常规重载规则；此处只纠正文档措辞，返回酒店指酒馆和检查点恢复，不表示关卡回选或撤销已通关关卡。
+用户再次明确：只有死亡界面可重新挑战当前关，不能返回上一关。现有 request_restart 已检查 dead，五关未配置常规重载规则；此处只纠正文档措辞，返回酒馆指酒馆和检查点恢复，不表示关卡回选或撤销已通关关卡。
 
 审阅者未判断的事项逐项裁决：旧四条失败只保留对照，不推断游戏正常，代价是根因仍待定位；原有未提交修改仅按用户新授权上传敌人参数，其他继续保留，代价是远端与整个本地工作区仍有差异；取消不通用撤回已结算物品，遵循批准设计，代价是中途取消前已发物品仍保留；最终待办原先留待审阅完成，现已更新，没有未完成实现借此被标记完成。无延后 Minor。
 

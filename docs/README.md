@@ -15,7 +15,7 @@
 | [霰弹](gameplay/SHOTGUN.md) | 图样编辑、散布标定与逐发装填 |
 | [近战](gameplay/MELEE.md) | 玩家近战、眩晕破绽、近战兵及命中反馈 |
 | [生命与医疗包](gameplay/PLAYER_HEALTH.md) | 伤害、治疗、二选一重生与 Debug |
-| [货币商店与任务奖励](gameplay/REWARDS.md) | 商品目录、价格、解锁隐藏、任务金额与酒店退款 |
+| [货币商店与任务奖励](gameplay/REWARDS.md) | 商品目录、价格、解锁隐藏、任务金额与死亡返回酒馆的恢复点 |
 
 ## 敌人与关卡
 
