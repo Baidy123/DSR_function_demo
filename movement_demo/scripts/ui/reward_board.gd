@@ -4,17 +4,17 @@ extends CanvasLayer
 
 signal reward_selected(reward_id: StringName)
 
-const REWARD_IDS: Array[StringName] = [&"first_aid", &"ammo", &"system_progress"]
+const REWARD_IDS: Array[StringName] = [&"first_aid", &"ammo", &"mind_access_device"]
 
 @onready var _buttons: Array[Button] = [
 	$Panel/Margin/Content/Buttons/FirstAid/Button,
 	$Panel/Margin/Content/Buttons/Ammo/Button,
-	$Panel/Margin/Content/Buttons/SystemProgress/Button,
+	$Panel/Margin/Content/Buttons/FlagProduct/Button,
 ]
 @onready var _descriptions: Array[Label] = [
 	$Panel/Margin/Content/Buttons/FirstAid/Description,
 	$Panel/Margin/Content/Buttons/Ammo/Description,
-	$Panel/Margin/Content/Buttons/SystemProgress/Description,
+	$Panel/Margin/Content/Buttons/FlagProduct/Description,
 ]
 
 var _selected: StringName = &""

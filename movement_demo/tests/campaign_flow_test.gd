@@ -97,7 +97,6 @@ func _check_campaign_loop_and_player_state() -> void:
 	state.money = 0
 	state.rewarded_task_ids = {}
 	state.purchased_shop_item_ids = {}
-	state.system_progress = 0
 	state.pending_player_state = {}
 	state.level_entry_player_state = {}
 	state.campaign_checkpoint = {}
@@ -395,7 +394,6 @@ func _check_first_level_return_without_checkpoint() -> void:
 	state.completed_level = 0
 	state.available_level = 1
 	state.claimed_reward_levels = {}
-	state.system_progress = 0
 	state.pending_player_state = {}
 	state.campaign_checkpoint = {}
 	state.clear_interaction_state()

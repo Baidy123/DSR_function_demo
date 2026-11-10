@@ -48,7 +48,7 @@ func check(condition: bool, label_text: String) -> void:
 func _run() -> void:
 	create_timer(WATCHDOG_SECONDS, true, false, true).timeout.connect(_on_watchdog)
 	await _check_real_shop_flow()
-	await _check_system_progress_purchase()
+	await _check_flag_product_purchase()
 	await _check_zero_price_free_purchase()
 	await _check_full_ammo_rejection()
 	await _check_dead_player_rules()
@@ -75,8 +75,8 @@ func _check_real_shop_flow() -> void:
 	check(ctx.board.balance_text() == "货币：1000", "board shows current money")
 	check(not ctx.board.purchase_enabled(&"first_aid", -1), "controller disables first aid while health is full")
 	check(ctx.board.purchase_enabled(&"ammo", -1), "controller enables ammo while it is depleted")
-	check(ctx.board.purchase_enabled(&"system_progress", -1),
-		"controller marks system progress enabled before it reaches maximum")
+	check(ctx.board.purchase_enabled(&"mind_access_device", -1),
+		"controller marks flag product enabled before ownership")
 
 	ctx.health.health = 20.0
 	ctx.health._update_display()
@@ -96,14 +96,14 @@ func _check_real_shop_flow() -> void:
 		"ammo restores every initial reserve type")
 	check(_magazines_full(ctx.equipment), "ammo refills both magazines and cancels reload")
 
-	check(ctx.controller.purchase(&"system_progress", -1), "system progress purchase succeeds")
-	check(int(ctx.state.system_progress) == 100, "one purchase completes system progress")
-	check(ctx.state.money == 430, "system progress deducts 500 in one payment")
-	check(ctx.state.has_purchased_shop_item(&"system_progress") and ctx.board.item_count() == 2,
-		"system progress is recorded and hidden after purchase")
-	check(not ctx.controller.purchase(&"system_progress", -1), "system progress cannot be purchased twice")
-	check(ctx.state.money == 430 and int(ctx.state.system_progress) == 100,
-		"repeat system progress purchase changes neither money nor progress")
+	check(ctx.controller.purchase(&"mind_access_device", -1), "flag product purchase succeeds")
+	check(ctx.state.get_flag(&"has_mind_access_device"), "one purchase grants device ownership")
+	check(ctx.state.money == 430, "flag product deducts 500 in one payment")
+	check(ctx.state.has_purchased_shop_item(&"mind_access_device") and ctx.board.item_count() == 2,
+		"flag product is recorded and hidden after purchase")
+	check(not ctx.controller.purchase(&"mind_access_device", -1), "flag product cannot be purchased twice")
+	check(ctx.state.money == 430 and ctx.state.get_flag(&"has_mind_access_device"),
+		"repeat flag product purchase changes neither money nor ownership")
 
 	ctx.health.health = 10.0
 	ctx.health._update_display()
@@ -125,14 +125,14 @@ func _check_real_shop_flow() -> void:
 	await ctx.tree.process_frame
 
 	check(await _open_shop_via_e(ctx), "shop reopens after catalog change")
-	check(ctx.board.item_count() == 3, "weapon rows stay hidden before unlock level")
+	check(ctx.board.item_count() == 2, "locked weapons and the owned flag product stay hidden")
 
 	ctx.controller.close_shop()
 	await ctx.tree.process_frame
 	ctx.state.completed_level = 1
 	await ctx.tree.process_frame
 	check(await _open_shop_via_e(ctx), "shop reopens at unlock level 1")
-	check(ctx.board.item_count() == 5, "weapon rows appear at unlock level 1")
+	check(ctx.board.item_count() == 4, "weapon rows appear at unlock level 1 while the owned flag stays hidden")
 
 	var original_secondary: WeaponData = ctx.equipment.secondary_weapon
 	var money_before_weapon: int = ctx.state.money
@@ -142,7 +142,7 @@ func _check_real_shop_flow() -> void:
 	check(ctx.state.money == money_before_weapon - 100, "primary weapon deducts 100")
 	check(ctx.state.has_purchased_shop_item(&"shop_rifle_primary"),
 		"primary weapon purchase is recorded")
-	check(ctx.board.item_count() == 4, "one-time primary row disappears after purchase")
+	check(ctx.board.item_count() == 3, "one-time primary row disappears after purchase")
 
 	money_before_weapon = ctx.state.money
 	check(ctx.controller.purchase(&"shop_rifle_secondary", 1), "secondary weapon purchase succeeds")
@@ -151,7 +151,7 @@ func _check_real_shop_flow() -> void:
 	check(ctx.state.money == money_before_weapon - 120, "secondary weapon deducts 120")
 	check(ctx.state.has_purchased_shop_item(&"shop_rifle_secondary"),
 		"secondary weapon purchase is recorded")
-	check(ctx.board.item_count() == 3, "both one-time weapon rows disappear after purchase")
+	check(ctx.board.item_count() == 2, "both one-time weapon rows disappear after purchase")
 
 	var money_before_repeat: int = ctx.state.money
 	check(not ctx.controller.purchase(&"shop_rifle_primary", 0), "repeat one-time weapon is rejected")
@@ -187,33 +187,34 @@ func _check_real_shop_flow() -> void:
 	await _release(ctx.scene)
 
 
-func _check_system_progress_purchase() -> void:
+func _check_flag_product_purchase() -> void:
 	var ctx := await _prepare_main(false)
 	ctx.state.money = 499
-	check(await _open_shop_via_e(ctx), "shop opens below the system progress price")
-	check(not ctx.board.purchase_enabled(&"system_progress", -1), "499 cannot enable the 500 product")
-	check(not ctx.controller.purchase(&"system_progress", -1), "partial payment is rejected")
-	check(ctx.state.money == 499 and int(ctx.state.system_progress) == 0
-		and not ctx.state.has_purchased_shop_item(&"system_progress"),
-		"partial payment changes neither money, progress nor purchase records")
+	check(await _open_shop_via_e(ctx), "shop opens below the flag product price")
+	check(not ctx.board.purchase_enabled(&"mind_access_device", -1), "499 cannot enable the 500 product")
+	check(not ctx.controller.purchase(&"mind_access_device", -1), "partial payment is rejected")
+	check(ctx.state.money == 499 and not ctx.state.get_flag(&"has_mind_access_device")
+		and not ctx.state.has_purchased_shop_item(&"mind_access_device"),
+		"partial payment changes neither money, ownership nor purchase records")
 	ctx.controller.close_shop()
 	ctx.state.money = 500
-	ctx.state.system_progress = 20
+	ctx.state.set_flag(&"music_playing", false)
 	ctx.state.record_campaign_checkpoint(int(ctx.state.completed_level), {})
 	check(await _open_shop_via_e(ctx), "shop reopens with exactly 500")
-	check(ctx.board.purchase_enabled(&"system_progress", -1), "exact price enables the product")
-	check(ctx.controller.purchase(&"system_progress", -1), "exact price buys the complete product")
-	check(ctx.state.money == 0 and int(ctx.state.system_progress) == 100
-		and ctx.state.has_purchased_shop_item(&"system_progress") and ctx.board.item_count() == 2,
-		"one payment completes partial progress and hides the product")
+	check(ctx.board.purchase_enabled(&"mind_access_device", -1), "exact price enables the product")
+	check(ctx.controller.purchase(&"mind_access_device", -1), "exact price buys the complete product")
+	check(ctx.state.money == 0 and ctx.state.get_flag(&"has_mind_access_device")
+		and ctx.state.has_purchased_shop_item(&"mind_access_device") and ctx.board.item_count() == 2,
+		"one payment sets the ownership flag and hides the product")
 	ctx.controller.close_shop()
-	check(ctx.state.restore_campaign_checkpoint(), "system progress purchase can roll back to its checkpoint")
-	check(ctx.state.money == 500 and int(ctx.state.system_progress) == 20
-		and not ctx.state.has_purchased_shop_item(&"system_progress"),
-		"checkpoint refunds the full price and restores progress and purchase eligibility")
+	ctx.state.set_flag(&"music_playing")
+	check(ctx.state.restore_campaign_checkpoint(), "flag product purchase can roll back to its checkpoint")
+	check(ctx.state.money == 500 and not ctx.state.get_flag(&"has_mind_access_device") and ctx.state.get_flag(&"music_playing")
+		and not ctx.state.has_purchased_shop_item(&"mind_access_device"),
+		"checkpoint refunds the full price and restores ownership and purchase eligibility")
 	check(await _open_shop_via_e(ctx) and ctx.board.item_count() == 3
-		and ctx.board.purchase_enabled(&"system_progress", -1),
-		"refunded system progress product becomes available again")
+		and ctx.board.purchase_enabled(&"mind_access_device", -1),
+		"refunded flag product becomes available again")
 	await _release(ctx.scene)
 
 
@@ -415,7 +416,6 @@ func _prepare_main(deplete: bool = true) -> Dictionary:
 	state.money = 500
 	state.completed_level = 0
 	state.available_level = 1
-	state.system_progress = 0
 	state.purchased_shop_item_ids = {}
 	state.rewarded_task_ids = {}
 	state.clear_interaction_state()

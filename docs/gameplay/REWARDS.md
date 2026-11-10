@@ -15,24 +15,25 @@
 | `Display Name` / `Description` | 商店名称与说明 |
 | `Price` | 价格，至少 0；余额不足或效果当前不可用时，由控制器复核并拒绝，不扣款、不改变状态 |
 | `Unlock Level` | 0 始终可见；大于 0 时要求 `completed_level >= unlock_level`，否则完全隐藏 |
-| `Effect` | `HEAL` 回血、`REFILL_AMMO` 补满弹匣与备弹、`SYSTEM_PROGRESS` 增加系统进度、`WEAPON` 覆盖武器槽 |
-| `Amount` | 回血量或系统进度增量；弹药补给与武器忽略 |
+| `Effect` | `HEAL` 回血、`REFILL_AMMO` 补满弹匣与备弹、`SET_FLAG` 获得商品并设置旗标、`WEAPON` 覆盖武器槽 |
+| `Amount` | 回血量；其他效果忽略 |
+| `Flag Key` | `SET_FLAG` 商品购买后置为 true 的旗标键，不能为空 |
 | `Weapon Data` | `WEAPON` 商品必须引用现有 `WeaponData` |
-| `One Time` | 购买成功后永久隐藏；`WEAPON` 必须为真，普通商品可关闭以重复购买 |
+| `One Time` | 购买成功后隐藏；`WEAPON` 与 `SET_FLAG` 必须为真，回血／补弹可关闭以重复购买 |
 
-初始目录只有三个商品，均 `unlock_level = 0`。急救包与弹药补给可重复购买；系统进度为一次性商品：
+初始目录只有三个商品，均 `unlock_level = 0`。急救包与弹药补给可重复购买；思维接入装置为一次性商品：
 
-| 商品 | ID | 价格 | 效果 | 数值 |
+| 商品 | ID | 价格 | 效果 | 效果参数 |
 | --- | --- | ---: | --- | ---: |
 | 急救包 | `first_aid` | 40 | `HEAL` | 35 |
 | 弹药补给 | `ammo` | 30 | `REFILL_AMMO` | 无 |
-| 系统进度 | `system_progress` | 500 | `SYSTEM_PROGRESS` | 100 |
+| 思维接入装置 | `mind_access_device` | 500 | `SET_FLAG` | `has_mind_access_device = true` |
 
-系统进度商品一次付清 500，单次购买将进度补满至 100；已有部分进度时仍需付清 500。
+装置商品一次付清 500，单次购买调用 `GameState.grant_shop_flag(&"has_mind_access_device")`，将拥有旗标置为 true。
 购买成功后记录一次性购买并隐藏商品，不能重复购买。死亡返回酒店时，检查点之后的这笔购买仍按原规则全额退款，
-同时恢复购买前进度与购买资格。
+同时恢复购买前旗标与购买资格。检查点只恢复商店登记的旗标，唱片机等其他玩法旗标不受影响。
 
-目录读取时过滤无效项：空项、空 ID、负价格、未知效果、回血／系统进度商品的非正数值、武器商品缺少
+目录读取时过滤无效项：空项、空 ID、负价格、未知效果、回血商品的非正数值、旗标商品缺少 `Flag Key` 或未开 `One Time`、武器商品缺少
 `WeaponData` 或未开 `One Time`。
 
 ## 可见性与购买
@@ -46,17 +47,33 @@
 ```text
 item.unlock_level <= GameState.completed_level
 and not (item.one_time and GameState.has_purchased_shop_item(item.id))
+and not (item.effect == SET_FLAG and GameState.get_flag(item.flag_key))
 ```
 
 不满足可见条件的商品不创建可见行，也不占空位；目录全部不可见时商店显示“暂无商品”且不暂停游戏。
-面板按 `ShopController` 给出的可用状态显示／禁用购买按钮：余额不足、满血、弹药已满或系统进度已满时，
+面板按 `ShopController` 给出的可用状态显示／禁用购买按钮：余额不足、满血、弹药已满或已拥有旗标商品时，
 对应按钮不可点击，控制器在购买时仍会再次复核，不扣款、不改变状态。
 
 - 急救包：生命未满时购买成功，立即恢复 `Amount` 点生命；满血时购买被拒绝。
 - 弹药补给：补满两把已装备武器的弹匣，并把 `initial_ammo` 中已配置的共享备弹恢复到至少初始数量，
   同时保留其他备弹类型；已经全满时购买被拒绝。
-- 系统进度：初始商品售价 500、`Amount = 100`、`One Time = true`，一次补满至 100；已满时购买被拒绝。
+- 旗标商品：装置售价 500、`Flag Key = has_mind_access_device`、`One Time = true`；购买后旗标变为 true。已拥有时隐藏并拒绝再次购买，即使购买记录被清空也以旗标为准。
 - 购买成功后扣款、刷新余额和商品可用状态，面板保持打开。
+
+## 拥有类商品与旗标查询
+
+新增拥有类商品时选 `SET_FLAG`，填写不重复的 `Flag Key` 并打开 `One Time`；无需填写 `Amount`。
+思维接入装置的商品 ID 为 `mind_access_device`，拥有旗标为 `has_mind_access_device`。
+
+```gdscript
+if GameState.get_flag(&"has_mind_access_device"):
+    # 玩家已拥有装置，可在这里判断后续玩法条件。
+    pass
+```
+
+任务表可用 `QuestCondition.flag(&"has_mind_access_device")` 作为条件，沿用原 FLAG 条件与 `flag_changed` 通知。
+商店商品旗标的值唯一保存在 `GameState.flags`；`shop_flags` 仅是检查点快照，不是另一份运行时状态。
+原数值进度、累加方法和任务面板进度条已移除。
 
 ## 武器商品
 
@@ -86,7 +103,7 @@ and not (item.one_time and GameState.has_purchased_shop_item(item.id))
   独立场景继续使用场景保存配置。
 - 返回酒店：沿用 `GameState.restore_campaign_checkpoint()`，恢复检查点货币（退还检查点之后的花费）、
   检查点 `purchased_shop_item_ids`（撤销之后的一次性购买）、检查点玩家快照（移除之后购买的武器并恢复被覆盖的
-  旧武器、消耗品和系统进度）。已发任务奖励已在检查点中，不会因返回酒店丢失。
+  旧武器和消耗品），并单独恢复检查点的商品旗标。已发任务奖励已在检查点中，不会因返回酒店丢失。
 
 ## 兼容组件
 

@@ -123,15 +123,15 @@
 3. 玩家靠近商店 NPC 按 E 时，NPC 调用 `ShopController.open_shop_for_player(player)`。
    控制器解析 `resources/shop/shop_catalog.tres`，按“已解锁且未购买的一次性商品”过滤可见项，
    取得暂停所有权后显示 `scenes/ui/shop_board.tscn`（`CanvasLayer.process_mode = ALWAYS`）。
-4. 初始商品为急救包（40，回血35）、弹药补给（30，补满弹匣与备弹）、系统进度（500，一次补满至100）。
-   急救包与弹药补给可重复购买，系统进度只可购买一次并在购买后隐藏；`unlock_level` 大于 0 的商品在 `completed_level` 达标前完全隐藏。
-5. 购买成功后控制器扣款、刷新余额与商品可用状态，面板保持打开；一次性商品（武器）购买后永久隐藏。
+4. 初始商品为急救包（40，回血35）、弹药补给（30，补满弹匣与备弹）、思维接入装置（500，购买后拥有）。
+   急救包与弹药补给可重复购买，装置只可购买一次，购买后设置 `has_mind_access_device = true` 并隐藏；`unlock_level` 大于 0 的商品在 `completed_level` 达标前完全隐藏。
+5. 购买成功后控制器扣款、刷新余额与商品可用状态，面板保持打开；一次性商品（装置或武器）购买后永久隐藏。
    面板只回传 `purchase_requested(item_id, slot)`，不直接修改 `GameState`、玩家或装备。
 6. 货币与一次性购买记录跨场景保留，重新运行游戏才重置；死亡返回酒店时由酒店检查点恢复。
 
 旧三选一奖励组件（`EncounterController`、`RewardBoard`、`resources/rewards/level_rewards.tres`）
 保留为兼容代码，不再接入主流程；`Arena.combat_cleared` 不打开商店，也没有旧的 `Arena/CombatZone/ReturnPortal`。
-`system_progress` 目前只累计并显示在任务面板上，尚未用于章节解锁或后续内容门槛。
+拥有状态统一通过 `GameState.get_flag(&"has_mind_access_device")` 查询；任务可配置 `QuestCondition.flag()`，无需数值进度。
 
 ## 五关进度与跨关玩家状态
 
@@ -140,7 +140,7 @@
 1. 任意关卡清空后，`LevelFlow` 只启用本关 `TavernReturnPortal`，不显示按钮切关，也不暂停。
 2. 返程门把本关编号写入 `GameState.completed_level`，并用 `PlayerCampaignState.capture()`
    保存一次待恢复状态；第1关同时写入 `task_a_returned = returned`。同一快照还会写入
-   `GameState.campaign_checkpoint`，连同当前 `available_level`、系统进度、货币、
+   `GameState.campaign_checkpoint`，连同当前 `available_level`、商品旗标、货币、
    已发放任务奖励和一次性购买记录保存为酒店检查点。
 3. 新玩家实例在 `player.gd::_ready()` 中消费一次 `pending_player_state`。因此回酒馆时，
    同一个角色逻辑上的生命、当前槽位、双武器、各自弹匣、共享备弹和医疗包会出现在新 Player 节点上；
@@ -156,12 +156,12 @@
 - **重新挑战当前关卡**：重载当前场景，按进入本关时的 `level_entry_player_state` 恢复生命、
   武器、弹药、医疗包与货币，不消费酒店检查点。
 - **返回酒店**：调用 `GameState.restore_campaign_checkpoint()`，恢复最近完成关卡时的
-  `completed_level`、`available_level`、货币、已发放任务奖励、一次性购买记录、系统进度和
+  `completed_level`、`available_level`、货币、已发放任务奖励、一次性购买记录、商品旗标和
   装备／玩家快照，再加载酒馆。
 
 检查点固定在任务完成并返程、尚未在商店消费、尚未由 A 解锁下一关的时刻。因此返回酒店后，
 货币恢复为检查点余额，退还之后的花费；检查点之后的一次性购买记录被清除，被覆盖的武器、
-消耗品和系统进度随玩家快照一并回退；任务奖励已写进检查点，不会因返回酒店丢失或重复发放。
+消耗品随玩家快照回退，商品旗标通过 `shop_flags` 独立回退，不改动其他玩法旗标；任务奖励已写进检查点，不会因返回酒店丢失或重复发放。
 第1关尚未完成时没有检查点，返回酒店会保留当前任务接取状态，以酒馆初始关卡状态重新加载。
 正常跨关、重新挑战和返回酒店使用不同状态来源。
 
@@ -228,7 +228,7 @@
 
 - 一行一个任务，格式“任务名：状态”，`target_area` 非空时附“（场地 xxx）”；
 - 未解锁显示“未解锁”，配置表为空时显示“暂无任务”；
-- 系统进度使用最大值 100 的 `ProgressBar`，并显示“当前值 / 100”；
+- 面板只展示任务状态；商品是否拥有由旗标保存，不创建进度条；
 - 监听 `quest_changed` 刷新，并在启动时延迟补刷一次，兜住控制器晚接线。
 
 当前 `main.tscn` 不再挂载 `GameStateDebug`；任务控制器与配置表接口保持原归属。
@@ -295,7 +295,7 @@
 
 多份配置表的分发、任务二的场地与内容、酒馆场景整体变化还没做；
 五关已经使用真实场景往返酒馆，并由 A 控制逐关解锁。
-跨场景运行状态已保留，但退出游戏后的进度持久化仍未做；`system_progress` 只累计并显示、未用于章节门槛，
+跨场景运行状态已保留，但退出游戏后的进度持久化仍未做；商品拥有状态通过布尔旗标查询，
 都记录在 [待办](../TODO.md)。
 
 ## 历史记录

@@ -314,7 +314,7 @@ func _test_return_to_tavern_from_death() -> void:
 	game_state.money = 100
 	game_state.rewarded_task_ids = {&"task_a": true}
 	game_state.purchased_shop_item_ids = {}
-	game_state.system_progress = 20
+	game_state.set_flag(&"has_mind_access_device", false)
 	game_state.level_entry_player_state = level_entry_paid.duplicate(true)
 	game_state.record_campaign_checkpoint(2, checkpoint_snapshot)
 	game_state.completed_level = 3
@@ -322,7 +322,7 @@ func _test_return_to_tavern_from_death() -> void:
 	game_state.money = 35
 	game_state.rewarded_task_ids = {&"task_a": true, &"task_level_2": true}
 	game_state.purchased_shop_item_ids = {&"shop_shotgun": true}
-	game_state.system_progress = 40
+	game_state.grant_shop_flag(&"has_mind_access_device")
 	game_state.pending_player_state = {}
 
 	var calls: Array[Dictionary] = []
@@ -353,7 +353,7 @@ func _test_return_to_tavern_from_death() -> void:
 			and game_state.money == 35
 			and game_state.rewarded_task_ids == {&"task_a": true, &"task_level_2": true}
 			and game_state.purchased_shop_item_ids == {&"shop_shotgun": true}
-			and game_state.system_progress == 40,
+			and game_state.get_flag(&"has_mind_access_device"),
 		"Current-level retry after hotel failure rolls non-transactional checkpoint state back")
 	check(game_state.pending_player_state == level_entry_paid,
 		"Current-level retry after hotel failure stages the level-entry paid weapon snapshot")
@@ -362,7 +362,7 @@ func _test_return_to_tavern_from_death() -> void:
 	game_state.money = 0
 	game_state.rewarded_task_ids = {}
 	game_state.purchased_shop_item_ids = {}
-	game_state.system_progress = 0
+	game_state.set_flag(&"has_mind_access_device", false)
 	game_state.pending_player_state = {}
 	game_state.level_entry_player_state = {}
 	game_state.campaign_checkpoint = {}

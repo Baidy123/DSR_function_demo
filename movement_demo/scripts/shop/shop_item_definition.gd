@@ -1,7 +1,7 @@
 class_name ShopItemDefinition
 extends Resource
 
-enum Effect { HEAL, REFILL_AMMO, SYSTEM_PROGRESS, WEAPON }
+enum Effect { HEAL, REFILL_AMMO, SET_FLAG, WEAPON }
 
 @export var id: StringName = &""
 @export var display_name: String = ""
@@ -11,6 +11,8 @@ enum Effect { HEAL, REFILL_AMMO, SYSTEM_PROGRESS, WEAPON }
 @export var effect: Effect = Effect.HEAL
 @export_range(0, 9999, 1) var amount: int = 0
 @export var weapon_data: WeaponData
+## SET_FLAG 商品购买后将此旗标设为 true，供任务、对话与玩法查询。
+@export var flag_key: StringName = &""
 @export var one_time: bool = false
 
 
@@ -19,6 +21,8 @@ func is_valid() -> bool:
 		return false
 	if effect == Effect.WEAPON:
 		return weapon_data != null and one_time
-	if effect in [Effect.HEAL, Effect.SYSTEM_PROGRESS]:
+	if effect == Effect.SET_FLAG:
+		return flag_key != &"" and one_time
+	if effect == Effect.HEAL:
 		return amount > 0
 	return effect == Effect.REFILL_AMMO

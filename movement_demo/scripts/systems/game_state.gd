@@ -3,11 +3,8 @@ extends Node
 ## 对话字段被写入时通知监听者（例如任务控制器按表同步任务状态）；
 ## 值没有变化时不发信号，避免同一结果反复刷新。旗标与物品另有专用信号。
 signal value_changed(key: StringName, value: Variant)
-signal system_progress_changed(previous: int, current: int)
 signal money_changed(previous: int, current: int)
 
-const SYSTEM_PROGRESS_MAX: int = 100
-var system_progress: int = 0
 var money: int = 0:
 	set(value):
 		value = maxi(0, value)
@@ -106,15 +103,30 @@ signal flag_changed(flag: StringName, value: bool)
 var items: Dictionary = {}
 ## flag -> bool
 var flags: Dictionary = {}
+## 记录商店负责的旗标键；旗标值唯一保存在 flags，回滚不涉及其他玩法旗标。
+var _shop_flag_keys: Dictionary = {}
 
 
-func add_system_progress(amount: int) -> void:
-	if amount <= 0 or system_progress >= SYSTEM_PROGRESS_MAX:
-		return
-	var previous := system_progress
-	system_progress = mini(SYSTEM_PROGRESS_MAX, previous + amount)
-	if system_progress != previous:
-		system_progress_changed.emit(previous, system_progress)
+func grant_shop_flag(flag_key: StringName) -> bool:
+	if flag_key == &"" or get_flag(flag_key):
+		return false
+	_shop_flag_keys[flag_key] = true
+	set_flag(flag_key)
+	return true
+
+
+func _capture_shop_flags() -> Dictionary:
+	var result: Dictionary = {}
+	for key in _shop_flag_keys:
+		result[key] = get_flag(key)
+	return result
+
+
+func _restore_shop_flags(snapshot: Dictionary) -> void:
+	for key in snapshot:
+		_shop_flag_keys[key] = true
+	for key in _shop_flag_keys:
+		set_flag(key, bool(snapshot.get(key, false)))
 
 
 ## 拾取或获得物品；display_name 留空时保留已有名字。
@@ -242,7 +254,7 @@ func record_campaign_checkpoint(level_number: int, player_snapshot: Dictionary) 
 		"completed_level": completed_level,
 		"available_level": available_level,
 		"claimed_reward_levels": claimed_reward_levels.duplicate(),
-		"system_progress": system_progress,
+		"shop_flags": _capture_shop_flags(),
 		"task_a_returned": task_a_returned,
 		"money": money,
 		"rewarded_task_ids": rewarded_task_ids.duplicate(),
@@ -264,7 +276,7 @@ func capture_campaign_state() -> Dictionary:
 		"completed_level": completed_level,
 		"available_level": available_level,
 		"claimed_reward_levels": claimed_reward_levels.duplicate(),
-		"system_progress": system_progress,
+		"shop_flags": _capture_shop_flags(),
 		"task_a_returned": task_a_returned,
 		"money": money,
 		"rewarded_task_ids": rewarded_task_ids.duplicate(),
@@ -282,11 +294,7 @@ func restore_campaign_state(snapshot: Dictionary) -> bool:
 	claimed_reward_levels = restored_claims
 	task_a_reward_claimed = bool(restored_claims.get(1, false))
 	value_changed.emit(&"claimed_reward_levels", restored_claims.duplicate())
-	var restored_progress := int(snapshot.get("system_progress", system_progress))
-	if system_progress != restored_progress:
-		var previous := system_progress
-		system_progress = restored_progress
-		system_progress_changed.emit(previous, system_progress)
+	_restore_shop_flags(snapshot.get("shop_flags", {}))
 	task_a_returned = str(snapshot.get("task_a_returned", ""))
 	money = int(snapshot.get("money", 0))
 	rewarded_task_ids = snapshot.get("rewarded_task_ids", {}).duplicate()
@@ -319,3 +327,4 @@ func reset_reward_claims() -> void:
 func clear_interaction_state() -> void:
 	items.clear()
 	flags.clear()
+	_shop_flag_keys.clear()

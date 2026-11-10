@@ -115,7 +115,6 @@ func _run() -> void:
 		"completed_level": 1,
 		"available_level": 1,
 		"claimed_reward_levels": {},
-		"system_progress": 0,
 		"task_a_returned": "returned",
 		"player_state": {"health": {"health": 50.0}},
 	}

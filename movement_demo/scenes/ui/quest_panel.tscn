@@ -41,21 +41,6 @@ layout_mode = 2
 theme_override_font_sizes/font_size = 18
 text = "任务状态"
 
-[node name="SystemProgress" type="VBoxContainer" parent="Panel/Margin/Content"]
-layout_mode = 2
-theme_override_constants/separation = 4
-
-[node name="Label" type="Label" parent="Panel/Margin/Content/SystemProgress"]
-layout_mode = 2
-theme_override_font_sizes/font_size = 16
-text = "系统进度：0 / 100"
-
-[node name="Bar" type="ProgressBar" parent="Panel/Margin/Content/SystemProgress"]
-custom_minimum_size = Vector2(260, 18)
-layout_mode = 2
-max_value = 100.0
-show_percentage = false
-
 [node name="QuestList" type="Label" parent="Panel/Margin/Content"]
 layout_mode = 2
 theme_override_font_sizes/font_size = 18

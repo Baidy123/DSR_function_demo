@@ -27,7 +27,7 @@ func _run() -> void:
 	state.money = 100
 	state.rewarded_task_ids = {&"task_a": true}
 	state.purchased_shop_item_ids = {}
-	state.system_progress = 20
+	state.grant_shop_flag(&"owned_before_checkpoint")
 	state.task_a_returned = "returned"
 	state.record_campaign_checkpoint(2, {"health": {"health": 73.0}})
 
@@ -36,7 +36,8 @@ func _run() -> void:
 	state.money = 35
 	state.rewarded_task_ids = {&"task_a": true, &"task_level_2": true}
 	state.purchased_shop_item_ids = {&"shop_shotgun": true}
-	state.system_progress = 70
+	state.grant_shop_flag(&"has_mind_access_device")
+	state.set_flag(&"music_playing")
 	state.task_a_returned = "later"
 	state.pending_player_state = {"equipment": {"active_slot": 1}}
 	_check(state.restore_campaign_checkpoint(), "Completed checkpoint can be restored")
@@ -47,7 +48,7 @@ func _run() -> void:
 		"Restore rolls rewarded task IDs back to the completion checkpoint")
 	_check(state.purchased_shop_item_ids.is_empty(),
 		"Restore clears one-time purchases made after the completion")
-	_check(state.system_progress == 20, "Restore rolls back system progress granted after completion")
+	_check(state.get_flag(&"owned_before_checkpoint") and not state.get_flag(&"has_mind_access_device") and state.get_flag(&"music_playing"), "Restore keeps earlier shop ownership, revokes later ownership and preserves unrelated flags")
 	_check(state.task_a_returned == "returned", "Restore returns campaign completion markers to the checkpoint")
 	_check(state.pending_player_state == {"health": {"health": 73.0}},
 		"Restore makes the completion-time player snapshot available to the tavern")
@@ -59,21 +60,22 @@ func _run() -> void:
 		"An absent checkpoint leaves current campaign state untouched")
 	state.completed_level = 5
 	state.available_level = 5
-	state.system_progress = 80
+	state.grant_shop_flag(&"has_mind_access_device")
 	state.pending_player_state = {"equipment": {"active_slot": 1}}
 	state.campaign_checkpoint = {
 		"level": 1,
 		"completed_level": 1,
 		"available_level": 1,
 		"claimed_reward_levels": {},
-		"system_progress": 0,
 		"task_a_returned": "returned",
 		"player_state": {"health": {"health": 50.0}},
 	}
 	_check(state.restore_campaign_checkpoint(), "Old checkpoint without new fields restores safely")
 	_check(state.completed_level == 1 and state.available_level == 1,
 		"Old checkpoint restores completion and available levels")
-	_check(state.money == 0, "Old checkpoint defaults money to zero")
+	_check(state.money == 0 and not state.get_flag(&"has_mind_access_device")
+		and not state.get_flag(&"owned_before_checkpoint") and state.get_flag(&"music_playing"),
+		"Old checkpoint defaults money and shop flags without touching unrelated flags")
 	_check(state.rewarded_task_ids.is_empty(), "Old checkpoint defaults rewarded task IDs to empty")
 	_check(state.purchased_shop_item_ids.is_empty(), "Old checkpoint defaults purchased shop items to empty")
 	_check(state.pending_player_state == {"health": {"health": 50.0}},

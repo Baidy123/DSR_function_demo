@@ -123,6 +123,8 @@ func _is_visible(item: ShopItemDefinition) -> bool:
 		return false
 	if item.unlock_level > int(state.completed_level):
 		return false
+	if item.effect == ShopItemDefinition.Effect.SET_FLAG and state.get_flag(item.flag_key):
+		return false
 	return not item.one_time or not state.has_purchased_shop_item(item.id)
 
 
@@ -180,9 +182,8 @@ func _validate_effect(state: Node, player: Node3D, item: ShopItemDefinition, slo
 			return equipment != null and equipment.has_method(&"refill_all_ammo") \
 				and equipment.has_method(&"can_refill_all_ammo") \
 				and not bool(equipment.can_refill_all_ammo())
-		ShopItemDefinition.Effect.SYSTEM_PROGRESS:
-			return state.has_method(&"add_system_progress") \
-				and int(state.system_progress) < int(state.SYSTEM_PROGRESS_MAX)
+		ShopItemDefinition.Effect.SET_FLAG:
+			return state.has_method(&"grant_shop_flag") and not state.get_flag(item.flag_key)
 		ShopItemDefinition.Effect.WEAPON:
 			if slot not in [0, 1] or item.weapon_data == null \
 					or item.weapon_data.fire_mode == WeaponData.FireMode.MELEE:
@@ -208,9 +209,8 @@ func _apply_effect(state: Node, player: Node3D, item: ShopItemDefinition, slot: 
 				return false
 			equipment.refill_all_ammo()
 			return true
-		ShopItemDefinition.Effect.SYSTEM_PROGRESS:
-			state.add_system_progress(item.amount)
-			return true
+		ShopItemDefinition.Effect.SET_FLAG:
+			return state.grant_shop_flag(item.flag_key)
 		ShopItemDefinition.Effect.WEAPON:
 			var equipment := _equipment(player)
 			if equipment == null:

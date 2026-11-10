@@ -7,7 +7,7 @@ const CatalogScript := preload("res://scripts/shop/shop_catalog.gd")
 const ItemScript := preload("res://scripts/shop/shop_item_definition.gd")
 const Catalog := preload("res://resources/shop/shop_catalog.tres")
 
-const EXPECTED_CHECKS := 30
+const EXPECTED_CHECKS := 31
 
 var failures := 0
 var checks_run := 0
@@ -33,7 +33,7 @@ func _run() -> void:
 	var ids: Array[StringName] = []
 	for item in items:
 		ids.append(item.id)
-	check(ids == [&"first_aid", &"ammo", &"system_progress"], "initial catalog keeps its product order")
+	check(ids == [&"first_aid", &"ammo", &"mind_access_device"], "initial catalog keeps its product order")
 
 	var first: ShopItemDefinition = Catalog.item_by_id(&"first_aid")
 	check(first != null, "first aid is addressable by ID")
@@ -53,14 +53,14 @@ func _run() -> void:
 		check(ammo.amount == 0, "ammo has no configured amount")
 		check(not ammo.one_time, "ammo is repeatable")
 
-	var progress := Catalog.item_by_id(&"system_progress")
-	check(progress != null, "system progress is addressable by ID")
-	if progress != null:
-		check(progress.price == 500, "system progress costs 500 in one payment")
-		check(progress.unlock_level == 0, "system progress is unlocked at level 0")
-		check(progress.effect == ItemScript.Effect.SYSTEM_PROGRESS, "system progress uses SYSTEM_PROGRESS")
-		check(progress.amount == 100, "one system progress purchase fills the progress bar")
-		check(progress.one_time, "system progress is a one-time product")
+	var device := Catalog.item_by_id(&"mind_access_device")
+	check(device != null, "flag product is addressable by ID")
+	if device != null:
+		check(device.price == 500, "flag product costs 500 in one payment")
+		check(device.unlock_level == 0, "flag product is unlocked at level 0")
+		check(device.effect == ItemScript.Effect.SET_FLAG, "flag product uses SET_FLAG")
+		check(device.flag_key == &"has_mind_access_device", "device grants its configured ownership flag")
+		check(device.one_time, "flag product is a one-time product")
 
 	var zero_heal := ItemScript.new()
 	zero_heal.id = &"zero_heal"
@@ -69,13 +69,16 @@ func _run() -> void:
 	zero_heal.effect = ItemScript.Effect.HEAL
 	zero_heal.amount = 0
 	check(not zero_heal.is_valid(), "healing products require a positive amount")
-	var zero_progress := ItemScript.new()
-	zero_progress.id = &"zero_progress"
-	zero_progress.display_name = "Zero progress"
-	zero_progress.price = 10
-	zero_progress.effect = ItemScript.Effect.SYSTEM_PROGRESS
-	zero_progress.amount = 0
-	check(not zero_progress.is_valid(), "progress products require a positive amount")
+	var invalid_flag := ItemScript.new()
+	invalid_flag.id = &"invalid_flag"
+	invalid_flag.display_name = "Flag product"
+	invalid_flag.price = 500
+	invalid_flag.effect = ItemScript.Effect.SET_FLAG
+	invalid_flag.one_time = true
+	check(not invalid_flag.is_valid(), "flag products require a nonempty flag key")
+	invalid_flag.flag_key = &"has_mind_access_device"
+	invalid_flag.one_time = false
+	check(not invalid_flag.is_valid(), "flag products require one-time purchase tracking")
 
 	check(Catalog.item_by_id(&"first_aid") == items[0], "lookup returns the first valid product")
 	check(Catalog.item_by_id(&"missing") == null, "unknown product ID returns null")

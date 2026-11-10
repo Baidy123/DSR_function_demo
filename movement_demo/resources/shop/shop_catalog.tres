@@ -25,17 +25,17 @@ effect = 1
 amount = 0
 one_time = false
 
-[sub_resource type="Resource" id="ShopItem_system_progress"]
+[sub_resource type="Resource" id="ShopItem_mind_access_device"]
 script = ExtResource("2_item")
-id = &"system_progress"
-display_name = "系统进度"
-description = "一次购买，系统进度直接达到 100"
+id = &"mind_access_device"
+display_name = "思维接入装置"
+description = "购买后获得思维接入装置"
 price = 500
 unlock_level = 0
 effect = 2
-amount = 100
 one_time = true
+flag_key = &"has_mind_access_device"
 
 [resource]
 script = ExtResource("1_catalog")
-items = Array[ExtResource("2_item")]([SubResource("ShopItem_first_aid"), SubResource("ShopItem_ammo"), SubResource("ShopItem_system_progress")])
+items = Array[ExtResource("2_item")]([SubResource("ShopItem_first_aid"), SubResource("ShopItem_ammo"), SubResource("ShopItem_mind_access_device")])
