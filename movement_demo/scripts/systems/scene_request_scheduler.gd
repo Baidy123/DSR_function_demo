@@ -56,7 +56,7 @@ func advance(_delta: float) -> void:
 
 func cancel(id: int, reason: StringName) -> void:
 	var request: Request = _requests.get(id)
-	if request == null or request.is_terminal(): return
+	if request == null or request.is_terminal() or request.status == &"cancelling": return
 	# Invalidate first; cancel hooks may synchronously report completion.
 	request._status = &"cancelling"
 	var director = _director.get_ref()
@@ -71,6 +71,8 @@ func cancel_scope(owner: Node, reason: StringName) -> void:
 		if request.scope == 1 and request.node(&"scope_owner") == owner: cancel(request.id, reason)
 
 func _finished(request: Request) -> void:
+	var director = _director.get_ref()
+	if is_instance_valid(director): director.release_request_controls(request)
 	for link in _connections.get(request.id, []):
 		var node = link.node.get_ref()
 		if is_instance_valid(node) and node.tree_exiting.is_connected(link.callback):
@@ -83,6 +85,9 @@ func _finished(request: Request) -> void:
 
 func owns(request: Request) -> bool:
 	return _requests.get(request.id) == request and request.status != &"cancelling"
+
+func find(id: int) -> Request:
+	return _requests.get(id)
 
 func snapshot() -> Dictionary:
 	var requests: Array[Dictionary] = []

@@ -16,11 +16,11 @@ static func for_tree(tree: SceneTree):
 	tree.set_meta(META, coordinator)
 	return coordinator
 
-func acquire(owner: Node, reason: StringName, visible_mouse: bool = false) -> int:
+func acquire(owner: Node, reason: StringName, visible_mouse: bool = false, pause_world: bool = true) -> int:
 	var tree: SceneTree = _tree.get_ref()
 	if tree == null or not is_instance_valid(owner): return 0
 	var first_owner := _tokens.is_empty()
-	if first_owner:
+	if pause_world and not _has_pause_owner():
 		_previous_pause = tree.paused
 	_next_id += 1
 	var id := _next_id
@@ -29,8 +29,8 @@ func acquire(owner: Node, reason: StringName, visible_mouse: bool = false) -> in
 		var cleanup := _release_owner.bind(owner_id)
 		_owners[owner_id] = {"owner": weakref(owner), "cleanup": cleanup}
 		owner.tree_exiting.connect(cleanup, CONNECT_ONE_SHOT)
-	_tokens[id] = {"owner_id": owner_id, "reason": reason, "mouse": visible_mouse}
-	tree.paused = true
+	_tokens[id] = {"owner_id": owner_id, "reason": reason, "mouse": visible_mouse, "pause": pause_world}
+	if pause_world: tree.paused = true
 	# Pause notifications release the combat component's temporary mouse capture.
 	# Save that settled mode, not a stale capture belonging to a now-paused action.
 	if first_owner: _previous_mouse_mode = Input.mouse_mode
@@ -50,8 +50,8 @@ func release(id: int) -> void:
 			owner.tree_exiting.disconnect(ownership.cleanup)
 	var tree: SceneTree = _tree.get_ref()
 	if tree == null: return
+	if entry.pause and not _has_pause_owner(): tree.paused = _previous_pause
 	if _tokens.is_empty():
-		tree.paused = _previous_pause
 		Input.mouse_mode = _previous_mouse_mode
 	elif not _has_mouse_owner():
 		Input.mouse_mode = _previous_mouse_mode
@@ -68,7 +68,15 @@ func _has_owner_token(owner_id: int) -> bool:
 	return false
 
 func can_advance_presentation(token: int) -> bool:
-	return _tokens.has(token) and _tokens.size() == 1 and not _previous_pause
+	var count := 0
+	for entry in _tokens.values():
+		if entry.pause: count += 1
+	return _tokens.has(token) and _tokens[token].pause and count == 1 and not _previous_pause
+
+func _has_pause_owner() -> bool:
+	for entry in _tokens.values():
+		if entry.pause: return true
+	return false
 
 func _has_mouse_owner() -> bool:
 	for entry in _tokens.values():

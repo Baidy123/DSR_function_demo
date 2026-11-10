@@ -117,7 +117,7 @@ Equipment 交接当前枪给 Combat；相机订阅 `weapon_changed`，表现订�
 
 ## 波次、关卡与补给
 
-统一调度迁移第一阶段：`scene_request.gd` 保存请求身份、弱节点引用与一次性结果，`scene_request_scheduler.gd` 是导演内部的排队／去重／取消管理，不是第二个公开调度入口。酒馆 `main.tscn` 现已明确装配无 Wave 的 SceneDirector；旧区域回退暂留至正式场景与夹具迁移完成。对话、商店和传送旁路仍待后续阶段接入，当前请求入口先覆盖引导、镜头及完成请求。
+统一调度迁移：`scene_request.gd` 保存请求身份、弱节点引用与一次性结果，`scene_request_scheduler.gd` 是导演内部的排队／去重／取消管理，不是第二个公开调度入口。`scene_interaction_executor.gd` 适配 NPC 转身、对话／商店开始和收尾；导演保存暂停、鼠标及玩家限制，界面报告真实结束，包括首句尚未加载完成的取消。酒馆 `main.tscn` 已明确装配无 Wave 的 SceneDirector；旧区域回退暂留至正式场景与夹具迁移完成。传送及其余规则入口仍待后续阶段接入。
 
 - `world/enemy_wave_controller.gd` 是 SceneDirector 场景入口兼容脚本，原 UID 保留；五关入口已按用户要求改名，Wave/Squad层级不动。`enemy_wave_runtime.gd` 执行模板、合法出生、各波状态、搜索与清理；`enemy_wave_definition.gd` 保存部署、事件节点与手选镜头配置。
 - `systems/scene_director.gd` 是入口内部的场景核心，不依赖Wave或PlayGuide；`scene_flow_runner.gd` 推进资源规则与动作，`scene_pause_coordinator.gd` 统一记录拥有者。仅内部核心使用Always，区域和敌人保持可暂停。
@@ -149,7 +149,7 @@ Equipment 交接当前枪给 Combat；相机订阅 `weapon_changed`，表现订�
 
 ## 货币商店与旧奖励接口
 
-`main.tscn` 的货币商店闭环由 `scripts/world/reward_npc.gd`（保留 `RewardNPC` 节点路径与脚本 UID，标签为“商店”）、`scripts/shop/shop_controller.gd` 与 `scripts/ui/shop_board.gd` 共同承担：交互时 `RewardNPC` 调用 `ShopController.open_shop_for_player(player)`。控制器解析 `resources/shop/shop_catalog.tres`，按 `unlock_level <= completed_level` 且“一次性商品尚未购买”过滤可见商品，取得暂停所有权后打开 `scenes/ui/shop_board.tscn`。购买时控制器复核余额与效果、修改 `GameState`／玩家／装备、扣款并记录一次性购买，面板只回传 `purchase_requested(item_id, slot)`。商店打开期间玩家死亡或节点离树会释放自己的暂停。
+`main.tscn` 的货币商店闭环由 `scripts/world/reward_npc.gd`（保留 `RewardNPC` 节点路径与脚本 UID，标签为“商店”）、`scripts/shop/shop_controller.gd` 与 `scripts/ui/shop_board.gd` 共同承担：RewardNPC 向导演请求 shop，获准后 ShopController 解析目录、配置面板并执行购买；导演管理暂停和结束。购买时控制器复核余额与效果、修改 `GameState`／玩家／装备、扣款并记录一次性购买，面板只回传 `purchase_requested(item_id, slot)`。死亡或来源离场取消商店请求，只释放本次控制。
 
 任务金额由 `scripts/systems/stage/quest_controller.gd` 在任务首次进入 `COMPLETED` 时调用 `GameState.claim_task_reward(task_id, amount, completed_level)`；`QuestDefinition.money_reward` 默认 100，五个主线任务为 100，不奖励的唱片机支线显式保持 0。发奖同时把该任务 ID 和新增金额补写进当前战役关卡的酒店检查点，不依赖任务 `stage_index`，避免返回酒店后重复发钱或漏写支线奖励。
 

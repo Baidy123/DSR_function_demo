@@ -1,5 +1,11 @@
 extends CanvasLayer
 
+const Director = preload("res://scripts/systems/scene_director.gd")
+const Request = preload("res://scripts/systems/scene_request.gd")
+signal scene_action_finished(id: int, result: StringName)
+signal scene_action_opened(id: int)
+var _scene_request: Request
+
 signal dialogue_started(source: Node)
 signal dialogue_ended(source: Node)
 
@@ -17,20 +23,39 @@ var _announced: bool = false
 
 
 func _ready() -> void:
+	process_mode = Node.PROCESS_MODE_ALWAYS
 	# 交互物通过这个组打开对话，不需要知道界面在场景里的位置。
 	add_to_group(&"dialogue_ui")
 	dialogue_panel.hide()
 
 
 func open_dialogue(player, resource: DialogueResource, start: String, source: Node = null) -> void:
-	if dialogue_player != null: _close_dialogue()
+	var director = Director.for_node(self)
+	if director == null: return
+	var request = director.request_action(&"dialogue", {"source": source if source != null else self,
+		"target": self, "player": player, "origin": &"interaction",
+		"parameters": {"resource": resource, "start": start}})
+	if request.is_terminal(): return
+	if _scene_request == request and is_loading: await scene_action_opened
+
+func begin_scene_action(request: Request) -> void:
+	if not request.is_current() or request.kind != &"dialogue" or request.node(&"target") != self: return
+	if request.parameters.get("resource") == null or request.node(&"player") == null:
+		request.fail("missing_dialogue_resource_or_player")
+		return
+	_scene_request = request
 	_session += 1
-	dialogue_source = source
-	if is_instance_valid(source): source.tree_exiting.connect(_close_dialogue, CONNECT_ONE_SHOT)
-	dialogue_player = player
-	dialogue_player.set_dialogue_active(true)
-	dialogue_resource = resource
-	await _show_line(start)
+	dialogue_source = request.node(&"source")
+	dialogue_player = request.node(&"player")
+	dialogue_resource = request.parameters.resource
+	await _show_line(request.parameters.get("start", "start"))
+	scene_action_opened.emit(request.id)
+
+func finish_scene_action(request: Request) -> void:
+	if _scene_request == request: _close_authorized(&"completed")
+
+func cancel_scene_action(request: Request, _reason: StringName) -> void:
+	if _scene_request == request: _close_authorized(&"cancelled")
 
 
 func _input(event: InputEvent) -> void:
@@ -110,6 +135,14 @@ func _show_line(next_id: String) -> void:
 
 
 func _close_dialogue() -> void:
+	if _scene_request != null and _scene_request.is_current():
+		var director = Director.for_node(self)
+		if director != null: director.finish_request(_scene_request.id)
+	else: _close_authorized(&"cancelled")
+
+func _close_authorized(result: StringName) -> void:
+	var request := _scene_request
+	_scene_request = null
 	_session += 1
 	var source := dialogue_source
 	if is_instance_valid(source) and source.tree_exiting.is_connected(_close_dialogue):
@@ -119,13 +152,14 @@ func _close_dialogue() -> void:
 		_announced = false
 		dialogue_ended.emit(source if is_instance_valid(source) else null)
 	dialogue_panel.hide()
-	if is_instance_valid(dialogue_player):
-		dialogue_player.set_dialogue_active(false)
 	dialogue_player = null
 	dialogue_line = null
 	dialogue_resource = null
 	is_loading = false
+	if request != null:
+		scene_action_finished.emit(request.id, result)
+		scene_action_opened.emit(request.id)
 
 
 func _exit_tree() -> void:
-	_close_dialogue()
+	_close_authorized(&"cancelled")

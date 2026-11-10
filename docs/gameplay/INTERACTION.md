@@ -77,9 +77,10 @@ scenes/ui/shop_board.tscn                   货币商店界面
 `task_a_returned=returned`。随后 `ChangeSceneEffect` 返回酒馆，新玩家实例只消费一次快照。
 
 商店 NPC 由 `scripts/world/reward_npc.gd` 扩展普通 NPC，保留 `RewardNPC` 节点路径和脚本 UID，
-标签改为“商店”。普通对话前，NPC 会发出 `interaction_requested(player)`；该 NPC 直接调用
-`ShopController.open_shop_for_player(player)`，成功打开商店后吞掉本次输入；目录为空、缺面板、
-缺玩家或商店拒绝打开时才回退普通对话。可见商品、价格、余额和一次性购买记录由 `ShopController`
+标签改为“商店”。普通对话前，NPC 会发出 `interaction_requested(player)`；该 NPC 向本场导演提交
+shop 请求，target 指 ShopController。普通 NPC 通过 `request_dialogue(player)` 请求对话；转身和玩家限制在批准后开始。
+忙碌时消费本次输入，不转身、不排队到离开后弹窗，也不回落再发一个对话请求。空目录仍打开“暂无商品”，缺配置时可回落普通对话。
+可见商品、价格、余额和一次性购买记录由 `ShopController`
 与 `GameState` 共同决定；`ShopBoard` 默认每行 3 张商品卡，窄窗口自动降为 2 或 1 列并保持纵向滚动，
 见[货币商店与任务奖励](REWARDS.md)。
 
@@ -93,6 +94,6 @@ scenes/ui/shop_board.tscn                   货币商店界面
 
 `quest_portal_test.gd` 使用真实酒馆与 `QuestController` 检查未接任务时阻断、接取后进入第1关，并确认门禁卡和旧门禁实例已删除。
 
-Godot 4.7.2 下，只要进程里打开过对话，退出时就会报告 Dialogue Manager 的少量资源未释放（`resources still in use at exit`），与本功能无关；判断通过与否看 `FAIL` 与 `SCRIPT ERROR` 行。
+历史对话验证曾记录资源退出诊断；现行验证同时检查断言、退出码和脚本／资源错误，不能以旧记录忽略本次实际错误。新增 `scene_interaction_test` 覆盖首句加载取消、来源／界面离场、忙碌拒绝及对话结束后的镜头排队。
 
 早期配置、实施过程及当时的验证结果保存在[整理前记录](../history/2026-10-28/gameplay/INTERACTION.md)。历史通过数不代表当前本地配置已重新验证。

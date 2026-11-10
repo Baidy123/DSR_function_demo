@@ -1,5 +1,7 @@
 extends StaticBody3D
 
+const Director = preload("res://scripts/systems/scene_director.gd")
+
 signal interaction_requested(player: Node3D)
 
 ## 状态控制器使用的稳定 id；留空时回退到节点名，场景里换名字不会打断配置表。
@@ -55,18 +57,14 @@ func _unhandled_input(event: InputEvent) -> void:
 			# 专用 NPC 可以在对话前接管这次交互；普通 NPC 继续原有对话流程。
 			if get_viewport().is_input_handled():
 				return
-			body.set_dialogue_active(true)
-			body.face_npc(global_position)
-			pending_player = body
+			request_dialogue(body)
 			get_viewport().set_input_as_handled()
 			return
 
 
-func _physics_process(_delta: float) -> void:
-	if not is_instance_valid(pending_player):
-		return
-	# 等待 Player 完成转身，这期间已经锁住移动。
-	if pending_player.is_facing_npc:
-		return
-	$"../DialogueUI".open_dialogue(pending_player, dialogue_resource, dialogue_start, self)
-	pending_player = null
+func request_dialogue(player: Node3D):
+	var director = Director.for_node(self)
+	if director == null: return null
+	return director.request_action(&"dialogue", {"source": self, "target": get_node_or_null("../DialogueUI"),
+		"player": player, "origin": &"interaction", "dedupe_key": &"npc_dialogue",
+		"parameters": {"resource": dialogue_resource, "start": dialogue_start, "face_source": true}})

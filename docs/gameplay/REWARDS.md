@@ -39,6 +39,8 @@
 
 ## 可见性与购买
 
+打开／关闭由本场 SceneDirector 批准并记账，ShopController 保留商品校验与购买结算。NPC 提交 shop 请求；原 `open_shop_for_player(player)`、`close_shop()` 为兼容转发入口。关闭、死亡或来源离场会结束本次商店流程，不解除其他暂停拥有者；空目录仍不暂停。接线见[导演教程](SCENE_DIRECTOR.md)。
+
 检查器按 `Effect` 显示配置：`ADD_MEDKIT` 只显示 `Medkit Data` 与 `Amount`；`WEAPON` 只显示
 `Weapon Data`；`SET_FLAG` 只显示 `Flag Key`；补弹隐藏这些无关字段。切换效果只隐藏字段，不清空已拖入的资源。
 

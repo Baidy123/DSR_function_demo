@@ -2,9 +2,12 @@ class_name ShopController
 extends Node
 
 ## Currency shop controller: owns catalog visibility, purchase validation and
-## mutation, and the shop pause token. The board only displays and emits intent.
+## mutation. SceneDirector owns opening, closing and control leases.
 
-const Pauses := preload("res://scripts/systems/scene_pause_coordinator.gd")
+const Director = preload("res://scripts/systems/scene_director.gd")
+const Request = preload("res://scripts/systems/scene_request.gd")
+signal scene_action_finished(id: int, result: StringName)
+var _scene_request: Request
 
 @export var shop_catalog: ShopCatalog
 @export var shop_board_path: NodePath = ^"../ShopBoard"
@@ -12,8 +15,6 @@ const Pauses := preload("res://scripts/systems/scene_pause_coordinator.gd")
 @onready var shop_board: Node = get_node_or_null(shop_board_path)
 
 var _state: Node
-var _pauses
-var _pause_token := 0
 var _open := false
 var _visible_items: Array[ShopItemDefinition] = []
 var _watched_health: Node
@@ -21,7 +22,6 @@ var _watched_health: Node
 
 func _ready() -> void:
 	_state = get_node_or_null("/root/GameState")
-	_pauses = Pauses.for_tree(get_tree()) if is_inside_tree() else null
 	if shop_board != null and shop_board.has_signal(&"purchase_requested") \
 			and not shop_board.purchase_requested.is_connected(_on_purchase_requested):
 		shop_board.purchase_requested.connect(_on_purchase_requested)
@@ -33,10 +33,44 @@ func _ready() -> void:
 func _exit_tree() -> void:
 	_open = false
 	_unwatch_player_health()
-	_release_pause()
+	_close_authorized(&"cancelled")
 
 
 func open_shop_for_player(player: Node3D) -> bool:
+	var director = Director.for_node(self)
+	if director == null: return false
+	var request = director.request_action(&"shop", {"source": self, "target": self, "player": player,
+		"origin": &"interaction", "dedupe_key": &"shop"})
+	return request.has_started() and request.status not in [&"failed", &"cancelled", &"rejected"]
+
+func begin_scene_action(request: Request) -> void:
+	if not request.is_current() or request.kind != &"shop" or request.node(&"target") != self: return
+	_scene_request = request
+	if not _open_authorized(request.node(&"player")):
+		_scene_request = null
+		request.fail("shop_open_failed")
+
+func finish_scene_action(request: Request) -> void:
+	if _scene_request == request: _close_authorized(&"completed")
+
+func cancel_scene_action(request: Request, _reason: StringName) -> void:
+	if _scene_request == request: _close_authorized(&"cancelled")
+
+func close_shop() -> void:
+	if _scene_request == null: return
+	var director = Director.for_node(self)
+	if director != null: director.finish_request(_scene_request.id)
+
+func _close_authorized(result: StringName) -> void:
+	var request := _scene_request
+	_scene_request = null
+	_open = false
+	if shop_board != null and shop_board.has_method(&"hide_board"):
+		shop_board.hide_board()
+	_unwatch_player_health()
+	if request != null: scene_action_finished.emit(request.id, result)
+
+func _open_authorized(player: Node3D) -> bool:
 	if _open:
 		return true
 	if player == null or not is_instance_valid(player) or not player.is_in_group(&"player"):
@@ -60,31 +94,13 @@ func open_shop_for_player(player: Node3D) -> bool:
 	if not shop_board.configure(_view_rows(items, state, player), int(state.money)):
 		push_warning("ShopController: board rejected the item configuration")
 		return false
+	var director = Director.for_node(self)
+	if director == null or _scene_request == null: return false
+	director.hold_request_controls(_scene_request, not items.is_empty())
 	shop_board.show_board()
-	if items.is_empty():
-		_open = true
-		_watch_player_health(player)
-		return true
-	var token := 0
-	if _pauses != null:
-		token = _pauses.acquire(self, &"shop", true)
-	if token == 0:
-		push_error("ShopController: unable to acquire shop pause")
-		return false
-	_pause_token = token
 	_open = true
 	_watch_player_health(player)
 	return true
-
-
-func close_shop() -> void:
-	if not _open and _pause_token == 0:
-		return
-	_open = false
-	if shop_board != null and shop_board.has_method(&"hide_board"):
-		shop_board.hide_board()
-	_unwatch_player_health()
-	_release_pause()
 
 
 func purchase(item_id: StringName, slot: int) -> bool:
@@ -240,8 +256,7 @@ func _resolve_state() -> Node:
 
 
 func _player() -> Node3D:
-	var tree := get_tree() if is_inside_tree() else null
-	return tree.get_first_node_in_group(&"player") if tree != null else null
+	return _scene_request.node(&"player") as Node3D if _scene_request != null else null
 
 
 func _health(player: Node3D) -> Node:
@@ -280,12 +295,6 @@ func _unwatch_player_health() -> void:
 
 
 func _on_player_died() -> void:
-	close_shop()
-
-
-func _release_pause() -> void:
-	if _pause_token == 0:
-		return
-	if _pauses != null:
-		_pauses.release(_pause_token)
-	_pause_token = 0
+	var director = Director.for_node(self)
+	if director != null and _scene_request != null:
+		director.cancel_request(_scene_request.id, &"player_died")

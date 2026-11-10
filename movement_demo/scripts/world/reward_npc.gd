@@ -15,5 +15,9 @@ func _ready() -> void:
 func _on_interaction_requested(player: Node3D) -> void:
 	if shop_controller == null or not shop_controller.has_method(&"open_shop_for_player"):
 		return
-	if shop_controller.open_shop_for_player(player):
+	var director = Director.for_node(self)
+	if director == null: return
+	var request = director.request_action(&"shop", {"source": self, "target": shop_controller,
+		"player": player, "origin": &"interaction", "dedupe_key": &"npc_shop"})
+	if request.has_started() and request.status != &"failed" or request.reason == &"busy":
 		get_viewport().set_input_as_handled()

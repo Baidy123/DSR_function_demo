@@ -119,12 +119,12 @@ python movement_demo/tests/enemy/run_enemy_regressions.py --godot E:/Godot/Godot
 
 **Interfaces:** 消费任务1入口。执行适配统一 `begin_scene_action(request: SceneRequest) -> void`、`cancel_scene_action(request: SceneRequest, reason: StringName) -> void`。DialogueUI 和 ShopController 实现这两个方法，另加 `scene_action_finished(id: int, result: StringName)`，覆盖尚未显示即结束的情况。旧 open_dialogue(...) -> void、open_shop_for_player(player: Node3D) -> bool、close_shop() -> void 保留为导演请求／结束转发；executor 调用执行方法，不能递归调用转发入口。
 
-- [ ] **1. 写失败测试。** test_dialogue_before_camera：启动对话后提交 presentation，断言 queued、关闭对话后只开始一次；test_death_before_first_line：首句 await 期间死亡，断言请求 cancelled、玩家不再受对话控制、迟到行不显示；test_busy_npc：拒绝时 pending_player 为空且没有 face_npc／set_dialogue_active；test_shop_ownership：死亡只留下死亡控制，外部暂停仍保留；test_empty_shop：空目录显示“暂无商品”、tree.paused=false、关闭可结束前台。另测空对话同步结束、UI／来源离树。
-- [ ] **2. 跑红测试。** names：scene_interaction_test，预期当前直开窗口、早锁玩家或缺少结束回报断言失败。
-- [ ] **3. 调整控制记账。** 将 Pauses.acquire 扩为 `acquire(owner: Node, reason: StringName, visible_mouse: bool = false, pause_world: bool = true) -> int`，保留默认语义。账本分别统计暂停和鼠标需求；最后一个暂停令牌释放可恢复世界，即使还有非暂停令牌。输入限制由导演持有，结束时不能覆盖死亡造成的失能。覆盖 mixed pause／mouse-only／既有外部 pause，can_advance_presentation 按实际暂停拥有者检查。
-- [ ] **4. 接管 NPC 与界面。** NPC 的转身和移动限制在导演批准后开始，期间取消也收尾；普通 NPC 与 RewardNPC 不直接打开 UI。商店空目录仍占前台但不冻结世界；有效商品商店沿原规则暂停。购买 purchase(...)、资源拖入、一次扣款与库存保持原业务。RewardNPC 因忙碌被拒绝时消费本次 E，不回落再发对话；缺商店配置时仍可走获准的普通对话。
-- [ ] **5. 验证交付。** names：scene_interaction_test、scene_request_test、dialogue_cache_test、shop_catalog_test、shop_flow_test、shop_board_test、shop_weapon_test、quest_money_reward_test、scene_director_test；确认 close_shop／dialogue 结束无暂停死锁，同步完成不漏信号。
-- [ ] **6. 同步文档并提交推送。** 教程给出 NPC／商店请求示例，明确 business 与控制权归属；建议提交 `feat: route dialogue and shop through scene director`。
+- [x] **1. 写失败测试。** test_dialogue_before_camera：启动对话后提交 presentation，断言 queued、关闭对话后只开始一次；test_death_before_first_line：首句 await 期间死亡，断言请求 cancelled、玩家不再受对话控制、迟到行不显示；test_busy_npc：拒绝时 pending_player 为空且没有 face_npc／set_dialogue_active；test_shop_ownership：死亡只留下死亡控制，外部暂停仍保留；test_empty_shop：空目录显示“暂无商品”、tree.paused=false、关闭可结束前台。另测空对话同步结束、UI／来源离树。
+- [x] **2. 跑红测试。** names：scene_interaction_test，预期当前直开窗口、早锁玩家或缺少结束回报断言失败。
+- [x] **3. 调整控制记账。** 将 Pauses.acquire 扩为 `acquire(owner: Node, reason: StringName, visible_mouse: bool = false, pause_world: bool = true) -> int`，保留默认语义。账本分别统计暂停和鼠标需求；最后一个暂停令牌释放可恢复世界，即使还有非暂停令牌。输入限制由导演持有，结束时不能覆盖死亡造成的失能。覆盖 mixed pause／mouse-only／既有外部 pause，can_advance_presentation 按实际暂停拥有者检查。
+- [x] **4. 接管 NPC 与界面。** NPC 的转身和移动限制在导演批准后开始，期间取消也收尾；普通 NPC 与 RewardNPC 不直接打开 UI。商店空目录仍占前台但不冻结世界；有效商品商店沿原规则暂停。购买 purchase(...)、资源拖入、一次扣款与库存保持原业务。RewardNPC 因忙碌被拒绝时消费本次 E，不回落再发对话；缺商店配置时仍可走获准的普通对话。
+- [x] **5. 验证交付。** names：scene_interaction_test、scene_request_test、dialogue_cache_test、shop_catalog_test、shop_flow_test、shop_board_test、shop_weapon_test、quest_money_reward_test、scene_director_test；确认 close_shop／dialogue 结束无暂停死锁，同步完成不漏信号。
+- [x] **6. 同步文档并提交推送。** 教程给出 NPC／商店请求示例，明确 business 与控制权归属；建议提交 `feat: route dialogue and shop through scene director`。
 
 ## Task 3：脚本演出真实取消，规则复用请求入口
 
@@ -195,3 +195,5 @@ GameState 新增纯准备 `prepare_scene_transition(mode: StringName, player_sna
 ## Implementation evidence
 
 Task 1: scene_request_test 17 checks passed; scene_director_test, scene_event_node_test and shop_flow_test passed. campaign_flow_test retains exactly the three baseline dual-magazine failures; no new errors. Catalog OK. Logs: movement_demo/logs/director-authority-task1/.
+
+Task 2: scene_interaction_test 22 checks passed; initial 9 named suites passed. Added authored NPC busy/UI exit coverage; final stage gate also compares campaign_flow_test against baseline. Existing guides updated; final user-facing guide consolidation remains Task 6.

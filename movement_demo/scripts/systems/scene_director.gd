@@ -6,6 +6,7 @@ const Flows = preload("res://scripts/systems/scene_flow_runner.gd")
 const ResultView = preload("res://scripts/ui/scene_result_view.gd")
 const Request = preload("res://scripts/systems/scene_request.gd")
 const Scheduler = preload("res://scripts/systems/scene_request_scheduler.gd")
+const Interactions = preload("res://scripts/systems/scene_interaction_executor.gd")
 const REGISTRATION := &"scene_director_root"
 var _scene_root: Node
 var _requests
@@ -13,6 +14,8 @@ var _next_request := 0
 var _guide_request
 var _camera_request
 var _completion_request
+var _interactions
+var _request_controls: Dictionary = {}
 signal state_changed(value: StringName)
 signal action_failed(rule: String, reason: String)
 var state: StringName = &"preparing"
@@ -74,6 +77,7 @@ func initialize() -> void:
 		return
 	_scene_root.set_meta(REGISTRATION, weakref(self))
 	_requests = Scheduler.new(self)
+	_interactions = Interactions.new(self)
 	_pauses = Pauses.for_tree(get_tree())
 	_health = _bindings.get("health")
 	if is_instance_valid(_health):
@@ -494,7 +498,7 @@ func request_action(kind: StringName, context: Dictionary = {}) -> Request:
 	if not _initialized or _requests == null or state not in [&"running", &"guide"] or _load_failed:
 		request._settle(&"rejected", &"scene_unavailable")
 		return request
-	if kind not in [&"guide", &"presentation", &"completion"]:
+	if kind not in [&"guide", &"presentation", &"completion", &"dialogue", &"shop"]:
 		request._settle(&"rejected", &"unsupported_kind")
 		return request
 	for key in request._nodes:
@@ -525,6 +529,8 @@ func cancel_request(id: int, reason: StringName = &"cancelled") -> void:
 
 func execute_request(request: Request) -> void:
 	match request.kind:
+		&"dialogue", &"shop":
+			_interactions.begin_scene_action(request)
 		&"guide":
 			_guide_request = request
 			if not begin_guide(request.node(&"target"), request.parameters.get("pause_world", true), request.scope):
@@ -544,6 +550,8 @@ func execute_request(request: Request) -> void:
 			request_completion()
 
 func cancel_request_execution(request: Request, _reason: StringName) -> void:
+	if request.kind in [&"dialogue", &"shop"]:
+		_interactions.cancel_scene_action(request, _reason)
 	if _completion_request == request:
 		_completion_request = null
 		_completion_pending = false
@@ -554,3 +562,31 @@ func cancel_request_execution(request: Request, _reason: StringName) -> void:
 	if _camera_request == request:
 		_camera_request = null
 		_cancel_presentation()
+
+func find_request(id: int) -> Request:
+	return _requests.find(id) if _requests != null else null
+
+func finish_request(id: int) -> void:
+	var request := find_request(id)
+	if request != null and request.is_current() and request.kind in [&"dialogue", &"shop"]:
+		_interactions.end_scene_action(request)
+
+func hold_request_controls(request: Request, pause_world: bool, lock_player: bool = false) -> void:
+	if not request.is_current() or _request_controls.has(request.id): return
+	var player := request.node(&"player")
+	var previous := false
+	if lock_player and player != null:
+		previous = player.get("is_in_dialogue") == true
+		player.set_dialogue_active(true)
+	var token: int = _pauses.acquire(self, request.kind, true, pause_world)
+	_request_controls[request.id] = {"token": token, "lock_player": lock_player, "previous": previous}
+
+func release_request_controls(request: Request) -> void:
+	var controls: Dictionary = _request_controls.get(request.id, {})
+	_request_controls.erase(request.id)
+	if controls.is_empty(): return
+	var player := request.node(&"player")
+	if controls.lock_player and is_instance_valid(player):
+		player.set_dialogue_active(controls.previous)
+		player.set("is_facing_npc", false)
+	_pauses.release(controls.token)
