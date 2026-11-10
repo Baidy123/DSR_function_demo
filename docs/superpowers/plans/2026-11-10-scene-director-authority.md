@@ -132,12 +132,12 @@ python movement_demo/tests/enemy/run_enemy_regressions.py --godot E:/Godot/Godot
 
 **Interfaces:** 消费 SceneRequest 及任务2的 begin_scene_action／cancel_scene_action 合同。SceneFlowAction 在原枚举末尾追加 RUN_SCRIPT（原0～9值不变），target_path 指向实现该合同的节点；参数仍用 arguments。旧 CALL_METHOD 保留即时调用；若配置 completed_trigger，必须新增 `cancel_method: StringName` 指定公开取消方法（无参），或把目标接成 RUN_SCRIPT。完成订阅仍先于开始；RUN_SCRIPT 用 request.complete／fail，无需第二份完成触发器。range_door 实现同一提供者合同，parameters.open: bool 指定方向，动画结束才 complete。
 
-- [ ] **1. 写失败测试。** test_timer_and_tween_stop：真实 Timer、Tween 启动后取消，超过原完成时长仍不修改计数；test_late_completion：旧 request.complete 不推进新轮；test_scope_cancel：区域演出取消不动无关 SCENE 规则；test_sync_script：同步完成只推进一步；test_uncancellable_async_rejected：带完成触发器但缺取消合同，在开始前拒绝并定位规则／动作；test_waits_parallel：两条独立等待能各自推进；test_real_door_cancel_and_reverse：原滑门中途死亡确实停 Tween，关门折返由新请求取消旧请求，保留防夹行为且不生成重复动画。
-- [ ] **2. 跑红测试。** names：scene_script_cancellation_test，确认当前 cancel_all 仅断开信号、持续动作仍执行的行为确实被捕获。
-- [ ] **3. 实现脚本适配。** begin／cancel 接入同一调度与身份；取消先失效请求，执行者 stop Timer、kill Tween 并在 await 后检查 request.is_current。runner 的每个已启动动作保存请求句柄；_fail、reset_region、cancel_all、release 都通知执行者后清订阅，不能仅 entry.wait.clear。
-- [ ] **4. 接管资源动作和滑门。** GUIDE、PRESENT_TARGET、CALL_METHOD、RUN_SCRIPT、COMPLETE_SCENE、RESTART、CHANGE_SCENE 均转成同一入口；纯 WAIT／WAIT_SIGNAL／WAIT_WAVE_CLEARED 保留轻量并行等待。等待期间的完成／取消可在暂停中记账，普通计时仍按原规则冻结。滑门按 E、离开自动关闭及折返请求导演，保持原距离与时长；局部门动画不占全场前台，死亡／卸载能取消。现有异步测试提供者接入真实取消合同，保留所有原顺序／同步／参数校验断言。
-- [ ] **5. 验证交付。** names：scene_script_cancellation_test、scene_request_test、scene_interaction_test、scene_director_test、scene_event_node_test、presentation_camera_test、scene_reinforcement_test；检查新增枚举与检查器字段显示，不改原资源枚举编号。
-- [ ] **6. 同步文档并提交推送。** 增加可取消 Timer／Tween 提供者的短例子，说明即时调用和持续演出的配置区别；建议提交 `feat: cancel scene script executions through director`。
+- [x] **1. 写失败测试。** test_timer_and_tween_stop：真实 Timer、Tween 启动后取消，超过原完成时长仍不修改计数；test_late_completion：旧 request.complete 不推进新轮；test_scope_cancel：区域演出取消不动无关 SCENE 规则；test_sync_script：同步完成只推进一步；test_uncancellable_async_rejected：带完成触发器但缺取消合同，在开始前拒绝并定位规则／动作；test_waits_parallel：两条独立等待能各自推进；test_real_door_cancel_and_reverse：原滑门中途死亡确实停 Tween，关门折返由新请求取消旧请求，保留防夹行为且不生成重复动画。
+- [x] **2. 跑红测试。** names：scene_script_cancellation_test，确认当前 cancel_all 仅断开信号、持续动作仍执行的行为确实被捕获。
+- [x] **3. 实现脚本适配。** begin／cancel 接入同一调度与身份；取消先失效请求，执行者 stop Timer、kill Tween 并在 await 后检查 request.is_current。runner 的每个已启动动作保存请求句柄；_fail、reset_region、cancel_all、release 都通知执行者后清订阅，不能仅 entry.wait.clear。
+- [x] **4. 接管资源动作和滑门。** GUIDE、PRESENT_TARGET、CALL_METHOD、RUN_SCRIPT、COMPLETE_SCENE、RESTART、CHANGE_SCENE 均转成同一入口；纯 WAIT／WAIT_SIGNAL／WAIT_WAVE_CLEARED 保留轻量并行等待。等待期间的完成／取消可在暂停中记账，普通计时仍按原规则冻结。滑门按 E、离开自动关闭及折返请求导演，保持原距离与时长；局部门动画不占全场前台，死亡／卸载能取消。现有异步测试提供者接入真实取消合同，保留所有原顺序／同步／参数校验断言。
+- [x] **5. 验证交付。** names：scene_script_cancellation_test、scene_request_test、scene_interaction_test、scene_director_test、scene_event_node_test、presentation_camera_test、scene_reinforcement_test；检查新增枚举与检查器字段显示，不改原资源枚举编号。
+- [x] **6. 同步文档并提交推送。** 增加可取消 Timer／Tween 提供者的短例子，说明即时调用和持续演出的配置区别；建议提交 `feat: cancel scene script executions through director`。
 
 ## Task 4：交互效果与传送事务统一接入
 
@@ -197,3 +197,5 @@ GameState 新增纯准备 `prepare_scene_transition(mode: StringName, player_sna
 Task 1: scene_request_test 17 checks passed; scene_director_test, scene_event_node_test and shop_flow_test passed. campaign_flow_test retains exactly the three baseline dual-magazine failures; no new errors. Catalog OK. Logs: movement_demo/logs/director-authority-task1/.
 
 Task 2: scene_interaction_test 22 checks passed; initial 9 named suites passed. Added authored NPC busy/UI exit coverage; final stage gate also compares campaign_flow_test against baseline. Existing guides updated; final user-facing guide consolidation remains Task 6.
+
+Task 3: real Timer/Tween and sliding-door cancellation, stale/synchronous callbacks and SCENE/REGION isolation covered (9 checks). Earlier fixture assumptions corrected with explicit scene_root and the fourth pause argument; original assertions retained. Final seven-suite verification logged in movement_demo/logs/director-authority-task3-final/.

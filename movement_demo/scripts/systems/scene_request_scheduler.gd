@@ -23,7 +23,7 @@ func submit(request: Request) -> void:
 			node.tree_exiting.connect(callback)
 			links.append({"node": weakref(node), "callback": callback})
 	_connections[request.id] = links
-	if _foreground != 0 or _dispatching:
+	if (not request._background and _foreground != 0) or _dispatching:
 		if request.origin == &"interaction":
 			request._settle(&"rejected", &"busy")
 		else: _queue.append(request.id)
@@ -42,7 +42,7 @@ func _start(request: Request) -> void:
 	if director == null or not director.request_is_current(request):
 		cancel(request.id, &"stale")
 		return
-	_foreground = request.id
+	if not request._background: _foreground = request.id
 	request._started = true
 	request._status = &"running"
 	_dispatching = true
@@ -50,9 +50,16 @@ func _start(request: Request) -> void:
 	_dispatching = false
 
 func advance(_delta: float) -> void:
-	if _foreground != 0 or _dispatching or _queue.is_empty(): return
-	var next: int = _queue.pop_front()
-	if _requests.has(next): _start(_requests[next])
+	if _dispatching: return
+	for id in _queue.duplicate():
+		var request: Request = _requests.get(id)
+		if request == null:
+			_queue.erase(id)
+			continue
+		if _foreground != 0 and not request._background: continue
+		_queue.erase(id)
+		_start(request)
+		if not request._background: break
 
 func cancel(id: int, reason: StringName) -> void:
 	var request: Request = _requests.get(id)

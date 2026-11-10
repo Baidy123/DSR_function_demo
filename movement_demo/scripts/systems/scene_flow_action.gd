@@ -23,7 +23,9 @@ enum Kind {
 	## 调用 Target Path 对象的公开 Method，传入 Arguments；可用 Completed Trigger 等待异步完成。
 	CALL_METHOD,
 	## 等待 Completed Trigger 指定的信号及过滤条件满足后继续；只等待，不主动调用目标方法。
-	WAIT_SIGNAL
+	WAIT_SIGNAL,
+	## Run a provider with begin_scene_action(request) and cancel_scene_action(request, reason).
+	RUN_SCRIPT
 }
 ## 选择本步骤要做什么；下面只显示该类型需要填写的参数。[br]
 ## [b]WAIT（等待时间）[/b]：填写 Seconds，等待结束后执行下一步。[br]
@@ -70,6 +72,8 @@ enum Kind {
 ## WAIT_SIGNAL 必填；CALL_METHOD 可选。先接完成通知再调用，不会漏掉同步发出的信号。
 ## 没有完成信号时 CALL_METHOD 只表示调用返回，不表示门的动画或其他异步任务已经结束。
 @export var completed_trigger: SceneEventTrigger
+## Required when CALL_METHOD waits for completion; the public no-argument stop method.
+@export var cancel_method: StringName
 
 func camera_options() -> Dictionary:
 	return {"move_seconds": move_seconds, "hold_seconds": hold_seconds, "return_seconds": return_seconds, "size": camera_size}
@@ -83,7 +87,8 @@ func _validate_property(property: Dictionary) -> void:
 		Kind.PRESENT_TARGET: relevant.append_array(["target_path", "move_seconds", "hold_seconds", "return_seconds", "camera_size"])
 		Kind.GUIDE: relevant.append_array(["target_path", "guide_pauses_world"])
 		Kind.CHANGE_SCENE: relevant.append("scene_path")
-		Kind.CALL_METHOD: relevant.append_array(["target_path", "method", "arguments", "completed_trigger"])
+		Kind.CALL_METHOD: relevant.append_array(["target_path", "method", "arguments", "completed_trigger", "cancel_method"])
+		Kind.RUN_SCRIPT: relevant.append_array(["target_path", "arguments"])
 		Kind.WAIT_SIGNAL: relevant.append("completed_trigger")
-	var fields := ["target_path", "seconds", "present_spawn", "presentation_target_path", "move_seconds", "hold_seconds", "return_seconds", "camera_size", "guide_pauses_world", "scene_path", "method", "arguments", "completed_trigger"]
+	var fields := ["target_path", "seconds", "present_spawn", "presentation_target_path", "move_seconds", "hold_seconds", "return_seconds", "camera_size", "guide_pauses_world", "scene_path", "method", "arguments", "completed_trigger", "cancel_method"]
 	if property.name in fields and property.name not in relevant: property.usage &= ~PROPERTY_USAGE_EDITOR

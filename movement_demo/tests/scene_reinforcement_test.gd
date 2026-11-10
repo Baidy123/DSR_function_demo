@@ -21,10 +21,10 @@ class Events extends Node:
 ## Negative control, opt-in only: reproduce the old pre-notification mouse snapshot
 ## without editing production code. All token and pause behavior remains production.
 class LegacyMouseSnapshot extends "res://scripts/systems/scene_pause_coordinator.gd":
-	func acquire(owner: Node, reason: StringName, visible_mouse: bool = false) -> int:
+	func acquire(owner: Node, reason: StringName, visible_mouse: bool = false, pause_world: bool = true) -> int:
 		var first_owner: bool = _tokens.is_empty()
 		var before_notifications: Input.MouseMode = Input.mouse_mode
-		var token: int = super.acquire(owner, reason, visible_mouse)
+		var token: int = super.acquire(owner, reason, visible_mouse, pause_world)
 		if first_owner: _previous_mouse_mode = before_notifications
 		return token
 

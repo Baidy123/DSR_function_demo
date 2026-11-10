@@ -3,6 +3,7 @@ extends RefCounted
 const Subscription = preload("res://scripts/systems/scene_event_subscription.gd")
 const Action = preload("res://scripts/systems/scene_flow_action.gd")
 const Rule = preload("res://scripts/systems/scene_flow_rule.gd")
+const Scripts = preload("res://scripts/systems/scene_script_executor.gd")
 var _director: Node
 var _host: Node
 var _entries: Array[Dictionary] = []
@@ -24,7 +25,7 @@ func configure(rules: Array) -> void:
 		var entry := {"rule": rule, "generation": 0, "received": {}, "fired": false, "active": false,
 			"index": 0, "remaining": 0.0, "started": false, "done": false, "error": "",
 			"subscriptions": [], "wait": Subscription.new(), "execution": 0,
-			"presentation": 0, "guide": null}
+			"presentation": 0, "guide": null, "request": null}
 		_entries.append(entry)
 		for path in rule.event_nodes:
 			var source_node := _host.get_node_or_null(path) if not path.is_empty() else null
@@ -124,85 +125,70 @@ func _step(entry: Dictionary, delta: float) -> void:
 					_fail(entry, "Wave request rejected: %s" % action.target_path)
 			Action.Kind.WAIT_WAVE_CLEARED:
 				if _director.wave_status(target) == &"unknown": _fail(entry, "Unknown wave: %s" % action.target_path)
-			Action.Kind.PRESENT_TARGET:
-				if not target is Node3D:
-					_fail(entry, "Presentation target must be Node3D")
+			Action.Kind.WAIT_SIGNAL:
+				if action.completed_trigger == null:
+					_fail(entry, "Wait signal requires an explicit trigger")
 				else:
-					entry.presentation = _director.present_target(target.global_position, action.camera_options(), entry.rule.scope)
-					if entry.presentation < 0: entry.started = false # Another rule owns the camera; retry later.
-					elif entry.presentation == 0: entry.done = true # Optional presentation unavailable.
-			Action.Kind.GUIDE:
-				entry.guide = target
-				if not _director.begin_guide(target, action.guide_pauses_world, entry.rule.scope): _fail(entry, "Guide request failed")
-			Action.Kind.COMPLETE_SCENE:
-				_director.request_completion()
-				entry.done = true
-			Action.Kind.RESTART:
-				_director.request_restart_from_flow()
-				entry.done = true
-			Action.Kind.CHANGE_SCENE:
-				_director.request_change_scene(action.scene_path)
-				entry.done = true
-			Action.Kind.CALL_METHOD, Action.Kind.WAIT_SIGNAL:
-				if action.completed_trigger != null:
 					var error: String = entry.wait.connect_trigger(_host, action.completed_trigger, _action_done.bind(entry, entry.generation, entry.execution, entry.index))
 					if not error.is_empty(): _fail(entry, error)
-				elif action.kind == Action.Kind.WAIT_SIGNAL:
-					_fail(entry, "Wait signal requires an explicit trigger")
-				if action.kind == Action.Kind.CALL_METHOD and entry.error.is_empty():
-					var method_error := _method_error(target, action.method, action.arguments)
-					if not method_error.is_empty():
-						_fail(entry, method_error)
-					else:
-						target.callv(action.method, action.arguments)
-						if action.completed_trigger == null: entry.done = true
+			Action.Kind.PRESENT_TARGET:
+				_submit(entry, &"presentation", target, action.camera_options())
+			Action.Kind.GUIDE:
+				_submit(entry, &"guide", target, {"pause_world": action.guide_pauses_world})
+			Action.Kind.COMPLETE_SCENE:
+				_submit(entry, &"completion", null, {})
+			Action.Kind.RESTART:
+				_submit(entry, &"transition", null, {"reload": true})
+			Action.Kind.CHANGE_SCENE:
+				_submit(entry, &"transition", null, {"path": action.scene_path})
+			Action.Kind.CALL_METHOD:
+				_submit(entry, &"script", target, {"mode": &"method", "method": action.method,
+					"arguments": action.arguments, "completed_trigger": action.completed_trigger, "cancel_method": action.cancel_method})
+			Action.Kind.RUN_SCRIPT:
+				_submit(entry, &"script", target, {"arguments": action.arguments})
 	if not entry.error.is_empty() or not entry.active: return
-	match action.kind:
-		Action.Kind.WAIT:
-			entry.remaining = maxf(0.0, entry.remaining - delta)
-			entry.done = entry.remaining <= 0.0
-		Action.Kind.REQUEST_WAVE:
-			var status: StringName = _director.wave_status(target)
-			entry.done = status in [&"active", &"clearing", &"cleared"]
-			if status in [&"error", &"unknown"]: _fail(entry, "Wave deployment failed: %s" % action.target_path)
-		Action.Kind.WAIT_WAVE_CLEARED:
-			entry.done = _director.wave_status(target) == &"cleared"
-			if _director.wave_status(target) in [&"error", &"unknown"]: _fail(entry, "Wave wait target lost")
-		Action.Kind.PRESENT_TARGET:
-			entry.done = entry.started and not _director.is_presentation_pending(entry.presentation)
-		Action.Kind.GUIDE:
-			if not is_instance_valid(entry.guide): _fail(entry, "Guide removed before completion")
-			else: entry.done = not _director.is_guide_pending(entry.guide)
+	if entry.request != null:
+		if entry.request.is_terminal():
+			if entry.request.status == &"completed": entry.done = true
+			else: _fail(entry, "Action %d: %s" % [entry.index, entry.request.reason])
+	else:
+		match action.kind:
+			Action.Kind.WAIT:
+				entry.remaining = maxf(0.0, entry.remaining - delta)
+				entry.done = entry.remaining <= 0.0
+			Action.Kind.REQUEST_WAVE:
+				var status: StringName = _director.wave_status(target)
+				entry.done = status in [&"active", &"clearing", &"cleared"]
+				if status in [&"error", &"unknown"]: _fail(entry, "Wave deployment failed: %s" % action.target_path)
+			Action.Kind.WAIT_WAVE_CLEARED:
+				entry.done = _director.wave_status(target) == &"cleared"
+				if _director.wave_status(target) in [&"error", &"unknown"]: _fail(entry, "Wave wait target lost")
 	if entry.done and entry.error.is_empty():
 		entry.wait.clear()
+		entry.request = null
 		entry.index += 1
 		entry.started = false
 		entry.done = false
 		if entry.index == entry.rule.actions.size(): entry.active = false
+
+func _submit(entry: Dictionary, kind: StringName, target: Node, parameters: Dictionary) -> void:
+	entry.request = _director.request_action(kind, {"source": _host, "target": target, "parameters": parameters,
+		"scope": entry.rule.scope, "scope_owner": _director.region_owner(), "origin": &"rule"})
+
+func _cancel_request(entry: Dictionary, reason: StringName) -> void:
+	var request = entry.get("request")
+	entry.request = null
+	if request != null and not request.is_terminal(): _director.cancel_request(request.id, reason)
 
 func _action_done(entry: Dictionary, generation: int, execution: int, index: int) -> void:
 	if entry.generation == generation and entry.execution == execution and entry.index == index and entry.active:
 		entry.done = true
 
 func _method_error(target: Node, method: StringName, arguments: Array) -> String:
-	if not is_instance_valid(target) or not target.is_inside_tree() or method.is_empty() or method.begins_with("_") or not target.has_method(method):
-		return "Missing public action method: %s" % method
-	for metadata in target.get_method_list():
-		if metadata.name != method: continue
-		var parameters: Array = metadata.args
-		var minimum: int = parameters.size() - metadata.default_args.size()
-		if arguments.size() < minimum or (not metadata.flags & METHOD_FLAG_VARARG and arguments.size() > parameters.size()):
-			return "Method %s received %d arguments; expects %d..%d" % [method, arguments.size(), minimum, parameters.size()]
-		for i in range(mini(parameters.size(), arguments.size())):
-			var expected: int = parameters[i].type
-			var actual: int = typeof(arguments[i])
-			if expected == TYPE_NIL or actual == expected or (expected == TYPE_FLOAT and actual == TYPE_INT): continue
-			if expected == TYPE_OBJECT and arguments[i] == null: continue
-			return "Method %s argument %d expects %s, received %s" % [method, i, type_string(expected), type_string(actual)]
-		return ""
-	return "Method metadata missing: %s" % method
+	return Scripts.method_error(target, method, arguments)
 
 func _fail(entry: Dictionary, message: String) -> void:
+	_cancel_request(entry, &"action_failed")
 	entry.error = message
 	entry.active = false
 	entry.wait.clear()
@@ -220,6 +206,7 @@ func reset_region() -> void:
 					_fail(entry, "Region reset cancelled pending deployment")
 			continue
 		entry.generation += 1
+		_cancel_request(entry, &"region_reset")
 		entry.wait.clear()
 		entry.received.clear()
 		entry.fired = false
@@ -233,6 +220,7 @@ func reset_region() -> void:
 func cancel_all() -> void:
 	for entry in _entries:
 		entry.generation += 1
+		_cancel_request(entry, &"flow_cancelled")
 		entry.active = false
 		entry.fired = true
 		entry.wait.clear()

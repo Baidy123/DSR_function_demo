@@ -65,6 +65,8 @@ class Events extends Node:
 	func complete_synchronously() -> void:
 		calls.append("synchronous")
 		action_finished.emit()
+	func cancel_wait() -> void:
+		pass
 	func start_wait() -> void:
 		calls.append("started")
 	func record_default(label: String = "default") -> void:
@@ -215,7 +217,7 @@ func _fixture(rules: Array = [], guide: Node = null, extra: Dictionary = {}) -> 
 	var view := ResultView.new()
 	var director = Director.new()
 	director.name = "SceneDirector"
-	var bindings := {"health": health, "result_view": view, "rules": rules}
+	var bindings := {"health": health, "result_view": view, "rules": rules, "scene_root": scene}
 	if guide != null: bindings.guide = guide
 	bindings.merge(extra, true)
 	director.configure(host, bindings)
@@ -399,7 +401,7 @@ func _test_health_binding_identity() -> void:
 	await _ready_fixture(f)
 	var duplicate = Director.new()
 	var duplicate_view := ResultView.new()
-	duplicate.configure(f.host, {"health": f.health, "result_view": duplicate_view})
+	duplicate.configure(f.host, {"health": f.health, "result_view": duplicate_view, "scene_root": f.scene})
 	f.scene.add_child(duplicate)
 	await process_frame
 	await process_frame
@@ -409,7 +411,7 @@ func _test_health_binding_identity() -> void:
 	f.director.free()
 	var replacement = Director.new()
 	var replacement_view := ResultView.new()
-	replacement.configure(f.host, {"health": f.health, "result_view": replacement_view})
+	replacement.configure(f.host, {"health": f.health, "result_view": replacement_view, "scene_root": f.scene})
 	f.host.add_child(replacement)
 	f.director = replacement
 	f.view = replacement_view
@@ -644,6 +646,7 @@ func _test_synchronous_completion() -> void:
 	invoke.target_path = ^"../Events"
 	invoke.method = &"complete_synchronously"
 	invoke.completed_trigger = _trigger(&"action_finished")
+	invoke.cancel_method = &"cancel_wait"
 	var f := _fixture([_rule(_trigger(&"fired"), [invoke, _record("after")])])
 	await _ready_fixture(f)
 	f.events.fired.emit()
@@ -672,6 +675,7 @@ func _test_region_scope_and_stale_callbacks() -> void:
 	invoke.target_path = ^"../Events"
 	invoke.method = &"start_wait"
 	invoke.completed_trigger = _trigger(&"action_finished")
+	invoke.cancel_method = &"cancel_wait"
 	f = _fixture([_rule(_trigger(&"fired"), [invoke, _record("after")], true)])
 	await _ready_fixture(f)
 	f.events.fired.emit()
@@ -713,6 +717,7 @@ func _test_lost_event_source() -> void:
 	invoke.target_path = ^"../Events"
 	invoke.method = &"start_wait"
 	invoke.completed_trigger = _trigger(&"action_finished")
+	invoke.cancel_method = &"cancel_wait"
 	f = _fixture([_rule(_trigger(&"fired"), [invoke, _record("unexpected")])])
 	await _ready_fixture(f)
 	f.events.fired.emit()

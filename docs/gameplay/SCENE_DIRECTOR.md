@@ -112,7 +112,7 @@ SceneDirector 另有可选“统一出场镜头”，适合所有波使用同一
 3. **Scope = REGION**：本轮区域战斗一次，复位可重播；**SCENE**：本场一次，出入区域不重播。
 4. **Actions** 按顺序添加 `SceneFlowAction`，先选 **Kind**，再填相关字段。
 
-将鼠标悬停在 **Kind** 属性名上，可查看全部10种动作的中文用途与必填参数说明；各参数也有独立悬停注释。
+将鼠标悬停在 **Kind** 属性名上查看用途与必填参数；新增 RUN_SCRIPT 后共有11种动作，旧资源编号保持。
 
 例如“事件 → 等1秒 → 请求Wave2 → 等清空 → 调已有公开方法”：
 
@@ -134,7 +134,35 @@ REQUEST_WAVE 等真实生成才继续；若勾选 **Present Spawn**，动作的 
 | RESTART | 请求重载当前场景 |
 | CHANGE_SCENE | 请求 Scene Path 指定场景，失败可重试原目标 |
 
-CALL_METHOD 不接受以下划线开头的私有方法，并检查参数数量和基础类型。需要等动画或异步执行结束时配 **Completed Trigger**，订阅先于方法调用；留空只表示调用返回。例如现有滑门的状态改变不等于 Tween 已经结束，不能当作移动完成。
+CALL_METHOD 不接受以下划线开头的私有方法，并检查参数数量和基础类型。即时方法留空 Completed Trigger；需要等待异步完成时，必须同时配置 **Completed Trigger** 与 **Cancel Method**（公开、无参停止方法），缺少取消契约会在执行前拒绝。订阅先于方法调用，不遗漏同步完成；滑门状态改变不等于 Tween 已经结束。
+
+## 五、接入可取消的脚本演出
+
+复杂演出优先用 **RUN_SCRIPT**，Target Path 选实现 `begin_scene_action(request)` 与 `cancel_scene_action(request, reason)` 的节点。Arguments 保存在 request.parameters.arguments，执行者用 `request.complete()` 或 `request.fail(reason)` 报告实际结果。每次 await 后先检查 `request.is_current()`；取消时停止自己持有的 Timer、Tween 与动画，不能只断开完成通知。
+
+例如节点下添加一次性 Timer，按下面的合同接入；持续逻辑仍留在自己的脚本中：
+
+```gdscript
+var active: SceneRequest
+
+func _ready() -> void:
+    $Timer.timeout.connect(_finished)
+
+func begin_scene_action(request: SceneRequest) -> void:
+    active = request
+    $Timer.start()
+
+func cancel_scene_action(request: SceneRequest, _reason: StringName) -> void:
+    if active != request: return
+    $Timer.stop()
+    active = null
+
+func _finished() -> void:
+    if active != null and active.is_current(): active.complete()
+    active = null
+```
+
+默认脚本演出占前台。只做局部背景动画的适配可提供 `scene_action_is_background() -> bool` 并返回 true，仍受死亡、区域复位与卸载取消管理。原滑门已这样接入：按 E、离开自动关门和防夹折返都通过导演，反向请求先取消旧 Tween。普通 WAIT／WAIT_SIGNAL／WAIT_WAVE_CLEARED 保持独立等待，不占全场前台。
 
 Event Nodes 和高级 Triggers 都为空表示准备好后自动运行一次。不同规则可独立等待，事件回调只记录事实，动作在调度边界推进。普通等待在暂停时冻结，资源不保存本场执行进度。
 

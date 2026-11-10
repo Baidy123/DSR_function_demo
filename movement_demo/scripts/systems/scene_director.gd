@@ -7,6 +7,7 @@ const ResultView = preload("res://scripts/ui/scene_result_view.gd")
 const Request = preload("res://scripts/systems/scene_request.gd")
 const Scheduler = preload("res://scripts/systems/scene_request_scheduler.gd")
 const Interactions = preload("res://scripts/systems/scene_interaction_executor.gd")
+const Scripts = preload("res://scripts/systems/scene_script_executor.gd")
 const REGISTRATION := &"scene_director_root"
 var _scene_root: Node
 var _requests
@@ -15,6 +16,8 @@ var _guide_request
 var _camera_request
 var _completion_request
 var _interactions
+var _scripts
+var _load_request
 var _request_controls: Dictionary = {}
 signal state_changed(value: StringName)
 signal action_failed(rule: String, reason: String)
@@ -78,6 +81,7 @@ func initialize() -> void:
 	_scene_root.set_meta(REGISTRATION, weakref(self))
 	_requests = Scheduler.new(self)
 	_interactions = Interactions.new(self)
+	_scripts = Scripts.new(self, _host)
 	_pauses = Pauses.for_tree(get_tree())
 	_health = _bindings.get("health")
 	if is_instance_valid(_health):
@@ -111,6 +115,7 @@ func initialize() -> void:
 	if _waves != null: _waves.prepare_events()
 	var guide: Node = _bindings.get("guide")
 	if guide != null:
+		_set_state(&"running")
 		if not begin_guide(guide, _bindings.get("guide_pauses_world", true)): _set_state(&"error")
 	elif _bindings.get("guide_required", false):
 		report_action_error("opening", "Configured guide is missing")
@@ -143,6 +148,11 @@ func can_run_actions() -> bool:
 	return _initialized and not _load_failed and state in [&"running", &"guide"] and not get_tree().paused
 
 func begin_guide(provider: Node, pause_world: bool = true, scope: int = 0) -> bool:
+	var request = request_action(&"guide", {"source": _host, "target": provider, "scope": scope,
+		"scope_owner": region_owner(), "parameters": {"pause_world": pause_world}, "origin": &"rule"})
+	return request.has_started() and request.status != &"failed"
+
+func _execute_guide(provider: Node, pause_world: bool = true, scope: int = 0) -> bool:
 	if _guide != null or not is_instance_valid(provider) or not provider.has_method("begin") or not provider.has_method("cancel") or not provider.has_signal("finished"):
 		report_action_error("guide", "Guide needs begin(), cancel() and finished")
 		return false
@@ -253,7 +263,7 @@ func request_return_to_tavern() -> void:
 
 func request_restart_from_flow() -> void:
 	if state not in [&"running", &"guide"]: return
-	_start_load("", true)
+	request_action(&"transition", {"source": _host, "parameters": {"reload": true}})
 
 func request_load_retry() -> void:
 	if not _load_failed: return
@@ -268,9 +278,10 @@ func request_next_level() -> void:
 
 func request_change_scene(path: String) -> void:
 	if state not in [&"running", &"completed"] or path.is_empty(): return
-	_start_load(path, false)
+	request_action(&"transition", {"source": _host, "parameters": {"path": path}})
 
 func _start_load(path: String, reload_current: bool) -> void:
+	if _load_request != null: _requests._finished(_load_request)
 	_before_load = state
 	_load_path = path
 	_load_reload = reload_current
@@ -289,6 +300,10 @@ func _execute_load(generation: int) -> void:
 	if scene_loader.is_valid(): result = scene_loader.call(_load_path, _load_reload)
 	elif _load_reload: result = get_tree().reload_current_scene()
 	else: result = get_tree().change_scene_to_file(_load_path)
+	if _load_request != null:
+		var request = _load_request
+		_load_request = null
+		request._settle(&"completed" if result == OK else &"failed", StringName(error_string(result)) if result != OK else &"")
 	if result == OK:
 		_campaign_restore_undo = {}
 		return # Old ownership is released on exit, before the new scene prepares.
@@ -351,6 +366,14 @@ func _on_wave_committed(wave: Node, _deployment_focus: Vector3) -> void:
 	present_target(target.global_position, options, scope)
 
 func present_target(focus: Vector3, options: Dictionary = {}, scope: int = 0) -> int:
+	if _active_presentation != 0 or (_requests != null and _requests.snapshot().foreground != 0): return -1
+	var parameters := options.duplicate()
+	parameters["focus"] = focus
+	var request = request_action(&"presentation", {"source": _host, "scope": scope,
+		"scope_owner": region_owner(), "parameters": parameters, "origin": &"interaction"})
+	return _active_presentation if request.has_started() else 0
+
+func _execute_presentation(focus: Vector3, options: Dictionary = {}, scope: int = 0) -> int:
 	if _active_presentation != 0: return -1
 	if state not in [&"running", &"guide"]: return 0
 	var source: Camera3D = get_viewport().get_camera_3d()
@@ -414,7 +437,7 @@ func _cancel_presentation(restore: bool = true) -> void:
 
 func reset_region() -> void:
 	if not _initialized: return
-	_requests.cancel_scope(_host.get_parent(), &"region_reset")
+	_requests.cancel_scope(region_owner(), &"region_reset")
 	_armed_presentations.clear()
 	if _active_presentation != 0 and _presentation_scope == 1: _cancel_presentation()
 	if _guide != null and _guide_scope == 1:
@@ -498,7 +521,7 @@ func request_action(kind: StringName, context: Dictionary = {}) -> Request:
 	if not _initialized or _requests == null or state not in [&"running", &"guide"] or _load_failed:
 		request._settle(&"rejected", &"scene_unavailable")
 		return request
-	if kind not in [&"guide", &"presentation", &"completion", &"dialogue", &"shop"]:
+	if kind not in [&"guide", &"presentation", &"completion", &"dialogue", &"shop", &"script", &"transition"]:
 		request._settle(&"rejected", &"unsupported_kind")
 		return request
 	for key in request._nodes:
@@ -506,6 +529,10 @@ func request_action(kind: StringName, context: Dictionary = {}) -> Request:
 		if not is_instance_valid(node) or not node.is_inside_tree() or (node != _scene_root and not _scene_root.is_ancestor_of(node)):
 			request._settle(&"rejected", &"foreign_target")
 			return request
+	if kind == &"script":
+		var target := request.node(&"target")
+		if target != null and target.has_method("scene_action_is_background"):
+			request._background = target.scene_action_is_background() == true
 	var previous = _requests.duplicate_for(request)
 	if previous != null: return previous
 	_requests.submit(request)
@@ -529,20 +556,26 @@ func cancel_request(id: int, reason: StringName = &"cancelled") -> void:
 
 func execute_request(request: Request) -> void:
 	match request.kind:
+		&"script":
+			_scripts.begin_scene_action(request)
+		&"transition":
+			_load_request = request
+			_start_load(request.parameters.get("path", ""), request.parameters.get("reload", false))
 		&"dialogue", &"shop":
 			_interactions.begin_scene_action(request)
 		&"guide":
 			_guide_request = request
-			if not begin_guide(request.node(&"target"), request.parameters.get("pause_world", true), request.scope):
+			if not _execute_guide(request.node(&"target"), request.parameters.get("pause_world", true), request.scope):
 				_guide_request = null
 				request.fail("invalid_guide")
 		&"presentation":
 			var target := request.node(&"target") as Node3D
-			if target == null:
+			var focus: Variant = target.global_position if target != null else request.parameters.get("focus")
+			if not focus is Vector3:
 				request.fail("invalid_presentation_target")
 				return
 			_camera_request = request
-			if present_target(target.global_position, request.parameters, request.scope) == 0:
+			if _execute_presentation(focus, request.parameters, request.scope) == 0:
 				_camera_request = null
 				request.complete({"skipped": true})
 		&"completion":
@@ -550,6 +583,7 @@ func execute_request(request: Request) -> void:
 			request_completion()
 
 func cancel_request_execution(request: Request, _reason: StringName) -> void:
+	if request.kind == &"script": _scripts.cancel_scene_action(request, _reason)
 	if request.kind in [&"dialogue", &"shop"]:
 		_interactions.cancel_scene_action(request, _reason)
 	if _completion_request == request:
@@ -590,3 +624,6 @@ func release_request_controls(request: Request) -> void:
 		player.set_dialogue_active(controls.previous)
 		player.set("is_facing_npc", false)
 	_pauses.release(controls.token)
+
+func region_owner() -> Node:
+	return _host.get_parent() if _host.has_method("capture_templates") else _host

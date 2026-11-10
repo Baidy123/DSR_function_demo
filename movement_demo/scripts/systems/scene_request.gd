@@ -22,6 +22,7 @@ var _generation := 0
 var _status: StringName = &"queued"
 var _reason: StringName
 var _started := false
+var _background := false
 var _result: Dictionary = {}
 var _director: WeakRef
 var _nodes: Dictionary = {}
