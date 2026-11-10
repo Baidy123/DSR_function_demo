@@ -110,5 +110,20 @@ func _run() -> void:
 	check(completion.status == &"completed" and other.director.state == &"completed", "completion result follows actual scene completion")
 	other.scene.free()
 	await process_frame
+	var scoped := fixture()
+	var region_a := Node.new()
+	var region_b := Node.new()
+	scoped.scene.add_child(region_a)
+	scoped.scene.add_child(region_b)
+	scoped.director._host = region_a
+	var scope_context := context(scoped)
+	scope_context["scope"] = 1
+	scope_context["scope_owner"] = region_b
+	var region_b_guide = scoped.director.request_action(&"guide", scope_context)
+	scoped.director.reset_region()
+	check(region_b_guide.status == &"running" and scoped.guide.cancels == 0 and scoped.director.is_guide_pending(scoped.guide),
+		"resetting region A cannot cancel region B guide through legacy global cleanup")
+	scoped.scene.free()
+	await process_frame
 	print("Scene requests: %d checks; %d failures" % [checks, failures])
 	quit(0 if failures == 0 else 1)

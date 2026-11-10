@@ -27,6 +27,12 @@ var _events_prepared := false
 var _event_links: Array[Dictionary] = []
 var _last_advance_frame := -1
 var _released := false
+var request_deployment: Callable
+var authorize_deployment: Callable
+
+func bind_authority(requester: Callable, authorizer: Callable) -> void:
+	request_deployment = requester
+	authorize_deployment = authorizer
 
 var _region: Node3D
 var _waves: Array[Dictionary] = []
@@ -347,6 +353,9 @@ func advance_from_region(delta: float) -> void:
 		if wave.remaining == 0.0: candidates.append(index)
 	for index in candidates:
 		var wave: Dictionary = _waves[index]
+		var definition: Node = wave.definition.get_ref()
+		# Event callbacks only latch facts; requesting runs at the physics boundary.
+		if not request_deployment.is_valid() or not request_deployment.call(definition): continue
 		_index = index
 		if wave.pending.is_empty(): wave.pending = _instantiate_wave(index)
 		if wave.pending.is_empty():
@@ -366,6 +375,8 @@ func advance_from_region(delta: float) -> void:
 			wave.reason = result.reason
 			wave.remaining = _host.spawn_retry_seconds
 			continue
+		# Pure authority check adjacent to commit; never emit or await here.
+		if not authorize_deployment.is_valid() or not authorize_deployment.call(definition): continue
 		_commit_wave()
 		break
 	_refresh_summary()

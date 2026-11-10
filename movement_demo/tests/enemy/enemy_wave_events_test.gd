@@ -14,6 +14,11 @@ class Host extends Node3D:
 	var auto_start_on_enter := false
 	var spawn_retry_seconds := 0.05
 	var runtime = Runtime.new(self)
+	func _ready() -> void:
+		var director = load("res://scripts/systems/scene_director.gd").new()
+		director.configure(self, {"scene_root": get_parent(), "wave_runtime": runtime, "auto_complete_waves": false})
+		add_child(director, false, Node.INTERNAL_MODE_BACK)
+		director.initialize()
 	func capture_templates(region: Node3D) -> void: runtime.capture_templates(region)
 	func start_encounter() -> void: runtime.start_encounter()
 	func advance_from_region(delta: float) -> void: runtime.advance_from_region(delta)
@@ -63,8 +68,31 @@ func _run() -> void:
 	await _lifecycle_guards()
 	await _dependencies()
 	await _sequence_and_empty()
+	await _director_authorization()
 	print("ENEMY WAVE EVENTS: %d/%d passed" % [checks - failures, checks])
 	quit(1 if failures else 0)
+
+func _director_authorization() -> void:
+	for mode in [Wave.StartMode.SEQUENCE, Wave.StartMode.EVENTS, Wave.StartMode.REQUEST]:
+		var region := _fixture(1)
+		var host = region.get_node("EnemyWaves")
+		var wave = host.get_node("Wave1")
+		wave.start_mode = mode
+		if mode != Wave.StartMode.EVENTS: wave.triggers.clear()
+		await _mount(region)
+		var allowed := [false]
+		for property in host.runtime.get_property_list():
+			if property.name == &"authorize_deployment":
+				host.runtime.set("authorize_deployment", func(_wave): return allowed[0])
+		host.runtime.start_encounter()
+		if mode == Wave.StartMode.EVENTS: region.get_node("Source").pulse.emit()
+		elif mode == Wave.StartMode.REQUEST: host.runtime.request_wave(wave)
+		await _settle(10)
+		check(region.enemies.is_empty(), "director can deny actual generation for start mode %d" % mode)
+		allowed[0] = true
+		check(await _await_status(host.runtime, wave, &"active"), "valid director permit releases start mode %d exactly once" % mode)
+		region.queue_free()
+		await _settle()
 
 func check(ok: bool, label: String) -> void:
 	checks += 1

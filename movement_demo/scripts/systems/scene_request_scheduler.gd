@@ -34,6 +34,8 @@ func submit(request: Request) -> void:
 func duplicate_for(request: Request) -> Request:
 	if request.dedupe_key.is_empty(): return null
 	for previous in _requests.values():
+		if request.kind == &"wave" and previous.kind == &"wave" and previous.node(&"target") == request.node(&"target"):
+			return previous
 		if previous.kind == request.kind and previous.node(&"source") == request.node(&"source") and previous.dedupe_key == request.dedupe_key:
 			return previous
 	return null

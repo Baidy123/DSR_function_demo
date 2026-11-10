@@ -2,7 +2,7 @@
 
 统一调度迁移正在实施。酒馆现已明确装配无 Wave 的 SceneDirector；核心新增 `request_action(kind, context)`、`cancel_request(id, reason)` 与按本场查找的 `for_node(node)`。第一阶段接入 guide／presentation／completion，请求可查询 queued／running／completed／failed／cancelled／rejected，`await request.wait_result()` 不会漏掉同步完成。重复请求按来源和 dedupe_key 去重；取消先让身份失效再停止执行，其他场景的节点及参数中藏入的节点均被拒绝。
 
-普通 NPC 对话、商店、交互效果、规则演出和场景切换已经接入；波次授权及旧区域回退仍按[实施计划](../superpowers/plans/2026-11-10-scene-director-authority.md)继续迁移。原公开接口保持兼容，地图和本地数值不由本功能重配。
+普通 NPC 对话、商店、交互效果、规则演出、场景切换、波次与出口已经接入；旧区域回退仍按[实施计划](../superpowers/plans/2026-11-10-scene-director-authority.md)继续清理。原公开接口保持兼容，地图和本地数值不由本功能重配。
 
 日常对话可调用 NPC 的 `request_dialogue(player)`，也可向 `for_node(self)` 找到的导演提交 `dialogue` 请求：context 的 source 指交互来源，target 指 DialogueUI，player 指玩家，parameters 保存 resource 与 start；需要转身时设置 face_source=true。普通交互的 origin 为 interaction，忙碌会拒绝；事件镜头的 origin 为 rule，先排队，当前对话／商店结束后再播放。不要在请求获准前自行锁住玩家。
 
@@ -69,6 +69,8 @@ Lvl1
 事件先发生、玩家随后入区也能衔接；刷新仍检查区域资格、暂停、死亡、对话、完整身体空间和导航。某波出生点被占，不阻塞其他独立合法请求；每个物理步最多成功提交一波。离区复位重新等待本轮事件，暂停不替来源伪造信号，默认 Timer 在暂停中也不计时。
 
 ## 二、让自己的脚本发事件
+
+三种 Start Mode 都在物理调度边界向导演申请部署，实际生成前再读取当前许可；回调只记录事件，不在信号栈中直接生成。原模板、导航、二次空间检查和每步最多提交一波保持。普通等待或另一波占位不会占住整场队列；需要前台镜头的增援会等当前对话／商店结束，再真实生成与展示。
 
 原节点已经声明信号时，通常只需绑定 Source Path / Signal Name，无需改脚本。例如 `Interactable.interacted` 表示交互真正成功，`blocked` 不算成功。
 
@@ -202,6 +204,8 @@ String 不等于 StringName，整数1不等于布尔true。需要“事件发生
 - 配置了 `LevelFlow.return_portal_path` 的五关在全部波次完成后只开放本关 `TavernReturnPortal`，不暂停世界，也不显示直接进入下一关的按钮。没有返程门的结果界面仍可暂停并显示原按钮；没有任何 Wave 不自动通关。
 - `LevelFlow.completion_pauses_world()` 决定完成时是否取得暂停所有权：有返程门时返回 false，保留结果按钮时返回 true。该接口只影响完成，不改变死亡暂停。
 - 离区仍由区域服务清理敌人、掉落与协同，调度器取消 REGION 规则和镜头。SCENE 开场和结果不重播；若 SCENE 规则正等旧轮波次，该等待明确取消诊断，不自动跨轮重投。
+
+区域请求的 scope_owner 标明所属区域，`reset_region(region)` 只取消该区域的执行；不传参数沿用当前部署区域。另一区域的引导、镜头与 SCENE 请求不会被全局收尾分支误停。LevelFlow.show_completion 是兼容请求入口，真实出口启用由导演完成边界调用执行端。
 - 关闭说明、结束镜头、旧场景卸载只释放自己的暂停，不清除别的拥有者。重开不清空 GameState。
 - 加载失败保留暂停并恢复两个按钮；重试会沿用上一次选择的路径和重载方式。事件切场景失败重试原路径，不误用五关路径表。自定义无UI流程可读核心诊断并调用 `request_load_retry()`。
 

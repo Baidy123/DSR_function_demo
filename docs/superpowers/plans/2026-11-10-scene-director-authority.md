@@ -161,12 +161,12 @@ GameState 新增纯准备 `prepare_scene_transition(mode: StringName, player_sna
 
 **Interfaces:** 消费 request_action(wave／presentation／completion)。runtime 增加 `authorize_deployment: Callable`，签名 `(wave: Node) -> bool`，由导演绑定；仅查询当前波次执行许可，不发信号或 await。所有 SEQUENCE／EVENTS／REQUEST 在 ready 阶段先提交同一 wave 请求，最终生成前再校验许可；请求在真实提交后才完成。展示沿既有 wave_committed → 导演回调安排，不能再增加一个重复播放入口；runtime 继续拥有空间、模板、活体与清空状态。旧 request_wave(wave) -> bool、start_encounter() -> void、reset_encounter() -> void 和原信号保持为导演适配入口。
 
-- [ ] **1. 写失败测试。** test_all_start_modes_authorized：三个模式失去资格都不能生成；test_spawn_barrier：真实提交成功之后、公开 spawned 回调之前已经取得展示控制，失败出生不播放；test_camera_after_dialogue：对话中记录有效事件，结束后仅一次合法生成／展示；test_independent_blocked_wave：A 占位时 B 可合法提交；test_completion_command：导演获准后才启用原出口，同帧死亡优先；test_two_region_reset：复位 A 不取消 B 的 SCENE 演出或占用。
-- [ ] **2. 跑红测试。** names：scene_reinforcement_test、scene_request_test；敌人选择入口跑 enemy_wave_events_test，确认检测的是授权／时序缺口。
-- [ ] **3. 收拢波次与镜头授权。** runtime 保留原每物理步最多提交一波、二次空间检查、成员准备、出生屏障与清空判断；身份与授权检查紧邻提交，不在空间检查和提交之间插入信号／await。事件事实记录不依赖来源仍存活。对话／商店占用时延后需要前台的出场展示，重新验证目标；不提前播放空出生点。
-- [ ] **4. 接管完成适配。** LevelFlow.show_completion 仅作为当前 completion 请求的执行端，原公开兼容入口转发至导演，内部执行方法避免递归。启用现有 TavernReturnPortal，不创建新出口、不改变清场返酒馆／A 解锁流程；调试通关仍通过正式完成路径。
-- [ ] **5. 验证交付。** names：scene_reinforcement_test、scene_director_test、scene_request_test、scene_interaction_test、presentation_camera_test、level_flow_test、debug_complete_level_test、campaign_flow_test；另跑全部三个敌人波次专项。核对 Wave／Squad 路径、原血量和训练资源 diff，保持本地原样。
-- [ ] **6. 同步文档并提交推送。** 描述波次事实与导演授权的界线、出场前台冲突与镜头清理；建议提交 `feat: authorize wave and completion flows through scene director`。
+- [x] **1. 写失败测试。** test_all_start_modes_authorized：三个模式失去资格都不能生成；test_spawn_barrier：真实提交成功之后、公开 spawned 回调之前已经取得展示控制，失败出生不播放；test_camera_after_dialogue：对话中记录有效事件，结束后仅一次合法生成／展示；test_independent_blocked_wave：A 占位时 B 可合法提交；test_completion_command：导演获准后才启用原出口，同帧死亡优先；test_two_region_reset：复位 A 不取消 B 的 SCENE 演出或占用。
+- [x] **2. 跑红测试。** names：scene_reinforcement_test、scene_request_test；敌人选择入口跑 enemy_wave_events_test，确认检测的是授权／时序缺口。
+- [x] **3. 收拢波次与镜头授权。** runtime 保留原每物理步最多提交一波、二次空间检查、成员准备、出生屏障与清空判断；身份与授权检查紧邻提交，不在空间检查和提交之间插入信号／await。事件事实记录不依赖来源仍存活。对话／商店占用时延后需要前台的出场展示，重新验证目标；不提前播放空出生点。
+- [x] **4. 接管完成适配。** LevelFlow.show_completion 仅作为当前 completion 请求的执行端，原公开兼容入口转发至导演，内部执行方法避免递归。启用现有 TavernReturnPortal，不创建新出口、不改变清场返酒馆／A 解锁流程；调试通关仍通过正式完成路径。
+- [x] **5. 验证交付。** names：scene_reinforcement_test、scene_director_test、scene_request_test、scene_interaction_test、presentation_camera_test、level_flow_test、debug_complete_level_test、campaign_flow_test；另跑全部三个敌人波次专项。核对 Wave／Squad 路径、原血量和训练资源 diff，保持本地原样。
+- [x] **6. 同步文档并提交推送。** 描述波次事实与导演授权的界线、出场前台冲突与镜头清理；建议提交 `feat: authorize wave and completion flows through scene director`。
 
 ## Task 6：关闭旧回退，验收真实酒馆和五关
 
@@ -201,3 +201,5 @@ Task 2: scene_interaction_test 22 checks passed; initial 9 named suites passed. 
 Task 3: real Timer/Tween and sliding-door cancellation, stale/synchronous callbacks and SCENE/REGION isolation covered (9 checks). Earlier fixture assumptions corrected with explicit scene_root and the fourth pause argument; original assertions retained. Final seven-suite verification logged in movement_demo/logs/director-authority-task3-final/.
 
 Task 4: transition requests 17 checks and request identity 19 checks passed; 11/12 final suites passed, campaign_flow_test retains exactly its 3 captured baseline magazine failures. Original interaction_test and successful retry/old-checkpoint restoration passed. Logs: movement_demo/logs/director-authority-task4-final/.
+
+Task 5: final systems/enemy gate logs in movement_demo/logs/director-authority-task5-final/. 9/11 suites clean; original campaign_flow_test 3 magazine assertions and enemy_wave_test first-level completion assertion remain unchanged. New wave-mode permits, real dialogue-to-reinforcement barrier and region-owner cancellation pass. Authored enemy baseline files remain byte-identical.

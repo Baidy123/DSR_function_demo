@@ -98,8 +98,9 @@ func _ready() -> void:
 		health.set_meta(&"scene_director", weakref(director))
 
 func start_encounter() -> void:
-	_ensure_runtime()
-	_runtime.start_encounter()
+	if not is_instance_valid(director): return
+	if is_node_ready() and director.state == &"preparing": director.initialize()
+	director.request_action(&"wave", {"source": self, "parameters": {"command": &"start"}})
 
 func advance_from_region(delta: float) -> void:
 	if _runtime != null: _runtime.advance_from_region(delta)
@@ -110,13 +111,15 @@ func reset_encounter() -> void:
 
 ## 调试入口：只跳过当前区域本轮的剩余波次，仍通过正式完成信号开放关卡结果。
 func debug_complete_encounter() -> bool:
-	_ensure_runtime()
-	return _runtime.debug_complete_encounter()
+	if not is_instance_valid(director): return false
+	var request = director.request_action(&"wave", {"source": self, "parameters": {"command": &"debug_complete"}})
+	return request.get_result().get("success", false)
 
 
 func request_wave(wave: Node) -> bool:
-	_ensure_runtime()
-	return _runtime.request_wave(wave)
+	if not is_instance_valid(director): return false
+	if is_node_ready() and director.state == &"preparing": director.initialize()
+	return director.request_wave_for_flow(wave, false, {})
 
 func wave_status(wave: Node) -> StringName:
 	return _runtime.wave_status(wave) if _runtime != null else &"unknown"

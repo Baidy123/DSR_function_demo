@@ -59,6 +59,12 @@ func completion_pauses_world() -> bool:
 
 ## SceneDirector 完成回调：本地五关不显示下一关按钮，只开放当前关返程门。
 func show_completion() -> void:
+	var director = _scene_director.get("director") if is_instance_valid(_scene_director) else null
+	if is_instance_valid(director): director.request_completion()
+
+func execute_scene_completion() -> void:
+	var director = _scene_director.get("director") if is_instance_valid(_scene_director) else null
+	if not is_instance_valid(director) or not director._completion_executing: return
 	hide_result()
 	if _health != null and _health.is_dead:
 		return

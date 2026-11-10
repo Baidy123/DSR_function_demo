@@ -42,6 +42,33 @@ var ready_observations: Array[Dictionary] = []
 var public_observations: Array[Dictionary] = []
 var started_observations: Array[Dictionary] = []
 
+class PendingDialogue extends DialogueResource:
+	signal release_line
+	func get_next_dialogue_line(_cue: String = "", _states: Array = [], _mutation: DMConstants.MutationBehaviour = DMConstants.MutationBehaviour.Wait) -> DialogueLine:
+		await release_line
+		var line := DialogueLine.new()
+		line.text = "reinforcement waits for this dialogue"
+		return line
+
+func _dialogue_defers_reinforcement() -> void:
+	await _fixture()
+	var ui = load("res://scenes/ui/dialogue_ui.tscn").instantiate()
+	region.add_child(ui)
+	var dialogue := PendingDialogue.new()
+	var request = _director().request_action(&"dialogue", {"source": events, "target": ui, "player": player,
+		"origin": &"interaction", "parameters": {"resource": dialogue, "start": "start"}})
+	events.reinforce.emit()
+	await _steps(8)
+	_check("dialogue holds real event reinforcement and camera until interaction finishes", request.status == &"running" and public_observations.is_empty() and source.is_current() and not paused)
+	dialogue.release_line.emit()
+	ui._close_dialogue()
+	if not await _await_presentation():
+		await _cleanup()
+		return
+	_check("dialogue end releases one real deployment with its synchronous camera barrier", request.status == &"completed" and public_observations.size() == 1 and paused)
+	_director().skip_presentation()
+	await _cleanup()
+
 
 func _initialize() -> void:
 	_run.call_deferred()
@@ -60,6 +87,7 @@ func _run() -> void:
 		await _missing_target(true)
 		await _death_cancels_presentation()
 		await _region_exit_cancels_presentation()
+		await _dialogue_defers_reinforcement()
 	if DisplayServer.get_name() != "headless":
 		if mouse_only and OS.get_cmdline_user_args().has("--legacy-mouse-snapshot"):
 			var legacy: RefCounted = LegacyMouseSnapshot.new()

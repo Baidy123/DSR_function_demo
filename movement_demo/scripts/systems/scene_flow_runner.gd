@@ -121,8 +121,8 @@ func _step(entry: Dictionary, delta: float) -> void:
 			Action.Kind.WAIT:
 				if not is_finite(action.seconds) or action.seconds < 0.0: _fail(entry, "Invalid wait duration")
 			Action.Kind.REQUEST_WAVE:
-				if not _director.request_wave_for_flow(target, action.present_spawn, action.camera_options(), entry.rule.scope, action.presentation_target_path):
-					_fail(entry, "Wave request rejected: %s" % action.target_path)
+				_submit(entry, &"wave", target, {"present": action.present_spawn,
+					"options": action.camera_options(), "target_path": action.presentation_target_path})
 			Action.Kind.WAIT_WAVE_CLEARED:
 				if _director.wave_status(target) == &"unknown": _fail(entry, "Unknown wave: %s" % action.target_path)
 			Action.Kind.WAIT_SIGNAL:

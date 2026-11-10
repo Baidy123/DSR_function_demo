@@ -24,6 +24,8 @@ var _load_parameters: Dictionary = {}
 var _load_owns_terminal := false
 var _issuing_parent
 var _transitions
+var _wave_requests: Dictionary = {}
+var _completion_executing := false
 var _request_controls: Dictionary = {}
 signal state_changed(value: StringName)
 signal action_failed(rule: String, reason: String)
@@ -103,6 +105,8 @@ func initialize() -> void:
 	if is_instance_valid(_level_flow) and _level_flow.has_method("completion_pauses_world"):
 		_completion_pauses_world = bool(_level_flow.completion_pauses_world())
 	_waves = _bindings.get("wave_runtime")
+	if _waves != null and _waves.has_method("bind_authority"):
+		_waves.bind_authority(_schedule_wave, authorize_wave_deployment)
 	_camera = _bindings.get("camera")
 	_result_view = _bindings.get("result_view")
 	if _result_view == null:
@@ -148,7 +152,7 @@ func advance(delta: float) -> void:
 		else: _finish_presentation()
 	if not can_run_actions(): return
 	_flows.advance(delta)
-	if _completion_pending and state == &"running" and _active_presentation == 0 and _guide == null and Engine.get_process_frames() > _completion_frame:
+	if _completion_pending and state == &"running" and _active_presentation == 0 and _guide == null and _requests.snapshot().foreground == 0 and Engine.get_process_frames() > _completion_frame:
 		_finish_completion()
 
 func can_run_actions() -> bool:
@@ -221,6 +225,9 @@ func _on_player_died() -> void:
 
 func request_completion() -> void:
 	if not _initialized or state in [&"dead", &"completed", &"loading", &"error"]: return
+	request_action(&"completion", {"source": _host, "dedupe_key": &"scene_completion"})
+
+func _execute_completion() -> void:
 	_completion_pending = true
 	_completion_frame = Engine.get_process_frames()
 
@@ -240,7 +247,11 @@ func _finish_completion() -> void:
 	_set_state(&"completed")
 	_generation += 1
 	_cancel_actions()
-	if is_instance_valid(_level_flow): _level_flow.show_completion()
+	if is_instance_valid(_level_flow):
+		_completion_executing = true
+		if _level_flow.has_method("execute_scene_completion"): _level_flow.execute_scene_completion()
+		else: _level_flow.show_completion()
+		_completion_executing = false
 	if completion != null: completion._settle(&"completed")
 
 func request_restart() -> void:
@@ -324,18 +335,66 @@ func finish_transition(request: Request, status: StringName, reason: StringName 
 	for execution in chain: execution._settle(status, reason)
 
 func request_wave_for_flow(wave: Node, present: bool, options: Dictionary, scope: int = 1, target_path: NodePath = NodePath()) -> bool:
-	if _waves == null or not is_instance_valid(wave): return false
-	if present: _armed_presentations[wave.get_instance_id()] = {"options": options.duplicate(), "scope": scope, "target_path": target_path}
-	if _waves.request_wave(wave):
+	var request := request_action(&"wave", {"source": _host, "target": wave, "scope": scope,
+		"scope_owner": region_owner(), "dedupe_key": StringName("wave_%d" % wave.get_instance_id()) if is_instance_valid(wave) else &"",
+		"parameters": {"present": present, "options": options, "target_path": target_path}})
+	return request.has_started() and request.status not in [&"failed", &"cancelled", &"rejected"]
+
+func _schedule_wave(wave: Node) -> bool:
+	return request_wave_for_flow(wave, false, {})
+
+func _execute_wave_request(request: Request) -> void:
+	if _waves == null:
+		request.fail("missing_wave_runtime")
+		return
+	if request.parameters.get("command") == &"start":
 		_waves.start_encounter()
-		return true
-	_armed_presentations.erase(wave.get_instance_id())
-	return false
+		request.complete()
+		return
+	if request.parameters.get("command") == &"debug_complete":
+		if _waves.debug_complete_encounter(): request.complete({"success": true})
+		else: request.fail("debug_completion_rejected")
+		return
+	var wave := request.node(&"target")
+	var status: StringName = _waves.wave_status(wave)
+	if status in [&"unknown", &"error"]:
+		request.fail("invalid_wave")
+		return
+	if status in [&"active", &"clearing", &"cleared"]:
+		request.complete()
+		return
+	var id := wave.get_instance_id()
+	_wave_requests[id] = request
+	request.finished.connect(_clear_wave_request.bind(id))
+	if request.parameters.get("present", false):
+		_armed_presentations[id] = {"options": request.parameters.get("options", {}), "scope": request.scope,
+			"target_path": request.parameters.get("target_path", NodePath())}
+	if not _waves.request_wave(wave):
+		request.fail("wave_rejected")
+		return
+	_waves.start_encounter()
+
+func _clear_wave_request(request: Request, id: int) -> void:
+	if _wave_requests.get(id) != request: return
+	_wave_requests.erase(id)
+	if request.status != &"completed": _armed_presentations.erase(id)
+
+func authorize_wave_deployment(wave: Node) -> bool:
+	if not is_instance_valid(wave) or state not in [&"running", &"guide"] or _load_failed or _completion_pending or get_tree().paused: return false
+	var request = _wave_requests.get(wave.get_instance_id())
+	if request == null or not request.is_current(): return false
+	var presentation: bool = _armed_presentations.has(wave.get_instance_id()) or wave.get("show_spawn_presentation") == true or _bindings.get("present_spawned_waves", false)
+	return not presentation or _requests.snapshot().foreground == 0
 
 func wave_status(wave: Node) -> StringName:
 	return _waves.wave_status(wave) if _waves != null and is_instance_valid(wave) else &"unknown"
 
 func _on_wave_committed(wave: Node, _deployment_focus: Vector3) -> void:
+	_present_committed_wave(wave)
+	var request = _wave_requests.get(wave.get_instance_id()) if is_instance_valid(wave) else null
+	if request != null: request.complete()
+
+func _present_committed_wave(wave: Node) -> void:
 	if state not in [&"running", &"guide"]: return
 	var armed: Dictionary = _armed_presentations.get(wave.get_instance_id(), {})
 	_armed_presentations.erase(wave.get_instance_id())
@@ -362,7 +421,8 @@ func _on_wave_committed(wave: Node, _deployment_focus: Vector3) -> void:
 	if not target is Node3D or not target.is_inside_tree():
 		report_action_error("camera", "Spawn presentation needs an explicit Marker3D/Node3D target; skipped")
 		return
-	present_target(target.global_position, options, scope)
+	request_action(&"presentation", {"source": wave, "target": target, "scope": scope,
+		"scope_owner": region_owner(), "origin": &"rule", "parameters": options})
 
 func present_target(focus: Vector3, options: Dictionary = {}, scope: int = 0) -> int:
 	if _active_presentation != 0 or (_requests != null and _requests.snapshot().foreground != 0): return -1
@@ -434,12 +494,14 @@ func _cancel_presentation(restore: bool = true) -> void:
 		_camera.cancel_presentation(restore)
 	_finish_presentation()
 
-func reset_region() -> void:
+func reset_region(owner: Node = null) -> void:
 	if not _initialized: return
-	_requests.cancel_scope(region_owner(), &"region_reset")
+	var retiring := owner if owner != null else region_owner()
+	_requests.cancel_scope(retiring, &"region_reset")
+	if retiring != region_owner(): return
 	_armed_presentations.clear()
-	if _active_presentation != 0 and _presentation_scope == 1: _cancel_presentation()
-	if _guide != null and _guide_scope == 1:
+	if _active_presentation != 0 and _presentation_scope == 1 and (_camera_request == null or _camera_request.node(&"scope_owner") == retiring): _cancel_presentation()
+	if _guide != null and _guide_scope == 1 and (_guide_request == null or _guide_request.node(&"scope_owner") == retiring):
 		_clear_guide(true)
 		if state == &"guide": _set_state(&"running")
 	_flows.reset_region()
@@ -526,7 +588,7 @@ func request_action(kind: StringName, context: Dictionary = {}) -> Request:
 	if not _initialized or _requests == null or not available:
 		request._settle(&"rejected", &"scene_unavailable")
 		return request
-	if kind not in [&"guide", &"presentation", &"completion", &"dialogue", &"shop", &"interact", &"script", &"transition"]:
+	if kind not in [&"guide", &"presentation", &"completion", &"dialogue", &"shop", &"interact", &"script", &"wave", &"transition"]:
 		request._settle(&"rejected", &"unsupported_kind")
 		return request
 	for key in request._nodes:
@@ -537,6 +599,9 @@ func request_action(kind: StringName, context: Dictionary = {}) -> Request:
 	if request.parent_id != 0 and (_issuing_parent == null or _issuing_parent.id != request.parent_id or not _issuing_parent.is_current()):
 		request._settle(&"rejected", &"invalid_parent")
 		return request
+	if kind in [&"wave", &"completion"]: request._background = true
+	if kind == &"wave" and request.node(&"target") != null:
+		request.dedupe_key = StringName("wave_%d" % request.node(&"target").get_instance_id())
 	if kind == &"script":
 		var target := request.node(&"target")
 		if target != null and target.has_method("scene_action_is_background"):
@@ -564,6 +629,8 @@ func cancel_request(id: int, reason: StringName = &"cancelled") -> void:
 
 func execute_request(request: Request) -> void:
 	match request.kind:
+		&"wave":
+			_execute_wave_request(request)
 		&"script":
 			_scripts.begin_scene_action(request)
 		&"transition":
@@ -587,7 +654,7 @@ func execute_request(request: Request) -> void:
 				request.complete({"skipped": true})
 		&"completion":
 			_completion_request = request
-			request_completion()
+			_execute_completion()
 
 func cancel_request_execution(request: Request, _reason: StringName) -> void:
 	if request.kind == &"script": _scripts.cancel_scene_action(request, _reason)
