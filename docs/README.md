@@ -46,7 +46,7 @@
 
 ## 当前说明与历史依据
 
-实施中：[SceneDirector 统一场景调度设计](superpowers/specs/2026-11-10-scene-director-authority-design.md)与[实施计划](superpowers/plans/2026-11-10-scene-director-authority.md)已确认，采用 Native 连续实施。完成范围以计划各阶段验收记录为准。
+场景配置从[场景导演使用指南](gameplay/SCENE_DIRECTOR.md)开始：包含新场景接入、NPC／商店、事件与波次、动作列表、可取消脚本及传送。实现范围见[统一调度设计](superpowers/specs/2026-11-10-scene-director-authority-design.md)与[实施记录](superpowers/plans/2026-11-10-scene-director-authority.md)，当前测试和已知失败见[验证](testing.md)。
 
 现行文档说明当前用法，后续应直接更新对应章节，不在文件开头持续堆叠逐日更新。历史参数、实施过程与旧验证结果保存在[整理前记录目录](history/2026-10-28/index.md)，引用历史结果时保留当时的范围和失败项。
 

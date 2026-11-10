@@ -26,7 +26,7 @@ Dialogue Manager、Phantom Camera 和 Godot AI 插件源码及许可证随工程
 | 装备与补给 | 主副武器槽、按弹种共享备弹、整匣／逐发装填、缺弹掉落、医疗包与二选一重生 |
 | 货币商店与任务金额 | 资源配置的医疗包、弹药、旗标与武器商品；关卡解锁、任务发钱与检查点退款 |
 | 敌人 AI | 巡逻、视觉／听觉、追踪与搜索、掩体、近远程攻击；个人决策与三档小队配合 |
-| 场景调度 | SceneDirector统一可选引导、节点事件、波次出场、手选目标的独立镜头、死亡重开／回酒店与连续五关 |
+| 场景调度 | SceneDirector 统一对话、商店、交互、事件演出、波次、镜头、出口与切场景，支持排队和真实取消 |
 | 交互与任务 | 对话、场景交互效果、条件驱动任务、阶段与 NPC 状态；任务演示与五关流程各自独立 |
 | 表现与诊断 | 可替换模型／动画、命中特效、血条与尸体、准星／状态提示、相机遮挡透明和调试视图 |
 
@@ -90,6 +90,7 @@ Dialogue Manager、Phantom Camera 和 Godot AI 插件源码及许可证随工程
 | Enemy → Training → Profile | 感知、搜索、射击及战术解锁；修改后重新加载战斗 | [敌人 AI](docs/enemy-ai.md) |
 | Squad → Profile | 仅视野共享、战术配合、强配合三档及队级参数 | [小队与 AI](docs/enemy-ai.md) |
 | SceneDirector → Wave | 顺序/事件节点/请求出场、延迟、出生搜索、手动镜头目标；原小队部署保持 | [波次](docs/gameplay/ENEMY_WAVES.md) |
+| SceneDirector | 本场唯一入口、Health／说明／结果绑定、请求和取消 | [使用指南](docs/gameplay/SCENE_DIRECTOR.md) |
 | SceneEvent、SceneDirector → Scene Rules | 选择来源信号或手动trigger；Wave/规则直接选择事件节点，配置动作 | [节点接线教程](docs/gameplay/SCENE_DIRECTOR.md) |
 | `scenes/world/levels/` | 地形、导航、出生点、玩家装备和敌人部署；LevelFlow 保存关卡编号 | [关卡](docs/gameplay/LEVEL_MAPS.md) |
 | Interactable、StageStateController | 交互条件与效果、Stage Table、任务及 NPC 状态 | [交互](docs/gameplay/INTERACTION.md)、[任务](docs/gameplay/STAGE_STATE.md) |
@@ -118,9 +119,10 @@ Dialogue Manager、Phantom Camera 和 Godot AI 插件源码及许可证随工程
 | GameState | `record_campaign_checkpoint(level, player_snapshot)`、`restore_campaign_checkpoint()` | 保存并恢复最近完成关卡时的酒店进度与玩家快照 |
 | GameState | `add_money(amount)`、`spend_money(amount)`、`claim_task_reward(id, amount, level)`、`has_purchased_shop_item(id)` | 货币增减、一次性任务发奖与商店购买记录 |
 | ShopController | `open_shop_for_player(player)`、`purchase(item_id, slot)`、`close_shop()` | 打开／关闭货币商店、复核并执行购买；面板只回传意图 |
-| SceneDirector | `start_encounter()`、`request_wave(wave)`、`reset_encounter()`、`debug_snapshot()`；原波次信号保留 | 场景调度入口与波次兼容接口；核心通过director访问 |
+| SceneDirector 核心 | `for_node(node)`、`request_action(kind, context)`、`cancel_request(id, reason)` | 查找本场导演并请求；`await request.wait_result()` 读取一次性结果 |
+| SceneDirector 场景入口 | `start_encounter()`、`request_wave(wave)`、`reset_encounter()`、`debug_snapshot()` | 原波次兼容接口及信号保留；`director` 指向核心 |
 | SceneEvent | `trigger()`、无参`triggered`；来源节点/信号/过滤由检查器配置 | 统一通知Wave或场景规则，不要求每种事件重写刷怪代码 |
-| Interactable / InteractionEffect | `can_interact(player)`、`interact(player)`、`apply(context)` | 查询与执行交互、扩展单一效果 |
+| Interactable / InteractionEffect | `can_interact(player)`、`interact(player)`、`execute(context)` | 请求交互、等待效果；`interacted` 表示全部完成，同步效果保留 `apply` |
 | StageStateController | `reload_table()`、`get_snapshot()`、`snapshot_changed` | 重新装配任务配置及只读状态展示 |
 
 ## 如何扩展

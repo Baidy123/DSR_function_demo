@@ -1,8 +1,20 @@
 # 测试入口、选择与结果判断
 
-本页说明如何查询和运行已有验证，以及如何解释结果。AI 的真实场景、行为／性能边界见[敌人验证](enemy-tests.md)，模块职责见[项目结构](project-layout.md)。本轮文档整理不代表重新执行全部游戏测试。
+本页说明如何查询和运行已有验证，以及如何解释结果。AI 的真实场景、行为／性能边界见[敌人验证](enemy-tests.md)，模块职责见[项目结构](project-layout.md)。各轮结果按日期区分，不代表全工程回归。
 
 ## 当前五关定向记录
+
+2026-11-10 SceneDirector 统一调度：最终选择 25 个系统／玩家专项与 3 个敌人波次专项；其中 26 套通过，2 套保留修改前已捕获的 4 条失败：`campaign_flow_test` 的入关／返酒馆／酒店恢复双弹匣三条，以及 `enemy_wave_test` 的“第一关两波完整结束”。原断言及本地装备、血量和部署未据此修改，不宣称 28 套全绿。检查点、真实五关清场返程、商品与已购武器重试通过。日志位于本地 `movement_demo/logs/director-authority-task6-final/`。
+
+新增专项覆盖请求身份／同步结果、对话首句未加载完的取消、真实 Timer／Tween 停止、复合交互子请求、纯状态准备／真实目标 `_ready()` 提交、所有波次模式授权、多区域取消与六个正式场景唯一导演。`shop_weapon_test` 保留原 27 项，将入关快照检查移至真实切场获准后，符合事务时序。
+
+真实 Windows OpenGL 渲染模式通过 47 项，实际点击商店关闭与说明按钮，并验证对话结束后镜头、死亡中断、清场返酒馆；截图及状态在 `movement_demo/logs/director-authority-capture/`。命令如下（需图形桌面）：
+
+```powershell
+& E:/Godot/Godot_v4.7.2-stable_win64_console.exe --path movement_demo --script res://tests/scene_director_authority_test.gd -- --capture
+```
+
+编辑器模式检查新动作字段显示、隐藏字段资源保存重载及六场景路径／`.tres` 引用，17/17；退出时有 `Scan thread aborted` 警告，无脚本／资源错误。无导演夹具会故意触发缺少入口警告。Catalog 检查通过；未覆盖所有显示比例、全部新地图及任意自定义脚本提供者。
 
 2026-11-10 商店医疗包改为 `ADD_MEDKIT` 资源入库：目录、真实购买、面板、武器购买、装备与医疗使用／生命周期定向回归通过。
 覆盖现有 `.tres` 引用、按类型显示资源槽、满血购买、按数量叠加、购买不回血、库存标签刷新、空库存换资源及检查点恢复资源／数量／货币。
@@ -100,6 +112,8 @@ python movement_demo/tests/run_combat_regressions.py --godot E:/Godot/Godot_v4.7
 | 相机与独立复用 | `player_camera_test`、`player_scene_reuse_test`、`camera_occlusion_test` |
 | 五关、检查点与波次 | `campaign_checkpoint_test`、`campaign_flow_test`、`level_flow_test`、敌人波次专项；使用真实保存场景验证 |
 | 场景调度与编辑器接线 | `scene_director_test`、`scene_event_node_test`、`enemy_wave_events_test`；无Wave/无Guide、暂停拥有者、事件过滤/失效、两个死亡按钮、加载失败重试 |
+| 统一请求与取消 | `scene_request_test`、`scene_interaction_test`、`scene_script_cancellation_test`、`scene_transition_request_test`；身份、真实停止、子交互与加载事务 |
+| 正式场景与画面 | `scene_director_authority_test`；酒馆和五关唯一入口；`-- --capture` 须真实渲染，保存状态与截图 |
 | 增援与独立演出 | `scene_reinforcement_test`、`presentation_camera_test`；真实生成屏障、手动Marker3D、取消/返回；相机专项另有真实渲染模式 |
 | 任务与交互 | systems 中条件、任务、阶段、面板、唱片机与交互专项 |
 | 货币商店与任务金额 | `shop_catalog_test`、`shop_state_test`、`shop_weapon_test`、`shop_board_test`、`shop_flow_test`、`quest_money_reward_test` |

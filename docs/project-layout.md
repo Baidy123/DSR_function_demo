@@ -4,7 +4,7 @@
 
 当前合并基线同时保留本地五关任务／货币商店与 upstream 场景调度结构。`LevelFlow` 在清场后只启用本关 `TavernReturnPortal`；返程门写入 `completed_level`、一次性玩家快照和酒店检查点并返回酒馆，A 更新 `available_level` 后门口 `QuestPortal` 才指向下一关。结果按钮和自动加载是 SceneDirector 的可复用能力，当前五关实际没有使用“清场后自动进入下一关”。
 
-五关任务与任务金额由 `resources/stages/stage_table_template.tres` 保存，商品目录由 `resources/shop/shop_catalog.tres` 保存；`QuestCondition.int_at_least()` 提供整数下限条件，`QuestDefinition.money_reward` 配置完成时的固定货币，`GameState.rewarded_task_ids` 记录一次性任务发奖。货币商店由 `ShopController` 按目录解析可见商品、复核并执行购买，`ShopBoard` 只回传购买意图；`GameState.money`／`purchased_shop_item_ids` 与酒店检查点同步。跨关快照由 `player_campaign_state.gd` 搬运；进入关卡时 `QuestPortal` 额外保存 `level_entry_player_state`，死亡重开由 `SceneDirector` 把它恢复为待恢复快照，选择回酒店则由 `GameState.campaign_checkpoint` 恢复最近完成关卡时的关卡进度、商品旗标、货币、任务奖励、一次性购买记录和玩家状态。旧三选一奖励组件仍保留为兼容代码，不再接入主流程。
+五关任务与任务金额由 `resources/stages/stage_table_template.tres` 保存，商品目录由 `resources/shop/shop_catalog.tres` 保存；`QuestCondition.int_at_least()` 提供整数下限条件，`QuestDefinition.money_reward` 配置完成时的固定货币，`GameState.rewarded_task_ids` 记录一次性任务发奖。货币商店由 `ShopController` 按目录解析可见商品、复核并执行购买，`ShopBoard` 只回传购买意图；`GameState.money`／`purchased_shop_item_ids` 与酒店检查点同步。跨关快照由 `player_campaign_state.gd` 搬运；QuestPortal、返程门、死亡重开／回酒店向导演请求加载，GameState 准备入关状态或最近酒店检查点，加载获准后才提交关卡进度、商店旗标、货币、奖励记录和玩家快照。旧三选一奖励组件仍保留为兼容代码，不再接入主流程。
 
 医疗包商品使用 `ADD_MEDKIT`、`medkit_data` 与购买数量 `amount`，由 Equipment 的 `can_add_medkits()`／`add_medkits()` 接收入库，沿用唯一库存与状态通知；检查器仅显示当前商品效果对应的资源槽。拥有类商品使用 `ShopItemDefinition.Effect.SET_FLAG` 与 `flag_key`；购买调用 `GameState.grant_shop_flag()`，旗标值由原 `flags` 字典唯一保存。检查点通过 `shop_flags` 捕获和恢复商店登记的旗标，不回滚唱片机等其他玩法旗标。任务面板只展示任务状态，已移除数值进度与进度条。
 
@@ -117,18 +117,18 @@ Equipment 交接当前枪给 Combat；相机订阅 `weapon_changed`，表现订�
 
 ## 波次、关卡与补给
 
-统一调度迁移：`scene_request.gd` 保存请求身份、弱节点引用与一次性结果，`scene_request_scheduler.gd` 是导演内部的排队／去重／取消管理，不是第二个公开调度入口。`scene_interaction_executor.gd` 适配 NPC 转身、对话／商店开始和收尾；导演保存暂停、鼠标及玩家限制，界面报告真实结束，包括首句尚未加载完成的取消。酒馆 `main.tscn` 已明确装配无 Wave 的 SceneDirector；旧区域回退暂留至正式场景与夹具迁移完成。
+酒馆与五关各明确装配一个 SceneDirector。`scene_request.gd` 保存请求身份、弱节点引用与一次性结果，`scene_request_scheduler.gd` 是导演内部的排队／去重／取消管理。`scene_interaction_executor.gd` 适配 NPC 转身、对话／商店开始和收尾；导演保存暂停、鼠标及玩家限制，界面报告真实结束，包括首句尚未加载完成的取消。区域通过本场查找共享核心，缺失时诊断，不再隐式创建。
 
 `scene_script_executor.gd` 负责即时公开方法与可取消脚本适配，校验完成／取消合同，释放真实执行而非只清理订阅。SceneFlowRunner 保存动作的请求句柄，失败、区域复位和卸载都会取消它；纯等待仍并行。RUN_SCRIPT 追加在原枚举末尾，旧资源编号与 UID 保留。滑门动画通过后台提供者接入，伤害与局部受击表现仍由原组件执行。规则切场与交互切场共用事务加载适配。
 
-第四阶段已接入 `scene_transition_executor.gd`：所有正式加载由导演批准，经 SceneTransition 在最终边界复核身份；GameState.prepare_scene_transition 只准备数据，commit_scene_transition 在引擎接受后、目标 _ready 前提交，并在完整状态写好后通知订阅者。父交互的合法加载链被保留到终态，其他旧执行取消；普通加载失败归还控制，结果／死亡失败保留重试。InteractionContext 注入导演和执行身份，效果可等待子请求，跨关旧来源不再补发 interacted。
+`scene_transition_executor.gd` 执行导演批准的加载，经 SceneTransition 在最终边界复核身份；GameState.prepare_scene_transition 只准备数据，commit_scene_transition 在引擎接受后、目标 _ready 前提交，并在完整状态写好后通知订阅者。父交互的合法加载链保留到终态，其他旧执行取消；普通加载失败归还控制，结果／死亡失败保留重试。InteractionContext 注入导演和执行身份，效果可等待子请求，跨关旧来源不再补发 interacted。
 
 波次候选在物理边界取得导演请求，Runtime 的 authorize_deployment 是紧邻真实提交的纯检查，保留原空间／清空业务。出场镜头沿唯一 wave_committed 回调安排；完成请求等前台收尾后，导演才调用 LevelFlow.execute_scene_completion 启用原出口。公开 start_encounter／request_wave／show_completion 为兼容请求入口，区域取消同时核对 scope_owner。
 
 - `world/enemy_wave_controller.gd` 是 SceneDirector 场景入口兼容脚本，原 UID 保留；五关入口已按用户要求改名，Wave/Squad层级不动。`enemy_wave_runtime.gd` 执行模板、合法出生、各波状态、搜索与清理；`enemy_wave_definition.gd` 保存部署、事件节点与手选镜头配置。
 - `systems/scene_director.gd` 是入口内部的场景核心，不依赖Wave或PlayGuide；`scene_flow_runner.gd` 推进资源规则与动作，`scene_pause_coordinator.gd` 统一记录拥有者。仅内部核心使用Always，区域和敌人保持可暂停。
 - `systems/scene_event.gd` 是可放入场景的事件节点，来源信号或trigger()统一发triggered；`scene_event_trigger/filter/subscription.gd` 适配和过滤，`scene_flow_rule/action.gd` 保存静态配置。接线见[教程](gameplay/SCENE_DIRECTOR.md)。
-- `systems/level_flow.gd` 保留五关表和结果视图，`ui/play_guide.gd` 提供可选begin/cancel/finished，`ui/scene_result_view.gd` 绑定原Health死亡UI；它们只显示并报告请求，暂停与加载由核心决定。旧Main的区域在没有入口时为场景玩家绑定同一核心，避免多区域重复接管。五关当前只走返程门闭环；酒馆任务系统读取关卡进度，但不参与 LevelFlow 的返程门与解锁动作。
+- `systems/level_flow.gd` 保留五关表和结果视图，`ui/play_guide.gd` 提供可选begin/cancel/finished，`ui/scene_result_view.gd` 绑定原Health死亡UI；它们只显示并报告请求，暂停与加载由核心决定。五关当前只走返程门闭环；酒馆任务系统读取关卡进度，但不参与 LevelFlow 的返程门与解锁动作。
 - `world/ammo_drop_controller.gd` 管理区域掉落选择、数量与生命周期，`ammo_drop_position.gd` 检查合法落点，`ammo_pickup.gd` 显示并执行一次领取。
 - `scenes/enemy/levels/lvl_N/` 与 `resources/enemy/training/levels/lvl_N/` 保存各关兵种／训练。共享资源仍可能被跨关引用，修改前核对实际使用者。
 - 导航烘焙命令会写资源，属于维护工具；不能作为普通游戏加载流程或默认回归一起执行。
@@ -161,7 +161,7 @@ Equipment 交接当前枪给 Combat；相机订阅 `weapon_changed`，表现订�
 
 旧三选一组件保留为兼容代码，不再接入主流程：`scripts/rewards/reward_level.gd`／`reward_option.gd`／`reward_table.gd`、`scripts/systems/stage/encounter_controller.gd`、`scripts/ui/reward_board.gd` 与 `scenes/ui/reward_board.tscn`、`resources/rewards/level_rewards.tres` 保留文件与脚本 UID，供独立复用和 `tests/reward_board_test.gd` 验证。旧主流程测试 `reward_npc_test.gd`、`quest_encounter_loop_test.gd`、`reward_per_level_test.gd` 已退役；`encounter_controller_edge_test.gd` 改为隔离夹具兼容专项；新增 `shop_catalog_test`、`shop_state_test`、`shop_weapon_test`、`shop_board_test`、`shop_flow_test`、`quest_money_reward_test` 进入统一 systems 清单。
 
-`scripts/world/quest_portal.gd` 是酒馆门口的五关传送门：首次进入仍要求 `task_a` 进行中，之后只读 `GameState.completed_level`／`available_level`，A 未解锁下一关时阻止进入。它按可用关卡更新 `ChangeSceneEffect.scene_path`，交互前捕获玩家状态。原门禁卡、门禁读卡器和屏障资源已删除；任务面板默认隐藏，Tab 切换。
+`scripts/world/quest_portal.gd` 是酒馆门口的五关传送门：首次进入仍要求 `task_a` 进行中，之后只读 `GameState.completed_level`／`available_level`，A 未解锁下一关时阻止进入。它按可用关卡更新 `ChangeSceneEffect.scene_path`，获准交互后为加载准备玩家快照。原门禁卡、门禁读卡器和屏障资源已删除；任务面板默认隐藏，Tab 切换。
 
 五关实际接入仍按本地确认流程运行：LevelFlow 只开放返程门，`QuestPortal` 在 A 解锁后才指向下一关；SceneDirector 的按钮切关／加载能力仅作为独立场景编排功能保留，不能据此改写当前五关入口。
 

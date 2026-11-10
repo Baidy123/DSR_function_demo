@@ -1,6 +1,6 @@
 # SceneDirector 统一场景调度 Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking. 本计划建议 Native，由当前执行者连续实施；执行方式仍待用户选择。
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task. 用户已选择 Native，由当前执行者连续实施，六阶段完成后进行一次独立整体审阅。
 
 **Goal:** 对话、商店、传送、脚本演出、镜头、波次及出口启用统一经过本场 SceneDirector，原组件继续执行业务。
 
@@ -8,7 +8,7 @@
 
 **Tech Stack:** Godot 4.7.2、GDScript、现有 SceneRules／SceneEvent、ScenePauseCoordinator、Python 回归运行器。
 
-**Spec:** [已批准设计](../specs/2026-11-10-scene-director-authority-design.md)。用户已于本次对话批准书面设计；本计划待复核，尚未开始实现。
+**Spec:** [已批准设计](../specs/2026-11-10-scene-director-authority-design.md)。用户已批准书面计划并授权实施；六阶段实现与定向验收已完成，最终审阅状态见下方记录。
 
 ## Global Constraints
 
@@ -174,23 +174,23 @@ GameState 新增纯准备 `prepare_scene_transition(mode: StringName, player_sna
 
 **Interfaces:** 只消费前五任务接口；撤去 shooting_range._bind_standalone_director 的隐式创建，区域通过 for_node 取得本场导演，缺失时可定位诊断。孤立 Player／区域测试显式配置最小导演，不能在生产代码里留测试回退。
 
-- [ ] **1. 写失败测试。** authority_test 实例化真实 Main 和五关，断言每场唯一注册、无 Wave／无引导可运行；多区域共享绑定、reset 不串场。审查正式脚本与静态入口，保证 NPC／effects／portal 无 UI／SceneTree 加载旁路，核心加载只走 SceneTransition；子执行端只接受有效请求。增加 --capture 分支，真实渲染并保存对话→镜头、商店关闭、死亡中断与传送返回的记录。
-- [ ] **2. 跑红测试。** names：scene_director_authority_test，预期至少旧回退结构检查失败；不能靠改变正式地图、去掉测试断言取得通过。
-- [ ] **3. 移除回退并补齐装配。** 逐场验证明确绑定；没有实际缺口的五关文件不修改。保留原 main 玩家 Health、本地资源和预制参数；不批量编辑器重存或重新导入所有场景。夹具更新附带原断言保持说明。
-- [ ] **4. 做最终定向回归。** names：scene_request_test、scene_interaction_test、scene_script_cancellation_test、scene_transition_request_test、scene_director_authority_test、scene_director_test、scene_event_node_test、scene_reinforcement_test、level_flow_test、campaign_flow_test、campaign_checkpoint_test、campaign_quest_task_test、quest_portal_test、dialogue_cache_test、shop_catalog_test、shop_state_test、shop_board_test、shop_flow_test、shop_weapon_test、quest_money_reward_test、player_health_test、player_medkit_test、player_medkit_lifecycle_test、weapon_slots_test、presentation_camera_test；另跑三个敌人波次专项。若新改动触及额外责任再扩大测试，不默认全量。
-- [ ] **5. 真实画面与配置验证。** 执行 `& E:/Godot/Godot_v4.7.2-stable_win64_console.exe --path movement_demo --script res://tests/scene_director_authority_test.gd -- --capture`，要求退出0、无脚本／资源错误，人工核对截图和状态记录；F5 酒馆、五关 F6、对话选项／鼠标、商店、手摆镜头目标与死亡二选一可操作。编辑器打开配置，检查新动作字段、旧路径和 .tres 引用可用；截图／日志仅入 logs。
-- [ ] **6. 核对结构与用户修改。** 用 rg 查所有 open_dialogue／open_shop_for_player／change_scene／reload_scene／SceneDirector.new 调用，逐项解释授权路径；比较实施开始时保存的节点路径、UID、敌人血量及用户未提交差异。所有发生实际职责变化的现行 MD 同步，未迁移项保留待办，不把历史通过数写作本轮证据。
-- [ ] **7. 关闭阶段并提交推送。** 更新测试结果、已知失败和未测项；只有结构及行为验收都通过才勾选整体统一调度待办。建议提交 `feat: enforce scene director authority in authored scenes`，普通 push 后核对 SHA；推送受阻则保留成果并说明。
+- [x] **1. 写失败测试。** authority_test 实例化真实 Main 和五关，断言每场唯一注册、无 Wave／无引导可运行；多区域共享绑定、reset 不串场。审查正式脚本与静态入口，保证 NPC／effects／portal 无 UI／SceneTree 加载旁路，核心加载只走 SceneTransition；子执行端只接受有效请求。增加 --capture 分支，真实渲染并保存对话→镜头、商店关闭、死亡中断与传送返回的记录。
+- [x] **2. 跑红测试。** names：scene_director_authority_test，预期至少旧回退结构检查失败；不能靠改变正式地图、去掉测试断言取得通过。
+- [x] **3. 移除回退并补齐装配。** 逐场验证明确绑定；没有实际缺口的五关文件不修改。保留原 main 玩家 Health、本地资源和预制参数；不批量编辑器重存或重新导入所有场景。夹具更新附带原断言保持说明。
+- [x] **4. 做最终定向回归。** names：scene_request_test、scene_interaction_test、scene_script_cancellation_test、scene_transition_request_test、scene_director_authority_test、scene_director_test、scene_event_node_test、scene_reinforcement_test、level_flow_test、campaign_flow_test、campaign_checkpoint_test、campaign_quest_task_test、quest_portal_test、dialogue_cache_test、shop_catalog_test、shop_state_test、shop_board_test、shop_flow_test、shop_weapon_test、quest_money_reward_test、player_health_test、player_medkit_test、player_medkit_lifecycle_test、weapon_slots_test、presentation_camera_test；另跑三个敌人波次专项。若新改动触及额外责任再扩大测试，不默认全量。
+- [x] **5. 真实画面与配置验证。** 执行 `& E:/Godot/Godot_v4.7.2-stable_win64_console.exe --path movement_demo --script res://tests/scene_director_authority_test.gd -- --capture`，要求退出0、无脚本／资源错误，人工核对截图和状态记录；F5 酒馆、五关 F6、对话选项／鼠标、商店、手摆镜头目标与死亡二选一可操作。编辑器打开配置，检查新动作字段、旧路径和 .tres 引用可用；截图／日志仅入 logs。
+- [x] **6. 核对结构与用户修改。** 用 rg 查所有 open_dialogue／open_shop_for_player／change_scene／reload_scene／SceneDirector.new 调用，逐项解释授权路径；比较实施开始时保存的节点路径、UID、敌人血量及用户未提交差异。所有发生实际职责变化的现行 MD 同步，未迁移项保留待办，不把历史通过数写作本轮证据。
+- [x] **7. 关闭阶段并提交推送。** 更新测试结果、已知失败和未测项；只有结构及行为验收都通过才勾选整体统一调度待办。建议提交 `feat: enforce scene director authority in authored scenes`，普通 push 后核对 SHA；推送受阻则保留成果并说明。
 
 ## 计划自检与执行交接
 
 设计§1～4由任务1／2／3落地，§5由任务1／2／3／5落地，§6的交互与加载由任务2／4落地、波次出口由任务5落地，§7～9由各阶段文档维护和任务6验收覆盖。五项 Review Focus 已放进所属任务的失败断言，新增接口的生产者与消费者在任务中列出。
 
-推荐 Native：六阶段共享请求身份、UI 控制与跨关状态接口，并且当前工作区存在用户已有改动，由同一执行者连续维护更容易保持边界。按技能原生执行路径，任务由当前执行者完成，最终再由独立审阅者检查整体变更；本轮计划自检不调用子代理。用户也可选择逐任务子代理实施／审阅，选择前不派发。
+采用 Native：六阶段共享请求身份、UI 控制与跨关状态接口，并且当前工作区存在用户已有改动，由同一执行者连续维护边界。任务由当前执行者完成，最终由一名独立审阅者检查整体变更。
 
-执行技能是后续阶段的依赖：Native 需要 executing-plans，逐任务子代理路径需要 subagent-driven-development；当前只确认已安装 writing-plans。用户选择方式后核对并补齐对应技能，再开始实施，不以缺少技能为由静默更换流程。
+executing-plans 及 TDD、验证、调试、最终审阅和收尾依赖已安装并用于实施；没有派发逐任务实现代理。项目要求的本地基线、普通阶段提交推送和定向验证优先，裁决见执行记录。
 
-本次仅编写与核对计划，未运行本计划中的游戏回归，也未实现这些接口。书面计划复核及执行方式选择后，再进入实现。
+使用入口为[场景导演使用指南](../../gameplay/SCENE_DIRECTOR.md)，没有另建平行教程。实施日志与截图留在本地 logs，不作为运行资源提交。
 
 ## Implementation evidence
 
@@ -203,3 +203,5 @@ Task 3: real Timer/Tween and sliding-door cancellation, stale/synchronous callba
 Task 4: transition requests 17 checks and request identity 19 checks passed; 11/12 final suites passed, campaign_flow_test retains exactly its 3 captured baseline magazine failures. Original interaction_test and successful retry/old-checkpoint restoration passed. Logs: movement_demo/logs/director-authority-task4-final/.
 
 Task 5: final systems/enemy gate logs in movement_demo/logs/director-authority-task5-final/. 9/11 suites clean; original campaign_flow_test 3 magazine assertions and enemy_wave_test first-level completion assertion remain unchanged. New wave-mode permits, real dialogue-to-reinforcement barrier and region-owner cancellation pass. Authored enemy baseline files remain byte-identical.
+
+Task 6: six authored scenes each resolve exactly one explicit director; missing-director and two-region checks pass (28 headless checks). Real OpenGL capture passes 47 checks; editor configuration 17/17 with a scan-aborted warning at exit. Final 28-suite gate retains only the two original failing suites / four assertions documented in testing.md. Existing 27 purchased-weapon assertions remain, with the entry snapshot inspected after actual scene acceptance. Of 108 originally dirty paths, 107 remain byte-identical; Main retains its authored content plus the explicit director instance. Final independent review pending.

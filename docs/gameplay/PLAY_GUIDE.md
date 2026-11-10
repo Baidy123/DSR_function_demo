@@ -61,7 +61,7 @@
 
 ## 界面与维护入口
 
-五关各自有一个 `LevelFlow` 实例（`scenes/ui/level_flow.tscn`），`level_number` 为1至5，并在 `return_portal_path` 指向本关 `TavernReturnPortal`。`scripts/systems/level_flow.gd` 接收 `SceneDirector.encounter_completed`，转交总调度完成生命周期，并在有返程门时只启用返程门、不暂停切场景。`QuestPortal` 读取 `GameState.available_level` 动态更新目标，并在进入前把玩家状态写入一次性待恢复快照和 `level_entry_player_state`；`TavernReturnPortal` 写入 `completed_level`、一次性玩家快照和酒店检查点，由 `PlayerCampaignState` 保存/恢复跨关玩家状态。`ShopController` 持有商店暂停所有权并执行购买；敌人、AI、波次完成判定与 Health 的死亡通知职责保持不变；死亡按钮意图由 SceneDirector 处理。
+五关各自有一个 `LevelFlow` 实例（`scenes/ui/level_flow.tscn`），`level_number` 为1至5，并在 `return_portal_path` 指向本关 `TavernReturnPortal`。波次完成经导演授权后，由 LevelFlow 启用返程门，不暂停切场景。`QuestPortal` 读取 `GameState.available_level` 动态更新目标，向导演准备一次性玩家快照和 `level_entry_player_state`；`TavernReturnPortal` 准备 `completed_level`、玩家快照和酒店检查点。引擎接受加载后才提交，`PlayerCampaignState` 只消费一次。商店的打开／关闭与暂停由导演安排，`ShopController` 执行购买。敌人、AI、波次完成判定与 Health 的死亡通知职责保持不变；死亡按钮意图由 SceneDirector 处理。
 
 Debug 总开关开启后，右上角 Debug 栏出现可用的 **一键通关当前关** 按钮。它调用当前关卡 `SceneDirector.debug_complete_encounter()`，清理当前与尚未生成的波次并发出原 `encounter_completed`，因此仍只开放返程门，不直接跳关或跳过酒馆流程。重复点击不会重复完成。
 
