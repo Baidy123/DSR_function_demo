@@ -69,12 +69,14 @@ scenes/ui/shop_board.tscn                   货币商店界面
 
 关卡传送门在首次进入时读取 `QuestController.status_of("task_a")`；后续按
 `GameState.completed_level` 与 `available_level` 判定是否已由 A 解锁。目标场景由
-`ChangeSceneEffect.scene_path` 按可用关卡动态更新。交互前会把当前玩家状态写入一次性快照，
-再由共享 `SceneTransition` 切换并恢复中性 `World3D` 回退环境。
+`ChangeSceneEffect.scene_path` 按可用关卡动态更新。导演批准后准备一次性玩家快照，
+由共享 `SceneTransition` 切换并恢复中性 `World3D` 回退环境；引擎接受后才提交准备数据，失败不发布快照。
 
 五关返回传送门默认隐藏，由 `LevelFlow` 在本关波次全部完成后启用。`TavernReturnPortal`
-写入本关 `level_number`、保存生命/武器/弹匣/备弹/医疗包快照；第1关还写入
-`task_a_returned=returned`。随后 `ChangeSceneEffect` 返回酒馆，新玩家实例只消费一次快照。
+通过导演准备本关 `level_number` 和生命/武器/弹匣/备弹/医疗包快照；第1关还准备
+`task_a_returned=returned`。`ChangeSceneEffect` 获准返回酒馆后成功提交，新玩家实例只消费一次快照。
+
+普通效果按数组顺序等待；忙碌时不提前执行。`interact(player)` 返回获准开始，`interacted` 在全部效果完成后发出，one_shot／隐藏同时提交。切场成功时旧节点已离树，以请求结果和跨场状态为准，不补发旧场景事件。扩展效果保留 apply 用于原同步业务，实现 execute(context) 可等待导演子请求；搭场景时继续配置资源并调用 interact。
 
 商店 NPC 由 `scripts/world/reward_npc.gd` 扩展普通 NPC，保留 `RewardNPC` 节点路径和脚本 UID，
 标签改为“商店”。普通对话前，NPC 会发出 `interaction_requested(player)`；该 NPC 向本场导演提交

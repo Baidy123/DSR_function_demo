@@ -80,6 +80,16 @@ func _run() -> void:
 	_check(state.purchased_shop_item_ids.is_empty(), "Old checkpoint defaults purchased shop items to empty")
 	_check(state.pending_player_state == {"health": {"health": 50.0}},
 		"Old checkpoint restores its saved player snapshot")
+	state.money = 71
+	state.completed_level = 4
+	state.pending_player_state = {"sentinel": 9}
+	var prepared: Dictionary = state.prepare_scene_transition(&"death_return")
+	_check(state.money == 71 and state.completed_level == 4 and state.pending_player_state == {"sentinel": 9},
+		"Preparing an old hotel checkpoint cannot publish restored state")
+	_check(state.commit_scene_transition(prepared) and state.money == 0 and state.completed_level == 1
+		and state.pending_player_state == {"health": {"health": 50.0}},
+		"Successful transition commits old checkpoint defaults and saved player state")
+	_check(not state.commit_scene_transition(prepared), "Transition preparation can commit only once")
 	_finish(state)
 
 

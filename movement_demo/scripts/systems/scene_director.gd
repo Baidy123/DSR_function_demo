@@ -8,6 +8,7 @@ const Request = preload("res://scripts/systems/scene_request.gd")
 const Scheduler = preload("res://scripts/systems/scene_request_scheduler.gd")
 const Interactions = preload("res://scripts/systems/scene_interaction_executor.gd")
 const Scripts = preload("res://scripts/systems/scene_script_executor.gd")
+const Transitions = preload("res://scripts/systems/scene_transition_executor.gd")
 const REGISTRATION := &"scene_director_root"
 var _scene_root: Node
 var _requests
@@ -18,6 +19,11 @@ var _completion_request
 var _interactions
 var _scripts
 var _load_request
+var _load_chain: Array = []
+var _load_parameters: Dictionary = {}
+var _load_owns_terminal := false
+var _issuing_parent
+var _transitions
 var _request_controls: Dictionary = {}
 signal state_changed(value: StringName)
 signal action_failed(rule: String, reason: String)
@@ -43,6 +49,7 @@ var _guide: Node
 var _guide_callback: Callable
 var _guide_exit_callback: Callable
 var _guide_finished := false
+var _guide_execution := 0
 var _guide_scope := 0
 var _completion_pending := false
 var _completion_frame := -1
@@ -56,7 +63,6 @@ var _load_path := ""
 var _load_reload := false
 var _load_failed := false
 var _before_load: StringName
-var _campaign_restore_undo: Dictionary = {}
 var _connections: Array[Dictionary] = []
 
 func configure(host: Node, bindings: Dictionary = {}) -> void:
@@ -82,6 +88,7 @@ func initialize() -> void:
 	_requests = Scheduler.new(self)
 	_interactions = Interactions.new(self)
 	_scripts = Scripts.new(self, _host)
+	_transitions = Transitions.new(self)
 	_pauses = Pauses.for_tree(get_tree())
 	_health = _bindings.get("health")
 	if is_instance_valid(_health):
@@ -159,10 +166,11 @@ func _execute_guide(provider: Node, pause_world: bool = true, scope: int = 0) ->
 	_guide = provider
 	_guide_scope = scope
 	_guide_finished = false
+	_guide_execution += 1
 	if pause_world: _guide_token = _pauses.acquire(self, &"guide", true)
 	_set_state(&"guide")
-	_guide_callback = _on_guide_finished.bind(_generation, provider.get_instance_id())
-	_guide_exit_callback = _on_guide_exiting.bind(_generation, provider.get_instance_id())
+	_guide_callback = _on_guide_finished.bind(_generation, provider.get_instance_id(), _guide_execution)
+	_guide_exit_callback = _on_guide_exiting.bind(_generation, provider.get_instance_id(), _guide_execution)
 	provider.connect(&"finished", _guide_callback)
 	provider.tree_exiting.connect(_guide_exit_callback)
 	# Completion is subscribed before begin(), including synchronous providers.
@@ -172,8 +180,8 @@ func _execute_guide(provider: Node, pause_world: bool = true, scope: int = 0) ->
 func is_guide_pending(provider: Node) -> bool:
 	return is_instance_valid(provider) and _guide == provider
 
-func _on_guide_finished(generation: int, id: int) -> void:
-	if generation != _generation or not is_instance_valid(_guide) or _guide.get_instance_id() != id: return
+func _on_guide_finished(generation: int, id: int, execution: int) -> void:
+	if generation != _generation or execution != _guide_execution or not is_instance_valid(_guide) or _guide.get_instance_id() != id: return
 	_guide_finished = true
 	_clear_guide(false)
 	if state == &"guide": _set_state(&"running")
@@ -182,8 +190,8 @@ func _on_guide_finished(generation: int, id: int) -> void:
 		_guide_request = null
 		request.complete()
 
-func _on_guide_exiting(generation: int, id: int) -> void:
-	if generation != _generation or not is_instance_valid(_guide) or _guide.get_instance_id() != id: return
+func _on_guide_exiting(generation: int, id: int, execution: int) -> void:
+	if generation != _generation or execution != _guide_execution or not is_instance_valid(_guide) or _guide.get_instance_id() != id: return
 	_clear_guide(false)
 	if state == &"guide":
 		report_action_error("guide", "Guide removed before completion")
@@ -236,12 +244,7 @@ func _finish_completion() -> void:
 	if completion != null: completion._settle(&"completed")
 
 func request_restart() -> void:
-	if state != &"dead": return
-	_rollback_campaign_restore()
-	var game_state := get_node_or_null("/root/GameState")
-	if game_state != null and game_state.has_method(&"prepare_level_retry_state"):
-		game_state.prepare_level_retry_state()
-	_start_load("", true)
+	if state == &"dead": _request_transition({"reload": true, "mode": &"retry_level"})
 
 func request_return_to_tavern() -> void:
 	if state != &"dead": return
@@ -254,75 +257,71 @@ func request_return_to_tavern() -> void:
 		report_action_error("death", "The level flow has no tavern scene path")
 		_result_view.show_load_error()
 		return
-	var game_state := get_node_or_null("/root/GameState")
-	if game_state != null and game_state.has_method(&"restore_campaign_checkpoint"):
-		if _campaign_restore_undo.is_empty() and game_state.has_method(&"capture_campaign_state"):
-			_campaign_restore_undo = game_state.capture_campaign_state()
-		game_state.restore_campaign_checkpoint()
-	_start_load(path, false)
+	_request_transition({"path": path, "mode": &"death_return"})
 
 func request_restart_from_flow() -> void:
-	if state not in [&"running", &"guide"]: return
-	request_action(&"transition", {"source": _host, "parameters": {"reload": true}})
+	if state in [&"running", &"guide"]: _request_transition({"reload": true})
 
 func request_load_retry() -> void:
-	if not _load_failed: return
-	_start_load(_load_path, _load_reload)
+	if _load_failed: _request_transition(_load_parameters)
 
 func request_next_level() -> void:
 	if _load_failed and state != &"dead":
 		request_load_retry()
 		return
-	if state != &"completed" or not is_instance_valid(_level_flow): return
-	_start_load(_level_flow.next_scene_path(), false)
+	if state == &"completed" and is_instance_valid(_level_flow):
+		_request_transition({"path": _level_flow.next_scene_path()})
 
 func request_change_scene(path: String) -> void:
-	if state not in [&"running", &"completed"] or path.is_empty(): return
-	request_action(&"transition", {"source": _host, "parameters": {"path": path}})
+	if state in [&"running", &"completed"] and not path.is_empty(): _request_transition({"path": path})
 
-func _start_load(path: String, reload_current: bool) -> void:
-	if _load_request != null: _requests._finished(_load_request)
+func _request_transition(parameters: Dictionary) -> Request:
+	return request_action(&"transition", {"source": _host, "parameters": parameters})
+
+func _start_transition(request: Request) -> void:
+	var parameters := request.parameters
+	if not parameters.get("reload", false) and String(parameters.get("path", "")).is_empty():
+		request.fail("missing_scene_path")
+		return
+	_load_request = request
 	_before_load = state
-	_load_path = path
-	_load_reload = reload_current
+	_load_parameters = parameters.duplicate(true)
+	_load_path = parameters.get("path", "")
+	_load_reload = parameters.get("reload", false)
 	_load_failed = false
-	if _terminal_token == 0: _terminal_token = _pauses.acquire(self, &"loading", true)
+	_load_owns_terminal = _terminal_token == 0
+	if _load_owns_terminal: _terminal_token = _pauses.acquire(self, &"loading", true)
 	_set_state(&"loading")
+	_load_chain = _requests.detach_chain(request)
 	_generation += 1
 	_cancel_actions()
 	_result_view.set_pending(true)
 	if is_instance_valid(_level_flow): _level_flow.set_transition_pending(true)
-	_execute_load.call_deferred(_generation)
+	_transitions = Transitions.new(self)
+	_transitions.begin_scene_action(request)
 
-func _execute_load(generation: int) -> void:
-	if generation != _generation or not is_inside_tree() or state != &"loading": return
-	var result: int
-	if scene_loader.is_valid(): result = scene_loader.call(_load_path, _load_reload)
-	elif _load_reload: result = get_tree().reload_current_scene()
-	else: result = get_tree().change_scene_to_file(_load_path)
-	if _load_request != null:
-		var request = _load_request
-		_load_request = null
-		request._settle(&"completed" if result == OK else &"failed", StringName(error_string(result)) if result != OK else &"")
-	if result == OK:
-		_campaign_restore_undo = {}
-		return # Old ownership is released on exit, before the new scene prepares.
-	_last_error = "Scene load failed: %s" % error_string(result)
-	_load_failed = true
-	_set_state(_before_load)
-	if state == &"dead": _result_view.show_load_error()
-	elif is_instance_valid(_level_flow): _level_flow.show_load_error()
-	else:
-		# A custom UI can report this diagnostic and invoke request_load_retry().
-		report_action_error("loading", _last_error)
-
-func _rollback_campaign_restore() -> void:
-	if _campaign_restore_undo.is_empty():
-		return
-	var game_state := get_node_or_null("/root/GameState")
-	if game_state != null and game_state.has_method(&"restore_campaign_state"):
-		game_state.restore_campaign_state(_campaign_restore_undo)
-	_campaign_restore_undo = {}
+func finish_transition(request: Request, status: StringName, reason: StringName = &"") -> void:
+	if _load_request != request: return
+	var chain := _load_chain
+	_load_chain = []
+	_load_request = null
+	if status == &"failed":
+		_last_error = "Scene load failed: %s" % reason
+		_load_failed = true
+		_set_state(_before_load)
+		if _load_parameters.get("return_control_on_failure", false):
+			_load_failed = false
+			if _load_owns_terminal:
+				_pauses.release(_terminal_token)
+				_terminal_token = 0
+			_result_view.set_pending(false)
+			if is_instance_valid(_level_flow): _level_flow.set_transition_pending(false)
+			action_failed.emit("loading", _last_error)
+		elif state == &"dead": _result_view.show_load_error()
+		elif is_instance_valid(_level_flow): _level_flow.show_load_error()
+		else: report_action_error("loading", _last_error)
+	chain.reverse()
+	for execution in chain: execution._settle(status, reason)
 
 func request_wave_for_flow(wave: Node, present: bool, options: Dictionary, scope: int = 1, target_path: NodePath = NodePath()) -> bool:
 	if _waves == null or not is_instance_valid(wave): return false
@@ -472,6 +471,8 @@ func debug_snapshot() -> Dictionary:
 func _exit_tree() -> void:
 	_generation += 1
 	if not _initialized: return
+	if _load_request != null and not _transitions.is_committing():
+		_transitions.cancel_scene_action(_load_request, &"scene_exited")
 	if _requests != null: _requests.cancel_all(&"scene_exited")
 	if is_instance_valid(_scene_root) and _scene_root.has_meta(REGISTRATION):
 		var registration: WeakRef = _scene_root.get_meta(REGISTRATION)
@@ -518,10 +519,14 @@ func request_action(kind: StringName, context: Dictionary = {}) -> Request:
 	for key in [&"source", &"target", &"player", &"scope_owner"]:
 		var node = context.get(key, _host if key == &"source" else null)
 		if is_instance_valid(node): request._nodes[key] = weakref(node)
-	if not _initialized or _requests == null or state not in [&"running", &"guide"] or _load_failed:
+	var available := state in [&"running", &"guide"] and not _load_failed
+	if state == &"completed" and not _completion_pauses_world and not _load_failed:
+		available = kind in [&"interact", &"dialogue", &"shop", &"script"]
+	if kind == &"transition": available = state in [&"running", &"guide", &"dead", &"completed"]
+	if not _initialized or _requests == null or not available:
 		request._settle(&"rejected", &"scene_unavailable")
 		return request
-	if kind not in [&"guide", &"presentation", &"completion", &"dialogue", &"shop", &"script", &"transition"]:
+	if kind not in [&"guide", &"presentation", &"completion", &"dialogue", &"shop", &"interact", &"script", &"transition"]:
 		request._settle(&"rejected", &"unsupported_kind")
 		return request
 	for key in request._nodes:
@@ -529,6 +534,9 @@ func request_action(kind: StringName, context: Dictionary = {}) -> Request:
 		if not is_instance_valid(node) or not node.is_inside_tree() or (node != _scene_root and not _scene_root.is_ancestor_of(node)):
 			request._settle(&"rejected", &"foreign_target")
 			return request
+	if request.parent_id != 0 and (_issuing_parent == null or _issuing_parent.id != request.parent_id or not _issuing_parent.is_current()):
+		request._settle(&"rejected", &"invalid_parent")
+		return request
 	if kind == &"script":
 		var target := request.node(&"target")
 		if target != null and target.has_method("scene_action_is_background"):
@@ -559,9 +567,8 @@ func execute_request(request: Request) -> void:
 		&"script":
 			_scripts.begin_scene_action(request)
 		&"transition":
-			_load_request = request
-			_start_load(request.parameters.get("path", ""), request.parameters.get("reload", false))
-		&"dialogue", &"shop":
+			_start_transition(request)
+		&"dialogue", &"shop", &"interact":
 			_interactions.begin_scene_action(request)
 		&"guide":
 			_guide_request = request
@@ -627,3 +634,12 @@ func release_request_controls(request: Request) -> void:
 
 func region_owner() -> Node:
 	return _host.get_parent() if _host.has_method("capture_templates") else _host
+
+func request_child(parent: Request, kind: StringName, context: Dictionary) -> Request:
+	var previous = _issuing_parent
+	_issuing_parent = parent
+	var child_context := context.duplicate()
+	child_context["parent_id"] = parent.id
+	var request := request_action(kind, child_context)
+	_issuing_parent = previous
+	return request

@@ -108,13 +108,15 @@ if GameState.get_flag(&"has_mind_access_device"):
 
 ## 当前关重试与酒店退款
 
-- 进入关卡时，`QuestPortal` 除一次性 `pending_player_state` 外，还保存 `level_entry_player_state`。
-- 重新挑战当前关卡：`SceneDirector.request_restart()` 重载前把 `level_entry_player_state` 设为
-  `pending_player_state`，因此进入本关前已付费的武器、弹药、医疗包和货币不会因重试丢失；没有入口快照的
+- 进入关卡成功后，导演提交 `QuestPortal` 准备的一次性 `pending_player_state` 和 `level_entry_player_state`。
+- 重新挑战当前关卡：`SceneDirector.request_restart()` 准备把 `level_entry_player_state` 设为
+  `pending_player_state`，重载获引擎接受后提交，因此进入本关前已付费的武器、弹药、医疗包和货币不会因重试丢失；没有入口快照的
   独立场景继续使用场景保存配置。
-- 返回酒店：沿用 `GameState.restore_campaign_checkpoint()`，恢复检查点货币（退还检查点之后的花费）、
+- 返回酒店：沿用原检查点恢复语义，加载成功后提交检查点货币（退还检查点之后的花费）、
   检查点 `purchased_shop_item_ids`（撤销之后的一次性购买）、检查点玩家快照（移除之后购买的武器并恢复被覆盖的
   旧武器和消耗品），并单独恢复检查点的商品旗标。已发任务奖励已在检查点中，不会因返回酒店丢失。
+
+加载失败时准备数据不发布，仍可重试或改选当前关重开，不需先把一次提前恢复的状态再倒回。
 
 ## 兼容组件
 

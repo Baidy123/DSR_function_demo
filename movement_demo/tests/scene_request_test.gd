@@ -89,7 +89,15 @@ func _run() -> void:
 	unsafe_context.parameters["hidden_node"] = [other.guide]
 	var unsafe_request = f.director.request_action(&"guide", unsafe_context)
 	check(unsafe_request.status == &"rejected", "nested parameters cannot retain nodes or hide cross-scene targets")
+	var old_callbacks: Array[Callable] = []
+	for connection in f.guide.finished.get_connections(): old_callbacks.append(connection.callable)
+	f.director.cancel_request(queued.id)
+	var fresh = f.director.request_action(&"guide", context(f))
+	for callback in old_callbacks:
+		if callback.is_valid(): callback.call()
+	check(fresh.status == &"running", "captured guide completion cannot finish a newer execution of the same provider")
 	f.scene.free()
+	check(fresh.status == &"cancelled", "scene exit cancels the currently active guide identity")
 	check(queued.status == &"cancelled" and not queued.is_current(), "scene exit invalidates all pending callbacks")
 	queued.complete()
 	check(queued.status == &"cancelled", "retired execution cannot complete after scene removal")

@@ -23,7 +23,8 @@ func submit(request: Request) -> void:
 			node.tree_exiting.connect(callback)
 			links.append({"node": weakref(node), "callback": callback})
 	_connections[request.id] = links
-	if (not request._background and _foreground != 0) or _dispatching:
+	var inherited := request.parent_id != 0 and _requests.has(request.parent_id)
+	if not inherited and ((not request._background and _foreground != 0) or _dispatching):
 		if request.origin == &"interaction":
 			request._settle(&"rejected", &"busy")
 		else: _queue.append(request.id)
@@ -42,12 +43,13 @@ func _start(request: Request) -> void:
 	if director == null or not director.request_is_current(request):
 		cancel(request.id, &"stale")
 		return
-	if not request._background: _foreground = request.id
+	if not request._background and request.parent_id == 0: _foreground = request.id
 	request._started = true
 	request._status = &"running"
+	var previous_dispatching := _dispatching
 	_dispatching = true
 	director.execute_request(request)
-	_dispatching = false
+	_dispatching = previous_dispatching
 
 func advance(_delta: float) -> void:
 	if _dispatching: return
@@ -78,6 +80,11 @@ func cancel_scope(owner: Node, reason: StringName) -> void:
 		if request.scope == 1 and request.node(&"scope_owner") == owner: cancel(request.id, reason)
 
 func _finished(request: Request) -> void:
+	for child in _requests.values().duplicate():
+		if child.parent_id == request.id: cancel(child.id, &"parent_finished")
+	_unlink(request)
+
+func _unlink(request: Request) -> void:
 	var director = _director.get_ref()
 	if is_instance_valid(director): director.release_request_controls(request)
 	for link in _connections.get(request.id, []):
@@ -89,6 +96,16 @@ func _finished(request: Request) -> void:
 	_requests.erase(request.id)
 	if _foreground == request.id: _foreground = 0
 	if request.finished.is_connected(_finished): request.finished.disconnect(_finished)
+
+func detach_chain(request: Request) -> Array:
+	var chain: Array = []
+	var current: Request = request
+	while current != null:
+		chain.append(current)
+		var parent := find(current.parent_id)
+		_unlink(current)
+		current = parent
+	return chain
 
 func owns(request: Request) -> bool:
 	return _requests.get(request.id) == request and request.status != &"cancelling"

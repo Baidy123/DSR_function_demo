@@ -11,6 +11,15 @@ func begin_scene_action(request: Request) -> void:
 	var target := request.node(&"target")
 	var player := request.node(&"player")
 	var director = _director.get_ref()
+	if request.kind == &"interact":
+		if target == null or not target.has_method("execute_scene_interaction"):
+			request.fail("invalid_interactable")
+			return
+		var context = load("res://scripts/world/interactions/interaction_context.gd").new(target, player, target.state())
+		context.director = director
+		context.execution = request
+		target.execute_scene_interaction(context)
+		return
 	if target == null or player == null or not target.has_method("begin_scene_action") or not target.has_method("cancel_scene_action") or not target.has_signal("scene_action_finished"):
 		request.fail("invalid_interaction_provider")
 		return

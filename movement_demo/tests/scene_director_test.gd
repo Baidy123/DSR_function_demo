@@ -338,12 +338,12 @@ func _test_return_to_tavern_from_death() -> void:
 	await process_frame
 	check(calls.size() == 1 and calls[0].path == flow.next_scene_path() and not calls[0].reload,
 		"Death offers one non-reload transition to the level adapter's tavern path")
-	check(game_state.completed_level == 2 and game_state.available_level == 2
-			and game_state.money == 100
-			and game_state.rewarded_task_ids == {&"task_a": true}
-			and game_state.purchased_shop_item_ids.is_empty()
-			and game_state.pending_player_state == checkpoint_snapshot,
-		"Hotel return restores the last completion checkpoint before loading")
+	check(game_state.completed_level == 3 and game_state.available_level == 4
+			and game_state.money == 35
+			and game_state.rewarded_task_ids == {&"task_a": true, &"task_level_2": true}
+			and game_state.purchased_shop_item_ids == {&"shop_shotgun": true}
+			and game_state.get_flag(&"has_mind_access_device") and game_state.pending_player_state.is_empty(),
+		"Failed hotel return leaves checkpoint restoration uncommitted")
 	check(f.director.state == &"dead" and paused and f.view.errors == 1,
 		"Failed hotel return keeps death pause and reports a retryable load error")
 	f.view.restart_requested.emit()
@@ -356,9 +356,15 @@ func _test_return_to_tavern_from_death() -> void:
 			and game_state.rewarded_task_ids == {&"task_a": true, &"task_level_2": true}
 			and game_state.purchased_shop_item_ids == {&"shop_shotgun": true}
 			and game_state.get_flag(&"has_mind_access_device"),
-		"Current-level retry after hotel failure rolls non-transactional checkpoint state back")
-	check(game_state.pending_player_state == level_entry_paid,
-		"Current-level retry after hotel failure stages the level-entry paid weapon snapshot")
+		"Failed current-level retry preserves the original paid campaign state")
+	check(game_state.pending_player_state.is_empty() and game_state.level_entry_player_state == level_entry_paid,
+		"Failed current-level retry does not publish the pending level-entry snapshot")
+	f.director.scene_loader = func(_path: String, _reload: bool) -> Error: return OK
+	f.view.restart_requested.emit()
+	await process_frame
+	await process_frame
+	check(game_state.pending_player_state == level_entry_paid and game_state.money == 35,
+		"Accepted current-level retry commits the paid level-entry snapshot")
 	game_state.completed_level = 0
 	game_state.available_level = 1
 	game_state.money = 0

@@ -24,15 +24,8 @@ func _ready() -> void:
 	call_deferred(&"_bind_sources")
 
 
-func interact(player: Node3D) -> bool:
-	if not can_interact(player):
-		return super.interact(player)
-	if _game_state != null:
-		var snapshot: Dictionary = PlayerCampaignState.capture(player)
-		_game_state.set_pending_player_state(snapshot)
-		if _game_state.has_method(&"set_level_entry_player_state"):
-			_game_state.set_level_entry_player_state(snapshot)
-	return super.interact(player)
+func transition_parameters(player: Node3D) -> Dictionary:
+	return {"mode": &"enter_level", "player_snapshot": PlayerCampaignState.capture(player)}
 
 
 func conditions_met() -> bool:

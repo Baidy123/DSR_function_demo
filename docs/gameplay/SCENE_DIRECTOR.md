@@ -2,7 +2,7 @@
 
 统一调度迁移正在实施。酒馆现已明确装配无 Wave 的 SceneDirector；核心新增 `request_action(kind, context)`、`cancel_request(id, reason)` 与按本场查找的 `for_node(node)`。第一阶段接入 guide／presentation／completion，请求可查询 queued／running／completed／failed／cancelled／rejected，`await request.wait_result()` 不会漏掉同步完成。重复请求按来源和 dedupe_key 去重；取消先让身份失效再停止执行，其他场景的节点及参数中藏入的节点均被拒绝。
 
-普通 NPC 对话与商店已经接入；传送及其他规则入口仍按[实施计划](../superpowers/plans/2026-11-10-scene-director-authority.md)逐阶段迁移。原公开接口保持兼容，波次、地图和本地数值不由本阶段重配。
+普通 NPC 对话、商店、交互效果、规则演出和场景切换已经接入；波次授权及旧区域回退仍按[实施计划](../superpowers/plans/2026-11-10-scene-director-authority.md)继续迁移。原公开接口保持兼容，地图和本地数值不由本功能重配。
 
 日常对话可调用 NPC 的 `request_dialogue(player)`，也可向 `for_node(self)` 找到的导演提交 `dialogue` 请求：context 的 source 指交互来源，target 指 DialogueUI，player 指玩家，parameters 保存 resource 与 start；需要转身时设置 face_source=true。普通交互的 origin 为 interaction，忙碌会拒绝；事件镜头的 origin 为 rule，先排队，当前对话／商店结束后再播放。不要在请求获准前自行锁住玩家。
 
@@ -163,6 +163,14 @@ func _finished() -> void:
 ```
 
 默认脚本演出占前台。只做局部背景动画的适配可提供 `scene_action_is_background() -> bool` 并返回 true，仍受死亡、区域复位与卸载取消管理。原滑门已这样接入：按 E、离开自动关门和防夹折返都通过导演，反向请求先取消旧 Tween。普通 WAIT／WAIT_SIGNAL／WAIT_WAVE_CLEARED 保持独立等待，不占全场前台。
+
+## 六、交互与传送怎么接入
+
+普通交互物继续用 Interactable 的 Effects 数组。`interact(player)` 先请求导演，忙碌拒绝不执行效果；返回 true 表示本次获准开始，`interacted` 表示全部效果真正完成。一次性记录和隐藏也在完成后提交。含对话的组合继承本次前台控制，不会把自己的子对话排队到自己结束之后。
+
+切场景仍配置 **ChangeSceneEffect → Scene Path**。普通交互默认 plain；QuestPortal 自动准备入关快照，TavernReturnPortal 按原 Level Number 准备完成级别、返程快照与检查点，无需重配资源。准备不改变 GameState；引擎接受切换后才提交，目标 `_ready()` 已能读取，且快照仍只消费一次。切场成功后旧来源已离树，不补发旧节点的交互信号；跨场结果查询 transition 请求与业务状态。
+
+普通门加载失败会归还本次控制，显示“交互失败，请重试”，再次按 E 重试当前配置目标。死亡／结果按钮和规则切换失败保留原暂停与重试界面；`request_load_retry()` 保留原路径与 reload 方式。源场景卸载后返回的旧异步加载结果无权提交状态。原检查点规则继续恢复医疗包资源、武器、弹药、货币及商店旗标。
 
 Event Nodes 和高级 Triggers 都为空表示准备好后自动运行一次。不同规则可独立等待，事件回调只记录事实，动作在调度边界推进。普通等待在暂停时冻结，资源不保存本场执行进度。
 
