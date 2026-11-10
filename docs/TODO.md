@@ -209,7 +209,7 @@
 
 ## 后续方向
 
-- [ ] SceneDirector 统一场景调度：总体方向已确认，见[待书面复核的设计](superpowers/specs/2026-11-10-scene-director-authority-design.md)。覆盖对话、商店、传送及脚本演出的统一发起与真实取消；先复核设计，再编写实施计划，当前尚未改代码。
+- [ ] SceneDirector 统一场景调度：[书面设计](superpowers/specs/2026-11-10-scene-director-authority-design.md)已确认，[实施计划](superpowers/plans/2026-11-10-scene-director-authority.md)待复核及选择执行方式。覆盖对话、商店、传送及脚本演出的统一发起与真实取消，当前尚未改代码。
 
 - [ ] 后续维护范围：按[维护设计](superpowers/specs/2026-10-23-ai-maintenance-design.md)继续整理个人 Search 内部状态与其他公共接口。新协调器及当前地图问题已按完整重写计划验收，旧11/12记录仅保留为历史；不再沿旧调度接口继续打补丁。
 

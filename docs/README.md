@@ -46,7 +46,7 @@
 
 ## 当前说明与历史依据
 
-待实施设计：[SceneDirector 统一场景调度](superpowers/specs/2026-11-10-scene-director-authority-design.md)。总体方向已确认，书面设计待复核；当前代码尚未完成对话、商店和传送等流程的统一接管。
+待实施设计：[SceneDirector 统一场景调度](superpowers/specs/2026-11-10-scene-director-authority-design.md)。书面设计已确认，[实施计划](superpowers/plans/2026-11-10-scene-director-authority.md)待复核及选择执行方式；当前代码尚未完成对话、商店和传送等流程的统一接管。
 
 现行文档说明当前用法，后续应直接更新对应章节，不在文件开头持续堆叠逐日更新。历史参数、实施过程与旧验证结果保存在[整理前记录目录](history/2026-10-28/index.md)，引用历史结果时保留当时的范围和失败项。
 
