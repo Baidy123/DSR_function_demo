@@ -7,7 +7,7 @@ const CatalogScript := preload("res://scripts/shop/shop_catalog.gd")
 const ItemScript := preload("res://scripts/shop/shop_item_definition.gd")
 const Catalog := preload("res://resources/shop/shop_catalog.tres")
 
-const EXPECTED_CHECKS := 31
+const EXPECTED_CHECKS := 39
 
 var failures := 0
 var checks_run := 0
@@ -40,8 +40,9 @@ func _run() -> void:
 	if first != null:
 		check(first.price == 40, "first aid price is 40")
 		check(first.unlock_level == 0, "first aid is unlocked at level 0")
-		check(first.effect == ItemScript.Effect.HEAL, "first aid uses HEAL")
-		check(first.amount == 35, "first aid heals 35")
+		check(first.effect == ItemScript.Effect.ADD_MEDKIT, "first aid adds medical inventory")
+		check(first.amount == 1, "first aid grants one medkit per purchase")
+		check(first.medkit_data == load("res://resources/player/default_medkit.tres"), "first aid references the existing medical resource")
 		check(not first.one_time, "first aid is repeatable")
 
 	var ammo := Catalog.item_by_id(&"ammo")
@@ -62,13 +63,37 @@ func _run() -> void:
 		check(device.flag_key == &"has_mind_access_device", "device grants its configured ownership flag")
 		check(device.one_time, "flag product is a one-time product")
 
-	var zero_heal := ItemScript.new()
-	zero_heal.id = &"zero_heal"
-	zero_heal.display_name = "Zero heal"
-	zero_heal.price = 10
-	zero_heal.effect = ItemScript.Effect.HEAL
-	zero_heal.amount = 0
-	check(not zero_heal.is_valid(), "healing products require a positive amount")
+	var zero_medkit := ItemScript.new()
+	zero_medkit.id = &"zero_medkit"
+	zero_medkit.display_name = "Medkit product"
+	zero_medkit.price = 10
+	zero_medkit.effect = ItemScript.Effect.ADD_MEDKIT
+	zero_medkit.medkit_data = load("res://resources/player/default_medkit.tres")
+	zero_medkit.amount = 0
+	check(not zero_medkit.is_valid(), "medkit products require a positive count")
+	zero_medkit.amount = 1
+	zero_medkit.medkit_data = null
+	check(not zero_medkit.is_valid(), "medkit products require a medical resource")
+	zero_medkit.medkit_data = MedkitData.new()
+	zero_medkit.medkit_data.use_seconds = 0.0
+	check(not zero_medkit.is_valid(), "invalid medical resource settings are rejected")
+	zero_medkit.medkit_data = load("res://resources/player/default_medkit.tres")
+	check(_visible(zero_medkit, &"medkit_data") and _visible(zero_medkit, &"amount")
+		and not _visible(zero_medkit, &"weapon_data") and not _visible(zero_medkit, &"flag_key"),
+		"medical products show only medical resource and quantity fields")
+	zero_medkit.effect = ItemScript.Effect.WEAPON
+	check(_visible(zero_medkit, &"weapon_data") and not _visible(zero_medkit, &"medkit_data")
+		and not _visible(zero_medkit, &"amount") and not _visible(zero_medkit, &"flag_key"),
+		"weapon products expose the WeaponData drag slot without medical fields")
+	zero_medkit.effect = ItemScript.Effect.SET_FLAG
+	check(_visible(zero_medkit, &"flag_key") and not _visible(zero_medkit, &"weapon_data")
+		and not _visible(zero_medkit, &"medkit_data"), "flag products show only the flag configuration")
+	zero_medkit.effect = ItemScript.Effect.REFILL_AMMO
+	check(not _visible(zero_medkit, &"medkit_data") and not _visible(zero_medkit, &"weapon_data")
+		and not _visible(zero_medkit, &"flag_key") and not _visible(zero_medkit, &"amount"),
+		"ammo refill hides unrelated resource and quantity fields")
+	check(zero_medkit.medkit_data == load("res://resources/player/default_medkit.tres"),
+		"switching effects hides the drag slot without discarding its resource")
 	var invalid_flag := ItemScript.new()
 	invalid_flag.id = &"invalid_flag"
 	invalid_flag.display_name = "Flag product"
@@ -118,3 +143,10 @@ func _run() -> void:
 	else:
 		print("shop catalog checks: %d failed" % failures)
 	quit(1 if failures > 0 else 0)
+
+
+func _visible(item: Resource, key: StringName) -> bool:
+	for property in item.get_property_list():
+		if StringName(property.name) == key:
+			return (int(property.usage) & PROPERTY_USAGE_EDITOR) != 0
+	return false

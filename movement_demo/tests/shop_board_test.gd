@@ -55,7 +55,7 @@ func _run() -> void:
 		requests.append([item_id, slot]))
 
 	var items: Array = [
-		{"id": &"first_aid", "name": "急救包", "description": "恢复 35 点生命", "price": 40, "weapon": false},
+		{"id": &"first_aid", "name": "急救包", "description": "医疗包 +1（按 H 使用）", "price": 40, "weapon": false},
 		{"id": &"ammo", "name": "弹药补给", "description": "补满弹匣与备弹", "price": 30, "weapon": false},
 		{"id": &"mind_access_device", "name": "思维接入装置", "description": "购买后获得思维接入装置", "price": 500, "weapon": false},
 	]
@@ -81,7 +81,7 @@ func _run() -> void:
 		"grid contains one child per visible item")
 
 	var mixed: Array = [
-		{"id": &"first_aid", "name": "急救包", "description": "恢复 35 点生命", "price": 40, "weapon": false},
+		{"id": &"first_aid", "name": "急救包", "description": "医疗包 +1（按 H 使用）", "price": 40, "weapon": false},
 		{"id": &"locked_weapon", "name": "锁定武器", "description": "隐藏", "price": 200, "weapon": true, "hidden": true},
 	]
 	check(board.configure(mixed, 80), "configure accepts mixed rows")
@@ -100,7 +100,7 @@ func _run() -> void:
 		"last_purchase records secondary slot")
 
 	var disabled_items: Array = [
-		{"id": &"first_aid", "name": "急救包", "description": "恢复 35 点生命", "price": 40, "weapon": false, "enabled": false},
+		{"id": &"first_aid", "name": "急救包", "description": "医疗包 +1（按 H 使用）", "price": 40, "weapon": false, "enabled": false},
 		{"id": &"ammo", "name": "弹药补给", "description": "补满弹匣与备弹", "price": 30, "weapon": false, "enabled": true},
 	]
 	check(board.configure(disabled_items, 100), "configure accepts enabled state rows")

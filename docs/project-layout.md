@@ -6,7 +6,7 @@
 
 五关任务与任务金额由 `resources/stages/stage_table_template.tres` 保存，商品目录由 `resources/shop/shop_catalog.tres` 保存；`QuestCondition.int_at_least()` 提供整数下限条件，`QuestDefinition.money_reward` 配置完成时的固定货币，`GameState.rewarded_task_ids` 记录一次性任务发奖。货币商店由 `ShopController` 按目录解析可见商品、复核并执行购买，`ShopBoard` 只回传购买意图；`GameState.money`／`purchased_shop_item_ids` 与酒店检查点同步。跨关快照由 `player_campaign_state.gd` 搬运；进入关卡时 `QuestPortal` 额外保存 `level_entry_player_state`，死亡重开由 `SceneDirector` 把它恢复为待恢复快照，选择回酒店则由 `GameState.campaign_checkpoint` 恢复最近完成关卡时的关卡进度、商品旗标、货币、任务奖励、一次性购买记录和玩家状态。旧三选一奖励组件仍保留为兼容代码，不再接入主流程。
 
-拥有类商品使用 `ShopItemDefinition.Effect.SET_FLAG` 与 `flag_key`；购买调用 `GameState.grant_shop_flag()`，旗标值由原 `flags` 字典唯一保存。检查点通过 `shop_flags` 捕获和恢复商店登记的旗标，不回滚唱片机等其他玩法旗标。任务面板只展示任务状态，已移除数值进度与进度条。
+医疗包商品使用 `ADD_MEDKIT`、`medkit_data` 与购买数量 `amount`，由 Equipment 的 `can_add_medkits()`／`add_medkits()` 接收入库，沿用唯一库存与状态通知；检查器仅显示当前商品效果对应的资源槽。拥有类商品使用 `ShopItemDefinition.Effect.SET_FLAG` 与 `flag_key`；购买调用 `GameState.grant_shop_flag()`，旗标值由原 `flags` 字典唯一保存。检查点通过 `shop_flags` 捕获和恢复商店登记的旗标，不回滚唱片机等其他玩法旗标。任务面板只展示任务状态，已移除数值进度与进度条。
 
 敌人、武器、弹药、爆头、波次、相机与表现模块的具体职责见后文和对应专项；逐阶段实施过程保存在[历史记录](history/2026-10-28/project-layout.md)，不作为当前接口说明。
 

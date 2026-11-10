@@ -123,7 +123,7 @@
 3. 玩家靠近商店 NPC 按 E 时，NPC 调用 `ShopController.open_shop_for_player(player)`。
    控制器解析 `resources/shop/shop_catalog.tres`，按“已解锁且未购买的一次性商品”过滤可见项，
    取得暂停所有权后显示 `scenes/ui/shop_board.tscn`（`CanvasLayer.process_mode = ALWAYS`）。
-4. 初始商品为急救包（40，回血35）、弹药补给（30，补满弹匣与备弹）、思维接入装置（500，购买后拥有）。
+4. 初始商品为医疗包（40，库存+1，按 H 使用）、弹药补给（30，补满弹匣与备弹）、思维接入装置（500，购买后拥有）。
    急救包与弹药补给可重复购买，装置只可购买一次，购买后设置 `has_mind_access_device = true` 并隐藏；`unlock_level` 大于 0 的商品在 `completed_level` 达标前完全隐藏。
 5. 购买成功后控制器扣款、刷新余额与商品可用状态，面板保持打开；一次性商品（装置或武器）购买后永久隐藏。
    面板只回传 `purchase_requested(item_id, slot)`，不直接修改 `GameState`、玩家或装备。
@@ -147,7 +147,7 @@
    瞄准、换弹进度、受击减速、体力和蹲姿等临时过程不跨场景。
 4. 关卡刚完成时 `available_level == completed_level`，门口传送门保持锁定。A 对话把
    `available_level` 改为已完成关卡 +1 后，`QuestPortal` 才更新 `ChangeSceneEffect` 的目标并允许进入。
-5. 由酒馆进入下一关前，门口传送门再次捕获当前玩家状态，所以酒馆商店购买的治疗、弹药和武器会带入下一关。
+5. 由酒馆进入下一关前，门口传送门再次捕获当前玩家状态，所以酒馆商店购买的医疗包库存、弹药和武器会带入下一关。
    快照被新玩家实例消费后立即清空。
 6. 第5关完成后 `completed_level == available_level == 5`，A 显示五关完成，不再提供下一关。
 

@@ -70,6 +70,19 @@ func _ready() -> void:
 		combat.equip_weapon(null)
 	_update_display()
 
+## 当前医疗库存共用一种资源；同一资源叠加，空库存可接收另一种医疗包。
+func can_add_medkits(data: MedkitData, amount: int) -> bool:
+	return data != null and amount > 0 and (medkit_count == 0 or medkit == data)
+
+
+func add_medkits(data: MedkitData, amount: int) -> bool:
+	if not can_add_medkits(data, amount):
+		return false
+	medkit = data
+	medkit_count += amount
+	return true
+
+
 func refill_all_ammo() -> void:
 	# 已初始化的 WeaponAmmo 持有该字典引用，必须原地恢复，不能直接换新字典。
 	# 先保留当前所有备弹类型（包括 initial_ammo 之外的类型），再把已配置类型

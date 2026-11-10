@@ -15,17 +15,18 @@
 | `Display Name` / `Description` | 商店名称与说明 |
 | `Price` | 价格，至少 0；余额不足或效果当前不可用时，由控制器复核并拒绝，不扣款、不改变状态 |
 | `Unlock Level` | 0 始终可见；大于 0 时要求 `completed_level >= unlock_level`，否则完全隐藏 |
-| `Effect` | `HEAL` 回血、`REFILL_AMMO` 补满弹匣与备弹、`SET_FLAG` 获得商品并设置旗标、`WEAPON` 覆盖武器槽 |
-| `Amount` | 回血量；其他效果忽略 |
+| `Effect` | `ADD_MEDKIT` 增加医疗包库存、`REFILL_AMMO` 补满弹匣与备弹、`SET_FLAG` 获得商品并设置旗标、`WEAPON` 覆盖武器槽 |
+| `Amount` | 医疗包购买数量；其他效果忽略 |
+| `Medkit Data` | `ADD_MEDKIT` 商品引用的现有 `MedkitData .tres`，疗效和使用时间由此资源配置 |
 | `Flag Key` | `SET_FLAG` 商品购买后置为 true 的旗标键，不能为空 |
 | `Weapon Data` | `WEAPON` 商品必须引用现有 `WeaponData` |
-| `One Time` | 购买成功后隐藏；`WEAPON` 与 `SET_FLAG` 必须为真，回血／补弹可关闭以重复购买 |
+| `One Time` | 购买成功后隐藏；`WEAPON` 与 `SET_FLAG` 必须为真，医疗包／补弹可关闭以重复购买 |
 
 初始目录只有三个商品，均 `unlock_level = 0`。急救包与弹药补给可重复购买；思维接入装置为一次性商品：
 
 | 商品 | ID | 价格 | 效果 | 效果参数 |
 | --- | --- | ---: | --- | ---: |
-| 急救包 | `first_aid` | 40 | `HEAL` | 35 |
+| 急救包 | `first_aid` | 40 | `ADD_MEDKIT` | `default_medkit.tres`，数量 1 |
 | 弹药补给 | `ammo` | 30 | `REFILL_AMMO` | 无 |
 | 思维接入装置 | `mind_access_device` | 500 | `SET_FLAG` | `has_mind_access_device = true` |
 
@@ -33,10 +34,18 @@
 购买成功后记录一次性购买并隐藏商品，不能重复购买。死亡返回酒店时，检查点之后的这笔购买仍按原规则全额退款，
 同时恢复购买前旗标与购买资格。检查点只恢复商店登记的旗标，唱片机等其他玩法旗标不受影响。
 
-目录读取时过滤无效项：空项、空 ID、负价格、未知效果、回血商品的非正数值、旗标商品缺少 `Flag Key` 或未开 `One Time`、武器商品缺少
+目录读取时过滤无效项：空项、空 ID、负价格、未知效果、医疗包商品的非正数量、缺失或无效的 `Medkit Data`、旗标商品缺少 `Flag Key` 或未开 `One Time`、武器商品缺少
 `WeaponData` 或未开 `One Time`。
 
 ## 可见性与购买
+
+检查器按 `Effect` 显示配置：`ADD_MEDKIT` 只显示 `Medkit Data` 与 `Amount`；`WEAPON` 只显示
+`Weapon Data`；`SET_FLAG` 只显示 `Flag Key`；补弹隐藏这些无关字段。切换效果只隐藏字段，不清空已拖入的资源。
+
+新增医疗包商品时，选择 `ADD_MEDKIT`，把现有 `resources/player/default_medkit.tres` 或其他有效的
+`MedkitData .tres` 拖入 `Medkit Data`，再填 `Amount` 数量。默认商品为 40 货币购买 1 个包。
+当前 Equipment 共用一种医疗包资源：同一资源直接叠加；库存清空后可接收另一种资源。
+还有库存时不覆盖成另一种医疗包，拒绝购买且不扣款。死亡返回酒店时，资源、库存数量与货币随检查点一起恢复。
 
 商品区使用可滚动网格：默认 3 列，行数随可见商品自动增长；窗口变窄时按卡片最小宽度自动降为 2 列或 1 列。
 商店面板默认尺寸为 1040×680，随游戏窗口缩小并在四周各留 24 像素；标题、商品文字和购买／关闭按钮使用较大字号。
@@ -51,10 +60,10 @@ and not (item.effect == SET_FLAG and GameState.get_flag(item.flag_key))
 ```
 
 不满足可见条件的商品不创建可见行，也不占空位；目录全部不可见时商店显示“暂无商品”且不暂停游戏。
-面板按 `ShopController` 给出的可用状态显示／禁用购买按钮：余额不足、满血、弹药已满或已拥有旗标商品时，
+面板按 `ShopController` 给出的可用状态显示／禁用购买按钮：余额不足、没有可接收的医疗包库存、弹药已满或已拥有旗标商品时，
 对应按钮不可点击，控制器在购买时仍会再次复核，不扣款、不改变状态。
 
-- 急救包：生命未满时购买成功，立即恢复 `Amount` 点生命；满血时购买被拒绝。
+- 急救包：购买后将 `Medkit Data` 对应的医疗包加入 Equipment，数量增加 `Amount`；满血也可购买，当前生命不变。之后按 H 使用，疗效与使用时间读取该医疗包资源。
 - 弹药补给：补满两把已装备武器的弹匣，并把 `initial_ammo` 中已配置的共享备弹恢复到至少初始数量，
   同时保留其他备弹类型；已经全满时购买被拒绝。
 - 旗标商品：装置售价 500、`Flag Key = has_mind_access_device`、`One Time = true`；购买后旗标变为 true。已拥有时隐藏并拒绝再次购买，即使购买记录被清空也以旗标为准。

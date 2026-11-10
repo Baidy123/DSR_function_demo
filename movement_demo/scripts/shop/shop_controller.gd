@@ -173,10 +173,10 @@ func _can_purchase(item: ShopItemDefinition, slot: int, state: Node, player: Nod
 
 func _validate_effect(state: Node, player: Node3D, item: ShopItemDefinition, slot: int) -> bool:
 	match item.effect:
-		ShopItemDefinition.Effect.HEAL:
-			var health := _health(player)
-			return health != null and health.has_method(&"heal") \
-				and float(health.health) < float(health.max_health)
+		ShopItemDefinition.Effect.ADD_MEDKIT:
+			var equipment := _equipment(player)
+			return equipment != null and equipment.has_method(&"can_add_medkits") \
+				and equipment.can_add_medkits(item.medkit_data, item.amount)
 		ShopItemDefinition.Effect.REFILL_AMMO:
 			var equipment := _equipment(player)
 			return equipment != null and equipment.has_method(&"refill_all_ammo") \
@@ -197,12 +197,11 @@ func _validate_effect(state: Node, player: Node3D, item: ShopItemDefinition, slo
 
 func _apply_effect(state: Node, player: Node3D, item: ShopItemDefinition, slot: int) -> bool:
 	match item.effect:
-		ShopItemDefinition.Effect.HEAL:
-			var health := _health(player)
-			if health == null:
+		ShopItemDefinition.Effect.ADD_MEDKIT:
+			var equipment := _equipment(player)
+			if equipment == null or not equipment.has_method(&"add_medkits"):
 				return false
-			health.heal(float(item.amount))
-			return true
+			return equipment.add_medkits(item.medkit_data, item.amount)
 		ShopItemDefinition.Effect.REFILL_AMMO:
 			var equipment := _equipment(player)
 			if equipment == null:
