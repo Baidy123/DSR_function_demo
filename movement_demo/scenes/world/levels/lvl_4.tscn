@@ -624,8 +624,6 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 6.5759954, 0, 3.3292894)
 [node name="SceneDirector" parent="." unique_id=34233385 instance=ExtResource("12_gj4jd")]
 
 [node name="Wave" parent="SceneDirector" unique_id=234181340 instance=ExtResource("13_lw8ks")]
-search_on_spawn = null
-spawn_search_error_radius = null
 existing_squads = Array[NodePath]([NodePath("../../Squad")])
 
 [node name="Wave2" parent="SceneDirector" unique_id=197202990 instance=ExtResource("13_lw8ks")]
