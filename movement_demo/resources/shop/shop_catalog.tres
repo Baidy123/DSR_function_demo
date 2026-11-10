@@ -29,12 +29,12 @@ one_time = false
 script = ExtResource("2_item")
 id = &"system_progress"
 display_name = "系统进度"
-description = "任务进度 +20"
-price = 50
+description = "一次购买，系统进度直接达到 100"
+price = 500
 unlock_level = 0
 effect = 2
-amount = 20
-one_time = false
+amount = 100
+one_time = true
 
 [resource]
 script = ExtResource("1_catalog")

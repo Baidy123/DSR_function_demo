@@ -13,7 +13,7 @@ const SHOTGUN := preload("res://resources/weapons/test_shotgun.tres")
 const SMG := preload("res://resources/weapons/test_smg.tres")
 
 const WATCHDOG_SECONDS := 50.0
-const EXPECTED_CHECKS := 92
+const EXPECTED_CHECKS := 106
 
 
 class FailingEffectController extends "res://scripts/shop/shop_controller.gd":
@@ -48,6 +48,7 @@ func check(condition: bool, label_text: String) -> void:
 func _run() -> void:
 	create_timer(WATCHDOG_SECONDS, true, false, true).timeout.connect(_on_watchdog)
 	await _check_real_shop_flow()
+	await _check_system_progress_purchase()
 	await _check_zero_price_free_purchase()
 	await _check_full_ammo_rejection()
 	await _check_dead_player_rules()
@@ -59,6 +60,7 @@ func _run() -> void:
 
 func _check_real_shop_flow() -> void:
 	var ctx := await _prepare_main()
+	ctx.state.money = 1000
 	check(ctx.controller != null, "ShopController is mounted")
 	check(ctx.board != null, "ShopBoard is mounted")
 	check(ctx.npc != null, "RewardNPC node path is retained")
@@ -70,7 +72,7 @@ func _check_real_shop_flow() -> void:
 	check(ctx.board.item_count() == 0, "board starts with no rows")
 	check(await _open_shop_via_e(ctx), "E interaction opens the shop and pauses")
 	check(ctx.board.item_count() == 3, "level 0 shows the three initial products")
-	check(ctx.board.balance_text() == "货币：500", "board shows current money")
+	check(ctx.board.balance_text() == "货币：1000", "board shows current money")
 	check(not ctx.board.purchase_enabled(&"first_aid", -1), "controller disables first aid while health is full")
 	check(ctx.board.purchase_enabled(&"ammo", -1), "controller enables ammo while it is depleted")
 	check(ctx.board.purchase_enabled(&"system_progress", -1),
@@ -82,7 +84,7 @@ func _check_real_shop_flow() -> void:
 	check(ctx.controller.purchase(&"first_aid", -1), "first aid purchase succeeds")
 	check(is_equal_approx(ctx.health.health, minf(ctx.health.max_health, health_before + 35.0)),
 		"first aid heals 35")
-	check(ctx.state.money == 460, "first aid deducts 40")
+	check(ctx.state.money == 960, "first aid deducts 40")
 
 	var money_before_ammo: int = ctx.state.money
 	check(ctx.controller.purchase(&"ammo", -1), "ammo purchase succeeds")
@@ -95,14 +97,19 @@ func _check_real_shop_flow() -> void:
 	check(_magazines_full(ctx.equipment), "ammo refills both magazines and cancels reload")
 
 	check(ctx.controller.purchase(&"system_progress", -1), "system progress purchase succeeds")
-	check(int(ctx.state.system_progress) == 20, "system progress adds 20")
-	check(ctx.state.money == 380, "system progress deducts 50")
+	check(int(ctx.state.system_progress) == 100, "one purchase completes system progress")
+	check(ctx.state.money == 430, "system progress deducts 500 in one payment")
+	check(ctx.state.has_purchased_shop_item(&"system_progress") and ctx.board.item_count() == 2,
+		"system progress is recorded and hidden after purchase")
+	check(not ctx.controller.purchase(&"system_progress", -1), "system progress cannot be purchased twice")
+	check(ctx.state.money == 430 and int(ctx.state.system_progress) == 100,
+		"repeat system progress purchase changes neither money nor progress")
 
 	ctx.health.health = 10.0
 	ctx.health._update_display()
 	check(ctx.controller.purchase(&"first_aid", -1), "repeatable first aid purchase succeeds again")
 	check(is_equal_approx(ctx.health.health, 45.0), "repeat first aid heals again")
-	check(ctx.state.money == 340, "repeat first aid deducts again")
+	check(ctx.state.money == 390, "repeat first aid deducts again")
 
 	ctx.controller.close_shop()
 	await ctx.tree.process_frame
@@ -177,6 +184,36 @@ func _check_real_shop_flow() -> void:
 	check(not ctx.tree.paused, "releasing external pause restores the game")
 	pause_owner.queue_free()
 
+	await _release(ctx.scene)
+
+
+func _check_system_progress_purchase() -> void:
+	var ctx := await _prepare_main(false)
+	ctx.state.money = 499
+	check(await _open_shop_via_e(ctx), "shop opens below the system progress price")
+	check(not ctx.board.purchase_enabled(&"system_progress", -1), "499 cannot enable the 500 product")
+	check(not ctx.controller.purchase(&"system_progress", -1), "partial payment is rejected")
+	check(ctx.state.money == 499 and int(ctx.state.system_progress) == 0
+		and not ctx.state.has_purchased_shop_item(&"system_progress"),
+		"partial payment changes neither money, progress nor purchase records")
+	ctx.controller.close_shop()
+	ctx.state.money = 500
+	ctx.state.system_progress = 20
+	ctx.state.record_campaign_checkpoint(int(ctx.state.completed_level), {})
+	check(await _open_shop_via_e(ctx), "shop reopens with exactly 500")
+	check(ctx.board.purchase_enabled(&"system_progress", -1), "exact price enables the product")
+	check(ctx.controller.purchase(&"system_progress", -1), "exact price buys the complete product")
+	check(ctx.state.money == 0 and int(ctx.state.system_progress) == 100
+		and ctx.state.has_purchased_shop_item(&"system_progress") and ctx.board.item_count() == 2,
+		"one payment completes partial progress and hides the product")
+	ctx.controller.close_shop()
+	check(ctx.state.restore_campaign_checkpoint(), "system progress purchase can roll back to its checkpoint")
+	check(ctx.state.money == 500 and int(ctx.state.system_progress) == 20
+		and not ctx.state.has_purchased_shop_item(&"system_progress"),
+		"checkpoint refunds the full price and restores progress and purchase eligibility")
+	check(await _open_shop_via_e(ctx) and ctx.board.item_count() == 3
+		and ctx.board.purchase_enabled(&"system_progress", -1),
+		"refunded system progress product becomes available again")
 	await _release(ctx.scene)
 
 

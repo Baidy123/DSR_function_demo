@@ -56,11 +56,11 @@ func _run() -> void:
 	var progress := Catalog.item_by_id(&"system_progress")
 	check(progress != null, "system progress is addressable by ID")
 	if progress != null:
-		check(progress.price == 50, "system progress price is 50")
+		check(progress.price == 500, "system progress costs 500 in one payment")
 		check(progress.unlock_level == 0, "system progress is unlocked at level 0")
 		check(progress.effect == ItemScript.Effect.SYSTEM_PROGRESS, "system progress uses SYSTEM_PROGRESS")
-		check(progress.amount == 20, "system progress adds 20")
-		check(not progress.one_time, "system progress is repeatable")
+		check(progress.amount == 100, "one system progress purchase fills the progress bar")
+		check(progress.one_time, "system progress is a one-time product")
 
 	var zero_heal := ItemScript.new()
 	zero_heal.id = &"zero_heal"

@@ -57,7 +57,7 @@ func _run() -> void:
 	var items: Array = [
 		{"id": &"first_aid", "name": "急救包", "description": "恢复 35 点生命", "price": 40, "weapon": false},
 		{"id": &"ammo", "name": "弹药补给", "description": "补满弹匣与备弹", "price": 30, "weapon": false},
-		{"id": &"system_progress", "name": "系统进度", "description": "任务进度 +20", "price": 50, "weapon": false},
+		{"id": &"system_progress", "name": "系统进度", "description": "一次购买，系统进度直接达到 100", "price": 500, "weapon": false},
 	]
 	check(board.configure(items, 100), "configure accepts three rows")
 	check(board.item_count() == 3, "three visible rows")

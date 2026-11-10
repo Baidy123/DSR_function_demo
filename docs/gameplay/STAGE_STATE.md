@@ -123,8 +123,8 @@
 3. 玩家靠近商店 NPC 按 E 时，NPC 调用 `ShopController.open_shop_for_player(player)`。
    控制器解析 `resources/shop/shop_catalog.tres`，按“已解锁且未购买的一次性商品”过滤可见项，
    取得暂停所有权后显示 `scenes/ui/shop_board.tscn`（`CanvasLayer.process_mode = ALWAYS`）。
-4. 初始商品为急救包（40，回血35）、弹药补给（30，补满弹匣与备弹）、系统进度（50，+20），
-   均可重复购买；`unlock_level` 大于 0 的商品在 `completed_level` 达标前完全隐藏。
+4. 初始商品为急救包（40，回血35）、弹药补给（30，补满弹匣与备弹）、系统进度（500，一次补满至100）。
+   急救包与弹药补给可重复购买，系统进度只可购买一次并在购买后隐藏；`unlock_level` 大于 0 的商品在 `completed_level` 达标前完全隐藏。
 5. 购买成功后控制器扣款、刷新余额与商品可用状态，面板保持打开；一次性商品（武器）购买后永久隐藏。
    面板只回传 `purchase_requested(item_id, slot)`，不直接修改 `GameState`、玩家或装备。
 6. 货币与一次性购买记录跨场景保留，重新运行游戏才重置；死亡返回酒店时由酒店检查点恢复。
