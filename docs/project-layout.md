@@ -2,9 +2,9 @@
 
 本页说明当前目录、场景与代码归属。功能和常用接口见[项目总览](../README.md)，专项用法见[文档导航](README.md)。路径以 `movement_demo/` 为根；现有节点路径、资源引用和脚本 UID 是复用边界，文档整理不迁移它们。
 
-当前合并基线同时保留本地五关任务／奖励与 upstream 场景调度结构。`LevelFlow` 在清场后只启用本关 `TavernReturnPortal`；返程门写入 `completed_level` 与一次性玩家快照并返回酒馆，A 更新 `available_level` 后门口 `QuestPortal` 才指向下一关。结果按钮和自动加载是 SceneDirector 的可复用能力，当前五关实际没有使用“清场后自动进入下一关”。
+当前合并基线同时保留本地五关任务／货币商店与 upstream 场景调度结构。`LevelFlow` 在清场后只启用本关 `TavernReturnPortal`；返程门写入 `completed_level`、一次性玩家快照和酒店检查点并返回酒馆，A 更新 `available_level` 后门口 `QuestPortal` 才指向下一关。结果按钮和自动加载是 SceneDirector 的可复用能力，当前五关实际没有使用“清场后自动进入下一关”。
 
-五关任务和奖励分别由 `resources/stages/stage_table_template.tres`、`resources/rewards/level_rewards.tres` 保存；`QuestCondition.int_at_least()` 提供整数下限条件，`GameState.claimed_reward_levels` 按关记录一次领取，`RewardBoard` 只回传奖励选择。跨关快照由 `player_campaign_state.gd` 搬运，死亡重开不消费旧关快照。
+五关任务与任务金额由 `resources/stages/stage_table_template.tres` 保存，商品目录由 `resources/shop/shop_catalog.tres` 保存；`QuestCondition.int_at_least()` 提供整数下限条件，`QuestDefinition.money_reward` 配置完成时的固定货币，`GameState.rewarded_task_ids` 记录一次性任务发奖。货币商店由 `ShopController` 按目录解析可见商品、复核并执行购买，`ShopBoard` 只回传购买意图；`GameState.money`／`purchased_shop_item_ids` 与酒店检查点同步。跨关快照由 `player_campaign_state.gd` 搬运；进入关卡时 `QuestPortal` 额外保存 `level_entry_player_state`，死亡重开由 `SceneDirector` 把它恢复为待恢复快照，选择回酒店则由 `GameState.campaign_checkpoint` 恢复最近完成关卡时的进度、货币、任务奖励、一次性购买记录和玩家状态。旧三选一奖励组件仍保留为兼容代码，不再接入主流程。
 
 敌人、武器、弹药、爆头、波次、相机与表现模块的具体职责见后文和对应专项；逐阶段实施过程保存在[历史记录](history/2026-10-28/project-layout.md)，不作为当前接口说明。
 
@@ -14,7 +14,7 @@
 movement_demo/
 ├── project.godot                 工程与输入配置，主入口为 scenes/main.tscn
 ├── scenes/
-│   ├── main.tscn          酒馆主场景，F5 入口；含任务、奖励 NPC、竞技场与关卡传送门
+│   ├── main.tscn          酒馆主场景，F5 入口；含任务、商店 NPC（RewardNPC）、竞技场与关卡传送门
 │   ├── arena.tscn         战斗区域与敌人实例
 │   ├── enemy/             公共 enemy.tscn，types/兵种继承场景，levels/lvl_N/关卡预设
 │   ├── player/            独立 player.tscn、player_camera_rig.tscn 与战斗／生命／装备子场景
@@ -23,7 +23,7 @@ movement_demo/
 │   │   └── objects/       具体交互物：酒馆关卡门、五关返程门、酒杯、终端、唱片机
 │   ├── presentation/      模型包装场景和独立接口演示
 │   ├── effects/           共用命中特效管理器和粒子场景
-│   └── ui/                对话、任务／奖励、关卡流程与游玩说明场景
+│   └── ui/                对话、任务面板、货币商店、关卡流程与游玩说明场景
 ├── scripts/
 │   ├── enemy/             身体、AI 协调、装配与评分入口
 │   │   ├── actions/       默认行为、战术动作和共用动作执行组件
@@ -32,11 +32,12 @@ movement_demo/
 │   ├── player/            玩家移动、战斗、生命和装备
 │   ├── weapons/           武器数据与弹药执行
 │   ├── rewards/           关卡、选项与奖励表资源脚本
+│   ├── shop/              商品定义、目录与货币商店控制器
 │   ├── world/             掩体、训练靶、区域、门、NPC、交互物与屏障
 │   │   ├── quest_portal.gd       按任务与 A 解锁进度进入对应关卡
-│   │   ├── tavern_return_portal.gd 记录关卡完成与玩家快照并返回酒馆
+│   │   ├── tavern_return_portal.gd 记录关卡完成、玩家快照与酒店检查点并返回酒馆
 │   │   └── interactions/  交互效果基类、注入上下文与各效果实现
-│   ├── ui/                对话、锁定准星、任务／奖励、关卡流程与游玩说明
+│   ├── ui/                对话、锁定准星、任务面板、货币商店、关卡流程与游玩说明
 │   ├── debug/             调试开关、协调器路径；声音圈及旧攻击区域预览默认关闭
 │   └── systems/           场景调度、关卡流程、相机、公共状态、声音数据与正式场景切换
 │       ├── stage/         阶段、任务与 NPC 状态控制器
@@ -53,7 +54,8 @@ movement_demo/
 │   ├── noise/             移动声、枪声配置
 │   ├── animations/        动画对应表
 │   ├── effects/           表面命中特效配置
-│   ├── rewards/           五关独立的三选一奖励配置
+│   ├── rewards/           旧三选一奖励配置（兼容保留）
+│   ├── shop/              货币商店商品目录
 │   ├── navigation/        烘焙导航资源
 │   ├── stages/            阶段／任务／NPC 状态规则配置表
 │   └── dialogue/          NPC 对话、导入元数据与原有剧情源文件
@@ -76,9 +78,9 @@ movement_demo/
 
 阶段、任务与 NPC 状态规则集中在 `scripts/systems/stage/`：阶段判定、任务状态与状态解析各一个控制器，配置表资源脚本与 `resources/stages/` 下的 `.tres` 配套维护。控制器挂在 `main.tscn`、按 group 互相查找，不新增全局单例；NPC 只按 `npc_id` 与接收接口被驱动，不反向依赖控制器。见 [阶段与任务](gameplay/STAGE_STATE.md)。
 
-正式场景切换统一经过 `scripts/systems/scene_transition.gd`。该入口在释放当前场景前，把 `World3D.environment` 与 `fallback_environment` 恢复为显式中性环境，避免 GL Compatibility 在目标场景没有 `WorldEnvironment` 时沿用上一场景的环境光。酒馆关卡门、五关返程门和死亡重开都使用这一入口；目标场景自身配置的 `WorldEnvironment` 仍可在加载后覆盖该中性回退。
+正式场景切换统一经过 `scripts/systems/scene_transition.gd`。该入口在释放当前场景前，把 `World3D.environment` 与 `fallback_environment` 恢复为显式中性环境，避免 GL Compatibility 在目标场景没有 `WorldEnvironment` 时沿用上一场景的环境光。酒馆关卡门、五关返程门、死亡重开和返回酒店都使用这一入口；目标场景自身配置的 `WorldEnvironment` 仍可在加载后覆盖该中性回退。
 
-`scripts/debug/coordinator_paths.gd` 保留 DebugSettings 入口，使用世界空间 Mesh 绘制 RTS 路线、箭头和站位，以及面积观察状态、责任预约和未来路线。每秒最多十次读取公开副本，不调用导航、规划或补写观察；成员颜色在死亡减员后保持稳定。当前 `main.tscn` 按用户确认保留任务面板、奖励面板及交互演示物；五关场景不挂载这套酒馆任务节点，交互组件仍可由 `tests/interaction_fixture.gd` 独立装配验证。五关清场后仍只开放返程门，回酒馆与 A 交互后才解锁下一关。
+`scripts/debug/coordinator_paths.gd` 保留 DebugSettings 入口，使用世界空间 Mesh 绘制 RTS 路线、箭头和站位，以及面积观察状态、责任预约和未来路线。每秒最多十次读取公开副本，不调用导航、规划或补写观察；成员颜色在死亡减员后保持稳定。当前 `main.tscn` 按用户确认保留任务面板、商店面板及交互演示物；五关场景不挂载这套酒馆任务节点，交互组件仍可由 `tests/interaction_fixture.gd` 独立装配验证。五关清场后仍只开放返程门，回酒馆与 A 交互后才解锁下一关。
 
 | 文件／组件 | 职责与接口边界 |
 | --- | --- |
@@ -141,11 +143,13 @@ Equipment 交接当前枪给 Combat；相机订阅 `weapon_changed`，表现订�
 6. 验证覆盖实际行为及结构约束；历史通过数、运行无错误或一次成功不能替代完整验收。
 7. 普通阶段提交、推送及本地修改保护遵循仓库 [AGENTS.md](../AGENTS.md)；不得借文档整理同步远端、覆盖其他任务或改写历史计划。
 
-## 当前奖励接口补充
+## 货币商店与旧奖励接口
 
-`main.tscn` 的任务奖励闭环由 `scripts/systems/stage/encounter_controller.gd`、`scripts/world/reward_npc.gd` 与 `GameState` 共同承担：每关返回后与 `RewardNPC` 按 E 交互，控制器按当前 `completed_level` 读取该关奖励并打开三选一。选定后写入对应关卡的 `claimed_reward_levels`，只关闭本关资格。返回酒馆的玩家状态可被奖励直接修改，门口传送门进入下一关前再次捕获，因此治疗和补给会延续。竞技场 `combat_cleared` 不再触发奖励。
+`main.tscn` 的货币商店闭环由 `scripts/world/reward_npc.gd`（保留 `RewardNPC` 节点路径与脚本 UID，标签为“商店”）、`scripts/shop/shop_controller.gd` 与 `scripts/ui/shop_board.gd` 共同承担：交互时 `RewardNPC` 调用 `ShopController.open_shop_for_player(player)`。控制器解析 `resources/shop/shop_catalog.tres`，按 `unlock_level <= completed_level` 且“一次性商品尚未购买”过滤可见商品，取得暂停所有权后打开 `scenes/ui/shop_board.tscn`。购买时控制器复核余额与效果、修改 `GameState`／玩家／装备、扣款并记录一次性购买，面板只回传 `purchase_requested(item_id, slot)`。商店打开期间玩家死亡或节点离树会释放自己的暂停。
 
-奖励面板 `scenes/ui/reward_board.tscn` + `scripts/ui/reward_board.gd` 是默认隐藏的三选一界面；`process_mode` 设为 ALWAYS，因此场景树暂停时仍能处理输入，每次显示只允许发出一个 `reward_selected`。面板本身不写玩家、弹药或进度，只回传所选奖励 id 给遭遇控制器。对应测试有 `tests/reward_npc_test.gd`（NPC 交互与跨重载防重复）、`tests/quest_encounter_loop_test.gd`（三条奖励路径）、`tests/encounter_controller_edge_test.gd`（资格、死亡、暂停和缺面板边界）与 `tests/reward_board_test.gd`（面板单次选择）。
+任务金额由 `scripts/systems/stage/quest_controller.gd` 在任务首次进入 `COMPLETED` 时调用 `GameState.claim_task_reward(task_id, amount, completed_level)`；`QuestDefinition.money_reward` 默认 100，五个主线任务为 100，不奖励的唱片机支线显式保持 0。发奖同时把该任务 ID 和新增金额补写进当前战役关卡的酒店检查点，不依赖任务 `stage_index`，避免返回酒店后重复发钱或漏写支线奖励。
+
+旧三选一组件保留为兼容代码，不再接入主流程：`scripts/rewards/reward_level.gd`／`reward_option.gd`／`reward_table.gd`、`scripts/systems/stage/encounter_controller.gd`、`scripts/ui/reward_board.gd` 与 `scenes/ui/reward_board.tscn`、`resources/rewards/level_rewards.tres` 保留文件与脚本 UID，供独立复用和 `tests/reward_board_test.gd` 验证。旧主流程测试 `reward_npc_test.gd`、`quest_encounter_loop_test.gd`、`reward_per_level_test.gd` 已退役；`encounter_controller_edge_test.gd` 改为隔离夹具兼容专项；新增 `shop_catalog_test`、`shop_state_test`、`shop_weapon_test`、`shop_board_test`、`shop_flow_test`、`quest_money_reward_test` 进入统一 systems 清单。
 
 `scripts/world/quest_portal.gd` 是酒馆门口的五关传送门：首次进入仍要求 `task_a` 进行中，之后只读 `GameState.completed_level`／`available_level`，A 未解锁下一关时阻止进入。它按可用关卡更新 `ChangeSceneEffect.scene_path`，交互前捕获玩家状态。原门禁卡、门禁读卡器和屏障资源已删除；任务面板默认隐藏，Tab 切换。
 

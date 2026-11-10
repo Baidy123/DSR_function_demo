@@ -28,7 +28,10 @@ func interact(player: Node3D) -> bool:
 	if not can_interact(player):
 		return super.interact(player)
 	if _game_state != null:
-		_game_state.set_pending_player_state(PlayerCampaignState.capture(player))
+		var snapshot: Dictionary = PlayerCampaignState.capture(player)
+		_game_state.set_pending_player_state(snapshot)
+		if _game_state.has_method(&"set_level_entry_player_state"):
+			_game_state.set_level_entry_player_state(snapshot)
 	return super.interact(player)
 
 

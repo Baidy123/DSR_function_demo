@@ -21,7 +21,7 @@ signal encounter_completed
 ## 关闭可由场景规则的 COMPLETE_SCENE 决定完成；不会改变敌人实际清空统计。
 @export var complete_when_all_waves_cleared := true
 @export_group("场景绑定")
-## 当前玩家Health，相对SceneDirector。收到died后由调度器显示原死亡UI并处理重开。
+## 当前玩家Health，相对SceneDirector。收到died后由调度器显示死亡UI并处理重开或回酒店。
 @export_node_path("Node") var health_path: NodePath = ^"../Player/Health"
 ## 当前关结果界面，默认同级LevelFlow；其关卡编号和五关路径表保持原配置。
 ## 留空不启用默认全波通关界面；独立玩法可另接自定义结果。

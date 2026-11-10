@@ -156,12 +156,12 @@ grow_vertical = 2
 mouse_filter = 2
 
 [node name="Panel" type="PanelContainer" parent="DeathScreen/Center"]
-custom_minimum_size = Vector2(440, 180)
+custom_minimum_size = Vector2(480, 260)
 layout_mode = 2
 
 [node name="Content" type="VBoxContainer" parent="DeathScreen/Center/Panel"]
 layout_mode = 2
-theme_override_constants/separation = 16
+theme_override_constants/separation = 12
 alignment = 1
 
 [node name="Title" type="Label" parent="DeathScreen/Center/Panel/Content"]
@@ -173,12 +173,19 @@ horizontal_alignment = 1
 [node name="Message" type="Label" parent="DeathScreen/Center/Panel/Content"]
 layout_mode = 2
 theme_override_font_sizes/font_size = 20
-text = "回到出生点，重置战斗；保留对话选择。"
+text = "重新挑战当前关卡，或回到酒店上一次完成任务的状态。"
 horizontal_alignment = 1
 
 [node name="Restart" type="Button" parent="DeathScreen/Center/Panel/Content"]
-custom_minimum_size = Vector2(200, 44)
+custom_minimum_size = Vector2(320, 44)
 layout_mode = 2
 size_flags_horizontal = 4
-theme_override_font_sizes/font_size = 24
-text = "重新开始"
+theme_override_font_sizes/font_size = 20
+text = "重新挑战当前关卡"
+
+[node name="ReturnToTavern" type="Button" parent="DeathScreen/Center/Panel/Content"]
+custom_minimum_size = Vector2(320, 44)
+layout_mode = 2
+size_flags_horizontal = 4
+theme_override_font_sizes/font_size = 20
+text = "返回酒店（上次完成状态）"

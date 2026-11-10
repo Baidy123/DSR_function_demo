@@ -10,6 +10,8 @@ const Trigger = preload("res://scripts/systems/scene_event_trigger.gd")
 const Filter = preload("res://scripts/systems/scene_event_filter.gd")
 const Presentation = preload("res://scripts/systems/presentation_camera.gd")
 const HealthScene = preload("res://scenes/player/player_health.tscn")
+const SHOTGUN := preload("res://resources/weapons/test_shotgun.tres")
+const RIFLE := preload("res://resources/weapons/test_rifle.tres")
 
 var checks := 0
 var failures := 0
@@ -23,9 +25,11 @@ class HealthSource extends Node:
 
 class ResultView extends RefCounted:
 	signal restart_requested
+	signal return_to_tavern_requested
 	var deaths := 0
 	var errors := 0
 	var pending := false
+	var tavern_available := true
 	func bind(_health: Node) -> void:
 		pass
 	func show_death() -> void:
@@ -37,6 +41,8 @@ class ResultView extends RefCounted:
 		pending = false
 	func hide_result() -> void:
 		pending = false
+	func set_tavern_available(value: bool) -> void:
+		tavern_available = value
 
 class GuideSource extends Node:
 	signal finished
@@ -132,9 +138,11 @@ func _run() -> void:
 	await _test_health_binding_identity()
 	await _test_manual_completion_policy()
 	await _test_death_precedence()
+	await _test_return_to_tavern_from_death()
 	await _test_load_retry()
 	await _test_next_level_retry()
 	await _test_real_health_result()
+	await _test_real_health_without_level_flow()
 	await _test_camera_lifecycle()
 	await _test_camera_cancel_without_reply()
 	await _test_event_pause_and_filter()
@@ -233,6 +241,7 @@ func _test_no_waves_and_death() -> void:
 	var f := _fixture()
 	await _ready_fixture(f)
 	check(f.director.state == &"running" and not paused, "No Wave, Guide, or CombatZone is needed to run")
+	check(not f.view.tavern_available, "Without a LevelFlow adapter, the hotel option is disabled")
 	_steps(f)
 	check(f.director.state == &"running", "Zero configured waves do not imply automatic victory")
 	f.health.die()
@@ -281,6 +290,83 @@ func _test_death_precedence() -> void:
 		_steps(f)
 		check(f.director.state == &"dead" and f.view.deaths == 1 and paused, "Death wins same-step completion, death_first=%s" % death_first)
 		await _dispose(f)
+
+func _test_return_to_tavern_from_death() -> void:
+	var flow := LevelView.new()
+	var f := _fixture([], null, {"level_flow": flow})
+	await _ready_fixture(f)
+	var game_state := root.get_node("GameState")
+	var level_entry_paid: Dictionary = {
+		"equipment": {
+			"primary_weapon": SHOTGUN,
+			"active_slot": 0,
+		},
+	}
+	var checkpoint_snapshot: Dictionary = {
+		"equipment": {
+			"primary_weapon": RIFLE,
+			"active_slot": 1,
+		},
+		"health": {"health": 73.0},
+	}
+	game_state.completed_level = 2
+	game_state.available_level = 2
+	game_state.money = 100
+	game_state.rewarded_task_ids = {&"task_a": true}
+	game_state.purchased_shop_item_ids = {}
+	game_state.system_progress = 20
+	game_state.level_entry_player_state = level_entry_paid.duplicate(true)
+	game_state.record_campaign_checkpoint(2, checkpoint_snapshot)
+	game_state.completed_level = 3
+	game_state.available_level = 4
+	game_state.money = 35
+	game_state.rewarded_task_ids = {&"task_a": true, &"task_level_2": true}
+	game_state.purchased_shop_item_ids = {&"shop_shotgun": true}
+	game_state.system_progress = 40
+	game_state.pending_player_state = {}
+
+	var calls: Array[Dictionary] = []
+	f.director.scene_loader = func(path: String, reload: bool) -> Error:
+		calls.append({"path": path, "reload": reload})
+		return ERR_CANT_OPEN
+	f.health.die()
+	f.view.return_to_tavern_requested.emit()
+	f.view.return_to_tavern_requested.emit()
+	await process_frame
+	await process_frame
+	check(calls.size() == 1 and calls[0].path == flow.next_scene_path() and not calls[0].reload,
+		"Death offers one non-reload transition to the level adapter's tavern path")
+	check(game_state.completed_level == 2 and game_state.available_level == 2
+			and game_state.money == 100
+			and game_state.rewarded_task_ids == {&"task_a": true}
+			and game_state.purchased_shop_item_ids.is_empty()
+			and game_state.pending_player_state == checkpoint_snapshot,
+		"Hotel return restores the last completion checkpoint before loading")
+	check(f.director.state == &"dead" and paused and f.view.errors == 1,
+		"Failed hotel return keeps death pause and reports a retryable load error")
+	f.view.restart_requested.emit()
+	await process_frame
+	await process_frame
+	check(calls.size() == 2 and calls[1].path.is_empty() and calls[1].reload,
+		"After a failed hotel load, current-level retry uses a normal reload")
+	check(game_state.completed_level == 3 and game_state.available_level == 4
+			and game_state.money == 35
+			and game_state.rewarded_task_ids == {&"task_a": true, &"task_level_2": true}
+			and game_state.purchased_shop_item_ids == {&"shop_shotgun": true}
+			and game_state.system_progress == 40,
+		"Current-level retry after hotel failure rolls non-transactional checkpoint state back")
+	check(game_state.pending_player_state == level_entry_paid,
+		"Current-level retry after hotel failure stages the level-entry paid weapon snapshot")
+	game_state.completed_level = 0
+	game_state.available_level = 1
+	game_state.money = 0
+	game_state.rewarded_task_ids = {}
+	game_state.purchased_shop_item_ids = {}
+	game_state.system_progress = 0
+	game_state.pending_player_state = {}
+	game_state.level_entry_player_state = {}
+	game_state.campaign_checkpoint = {}
+	await _dispose(f)
 
 func _test_rule_guide_scope() -> void:
 	for region_scope in [true, false]:
@@ -406,12 +492,15 @@ func _test_real_health_result() -> void:
 	health.max_health = 25.0
 	health.debug_mode = false
 	body.add_child(health)
-	var f := _fixture([], null, {"health": health, "result_view": null})
+	var flow := LevelView.new()
+	var f := _fixture([], null, {"health": health, "result_view": null, "level_flow": flow})
 	f.scene.add_child(body)
 	await _ready_fixture(f)
 	var screen: Control = health.get_node("DeathScreen")
 	var restart: Button = health.get_node("DeathScreen/Center/Panel/Content/Restart")
+	var tavern: Button = health.get_node_or_null("DeathScreen/Center/Panel/Content/ReturnToTavern") as Button
 	check(f.director.state == &"running" and not screen.visible, "Real Health and result adapter initialize without Wave or Guide")
+	check(tavern != null and tavern.can_process(), "Real death UI offers a processable hotel-return button")
 	var calls: Array[bool] = []
 	f.director.scene_loader = func(_path: String, reload: bool) -> Error:
 		calls.append(reload)
@@ -425,6 +514,30 @@ func _test_real_health_result() -> void:
 	await process_frame
 	check(calls == [true] and not restart.disabled and screen.visible and paused, "Real death button requests one reload and recovers after load failure")
 	check(health.get_node("DeathScreen/Center/Panel/Content/Message").text.contains("失败"), "Real death view explains loading failure")
+	if tavern != null:
+		tavern.pressed.emit()
+		await process_frame
+		await process_frame
+		check(calls == [true, false] and screen.visible and paused,
+			"Real hotel button requests a non-reload tavern transition and recovers after failure")
+	await _dispose(f)
+
+func _test_real_health_without_level_flow() -> void:
+	var body := PlayerBody.new()
+	var health = HealthScene.instantiate()
+	health.name = "Health"
+	health.max_health = 25.0
+	health.debug_mode = false
+	body.add_child(health)
+	var f := _fixture([], null, {"health": health, "result_view": null})
+	f.scene.add_child(body)
+	await _ready_fixture(f)
+	var tavern: Button = health.get_node("DeathScreen/Center/Panel/Content/ReturnToTavern")
+	var message: Label = health.get_node("DeathScreen/Center/Panel/Content/Message")
+	check(not tavern.visible, "A flow-less scene hides its unusable hotel button")
+	body.receive_hit(25.0)
+	check(message.text.contains("重新挑战") and not message.text.contains("酒店"),
+		"Flow-less death text describes only the available current-level retry")
 	await _dispose(f)
 
 func _add_source_camera(f: Dictionary) -> Camera3D:

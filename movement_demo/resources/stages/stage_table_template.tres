@@ -120,6 +120,7 @@ id = &"task_a"
 display_name = "通关第1关"
 stage_index = 1
 target_area = &"lvl_1"
+money_reward = 100
 accept_conditions = Array[ExtResource("5_condition")]([SubResource("Condition_task_a_accept")])
 refuse_conditions = Array[ExtResource("5_condition")]([SubResource("Condition_task_a_refuse")])
 complete_conditions = Array[ExtResource("5_condition")]([SubResource("Condition_completed_1")])
@@ -130,6 +131,7 @@ id = &"task_level_2"
 display_name = "通关第2关"
 stage_index = 2
 target_area = &"lvl_2"
+money_reward = 100
 accept_conditions = Array[ExtResource("5_condition")]([SubResource("Condition_available_2")])
 complete_conditions = Array[ExtResource("5_condition")]([SubResource("Condition_completed_2")])
 
@@ -139,6 +141,7 @@ id = &"task_level_3"
 display_name = "通关第3关"
 stage_index = 3
 target_area = &"lvl_3"
+money_reward = 100
 accept_conditions = Array[ExtResource("5_condition")]([SubResource("Condition_available_3")])
 complete_conditions = Array[ExtResource("5_condition")]([SubResource("Condition_completed_3")])
 
@@ -148,6 +151,7 @@ id = &"task_level_4"
 display_name = "通关第4关"
 stage_index = 4
 target_area = &"lvl_4"
+money_reward = 100
 accept_conditions = Array[ExtResource("5_condition")]([SubResource("Condition_available_4")])
 complete_conditions = Array[ExtResource("5_condition")]([SubResource("Condition_completed_4")])
 
@@ -157,6 +161,7 @@ id = &"task_level_5"
 display_name = "通关第5关"
 stage_index = 5
 target_area = &"lvl_5"
+money_reward = 100
 accept_conditions = Array[ExtResource("5_condition")]([SubResource("Condition_available_5")])
 complete_conditions = Array[ExtResource("5_condition")]([SubResource("Condition_completed_5")])
 
@@ -182,6 +187,7 @@ script = ExtResource("3_quest")
 id = &"task_music"
 display_name = "打开唱片机"
 stage_index = 1
+money_reward = 0
 accept_conditions = Array[ExtResource("5_condition")]([SubResource("Condition_music_accept")])
 complete_conditions = Array[ExtResource("5_condition")]([SubResource("Condition_music_turnin"), SubResource("Condition_music_playing")])
 

@@ -4,7 +4,7 @@
 
 [功能](#已实现的功能) · [操作](#玩家操作) · [配置接口](#配置接口) · [脚本接口](#常用脚本接口) · [扩展方法](#如何扩展) · [完整文档](docs/README.md)
 
-直接运行工程或按 **F5** 即进入酒馆。接取 A 的任务后，酒馆门口的传送门会解锁，按 E 进入第1关。任务面板依次记录“通关第1关”至“通关第5关”：A 解锁关卡时对应任务进入进行中，清场返回酒馆后完成任务。每关清空都会先返回酒馆，再次与 A 交互后才解锁下一关。每次返回后都可由蓝色“结算奖励”NPC 领取本关三选一；第1～5关分别配置、分别记录一次领取。跨关保留生命、当前武器、两把枪的弹匣与共享备弹、医疗包；死亡仍按原规则重开当前关。Debug 总开关开启后可一键完成当前关。完整操作见[五关游玩说明](docs/gameplay/PLAY_GUIDE.md)，奖励配置见[关卡奖励](docs/gameplay/REWARDS.md)。
+直接运行工程或按 **F5** 即进入酒馆。接取 A 的任务后，酒馆门口的传送门会解锁，按 E 进入第1关。任务面板依次记录“通关第1关”至“通关第5关”：A 解锁关卡时对应任务进入进行中，清场返回酒馆后完成任务。每关清空都会先返回酒馆，再次与 A 交互后才解锁下一关。每次返回后都可与酒馆东侧房间的蓝色“商店”NPC 交互打开货币商店；初始三个商品为急救包（40，回血35）、弹药补给（30，补满弹匣与备弹）、系统进度（50，+20），均可重复购买。跨关保留生命、当前武器、两把枪的弹匣与共享备弹、医疗包、货币。五个主线任务各固定发放 100 货币，首次完成时发放一次。死亡后可选重新挑战当前关（保留进入本关时已付费的装备），或回到最近一次完成关卡的酒店检查点（退还检查点之后的商店花费、撤销之后的一次性购买并恢复装备）；检查点仍尚未由 A 解锁下一关。Debug 总开关开启后可一键完成当前关。完整操作见[五关游玩说明](docs/gameplay/PLAY_GUIDE.md)，商店与任务金额见[货币商店与任务奖励](docs/gameplay/REWARDS.md)。
 
 ## 已实现的功能
 
@@ -14,9 +14,10 @@
 | 锁定与射击 | 方向键转向锁定、可开关的鼠标辅助选敌／换锁、平滑转身、单发／自动／霰弹、真实射线与遮挡 |
 | 精度与爆头 | 移动、跟枪、开火和受击损耗；三种收敛公式；按准度线性增加的爆头率 |
 | 近战 | 枪械附带近战、专用近战兵、击退与眩晕反馈；玩家近战为受击敌人提供一次爆头门槛优惠 |
-| 装备与补给 | 主副武器槽、按弹种共享备弹、整匣／逐发装填、缺弹掉落、医疗包与死亡重开 |
+| 装备与补给 | 主副武器槽、按弹种共享备弹、整匣／逐发装填、缺弹掉落、医疗包与二选一重生 |
+| 货币商店与任务金额 | 蓝色商店 NPC 打开货币商店；初始急救包／弹药补给／系统进度按价格购买，`.tres` 商品按关卡逐级解锁，一次性武器商品可覆盖主副槽；五个主线任务各发 100 货币一次 |
 | 敌人 AI | 巡逻、视觉／听觉、追踪与搜索、掩体、近远程攻击；个人决策与三档小队配合 |
-| 场景调度 | SceneDirector统一可选引导、节点事件、波次出场、手选目标的独立镜头、死亡重开与连续五关 |
+| 场景调度 | SceneDirector统一可选引导、节点事件、波次出场、手选目标的独立镜头、死亡重开／回酒店与连续五关 |
 | 交互与任务 | 对话、场景交互效果、条件驱动任务、阶段与 NPC 状态；任务演示与五关流程各自独立 |
 | 表现与诊断 | 可替换模型／动画、命中特效、血条与尸体、准星／状态提示、相机遮挡透明和调试视图 |
 
@@ -83,6 +84,16 @@
 | Interactable、StageStateController | 交互条件与效果、Stage Table、任务及 NPC 状态 | [交互](docs/gameplay/INTERACTION.md)、[任务](docs/gameplay/STAGE_STATE.md) |
 | Presentation、武器外观、ImpactProfile | 模型、动画映射与命中特效 | [表现接入](docs/gameplay/PRESENTATION.md) |
 
+### 货币商店与任务金额
+
+| 位置 | 可以配置 | 说明 |
+| --- | --- | --- |
+| `resources/shop/shop_catalog.tres` | 商品列表（顺序即显示顺序） | [货币商店](docs/gameplay/REWARDS.md) |
+| ShopItemDefinition | 商品 ID、名称、说明、价格、解锁等级、效果、数值、武器引用、一次性 | 商品条目资源 |
+| ShopCatalog → Items | 拖入／新建 `ShopItemDefinition` | 目录读取时过滤空项、空 ID、负价格、未知效果、缺 `WeaponData` 的武器商品与重复 ID |
+| QuestDefinition → Money Reward | 完成时固定货币 | 默认 100；五个主线任务为 100，不奖励的任务显式设为 0 |
+| Equipment | 主副武器槽 | 商店 `WEAPON` 商品购买时覆盖所选槽位 |
+
 ## 常用脚本接口
 
 下表是扩展时常用的调用或订阅入口，详细职责见[项目结构](docs/project-layout.md)。资源保存配置，组件保存各实例运行状态。
@@ -93,6 +104,9 @@
 | Combat | `get_effective_accuracy()`、`get_target_headshot_chance(target)`、`is_turning_to_target()` | UI 读取基础准度、目标爆头率和转身状态 |
 | Combat | `weapon_changed`、`shot_fired`、`headshot_resolved` 信号 | 相机、表现或统计订阅真实装备／射击结果 |
 | Health | `receive_hit(damage)`、`restore_health(amount)`、`died` 信号 | 伤害、治疗与死亡通知 |
+| GameState | `record_campaign_checkpoint(level, player_snapshot)`、`restore_campaign_checkpoint()` | 保存并恢复最近完成关卡时的酒店进度与玩家快照 |
+| GameState | `add_money(amount)`、`spend_money(amount)`、`claim_task_reward(id, amount, level)`、`has_purchased_shop_item(id)` | 货币增减、一次性任务发奖与商店购买记录 |
+| ShopController | `open_shop_for_player(player)`、`purchase(item_id, slot)`、`close_shop()` | 打开／关闭货币商店、复核并执行购买；面板只回传意图 |
 | SceneDirector | `start_encounter()`、`request_wave(wave)`、`reset_encounter()`、`debug_snapshot()`；原波次信号保留 | 场景调度入口与波次兼容接口；核心通过director访问 |
 | SceneEvent | `trigger()`、无参`triggered`；来源节点/信号/过滤由检查器配置 | 统一通知Wave或场景规则，不要求每种事件重写刷怪代码 |
 | Interactable / InteractionEffect | `can_interact(player)`、`interact(player)`、`apply(context)` | 查询与执行交互、扩展单一效果 |
@@ -102,6 +116,7 @@
 
 - **新增武器**：新建或复制 WeaponData，配置开火、弹药、精度与近战参数，保存到 `resources/weapons/`，拖入 Equipment 的槽位。玩家槽不接受专用近战武器；玩家近战使用手持枪械的附带参数。
 - **新增弹种**：创建 AmmoDefinition，填写唯一 ID；让武器引用它，并在 Equipment 的 `Initial Ammo` 中添加 AmmoSupply。掉落开关、数量和模型在弹种资源内设置。
+- **新增商店商品**：在 `ShopCatalog` 的 `Items` 数组里新建 `ShopItemDefinition`，填稳定 `Id`、名称、说明、价格与解锁等级；普通商品选 `HEAL`／`REFILL_AMMO`／`SYSTEM_PROGRESS` 并填数值，武器商品选 `WEAPON`、拖入现有 `WeaponData` 并把 `One Time` 打开。武器商品会覆盖玩家所选主／副槽，不复制枪械配置。
 - **新增敌人或波次**：兵种放入Squad，再放到Wave；选择原顺序模式、事件节点模式或显式请求。事件和手摆镜头按[SceneDirector教程](docs/gameplay/SCENE_DIRECTOR.md)配置，无需迁移部署层。
 - **接入新战斗地图**：复用带区域控制器的结构，保留CombatZone与导航；放入玩家、独立相机及SceneDirector，设置相机Player Path、部署并烘焙导航。见[关卡](docs/gameplay/LEVEL_MAPS.md)和[波次](docs/gameplay/ENEMY_WAVES.md)。
 - **新增交互或表现**：交互物组合已有 InteractionEffect，新增效果通过 InteractionContext 使用注入的状态；模型、动画与特效通过表现组件接入。具体资源契约见对应专项说明。
@@ -118,7 +133,7 @@
 
 攻击武器可配置命中／压制精度损失（百分比）、擦过范围和击中速度损失。玩家 `Combat → 受击反应倍率`、敌人 `Training → Profile → tactics → 受击反应倍率` 各有三个可在检查器修改的倍率，射击与附带近战共用对应倍率；字段提示解释公式和关闭方式，见 [命中效果与倍率](docs/gameplay/COMBAT.md#命中压制与击中减速2026-10-24)。
 
-酒馆门口现在串联五关流程：首次接取 A 任务后进入第1关；每关清场后先返回酒馆，再次与 A 对话才解锁下一关，门口传送门随解锁进度更新目标。跨关状态由 `GameState` 的一次性快照携带，酒馆中的奖励治疗和补给会继续带入下一关。死亡仍只重开当前关并使用该关保存配置。任务面板默认隐藏，按 Tab 显示。
+酒馆门口现在串联五关流程：首次接取 A 任务后进入第1关；每关清场后先返回酒馆，再次与 A 对话才解锁下一关，门口传送门随解锁进度更新目标。跨关状态由 `GameState` 的一次性快照携带，酒馆商店购买的治疗、弹药和武器会继续带入下一关。死亡界面提供“重新挑战当前关卡”和“返回酒店”两项：前者按进入本关时的付费装备重开；后者恢复最近完成关卡的检查点，包括当时的玩家状态、货币、任务奖励和一次性购买记录、A 尚未解锁下一关的状态，并退还检查点之后的花费。任务面板默认隐藏，按 Tab 显示。
 
 ## 打开工程
 
@@ -138,7 +153,7 @@
 - [竞技场说明](docs/gameplay/ARENA.md)
 - [五张关卡地图与导航](docs/gameplay/LEVEL_MAPS.md)
 - [场景交互物说明](docs/gameplay/INTERACTION.md)
-- [关卡奖励配置](docs/gameplay/REWARDS.md)
+- [货币商店与任务奖励](docs/gameplay/REWARDS.md)
 - [阶段、任务与 NPC 状态](docs/gameplay/STAGE_STATE.md)
 - [模型、动画与命中特效接入](docs/gameplay/PRESENTATION.md)
 - [相机视野、武器绑定与遮挡透明](docs/gameplay/CAMERA.md)

@@ -106,29 +106,31 @@
 效果上等于“首次触发”。条件每次在下列事件后重新评估：状态字段变化、拾取物品、旗标变化、
 交互物报告交互、区域进出、阶段变化、换表。
 
-## 关卡返回与酒馆奖励闭环
+## 关卡返回与货币商店闭环
 
-每关由 `EncounterController`（`scripts/systems/stage/encounter_controller.gd`）
-配合关卡完成状态和酒馆 `RewardNPC` 串起“清场 → 返回酒馆 → 找 NPC 领取本关奖励”：
+每关由 `ShopController`（`scripts/shop/shop_controller.gd`）配合关卡完成状态和酒馆
+`RewardNPC` 串起“清场 → 返回酒馆 → 找商店 NPC 购买商品”的闭环：
 
 1. A 的对话说明逐关解锁目标。接受后 `help_choice` 写为 `accepted`、`available_level = 1`，任务进入进行中；
    酒馆门口 `Interactables/LevelPortal` 随后解锁，按 E 可切换到 `scenes/world/levels/lvl_1.tscn`。
    旧门禁卡与门禁屏障已删除。
-   第一关清空后，出生点附近的 `TavernReturnPortal` 出现；交互会写入 `task_a_returned = returned` 并返回酒馆。
-2. 酒馆重新加载后，任务控制器按 `completed_level >= 1` 把“通关第1关”任务判为已完成；
-   `task_a_returned == returned` 继续写入供旧任务逻辑兼容。酒馆内的蓝色 `RewardNPC` 使用 `scripts/world/reward_npc.gd`；
-   任务未完成时按 E 只显示普通提示，不会打开奖励。
-3. 玩家完成任意关卡且本关尚未领取时，靠近 `RewardNPC` 按 E 会通过
-   `EncounterController.open_reward_for_player()` 暂停并显示 `scenes/ui/reward_board.tscn`。
-   面板从 `resources/rewards/level_rewards.tres` 读取当前关三项配置，`process_mode` 为 ALWAYS。
-4. 每项配置包含显示名称、说明、效果类型和数值。默认第1～5关均为急救包、弹药补给、系统进度，
-   但每关条目独立，可分别修改而互不影响。
-5. 选定后按配置结算，并把 `completed_level` 写入 `GameState.claimed_reward_levels`。
-   同一关不能重复领取；下一关完成后重新开放本次三选一。
-6. 领取状态跨场景保留，重新运行游戏才重置。`task_a_reward_claimed` 仅保留为第1关旧接口镜像。
+   第一关清空后，出生点附近的 `TavernReturnPortal` 出现；交互写入 `task_a_returned = returned`、
+   `completed_level`、一次性玩家快照和酒店检查点并返回酒馆。
+2. 酒馆重新加载后，任务控制器按 `completed_level >= 1` 把“通关第1关”任务判为已完成，
+   并在首次进入完成态时发放 `QuestDefinition.money_reward`（主线任务各 100）。
+   `task_a_returned == returned` 继续写入供旧任务逻辑兼容。酒馆内的蓝色商店 NPC 使用 `scripts/world/reward_npc.gd`，
+   标签为“商店”。
+3. 玩家靠近商店 NPC 按 E 时，NPC 调用 `ShopController.open_shop_for_player(player)`。
+   控制器解析 `resources/shop/shop_catalog.tres`，按“已解锁且未购买的一次性商品”过滤可见项，
+   取得暂停所有权后显示 `scenes/ui/shop_board.tscn`（`CanvasLayer.process_mode = ALWAYS`）。
+4. 初始商品为急救包（40，回血35）、弹药补给（30，补满弹匣与备弹）、系统进度（50，+20），
+   均可重复购买；`unlock_level` 大于 0 的商品在 `completed_level` 达标前完全隐藏。
+5. 购买成功后控制器扣款、刷新余额与商品可用状态，面板保持打开；一次性商品（武器）购买后永久隐藏。
+   面板只回传 `purchase_requested(item_id, slot)`，不直接修改 `GameState`、玩家或装备。
+6. 货币与一次性购买记录跨场景保留，重新运行游戏才重置；死亡返回酒店时由酒店检查点恢复。
 
-`main.tscn` 中的竞技场仍可独立进入和清场，但 `Arena.combat_cleared` 不再自动打开奖励，
-也没有旧的 `Arena/CombatZone/ReturnPortal`。
+旧三选一奖励组件（`EncounterController`、`RewardBoard`、`resources/rewards/level_rewards.tres`）
+保留为兼容代码，不再接入主流程；`Arena.combat_cleared` 不打开商店，也没有旧的 `Arena/CombatZone/ReturnPortal`。
 `system_progress` 目前只累计并显示在任务面板上，尚未用于章节解锁或后续内容门槛。
 
 ## 五关进度与跨关玩家状态
@@ -137,31 +139,49 @@
 
 1. 任意关卡清空后，`LevelFlow` 只启用本关 `TavernReturnPortal`，不显示按钮切关，也不暂停。
 2. 返程门把本关编号写入 `GameState.completed_level`，并用 `PlayerCampaignState.capture()`
-   保存一次待恢复状态；第1关同时写入 `task_a_returned = returned`。
+   保存一次待恢复状态；第1关同时写入 `task_a_returned = returned`。同一快照还会写入
+   `GameState.campaign_checkpoint`，连同当前 `available_level`、系统进度、货币、
+   已发放任务奖励和一次性购买记录保存为酒店检查点。
 3. 新玩家实例在 `player.gd::_ready()` 中消费一次 `pending_player_state`。因此回酒馆时，
    同一个角色逻辑上的生命、当前槽位、双武器、各自弹匣、共享备弹和医疗包会出现在新 Player 节点上；
    瞄准、换弹进度、受击减速、体力和蹲姿等临时过程不跨场景。
 4. 关卡刚完成时 `available_level == completed_level`，门口传送门保持锁定。A 对话把
    `available_level` 改为已完成关卡 +1 后，`QuestPortal` 才更新 `ChangeSceneEffect` 的目标并允许进入。
-5. 由酒馆进入下一关前，门口传送门再次捕获当前玩家状态，所以酒馆中的治疗、弹药奖励会带入下一关。
+5. 由酒馆进入下一关前，门口传送门再次捕获当前玩家状态，所以酒馆商店购买的治疗、弹药和武器会带入下一关。
    快照被新玩家实例消费后立即清空。
 6. 第5关完成后 `completed_level == available_level == 5`，A 显示五关完成，不再提供下一关。
 
-死亡不写入跨关快照，仍由 `PlayerHealth` 重开当前关；重开场景按该关保存配置恢复生命、武器、弹药和医疗包，
-不会把上一个场景残留的快照再次带入。正常跨关和死亡重开因此使用不同状态来源。
+死亡不写入跨关快照。`PlayerHealth` 只报告死亡，`SceneDirector` 提供两种重生：
+
+- **重新挑战当前关卡**：重载当前场景，按进入本关时的 `level_entry_player_state` 恢复生命、
+  武器、弹药、医疗包与货币，不消费酒店检查点。
+- **返回酒店**：调用 `GameState.restore_campaign_checkpoint()`，恢复最近完成关卡时的
+  `completed_level`、`available_level`、货币、已发放任务奖励、一次性购买记录、系统进度和
+  装备／玩家快照，再加载酒馆。
+
+检查点固定在任务完成并返程、尚未在商店消费、尚未由 A 解锁下一关的时刻。因此返回酒店后，
+货币恢复为检查点余额，退还之后的花费；检查点之后的一次性购买记录被清除，被覆盖的武器、
+消耗品和系统进度随玩家快照一并回退；任务奖励已写进检查点，不会因返回酒店丢失或重复发放。
+第1关尚未完成时没有检查点，返回酒店会保留当前任务接取状态，以酒馆初始关卡状态重新加载。
+正常跨关、重新挑战和返回酒店使用不同状态来源。
 
 主线任务表现在有五关条目：
 
 - `task_a` 显示“通关第1关”，由 `help_choice == accepted` 接取，`completed_level >= 1` 完成。
 - `task_level_2` 至 `task_level_5` 显示“通关第2关”至“通关第5关”；分别在
   `available_level >= N` 时接取、`completed_level >= N` 时完成。
+- 五条主线任务的 `money_reward` 均为 100，首次进入完成态时由任务控制器一次性发放；
+  唱片机支线 `task_music` 的 `money_reward` 保持 0。
 - 任务完成是终态；A 后一次解锁不会回退已完成任务。任务面板按同一任务表更新。
 
 整数下限条件使用 `QuestCondition.int_at_least(key, value)`；手写 `.tres` 时
 `source=6`、`min_value=N`。该来源追加在枚举末尾，原有字段、旗标、物品、交互和区域条件的整数索引保持不变。
 
-奖励控制器按 `completed_level` 查询本关奖励；`claimed_reward_levels` 只记录对应关卡。
-第1关领取后第2关仍可领取，第2关领取后第3～5关同理。具体配置说明见[关卡奖励](REWARDS.md)。
+货币商店按 `completed_level` 与 `GameState.money` 展示商品：`unlock_level <= completed_level`
+且“一次性商品尚未购买”的条目才可见，购买由 `ShopController` 复核并执行，`GameState.money`
+与 `purchased_shop_item_ids` 同步进酒店检查点。任务金额由 `QuestDefinition.money_reward`
+在首次进入完成态时一次性发放，并补写进匹配完成关卡的检查点。具体配置与回滚规则见
+[货币商店与任务奖励](REWARDS.md)。
 
 正式切场景统一经过 `SceneTransition`。切换前先把 `World3D` 的环境恢复为中性回退值，避免酒馆环境光残留到没有
 自己的 `WorldEnvironment` 的关卡；传送门、关卡按钮和死亡重开不会各自复制渲染清理代码。
@@ -248,9 +268,9 @@
 模板已按现状填了五条主线和一个支线：
 
 - `task_a`（通关第1关）：接取 `help_choice == accepted`，拒绝 `help_choice == refused`，
-  完成＝`completed_level >= 1`。
+  完成＝`completed_level >= 1`，`money_reward = 100`。
 - `task_level_2` 至 `task_level_5`：分别在 `available_level >= N` 时接取、
-  `completed_level >= N` 时完成。
+  `completed_level >= N` 时完成，`money_reward = 100`。
 - `task_music`（打开唱片机，阶段一内的支线，不占阶段序号）：接取 `music_quest_choice == accepted`，
   完成＝`music_quest_turnin == done` **且** `music_playing` 为真。所以交差时唱片机被关掉就不会完成，
   重新打开再交差才会完成；没接取时完成条件根本不参与评估。
@@ -260,11 +280,13 @@
 
 ## 验证
 
-对应条件、任务状态、阶段接线、面板和交互支线测试列于[测试说明](../testing.md)。本地五关新增记录包括：
+对应条件、任务状态、阶段接线、面板和交互支线测试列于[测试说明](../testing.md)。本地五关与商店新增记录包括：
 
-- `campaign_quest_task_test`：五条关卡任务随 A 解锁与通关更新、任务面板名称，以及各关奖励资格互相独立。
-- `campaign_flow_test`：五关返程门、A 逐关解锁、动态传送门、跨关生命／双武器／弹匣／备弹／医疗包，以及死亡重开不消费跨关快照。
-- `reward_per_level_test`：第1～5关均可领取一次、领取状态互不影响，以及自定义标题、说明与数值。
+- `campaign_quest_task_test`：五条关卡任务随 A 解锁与通关更新、任务面板名称，以及每关任务奖励累计发放到 500。
+- `campaign_checkpoint_test`：酒店检查点恢复货币、已发任务奖励、一次性购买记录和完成时玩家快照，并退款检查点之后的花费。
+- `campaign_flow_test`：五关返程门、A 逐关解锁、动态传送门、跨关状态，以及购买商品进入第2关后死亡，返回酒店退款并回滚一次性武器与装备。
+- `shop_catalog_test`、`shop_state_test`、`shop_weapon_test`、`shop_board_test`、`shop_flow_test`：商品目录过滤、货币与检查点状态、武器槽覆盖、面板回传与购买流程。
+- `quest_money_reward_test`：默认／主线金额、一次性发放、无奖励支线为 0，以及付费支线同步当前关卡检查点。
 - `debug_complete_level_test`：Debug 总开关、一键完成当前关、单次完成信号和返程门流程。
 
 任务面板、交互物和 NPC 的独立夹具仍可用于隔离测试，但不能把夹具中的旧演示位置当成当前主场景配置；当前 `main.tscn` 已挂载任务面板。

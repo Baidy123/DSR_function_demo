@@ -1,10 +1,10 @@
 extends "res://scripts/world/npc.gd"
 
-## 酒馆结算奖励 NPC：有未领取奖励时直接打开三选一，否则回退到普通对话。
+## 酒馆蓝色商店 NPC：交互时打开货币商店，失败则回退到普通对话。
 
-@export var reward_controller_path: NodePath = ^"../EncounterController"
+@export var shop_controller_path: NodePath = ^"../ShopController"
 
-@onready var reward_controller: Node = get_node_or_null(reward_controller_path)
+@onready var shop_controller: Node = get_node_or_null(shop_controller_path)
 
 
 func _ready() -> void:
@@ -13,7 +13,7 @@ func _ready() -> void:
 
 
 func _on_interaction_requested(player: Node3D) -> void:
-	if reward_controller == null or not reward_controller.has_method(&"open_reward_for_player"):
+	if shop_controller == null or not shop_controller.has_method(&"open_shop_for_player"):
 		return
-	if reward_controller.open_reward_for_player(player):
+	if shop_controller.open_shop_for_player(player):
 		get_viewport().set_input_as_handled()

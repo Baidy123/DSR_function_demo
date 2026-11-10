@@ -10,6 +10,8 @@ extends Resource
 @export var stage_index: int = 1
 ## 任务目标场地标识，用于记录与面板显示。
 @export var target_area: StringName = &""
+## 完成时固定奖励的货币；0 表示不奖励，进入 COMPLETED 时由任务控制器一次性发放。
+@export_range(0, 999999, 1) var money_reward: int = 100
 
 @export_group("阶段窗口")
 ## 阶段序号小于该值时任务未解锁，不参与条件评估；0 表示不限。

@@ -20,7 +20,9 @@ func interact(player: Node3D) -> bool:
 		push_error("TavernReturnPortal: GameState is missing")
 		return false
 	state_node.completed_level = level_number
-	state_node.set_pending_player_state(PlayerCampaignState.capture(player))
 	if level_number == 1:
 		state_node.task_a_returned = "returned"
+	var snapshot: Dictionary = PlayerCampaignState.capture(player)
+	state_node.set_pending_player_state(snapshot)
+	state_node.record_campaign_checkpoint(level_number, snapshot)
 	return super.interact(player)

@@ -18,9 +18,15 @@ SYSTEM_TESTS = [
     "presentation_range_reset_test", "dialogue_cache_test",
     "quest_conditions_test", "quest_system_test", "stage_system_test",
     "quest_panel_test", "record_player_quest_test",
-    "quest_encounter_loop_test", "reward_npc_test", "reward_per_level_test", "reward_board_test", "campaign_flow_test",
+    "reward_board_test",
+    "campaign_checkpoint_test", "campaign_flow_test",
     "campaign_quest_task_test", "debug_complete_level_test", "combat_clear_signal_test",
-    "quest_portal_test",
+    "quest_portal_test", "shop_catalog_test",
+    "shop_state_test",
+    "shop_weapon_test",
+    "shop_board_test",
+    "shop_flow_test",
+    "quest_money_reward_test",
 ]
 # The optional interaction prototype is absent from some local project baselines.
 if (DIRECTORY / "interactable_test.gd").is_file():
@@ -49,7 +55,7 @@ SPECIAL = {
     "shot_collision_test.gd": "run by combat_compatibility_test",
     "range_reset_test.gd": "run by presentation_range_reset_test",
     "presentation_editor_test.gd": "standalone --headless --editor --script",
-    "encounter_controller_edge_test.gd": "runtime edge suite intentionally emits push_error for rejected dependencies; run standalone",
+    "encounter_controller_edge_test.gd": "isolated compatibility test; intentionally emits push_error for rejected missing-board dependency; run standalone",
     "weapon_fire_mode_inspector_test.gd": "standalone --headless --editor --script",
     "enemy/enemy_training_inspector_test.gd": "standalone --headless --editor --script",
     "test_cover_instance_save.gd": "Godot AI editor harness with saved arena fixture",

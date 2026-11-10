@@ -41,6 +41,7 @@ var _load_path := ""
 var _load_reload := false
 var _load_failed := false
 var _before_load: StringName
+var _campaign_restore_undo: Dictionary = {}
 var _connections: Array[Dictionary] = []
 
 func configure(host: Node, bindings: Dictionary = {}) -> void:
@@ -74,7 +75,11 @@ func initialize() -> void:
 	if _result_view == null:
 		_result_view = ResultView.new()
 		_result_view.bind(_health)
+	if _result_view.has_method(&"set_tavern_available"):
+		_result_view.set_tavern_available(
+			is_instance_valid(_level_flow) and _level_flow.has_method(&"next_scene_path"))
 	_link(_result_view, &"restart_requested", request_restart)
+	_link(_result_view, &"return_to_tavern_requested", request_return_to_tavern)
 	_link(_health, &"died", _on_player_died)
 	_link(_level_flow, &"continue_requested", request_next_level)
 	_link(_waves, &"encounter_completed", _on_waves_completed)
@@ -191,7 +196,29 @@ func _finish_completion() -> void:
 
 func request_restart() -> void:
 	if state != &"dead": return
+	_rollback_campaign_restore()
+	var game_state := get_node_or_null("/root/GameState")
+	if game_state != null and game_state.has_method(&"prepare_level_retry_state"):
+		game_state.prepare_level_retry_state()
 	_start_load("", true)
+
+func request_return_to_tavern() -> void:
+	if state != &"dead": return
+	if not is_instance_valid(_level_flow) or not _level_flow.has_method(&"next_scene_path"):
+		report_action_error("death", "Returning to the tavern requires a level flow adapter")
+		_result_view.show_load_error()
+		return
+	var path: String = _level_flow.next_scene_path()
+	if path.is_empty():
+		report_action_error("death", "The level flow has no tavern scene path")
+		_result_view.show_load_error()
+		return
+	var game_state := get_node_or_null("/root/GameState")
+	if game_state != null and game_state.has_method(&"restore_campaign_checkpoint"):
+		if _campaign_restore_undo.is_empty() and game_state.has_method(&"capture_campaign_state"):
+			_campaign_restore_undo = game_state.capture_campaign_state()
+		game_state.restore_campaign_checkpoint()
+	_start_load(path, false)
 
 func request_restart_from_flow() -> void:
 	if state not in [&"running", &"guide"]: return
@@ -231,7 +258,9 @@ func _execute_load(generation: int) -> void:
 	if scene_loader.is_valid(): result = scene_loader.call(_load_path, _load_reload)
 	elif _load_reload: result = get_tree().reload_current_scene()
 	else: result = get_tree().change_scene_to_file(_load_path)
-	if result == OK: return # Old ownership is released on exit, before the new scene prepares.
+	if result == OK:
+		_campaign_restore_undo = {}
+		return # Old ownership is released on exit, before the new scene prepares.
 	_last_error = "Scene load failed: %s" % error_string(result)
 	_load_failed = true
 	_set_state(_before_load)
@@ -240,6 +269,14 @@ func _execute_load(generation: int) -> void:
 	else:
 		# A custom UI can report this diagnostic and invoke request_load_retry().
 		report_action_error("loading", _last_error)
+
+func _rollback_campaign_restore() -> void:
+	if _campaign_restore_undo.is_empty():
+		return
+	var game_state := get_node_or_null("/root/GameState")
+	if game_state != null and game_state.has_method(&"restore_campaign_state"):
+		game_state.restore_campaign_state(_campaign_restore_undo)
+	_campaign_restore_undo = {}
 
 func request_wave_for_flow(wave: Node, present: bool, options: Dictionary, scope: int = 1, target_path: NodePath = NodePath()) -> bool:
 	if _waves == null or not is_instance_valid(wave): return false
