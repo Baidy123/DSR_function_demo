@@ -27,6 +27,8 @@
 已有 NPC、商店和 Interactable 接口都已转交导演。自定义入口可以直接提交请求：
 
 ```gdscript
+const SceneDirector = preload("res://scripts/systems/scene_director.gd")
+
 var director := SceneDirector.for_node(self)
 if director == null:
     push_warning("当前场景缺少 SceneDirector")
@@ -164,10 +166,12 @@ REQUEST_WAVE 等真实生成才继续；若勾选 **Present Spawn**，动作的 
 | GUIDE | 调用 begin() 并等待无参 finished，可选择是否暂停 |
 | WAIT_SIGNAL | 等待 Completed Trigger 的来源信号及过滤结果 |
 | COMPLETE_SCENE | 请求完成，必要镜头结束后显示结果，同帧死亡优先 |
-| RESTART | 请求重载当前场景 |
+| RESTART | 编排者配置的重载动作；当前五关未配置，不是玩家平时的重试入口 |
 | CHANGE_SCENE | 请求 Scene Path 指定场景，失败可重试原目标 |
 
 CALL_METHOD 不接受以下划线开头的私有方法，并检查参数数量和基础类型。即时方法留空 Completed Trigger；需要等待异步完成时，必须同时配置 **Completed Trigger** 与 **Cancel Method**（公开、无参停止方法），缺少取消契约会在执行前拒绝。订阅先于方法调用，不遗漏同步完成；滑门状态改变不等于 Tween 已经结束。
+
+规则请求排队后，真正开始前会重新检查 **Condition**。条件已经失效时取消本次动作，原因是 `condition_changed`，不会先执行副作用。本次规则已触发，不自动重投；REGION 规则在所属区域复位后可以重新触发，SCENE 规则本场不重播。
 
 ## 五、接入可取消的脚本演出
 
@@ -204,6 +208,8 @@ func _finished() -> void:
 切场景仍配置 **ChangeSceneEffect → Scene Path**。普通交互默认 plain；QuestPortal 自动准备入关快照，TavernReturnPortal 按原 Level Number 准备完成级别、返程快照与检查点，无需重配资源。准备不改变 GameState；引擎接受切换后才提交，目标 `_ready()` 已能读取，且快照仍只消费一次。切场成功后旧来源已离树，不补发旧节点的交互信号；跨场结果查询 transition 请求与业务状态。
 
 普通门加载失败会归还本次控制，显示“交互失败，请重试”，再次按 E 重试当前配置目标。死亡／结果按钮和规则切换失败保留原暂停与重试界面；`request_load_retry()` 保留原路径与 reload 方式。源场景卸载后返回的旧异步加载结果无权提交状态。原检查点规则继续恢复医疗包资源、武器、弹药、货币及商店旗标。
+
+引擎尚未接受加载时，可用 `cancel_request()` 取消加载请求或其父交互；来源离场也会取消，并恢复本次状态、界面与暂停所有权，迟到结果不能再提交。引擎接受切换后进入提交边界，旧来源正常离场不会把成功切换误判为取消。
 
 规则的 Event Nodes 和高级 Triggers 都为空表示准备好后自动运行一次。不同规则可独立等待，事件回调只记录事实，动作在调度边界推进。普通等待在暂停时冻结，资源不保存本场执行进度。
 

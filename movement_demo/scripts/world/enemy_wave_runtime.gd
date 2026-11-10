@@ -16,6 +16,7 @@ signal wave_cleared(index: int)
 signal encounter_completed
 ## Synchronous presentation barrier, before public notifications.
 signal wave_committed(wave: Node, focus: Vector3)
+signal deployment_failed(reason: String)
 
 enum State { WAITING, DELAY, BLOCKED, SPAWNING, ACTIVE, CLEARING, COMPLETED, ERROR }
 const STATE_NAMES := ["等待入场", "波前等待", "等待刷新点", "正在生成", "本波战斗", "清理本波", "全部完成", "配置或运行错误"]
@@ -639,6 +640,7 @@ func _fail(reason: String) -> void:
 	_state = State.ERROR
 	_reason = reason
 	_clear_subscriptions()
+	deployment_failed.emit(reason)
 
 func _refresh_summary() -> void:
 	if _released or _state in [State.ERROR, State.COMPLETED]: return

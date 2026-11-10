@@ -45,6 +45,9 @@ func _start(request: Request) -> void:
 	if director == null or not director.request_is_current(request):
 		cancel(request.id, &"stale")
 		return
+	if request._start_guard.is_valid() and not request._start_guard.call():
+		cancel(request.id, &"condition_changed")
+		return
 	if not request._background and request.parent_id == 0: _foreground = request.id
 	request._started = true
 	request._status = &"running"

@@ -57,6 +57,12 @@ func _initialize() -> void:
 
 func _run() -> void:
 	root.get_node("DebugSettings").enabled = false
+	if OS.get_cmdline_user_args().has("--review-only"):
+		await _failed_wave_request()
+		print("Review wave failure: %d/%d passed" % [checks - failures, checks])
+		quit(1 if failures else 0)
+		return
+	await _failed_wave_request()
 	await _subscriptions()
 	_configuration_roundtrip()
 	await _event_node_configuration()
@@ -71,6 +77,25 @@ func _run() -> void:
 	await _director_authorization()
 	print("ENEMY WAVE EVENTS: %d/%d passed" % [checks - failures, checks])
 	quit(1 if failures else 0)
+
+func _failed_wave_request() -> void:
+	var region := _fixture(1)
+	var host = region.get_node("EnemyWaves")
+	var wave = host.get_node("Wave1")
+	wave.start_mode = Wave.StartMode.REQUEST
+	wave.triggers.clear()
+	await _mount(region)
+	var director = load("res://scripts/systems/scene_director.gd").for_node(host)
+	var request = director.request_action(&"wave", {"source": host, "target": wave})
+	# Simulate a captured deployment becoming unusable before instantiation.
+	host.runtime._waves[0].deployments.clear()
+	await _settle(8)
+	check(host.runtime.debug_snapshot().state == "ERROR", "actual incomplete deployment enters runtime error")
+	check(request.status == &"failed" and "complete wave deployment" in String(request.reason),
+		"runtime deployment error settles the waiting director request with its cause")
+	check(director._wave_requests.is_empty(), "failed wave does not retain an active execution")
+	region.free()
+	await _settle(2)
 
 func _director_authorization() -> void:
 	for mode in [Wave.StartMode.SEQUENCE, Wave.StartMode.EVENTS, Wave.StartMode.REQUEST]:

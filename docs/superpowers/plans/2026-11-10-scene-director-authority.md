@@ -204,4 +204,38 @@ Task 4: transition requests 17 checks and request identity 19 checks passed; 11/
 
 Task 5: final systems/enemy gate logs in movement_demo/logs/director-authority-task5-final/. 9/11 suites clean; original campaign_flow_test 3 magazine assertions and enemy_wave_test first-level completion assertion remain unchanged. New wave-mode permits, real dialogue-to-reinforcement barrier and region-owner cancellation pass. Authored enemy baseline files remain byte-identical.
 
-Task 6: six authored scenes each resolve exactly one explicit director; missing-director and two-region checks pass (28 headless checks). Real OpenGL capture passes 47 checks; editor configuration 17/17 with a scan-aborted warning at exit. Final 28-suite gate retains only the two original failing suites / four assertions documented in testing.md. Existing 27 purchased-weapon assertions remain, with the entry snapshot inspected after actual scene acceptance. Of 108 originally dirty paths, 107 remain byte-identical; Main retains its authored content plus the explicit director instance. Final independent review pending.
+Task 6: six authored scenes each resolve exactly one explicit director; missing-director and two-region checks pass (28 headless checks). Real OpenGL capture passes 47 checks; editor configuration 17/17 with a scan-aborted warning at exit. The 28-suite gate retains only the two original failing suites / four assertions documented in testing.md. Existing 27 purchased-weapon assertions remain, with the entry snapshot inspected after actual scene acceptance. At that stage, of 108 originally dirty paths, 107 remained byte-identical; Main retained its authored content plus the explicit director instance.
+
+## 最终独立审阅与收尾（2026-11-11）
+
+一次静态独立审阅提出三项 Important，无 Critical／Minor：
+
+1. 加载父链过早从调度器分离，导致引擎接受前 `cancel_request` 和来源离场失效。新增独立取消入口及弱来源监听，取消会恢复状态／pending UI／本次暂停；原生成代次仍阻止迟到提交。
+2. Runtime 实例化／出生检查失败，没有结束等待的 wave 请求。新增 `deployment_failed(reason)` 结果通知，导演使等待请求失败并清理记录，原因原样保留。
+3. 排队动作没有重查规则条件。启动边界增加条件守卫，条件变化则取消为 `condition_changed`，本次规则不自动重投，REGION 复位后按原规则重新触发。
+
+三项在一次修复阶段完成。定向复现先失败后通过（加载／条件 6 项、波次 3 项），原切场专项 23 项通过。用户明确要求减少无实际价值的测试，修复后没有重新运行先前的 28 套；旧失败仍未诊断根因。指南示例补齐 preload，现行配置说明及待办同步。
+
+用户追加要求改变本地参数的提交范围：上传本地敌人血量／移速／武器／训练／波次配置，并把 Main 玩家生命设为 100。已提交 `f7bd2b8`，只加载核对相关暂存资源及本地 Main（6 项）；不上传插件、地形、其他本地文档或旧撤回记录。
+
+用户再次明确：只有死亡界面可重新挑战当前关，不能返回上一关。现有 request_restart 已检查 dead，五关未配置常规重载规则；此处只纠正文档措辞，返回酒店指酒馆和检查点恢复，不表示关卡回选或撤销已通关关卡。
+
+审阅者未判断的事项逐项裁决：旧四条失败只保留对照，不推断游戏正常，代价是根因仍待定位；原有未提交修改仅按用户新授权上传敌人参数，其他继续保留，代价是远端与整个本地工作区仍有差异；取消不通用撤回已结算物品，遵循批准设计，代价是中途取消前已发物品仍保留；最终待办原先留待审阅完成，现已更新，没有未完成实现借此被标记完成。无延后 Minor。
+
+## 执行裁决存档
+
+以下为执行者的实施裁决，不冒充用户逐项指定的设计要求；每项保留依据和错误时的代价。
+
+- Work in the existing main checkout with a byte-for-byte baseline backup — the user approved this plan's local baseline and ordinary main stage pushes; an isolated clean checkout would omit authored local configuration — incorrect attribution could upload unrelated edits, so construct staged changes against the saved baseline.
+- Run the plan's targeted suites instead of the entire repository — project instructions explicitly require relevant checks without broadening absent new evidence — unrelated failures remain visible in recorded baseline results.
+- Existing campaign_flow_test magazine failures are recorded baseline outcomes, not new regressions — stage gate requires other named suites clean and an exact match to the captured baseline errors, without modifying test assertions or authored resources — this does not claim campaign_flow_test passes.
+- Move explicit scene_root fixture binding forward into Task 3 and update the adversarial pause subclass signature now - new authority validation and the Task 2 pause parameter expose these old fixture assumptions; all original behavior assertions stay intact - leaving this late would misclassify legitimate sibling action targets as foreign.
+- Replace two legacy assertions requiring checkpoint/entry publication before a failed load with unchanged-on-failure assertions, and add successful acceptance coverage - the approved transactional spec forbids those old transient writes - success restoration, paid equipment and old-checkpoint defaults remain explicitly tested.
+- Extend SceneTransition with optional final guard and accepted callbacks - they enforce generation validation after its environment-settling await and commit before target ready - an incorrect ordering would lose cross-scene state; real target-ready and cancelled async-loader tests cover the boundary.
+- Submit automatic wave requests at the eligible physics candidate boundary, not inside raw event callbacks - the spec requires callbacks to record facts without recursive action execution - delay clocks remain business-owned and final permission stays adjacent to commit.
+- Move the existing purchased-loadout assertion after real scene acceptance, preserving its content and all 27 checks - the approved transaction deliberately forbids early entry-state publication - a failed accepted transfer would still fail the original weapon assertion.
+- Honor the latest user request to stop redundant broad tests; run only focused reproductions and the directly affected transition suite after fixes - repeated 28-suite runs are no longer authorized as useful work - unrelated regressions are not re-evaluated by the final fix pass.
+- Baseline failure causes were outside static review - retain exact results without inferring gameplay health - a real old gameplay bug could remain unresolved.
+- Pre-existing local files were outside reviewed range - latest user explicitly authorized enemy parameters and Main health100, handled in f7bd2b8; other files stay local - remote intentionally still differs from the full local workspace.
+- Already-settled interaction grants survive cancellation - approved design leaves settlement and rollback to business owners - a player may keep an item granted before interruption.
+- Final TODO was pending during review - mark complete only after important fixes and focused evidence - stale status could otherwise misstate delivery.

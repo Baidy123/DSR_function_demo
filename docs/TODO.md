@@ -209,7 +209,7 @@
 
 ## 后续方向
 
-- [ ] SceneDirector 统一场景调度：六阶段实现与定向验收完成，等待一次最终独立整体审阅；酒馆与五关明确唯一入口，对话／商店／交互／脚本／加载／波次／出口共用授权与取消。[使用指南](gameplay/SCENE_DIRECTOR.md)已整理；两套原有测试的四条失败单列于[验证](testing.md)，不修改本地数值迁就测试。见[实施记录](superpowers/plans/2026-11-10-scene-director-authority.md)。
+- [x] SceneDirector 统一场景调度：六阶段实现及一次独立审阅完成；加载取消、波次失败终态、排队条件复核三项已修复。酒馆与五关明确唯一入口，对话／商店／交互／脚本／加载／波次／出口共用授权与取消。[使用指南](gameplay/SCENE_DIRECTOR.md)已整理；原有测试失败、此次最小验证范围和后续参数同步见[验证](testing.md)与[实施记录](superpowers/plans/2026-11-10-scene-director-authority.md)。
 
 - [ ] 后续维护范围：按[维护设计](superpowers/specs/2026-10-23-ai-maintenance-design.md)继续整理个人 Search 内部状态与其他公共接口。新协调器及当前地图问题已按完整重写计划验收，旧11/12记录仅保留为历史；不再沿旧调度接口继续打补丁。
 

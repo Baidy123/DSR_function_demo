@@ -20,6 +20,7 @@ var _interactions
 var _scripts
 var _load_request
 var _load_chain: Array = []
+var _load_connections: Array[Dictionary] = []
 var _load_parameters: Dictionary = {}
 var _load_owns_terminal := false
 var _issuing_parent
@@ -107,6 +108,7 @@ func initialize() -> void:
 	_waves = _bindings.get("wave_runtime")
 	if _waves != null and _waves.has_method("bind_authority"):
 		_waves.bind_authority(_schedule_wave, authorize_wave_deployment)
+		_link(_waves, &"deployment_failed", _on_wave_deployment_failed)
 	_camera = _bindings.get("camera")
 	_result_view = _bindings.get("result_view")
 	if _result_view == null:
@@ -309,13 +311,42 @@ func _start_transition(request: Request) -> void:
 	_result_view.set_pending(true)
 	if is_instance_valid(_level_flow): _level_flow.set_transition_pending(true)
 	_transitions = Transitions.new(self)
+	for execution in _load_chain:
+		for key in [&"source", &"target", &"player", &"scope_owner"]:
+			var node: Node = execution.node(key)
+			if node == null: continue
+			var callback := _cancel_loading.bind(request.id, &"target_exited")
+			if not node.tree_exiting.is_connected(callback):
+				node.tree_exiting.connect(callback)
+				_load_connections.append({"node": weakref(node), "callback": callback})
 	_transitions.begin_scene_action(request)
+
+func _cancel_loading(id: int, reason: StringName) -> bool:
+	if _load_request == null or _transitions.is_committing(): return false
+	for execution in _load_chain:
+		if execution.id == id:
+			_transitions.cancel_scene_action(_load_request, reason)
+			return true
+	return false
 
 func finish_transition(request: Request, status: StringName, reason: StringName = &"") -> void:
 	if _load_request != request: return
+	for link in _load_connections:
+		var node = link.node.get_ref()
+		if is_instance_valid(node) and node.tree_exiting.is_connected(link.callback):
+			node.tree_exiting.disconnect(link.callback)
+	_load_connections.clear()
 	var chain := _load_chain
 	_load_chain = []
 	_load_request = null
+	if status == &"cancelled":
+		_load_failed = false
+		_set_state(&"running" if _before_load == &"guide" and _guide == null else _before_load)
+		if _load_owns_terminal:
+			_pauses.release(_terminal_token)
+			_terminal_token = 0
+		_result_view.set_pending(false)
+		if is_instance_valid(_level_flow): _level_flow.set_transition_pending(false)
 	if status == &"failed":
 		_last_error = "Scene load failed: %s" % reason
 		_load_failed = true
@@ -378,6 +409,10 @@ func _clear_wave_request(request: Request, id: int) -> void:
 	if _wave_requests.get(id) != request: return
 	_wave_requests.erase(id)
 	if request.status != &"completed": _armed_presentations.erase(id)
+
+func _on_wave_deployment_failed(reason: String) -> void:
+	for request in _wave_requests.values().duplicate():
+		request.fail(reason)
 
 func authorize_wave_deployment(wave: Node) -> bool:
 	if not is_instance_valid(wave) or state not in [&"running", &"guide"] or _load_failed or _completion_pending or get_tree().paused: return false
@@ -578,6 +613,7 @@ func request_action(kind: StringName, context: Dictionary = {}) -> Request:
 		request._settle(&"rejected", &"node_in_parameters")
 		return request
 	request.parameters = parameters.duplicate(true)
+	request._start_guard = context.get("start_guard", Callable())
 	for key in [&"source", &"target", &"player", &"scope_owner"]:
 		var node = context.get(key, _host if key == &"source" else null)
 		if is_instance_valid(node): request._nodes[key] = weakref(node)
@@ -625,6 +661,7 @@ func request_is_current(request: Request) -> bool:
 	return _initialized and request.generation == _generation and _requests != null and _requests.owns(request)
 
 func cancel_request(id: int, reason: StringName = &"cancelled") -> void:
+	if _cancel_loading(id, reason): return
 	if _requests != null: _requests.cancel(id, reason)
 
 func execute_request(request: Request) -> void:

@@ -13,6 +13,10 @@ class Player extends Node3D:
 
 class Guide extends Node:
 	signal finished
+	var allowed := true
+	var calls := 0
+	func condition() -> bool: return allowed
+	func run_once() -> void: calls += 1
 	func begin() -> void: pass
 	func cancel() -> void: pass
 
@@ -55,7 +59,59 @@ func interactable(f: Dictionary, script = null):
 	f.scene.add_child(item)
 	return item
 
+func _review_cancellation_and_condition() -> void:
+	var state := root.get_node("GameState")
+	for source_exit in [false, true]:
+		var f := fixture()
+		var loader := DelayedLoader.new()
+		f.director.scene_loader = loader.load_scene
+		var before: Dictionary = state.capture_campaign_state()
+		var request = f.director.request_action(&"transition", {"source": f.source,
+			"parameters": {"path": "res://tests/scene_transition_target.tscn", "mode": &"enter_level", "player_snapshot": {"cancelled": true}}})
+		await process_frame
+		await process_frame
+		if source_exit: f.source.free()
+		else: f.director.cancel_request(request.id, &"user_cancelled")
+		check(request.status == &"cancelled" and f.director.state == &"running" and not paused,
+			"unaccepted load cancellation restores request, scene and controls (source exit=%s)" % source_exit)
+		loader.release_load.emit()
+		await process_frame
+		check(state.capture_campaign_state() == before, "cancelled late loader cannot publish campaign state")
+		f.scene.free()
+		current_scene = null
+		await process_frame
+	var f := fixture()
+	var rule := SceneFlowRule.new()
+	rule.label = "Queued predicate"
+	rule.condition_target = f.source.get_path()
+	rule.condition_method = &"condition"
+	var action := SceneFlowAction.new()
+	action.kind = SceneFlowAction.Kind.CALL_METHOD
+	action.target_path = f.source.get_path()
+	action.method = &"run_once"
+	rule.actions.append(action)
+	f.director._flows.configure([rule])
+	var guide = f.director.request_action(&"guide", {"source": f.source, "target": f.source,
+		"parameters": {"pause_world": false}})
+	f.director.advance(0.0)
+	var queued = f.director._flows._entries[0].request
+	check(queued != null and queued.status == &"queued", "rule action queues behind active dialogue-like control")
+	f.source.allowed = false
+	f.source.finished.emit()
+	f.director.advance(0.0)
+	check(f.source.calls == 0 and queued.status == &"cancelled" and queued.reason == &"condition_changed",
+		"queued action revalidates its predicate before side effects")
+	f.scene.free()
+	current_scene = null
+	await process_frame
+
 func _run() -> void:
+	if OS.get_cmdline_user_args().has("--review-only"):
+		await _review_cancellation_and_condition()
+		print("Review transition/condition: %d checks; %d failures" % [checks, failures])
+		quit(0 if failures == 0 else 1)
+		return
+	await _review_cancellation_and_condition()
 	var state := root.get_node("GameState")
 	state.clear_interaction_state()
 	var f := fixture()

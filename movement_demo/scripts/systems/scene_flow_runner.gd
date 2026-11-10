@@ -173,7 +173,11 @@ func _step(entry: Dictionary, delta: float) -> void:
 
 func _submit(entry: Dictionary, kind: StringName, target: Node, parameters: Dictionary) -> void:
 	entry.request = _director.request_action(kind, {"source": _host, "target": target, "parameters": parameters,
-		"scope": entry.rule.scope, "scope_owner": _director.region_owner(), "origin": &"rule"})
+		"scope": entry.rule.scope, "scope_owner": _director.region_owner(), "origin": &"rule",
+		"start_guard": _condition_at_start.bind(entry, entry.generation, entry.execution)})
+
+func _condition_at_start(entry: Dictionary, generation: int, execution: int) -> bool:
+	return entry.generation == generation and entry.execution == execution and entry.active and _condition(entry)
 
 func _cancel_request(entry: Dictionary, reason: StringName) -> void:
 	var request = entry.get("request")

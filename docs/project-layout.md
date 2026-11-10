@@ -125,6 +125,8 @@ Equipment 交接当前枪给 Combat；相机订阅 `weapon_changed`，表现订�
 
 波次候选在物理边界取得导演请求，Runtime 的 authorize_deployment 是紧邻真实提交的纯检查，保留原空间／清空业务。出场镜头沿唯一 wave_committed 回调安排；完成请求等前台收尾后，导演才调用 LevelFlow.execute_scene_completion 启用原出口。公开 start_encounter／request_wave／show_completion 为兼容请求入口，区域取消同时核对 scope_owner。
 
+排队规则通过内部启动条件复核，条件失效时取消本次执行。Runtime 的 deployment_failed 将实际部署错误传回导演，结束仍在等待的请求。加载父链在引擎接受前保留独立取消入口和弱来源监听，接受后的旧场景退出由加载适配完成收尾。
+
 - `world/enemy_wave_controller.gd` 是 SceneDirector 场景入口兼容脚本，原 UID 保留；五关入口已按用户要求改名，Wave/Squad层级不动。`enemy_wave_runtime.gd` 执行模板、合法出生、各波状态、搜索与清理；`enemy_wave_definition.gd` 保存部署、事件节点与手选镜头配置。
 - `systems/scene_director.gd` 是入口内部的场景核心，不依赖Wave或PlayGuide；`scene_flow_runner.gd` 推进资源规则与动作，`scene_pause_coordinator.gd` 统一记录拥有者。仅内部核心使用Always，区域和敌人保持可暂停。
 - `systems/scene_event.gd` 是可放入场景的事件节点，来源信号或trigger()统一发triggered；`scene_event_trigger/filter/subscription.gd` 适配和过滤，`scene_flow_rule/action.gd` 保存静态配置。接线见[教程](gameplay/SCENE_DIRECTOR.md)。

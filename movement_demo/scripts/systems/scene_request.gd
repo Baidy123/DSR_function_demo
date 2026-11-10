@@ -26,6 +26,7 @@ var _background := false
 var _result: Dictionary = {}
 var _director: WeakRef
 var _nodes: Dictionary = {}
+var _start_guard: Callable
 
 func node(key: StringName) -> Node:
 	var ref: WeakRef = _nodes.get(key)
