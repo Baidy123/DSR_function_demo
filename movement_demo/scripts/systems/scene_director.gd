@@ -9,6 +9,7 @@ const Scheduler = preload("res://scripts/systems/scene_request_scheduler.gd")
 const Interactions = preload("res://scripts/systems/scene_interaction_executor.gd")
 const Scripts = preload("res://scripts/systems/scene_script_executor.gd")
 const Transitions = preload("res://scripts/systems/scene_transition_executor.gd")
+const PauseMenuScene = preload("res://scenes/ui/pause_menu.tscn")
 const REGISTRATION := &"scene_director_root"
 var _scene_root: Node
 var _requests
@@ -41,6 +42,8 @@ var _result_view
 var _waves
 var _flows
 var _pauses
+var _pause_menu: CanvasLayer
+var _menu_token := 0
 var _camera: Camera3D
 var _owns_camera := false
 var _initialized := false
@@ -126,6 +129,11 @@ func initialize() -> void:
 	_flows = Flows.new(self, _host)
 	_flows.configure(_bindings.get("rules", []))
 	if _waves != null: _waves.prepare_events()
+	_pause_menu = PauseMenuScene.instantiate()
+	add_child(_pause_menu)
+	_link(_pause_menu, &"pause_requested", request_pause_menu)
+	_link(_pause_menu, &"resume_requested", resume_from_pause_menu)
+	_link(_pause_menu, &"quit_requested", _quit_game)
 	var guide: Node = _bindings.get("guide")
 	if guide != null:
 		_set_state(&"running")
@@ -148,6 +156,7 @@ func _process(delta: float) -> void:
 
 func advance(delta: float) -> void:
 	if not _initialized or not is_inside_tree(): return
+	if _menu_token != 0: return
 	_requests.advance(delta)
 	if _active_presentation != 0 and _pauses.can_advance_presentation(_camera_token):
 		if is_instance_valid(_camera): _camera.advance_presentation(delta)
@@ -159,6 +168,23 @@ func advance(delta: float) -> void:
 
 func can_run_actions() -> bool:
 	return _initialized and not _load_failed and state in [&"running", &"guide"] and not get_tree().paused
+
+## 普通暂停只在可游玩、没有其他界面或演出占用控制时打开。
+func request_pause_menu() -> void:
+	if not _initialized or _menu_token != 0 or _load_failed: return
+	if state not in [&"running", &"completed"] or get_tree().paused: return
+	if _requests.snapshot().foreground != 0 or _pauses.snapshot().count != 0: return
+	_menu_token = _pauses.acquire(self, &"pause_menu", true)
+	_pause_menu.open_menu()
+
+func resume_from_pause_menu() -> void:
+	if is_instance_valid(_pause_menu): _pause_menu.close_menu()
+	if _menu_token != 0:
+		_pauses.release(_menu_token)
+		_menu_token = 0
+
+func _quit_game() -> void:
+	if _menu_token != 0: get_tree().quit()
 
 func begin_guide(provider: Node, pause_world: bool = true, scope: int = 0) -> bool:
 	var request = request_action(&"guide", {"source": _host, "target": provider, "scope": scope,
@@ -556,6 +582,7 @@ func report_action_error(rule: String, reason: String) -> void:
 func _set_state(value: StringName) -> void:
 	if state == value: return
 	state = value
+	if state != &"running": resume_from_pause_menu()
 	state_changed.emit(state)
 
 func debug_snapshot() -> Dictionary:
@@ -567,6 +594,7 @@ func debug_snapshot() -> Dictionary:
 
 func _exit_tree() -> void:
 	_generation += 1
+	resume_from_pause_menu()
 	if not _initialized: return
 	if _load_request != null and not _transitions.is_committing():
 		_transitions.cancel_scene_action(_load_request, &"scene_exited")

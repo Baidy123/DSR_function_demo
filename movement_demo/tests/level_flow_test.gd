@@ -32,7 +32,7 @@ func _run() -> void:
 	await scene_changed
 	await process_frame
 	await process_frame
-	var initial_guide := current_scene.get_node("LevelFlow/PlayGuide")
+	var initial_guide: CanvasLayer = await _open_menu_guide(current_scene)
 	check(initial_guide.get_node("Backdrop").size == root.get_visible_rect().size, "首次启动背景铺满视口，无需先调整窗口")
 	check(root.get_visible_rect().encloses(initial_guide.get_node("Backdrop/Panel/Content/Close").get_global_rect()), "首次启动关闭按钮完整可见")
 	if fullscreen_proof:
@@ -43,6 +43,7 @@ func _run() -> void:
 		print("LEVEL FLOW FULLSCREEN: %d/%d passed" % [checks - failures, checks])
 		quit(1 if failures else 0)
 		return
+	await _close_menu_guide(current_scene, initial_guide)
 
 	for number in range(1, 6):
 		var scene := current_scene
@@ -63,11 +64,13 @@ func _run() -> void:
 				and fallback.reflected_light_source == Environment.REFLECTION_SOURCE_DISABLED,
 				"传送后恢复中性默认渲染环境"
 			)
-		var guide = scene.get_node("LevelFlow/PlayGuide")
+		check(not scene.get_node("LevelFlow/PlayGuide").visible and not paused,
+			"第%d关入场不再自动显示说明或暂停" % number)
+		var guide: CanvasLayer = await _open_menu_guide(scene)
 		var player = scene.get_node("Player")
 		var combat = player.get_node("Combat")
 		var health = player.get_node("Health")
-		check(guide.visible and paused, "第%d关入场显示说明并暂停" % number)
+		check(guide.visible and paused, "第%d关从设置打开说明并暂停" % number)
 		var before: Vector3 = player.position
 		var stamina_before: float = player.stamina
 		var rounds_before: int = combat.ammo.magazine_rounds
@@ -98,8 +101,10 @@ func _run() -> void:
 			root.content_scale_size = root.size
 			await process_frame
 		await _click(guide.get_node("Backdrop/Panel/Content/Close"))
-		check(not guide.visible and not paused and combat.ammo.magazine_rounds == rounds_before,
-			"第%d关真实关闭按钮恢复游玩且不误开火" % number)
+		check(not guide.visible and paused and combat.ammo.magazine_rounds == rounds_before,
+			"第%d关关闭说明返回设置，保持暂停且不误开火" % number)
+		await _resume_menu(scene)
+		check(not paused, "第%d关继续游戏才恢复游玩" % number)
 		if number == 2:
 			health.debug_mode = false
 			health.receive_hit(health.max_health)
@@ -109,8 +114,7 @@ func _run() -> void:
 				"死亡按钮只重开当前第2关")
 			scene = current_scene
 			guide = scene.get_node("LevelFlow/PlayGuide")
-			check(guide.visible and paused, "死亡重开后重新显示说明")
-			await _click(guide.get_node("Backdrop/Panel/Content/Close"))
+			check(not guide.visible and not paused, "死亡重开直接游玩，不再自动弹出说明")
 			health = scene.get_node("Player/Health")
 			player = scene.get_node("Player")
 
@@ -211,6 +215,27 @@ func _open_a(scene: Node, player: Node3D) -> void:
 	await process_frame
 
 
+func _open_menu_guide(scene: Node) -> CanvasLayer:
+	var menu: CanvasLayer = Director.for_node(scene).get_node("PauseMenu")
+	_key(KEY_ESCAPE, true)
+	_key(KEY_ESCAPE, false)
+	await process_frame
+	await _click(menu.get_node("Backdrop/Center/Panel/Content/Main/Settings"))
+	await _click(menu.get_node("Backdrop/Center/Panel/Content/Settings/Guide"))
+	return menu.get_node("PlayGuide")
+
+
+func _close_menu_guide(scene: Node, guide: CanvasLayer) -> void:
+	await _click(guide.get_node("Backdrop/Panel/Content/Close"))
+	await _resume_menu(scene)
+
+
+func _resume_menu(scene: Node) -> void:
+	var menu: CanvasLayer = Director.for_node(scene).get_node("PauseMenu")
+	await _click(menu.get_node("Backdrop/Center/Panel/Content/Settings/Back"))
+	await _click(menu.get_node("Backdrop/Center/Panel/Content/Main/Resume"))
+
+
 func _choose(ui, keyword: String) -> void:
 	for child in ui.choices.get_children():
 		if child.text.contains(keyword):
@@ -223,6 +248,7 @@ func _choose(ui, keyword: String) -> void:
 
 func _key(key: Key, pressed: bool) -> void:
 	var event := InputEventKey.new()
+	event.keycode = key
 	event.physical_keycode = key
 	event.pressed = pressed
 	Input.parse_input_event(event)

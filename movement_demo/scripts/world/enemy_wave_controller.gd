@@ -26,9 +26,9 @@ signal encounter_completed
 ## 当前关结果界面，默认同级LevelFlow；其关卡编号和五关路径表保持原配置。
 ## 留空不启用默认全波通关界面；独立玩法可另接自定义结果。
 @export_node_path("CanvasLayer") var result_view_path: NodePath = ^"../LevelFlow"
-## 可选开场提供者，默认临时PlayGuide。清空即可跳过，删除PlayGuide也不会永久等待。
+## 可选开场提供者，默认留空；操作说明改由 Esc → 设置手动打开。
 ## 替换教程时选择有begin()/cancel()/finished信号的适配节点，不要求固定脚本类型。
-@export_node_path("Node") var guide_path: NodePath = ^"../LevelFlow/PlayGuide"
+@export_node_path("Node") var guide_path: NodePath
 ## 开启后指定的引导缺失会报告配置错误；默认关闭，便于移除临时说明。
 @export var guide_required := false
 ## 临时说明开启；未来互动教程允许玩家行动时关闭。仅影响开场引导，不改变死亡暂停。

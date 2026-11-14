@@ -137,6 +137,8 @@ Equipment 交接当前枪给 Combat；相机订阅 `weapon_changed`，表现订�
 
 ## 相机、表现与内容
 
+`scenes/ui/pause_menu.tscn` 与 `scripts/ui/pause_menu.gd` 由场景导演核心在运行时装配，提供 Esc 暂停、设置内操作说明和退出确认，只展示界面并回传意图。`SceneDirector.request_pause_menu()`／`resume_from_pause_menu()` 持有和释放共享暂停协调器的独立令牌；关闭子页不释放世界暂停。说明复用原 `play_guide.tscn`，保留原 `LevelFlow/PlayGuide` 节点路径与显式教程接口，入口 `guide_path` 默认留空，酒馆和五关不再自动显示说明。设置页当前只开放操作说明，其他设置尚未接入。
+
 相机根 `systems/player_camera.gd` 统一绑定玩家、读取武器 Aim Range、控制视野过渡；`camera_occlusion.gd` 仅处理显式标记装饰的材质副本与还原。CameraGroundAnchor 过滤翻越抬升。保持原 Phantom Camera 跟随和更新关系。
 
 `systems/presentation_camera.gd` 和 `scenes/player/presentation_camera.tscn` 是独立演出相机。目的地由编辑器绑定Marker3D/Node3D；复制可见画面后切入，返回前通过玩家相机的有限同步接口刷新，再切回。原玩家相机不交给总调度每帧移动，遮挡辅助同一时刻只有一个拥有者。
