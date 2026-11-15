@@ -191,7 +191,7 @@ id = &"default_a"
 target_npc = &"npc_a"
 present = true
 position_set = true
-position = Vector3(-7.883234, 0, 3.7864947)
+position = Vector3(0, 0, 0)
 dialogue = ExtResource("6_dialogue_a")
 
 [sub_resource type="Resource" id="Rule_default_b"]
@@ -200,7 +200,7 @@ id = &"default_b"
 target_npc = &"npc_b"
 present = true
 position_set = true
-position = Vector3(-8.0039215, 0, 1.8173995)
+position = Vector3(-7.4, 0, 0)
 dialogue = ExtResource("7_dialogue_b")
 
 [sub_resource type="Resource" id="Rule_done_a"]
@@ -211,7 +211,7 @@ quest_id = &"task_a"
 quest_status = &"completed"
 present = true
 position_set = true
-position = Vector3(-6.4, 0, 2.6)
+position = Vector3(-1.2, 0, -0.15)
 
 [sub_resource type="Resource" id="Rule_done_b"]
 script = ExtResource("4_rule")

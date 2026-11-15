@@ -31,6 +31,7 @@
 [ext_resource type="PackedScene" path="res://scenes/world/objects/wine_glass.tscn" id="18_wine_glass"]
 [ext_resource type="PackedScene" path="res://scenes/world/objects/terminal.tscn" id="19_terminal"]
 [ext_resource type="PackedScene" path="res://scenes/world/objects/record_player.tscn" id="20_record_player"]
+[ext_resource type="PackedScene" path="res://scenes/access_denied/hub/bar_environment.tscn" id="32_bar_environment"]
 
 [sub_resource type="Environment" id="Environment"]
 background_mode = 1
@@ -110,26 +111,31 @@ height = 1.75
 [node name="RewardBoard" parent="." instance=ExtResource("28_reward_board")]
 
 [node name="TavernReturnPoint" type="Marker3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 3.423183)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 6.5)
+
+[node name="BarEnvironment" parent="." instance=ExtResource("32_bar_environment")]
 
 [node name="WorldEnvironment" type="WorldEnvironment" parent="." unique_id=1879990490]
 environment = SubResource("Environment")
 
 [node name="Light" type="DirectionalLight3D" parent="." unique_id=705435544]
 transform = Transform3D(0.90630776, 0.38302225, -0.17860618, 0, 0.42261824, 0.9063078, 0.42261827, -0.8213938, 0.3830222, 0, 0, 0)
-light_energy = 1.2
+light_energy = 0.35
 shadow_enabled = true
 
 [node name="Floor" type="StaticBody3D" parent="." unique_id=1434684259]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.25, 0)
 
 [node name="MeshInstance3D" type="MeshInstance3D" parent="Floor" unique_id=1724085114]
+visible = false
 mesh = SubResource("FloorMesh")
 
 [node name="CollisionShape3D" type="CollisionShape3D" parent="Floor" unique_id=1450013688]
+disabled = true
 shape = SubResource("FloorShape")
 
 [node name="Borders" type="Node3D" parent="." unique_id=1992265323]
+visible = false
 
 [node name="North" type="StaticBody3D" parent="Borders" unique_id=691024214]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.3, -5.125)
@@ -138,6 +144,7 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.3, -5.125)
 mesh = SubResource("WallMesh")
 
 [node name="CollisionShape3D" type="CollisionShape3D" parent="Borders/North" unique_id=1652379150]
+disabled = true
 shape = SubResource("WallShape")
 
 [node name="South" type="StaticBody3D" parent="Borders" unique_id=1120612743]
@@ -147,6 +154,7 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.3, 5.125)
 mesh = SubResource("WallMesh")
 
 [node name="CollisionShape3D" type="CollisionShape3D" parent="Borders/South" unique_id=561585797]
+disabled = true
 shape = SubResource("WallShape")
 
 [node name="West" type="StaticBody3D" parent="Borders" unique_id=1493409880]
@@ -156,6 +164,7 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -9.125, 0.3, 0)
 mesh = SubResource("SideWallMesh")
 
 [node name="CollisionShape3D" type="CollisionShape3D" parent="Borders/West" unique_id=1254191933]
+disabled = true
 shape = SubResource("SideWallShape")
 
 [node name="East" type="StaticBody3D" parent="Borders" unique_id=297034028]
@@ -165,6 +174,7 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 9.125, 0.3, -3.125)
 mesh = SubResource("BoxMesh_dg77c")
 
 [node name="CollisionShape3D" type="CollisionShape3D" parent="Borders/East" unique_id=1444644318]
+disabled = true
 shape = SubResource("BoxShape3D_ycdy4")
 
 [node name="EastSouth" type="StaticBody3D" parent="Borders" unique_id=551203761]
@@ -174,13 +184,14 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 9.125, 0.3, 3.125)
 mesh = SubResource("BoxMesh_dg77c")
 
 [node name="CollisionShape3D" type="CollisionShape3D" parent="Borders/EastSouth" unique_id=2109488797]
+disabled = true
 shape = SubResource("BoxShape3D_ycdy4")
 
 [node name="Player" parent="." unique_id=670735899 instance=ExtResource("player_prefab")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 3.423183)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 6.5)
 
 [node name="NPC" type="StaticBody3D" parent="." unique_id=226967711]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -7.883234, 0, 3.7864947)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0)
 script = ExtResource("2")
 npc_id = &"npc_a"
 dialogue_resource = ExtResource("4_5vw27")
@@ -195,10 +206,17 @@ shape = SubResource("NpcShape")
 
 [node name="InteractionArea" type="Area3D" parent="NPC" unique_id=1343949159]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.875, 0)
+scale = Vector3(1.45, 1.45, 1.45)
 collision_layer = 0
 
 [node name="CollisionShape3D" type="CollisionShape3D" parent="NPC/InteractionArea" unique_id=1266831335]
 shape = SubResource("InteractionShape")
+
+[node name="Name" type="Label3D" parent="NPC"]
+position = Vector3(0, 2.15, 0)
+billboard = 1
+text = "酒保 / 委托人"
+font_size = 36
 
 [node name="Presentation" type="Node3D" parent="NPC" unique_id=537327942]
 script = ExtResource("presentation")
@@ -213,7 +231,7 @@ script = ExtResource("impact_receiver")
 [node name="Camera3D" parent="." unique_id=1669516944 instance=ExtResource("player_camera_prefab")]
 
 [node name="NPCB" type="StaticBody3D" parent="." unique_id=494376989]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -8.0039215, 0, 1.8173995)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -7.4, 0, 0)
 script = ExtResource("2")
 npc_id = &"npc_b"
 dialogue_resource = ExtResource("8_kek77")
@@ -244,7 +262,7 @@ script = ExtResource("npc_presentation")
 script = ExtResource("impact_receiver")
 
 [node name="RewardNPC" type="StaticBody3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 5.4, 0, 1.4)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 8.4, 0, -6.25)
 script = ExtResource("5_reward_npc")
 npc_id = &"reward_npc"
 dialogue_resource = ExtResource("6_reward_dialogue")
@@ -281,23 +299,26 @@ script = ExtResource("npc_presentation")
 script = ExtResource("impact_receiver")
 
 [node name="CombatTest" parent="." unique_id=2089866747 instance=ExtResource("10_efxa6")]
+position = Vector3(35, 0, 0)
+visible = false
 
 [node name="Arena" parent="." unique_id=930605498 instance=ExtResource("11_efxa6")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 20, 0, 0)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 60, 0, 0)
+visible = false
 
 [node name="Interactables" type="Node3D" parent="."]
 
 [node name="LevelPortal" parent="Interactables" instance=ExtResource("17_quest_portal")]
-transform = Transform3D(0, 0, -1, 0, 1, 0, 1, 0, 0, 8.2, 0, 0)
+transform = Transform3D(0, 0, -1, 0, 1, 0, 1, 0, 0, 10.975, 0, 0)
 
 [node name="WineGlass" parent="Interactables" instance=ExtResource("18_wine_glass")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 3.0, 0, 4.6)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 2.4, 1.05, -3.9)
 
 [node name="Terminal" parent="Interactables" instance=ExtResource("19_terminal")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 7.2, 0, 3.2)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 9.1, 1.05, -5.55)
 
 [node name="RecordPlayer" parent="Interactables" instance=ExtResource("20_record_player")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 5.4, 0, 4.1)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -9.1, 0, 1.0)
 
 [node name="ImpactEffects" parent="." unique_id=157028740 instance=ExtResource("impact_effects")]
 
@@ -308,6 +329,7 @@ script = ExtResource("26_zone_volume")
 zone_id = &"tavern"
 
 [node name="CollisionShape3D" type="CollisionShape3D" parent="TavernZone"]
+scale = Vector3(1.23, 1, 1.6)
 shape = SubResource("TavernZoneShape")
 
 [node name="StageController" type="Node" parent="." node_paths=PackedStringArray("tavern_zone", "site_zone")]
@@ -323,7 +345,7 @@ script = ExtResource("24_stage_state_controller")
 stage_table = ExtResource("25_stage_table")
 
 [node name="CameraOcclusionDemo" parent="." unique_id=1093836274 instance=ExtResource("camera_occlusion_demo")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -3.8, 0, 0.8)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 35, 0, 12)
 
 [node name="EncounterController" type="Node" parent="."]
 script = ExtResource("30_encounter_controller")

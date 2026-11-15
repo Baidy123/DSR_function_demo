@@ -1,4 +1,4 @@
-[gd_scene load_steps=10 format=3]
+[gd_scene load_steps=15 format=3]
 
 [ext_resource type="PackedScene" path="res://scenes/world/interactable.tscn" id="1_interactable"]
 [ext_resource type="Script" path="res://scripts/world/quest_portal.gd" id="2_portal"]
@@ -10,28 +10,45 @@ script = ExtResource("3_change_scene")
 scene_path = "res://scenes/world/levels/lvl_1.tscn"
 
 [sub_resource type="StandardMaterial3D" id="Material_portal"]
-transparency = 1
-shading_mode = 0
-albedo_color = Color(0.18, 0.85, 1, 0.42)
-emission_enabled = true
-emission = Color(0.12, 0.68, 1, 1)
-emission_energy_multiplier = 2.5
+albedo_color = Color(0.17, 0.055, 0.025, 1)
+metallic = 0.12
+roughness = 0.76
 
-[sub_resource type="QuadMesh" id="Mesh_portal"]
+[sub_resource type="BoxMesh" id="Mesh_portal"]
 material = SubResource("Material_portal")
-size = Vector2(1.45, 2.15)
+size = Vector3(3.18, 2.35, 0.16)
 
 [sub_resource type="StandardMaterial3D" id="Material_frame"]
-albedo_color = Color(0.22, 0.34, 0.42, 1)
-metallic = 0.65
-roughness = 0.25
+albedo_color = Color(0.24, 0.17, 0.08, 1)
+metallic = 0.7
+roughness = 0.48
 
-[sub_resource type="TorusMesh" id="Mesh_frame"]
+[sub_resource type="BoxMesh" id="Mesh_frame_vertical"]
 material = SubResource("Material_frame")
-inner_radius = 0.68
-outer_radius = 0.86
-rings = 48
-ring_segments = 12
+size = Vector3(0.18, 2.7, 0.3)
+
+[sub_resource type="BoxMesh" id="Mesh_frame_top"]
+material = SubResource("Material_frame")
+size = Vector3(3.54, 0.18, 0.3)
+
+[sub_resource type="BoxMesh" id="Mesh_center_seam"]
+material = SubResource("Material_frame")
+size = Vector3(0.055, 2.28, 0.035)
+
+[sub_resource type="StandardMaterial3D" id="Material_handle"]
+albedo_color = Color(0.48, 0.3, 0.08, 1)
+metallic = 0.85
+roughness = 0.35
+
+[sub_resource type="CylinderMesh" id="Mesh_handle"]
+material = SubResource("Material_handle")
+top_radius = 0.065
+bottom_radius = 0.065
+height = 0.16
+radial_segments = 16
+
+[sub_resource type="BoxShape3D" id="DoorShape"]
+size = Vector3(3.42, 2.55, 0.24)
 
 [node name="LevelPortal" instance=ExtResource("1_interactable")]
 script = ExtResource("2_portal")
@@ -45,16 +62,36 @@ effects = Array[ExtResource("4_effect")]([SubResource("Effect_enter_level")])
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.1, 0)
 
 [node name="Body" parent="." index="1"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.2, 0)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.175, 0)
 mesh = SubResource("Mesh_portal")
 
-[node name="Frame" type="MeshInstance3D" parent="." index="2"]
-transform = Transform3D(1, 0, 0, 0, 0, -1, 0, 1, 0, 0, 1.2, 0)
-mesh = SubResource("Mesh_frame")
+[node name="Frame" type="Node3D" parent="." index="2"]
+[node name="Left" type="MeshInstance3D" parent="Frame"]
+position = Vector3(-1.68, 1.35, 0)
+mesh = SubResource("Mesh_frame_vertical")
+[node name="Right" type="MeshInstance3D" parent="Frame"]
+position = Vector3(1.68, 1.35, 0)
+mesh = SubResource("Mesh_frame_vertical")
+[node name="Top" type="MeshInstance3D" parent="Frame"]
+position = Vector3(0, 2.61, 0)
+mesh = SubResource("Mesh_frame_top")
 
-[node name="Name" parent="." index="3"]
+[node name="CenterSeam" type="MeshInstance3D" parent="." index="3"]
+position = Vector3(0, 1.175, -0.095)
+mesh = SubResource("Mesh_center_seam")
+
+[node name="Handle" type="MeshInstance3D" parent="." index="4"]
+transform = Transform3D(1, 0, 0, 0, 0, -1, 0, 1, 0, 0.48, 1.15, -0.14)
+mesh = SubResource("Mesh_handle")
+
+[node name="DoorBlocker" type="StaticBody3D" parent="." index="5"]
+[node name="CollisionShape3D" type="CollisionShape3D" parent="DoorBlocker"]
+position = Vector3(0, 1.275, 0)
+shape = SubResource("DoorShape")
+
+[node name="Name" parent="." index="6"]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 2.65, 0)
 text = "关卡1"
 
-[node name="Prompt" parent="." index="4"]
+[node name="Prompt" parent="." index="7"]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 2.2, 0)
