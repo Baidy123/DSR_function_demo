@@ -61,12 +61,84 @@ void TestMath()
     Check(zero.x == 0.0f && zero.y == 0.0f, "Math: normalize zero");
     CheckFloat(Clamp(15.0f, 0.0f, 10.0f), 10.0f, "Math: clamp high");
     CheckFloat(Lerp(0.0f, 10.0f, 0.25f), 2.5f, "Math: lerp");
-    Check(CircleIntersectsRect(Vec2(5.0f, 5.0f), 2.0f, RectF(6, 0, 10, 10)),
-          "Math: circle-rect intersection");
-    Check(!CircleIntersectsRect(Vec2(5.0f, 5.0f), 0.5f, RectF(10, 10, 2, 2)),
-          "Math: circle-rect separation");
-    Check(DirectionFromAngle(0.0f) == 2, "Math: direction east");
-    Check(DirectionFromAngle(3.14159f) == 3, "Math: direction west");
+
+    CheckFloat(Length(Vec3(0.0f, 3.0f, 4.0f)), 5.0f, "Math: vec3 length");
+    const Vec3 unit = Normalize(Vec3(0.0f, 0.0f, 8.0f));
+    CheckFloat(unit.z, 1.0f, "Math: vec3 normalize");
+    CheckFloat(Dot(Vec3(1.0f, 0.0f, 0.0f), Vec3(0.0f, 1.0f, 0.0f)), 0.0f,
+               "Math: dot orthogonal");
+    const Vec3 crossZ = Cross(Vec3(1.0f, 0.0f, 0.0f), Vec3(0.0f, 1.0f, 0.0f));
+    CheckFloat(crossZ.z, 1.0f, "Math: cross z axis");
+    CheckFloat(DistanceXZ(Vec3(1.0f, 9.0f, 1.0f), Vec3(1.0f, 0.0f, 3.0f)),
+               2.0f, "Math: distance xz ignores height");
+
+    const Vec3 yawDir = DirectionFromYaw(0.0f);
+    CheckFloat(yawDir.z, 1.0f, "Math: yaw 0 faces +Z");
+    CheckFloat(YawFromDirection(Vec3(0.0f, 0.0f, -1.0f)), PI, "Math: yaw of -Z");
+
+    // 平移矩阵应当只影响点，不影响方向。
+    const Mat4 move = Mat4::Translation(Vec3(2.0f, 3.0f, 4.0f));
+    const Vec3 movedPoint = move.TransformPoint(Vec3(1.0f, 0.0f, 0.0f));
+    CheckFloat(movedPoint.x, 3.0f, "Math: translation point x");
+    CheckFloat(movedPoint.y, 3.0f, "Math: translation point y");
+    const Vec3 movedDir = move.TransformVector(Vec3(1.0f, 0.0f, 0.0f));
+    CheckFloat(movedDir.x, 1.0f, "Math: translation ignores direction");
+
+    // 绕 Y 轴 90°：+X 应当转到 -Z。
+    const Vec3 rotated =
+        Mat4::RotationY(PI * 0.5f).TransformPoint(Vec3(1.0f, 0.0f, 0.0f));
+    CheckFloat(rotated.x, 0.0f, "Math: rotation y x");
+    CheckFloat(rotated.z, -1.0f, "Math: rotation y z");
+
+    // 透视矩阵：右手系，近平面映射为 0，远平面映射为 1。
+    const Mat4 projection = Mat4::Perspective(PI * 0.5f, 16.0f / 9.0f, 0.1f,
+                                              100.0f);
+    CheckFloat(projection.m[11], -1.0f, "Math: perspective w row");
+    CheckFloat(projection.m[10], 100.0f / (0.1f - 100.0f),
+               "Math: perspective z scale");
+    CheckFloat(projection.m[14], 0.1f * 100.0f / (0.1f - 100.0f),
+               "Math: perspective z offset");
+
+    // 视空间深度：更远的点应得到更大的 NDC 深度。
+    const Mat4 view = Mat4::LookAt(Vec3(0.0f, 0.0f, 0.0f),
+                                   Vec3(0.0f, 0.0f, 1.0f),
+                                   Vec3(0.0f, 1.0f, 0.0f));
+    const Mat4 viewProj = view * projection;
+    const Vec3 nearPoint = viewProj.TransformPoint(Vec3(0.0f, 0.0f, 1.0f));
+    const Vec3 farPoint = viewProj.TransformPoint(Vec3(0.0f, 0.0f, 40.0f));
+    Check(nearPoint.z < farPoint.z, "Math: depth grows with distance");
+
+    // 碰撞辅助函数。
+    const AABB solid = MakeAABB(Vec3(0.0f, 1.0f, 0.0f), Vec3(1.0f, 1.0f, 1.0f));
+    Check(CircleIntersectsBox(Vec3(1.2f, 1.0f, 0.0f), 0.4f, solid),
+          "Math: circle-box intersection");
+    Check(!CircleIntersectsBox(Vec3(3.0f, 1.0f, 0.0f), 0.4f, solid),
+          "Math: circle-box separation");
+
+    Vec3 pushed(1.1f, 1.0f, 0.0f);
+    Check(ResolveCircleBox(pushed, 0.4f, solid), "Math: circle-box push out");
+    Check(pushed.x >= 1.4f - 0.001f, "Math: pushed outside of box");
+
+    float hitT = 0.0f;
+    Check(SegmentAABB(Vec3(-4.0f, 1.0f, 0.0f), Vec3(4.0f, 1.0f, 0.0f), solid,
+                      hitT),
+          "Math: segment hits box");
+    Check(hitT > 0.0f && hitT < 0.5f, "Math: segment hit t in range");
+    Check(!SegmentAABB(Vec3(-4.0f, 5.0f, 0.0f), Vec3(4.0f, 5.0f, 0.0f), solid,
+                       hitT),
+          "Math: segment misses box");
+
+    float rayDistance = 0.0f;
+    Check(RayCircleXZ(Vec3(0.0f, 1.0f, -4.0f), Vec3(0.0f, 0.0f, 1.0f),
+                      Vec3(0.0f, 1.0f, 0.0f), 0.5f, rayDistance),
+          "Math: ray hits circle");
+    CheckFloat(rayDistance, 3.5f, "Math: ray distance");
+
+    Vec3 ground;
+    Check(RayPlaneY(Vec3(0.0f, 3.0f, 0.0f), Vec3(0.0f, -1.0f, 0.0f), 0.0f,
+                    ground),
+          "Math: ray hits ground plane");
+    CheckFloat(ground.y, 0.0f, "Math: ground hit height");
 }
 
 void TestInventory()
@@ -230,7 +302,8 @@ void TestStory()
     dialogues.emplace_back("car_locked", story.BuildCarLocked());
     dialogues.emplace_back("bar_exit_locked", story.BuildBarExitLocked());
     dialogues.emplace_back("jukebox", story.BuildJukebox(false));
-    dialogues.emplace_back("backdoor", story.BuildBackdoor());
+    dialogues.emplace_back("terminal", story.BuildTerminal());
+    dialogues.emplace_back("ambush_warning", story.BuildAmbushWarning());
     dialogues.emplace_back("street_sign", story.BuildStreetSign());
 
     for (const auto& entry : dialogues) {

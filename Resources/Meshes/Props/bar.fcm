@@ -1,0 +1,173 @@
+# 酒吧道具：吧椅、卡座、圆桌、点唱机、酒架、音箱、账本终端
+# 单位：米，原点在底座中心。
+
+mesh PROP_STOOL
+part body pivot 0 0 0
+mat 0x3A2A1E
+pattern 2
+box 0 0.72 0 0.46 0.06 0.46
+mat 0x8C6F52
+pattern 5
+box 0 0.78 0 0.44 0.06 0.44
+mat 0x2A2118
+pattern 2
+box 0 0.36 0 0.07 0.72 0.07
+mat 0x3A3E42
+pattern 3
+cyl 0 0.02 0 0.22 0.18 0.05 8
+mat 0x6A6E72
+pattern 3
+box 0 0.22 0 0.3 0.03 0.3
+endpart
+endmesh
+
+mesh PROP_BOOTH
+part body pivot 0 0 0
+mat 0x3A2026
+pattern 5
+box 0 0.32 0.62 2.2 0.64 0.36
+box 0 0.9 -0.66 2.2 1.4 0.3
+mat 0x5A2A34
+pattern 5
+box 0 0.68 0.62 2.1 0.14 0.34
+box 0 1.05 -0.5 2.1 1.1 0.14
+mat 0x2A181C
+pattern 2
+box 0 0.06 0 2.3 0.12 1.7
+mat 0x6A4A32
+pattern 2
+cyl 0 0.42 0 0.62 0.62 0.08 12
+mat 0x8C5E38
+pattern 2
+cyl 0 0.1 0 0.12 0.1 0.34 8
+mat 0xC79A4A
+pattern 0
+cyl 0 0.5 0 0.66 0.66 0.03 12
+mat 0x2E4A44
+pattern 3
+box 0.34 0.62 0.1 0.18 0.22 0.18
+mat 0x86C8B6
+pattern 8
+box 0.34 0.66 0.1 0.12 0.12 0.02
+mat 0xE8DCC0
+pattern 0
+cyl -0.34 0.5 0.06 0.1 0.1 0.14 8
+endpart
+endmesh
+
+mesh PROP_TABLE
+part body pivot 0 0 0
+mat 0x5A3E28
+pattern 2
+cyl 0 0.72 0 0.48 0.48 0.06 12
+mat 0x7A5636
+pattern 2
+cyl 0 0.1 0 0.1 0.1 0.62 8
+mat 0x3A2A1E
+pattern 2
+cyl 0 0.02 0 0.32 0.28 0.06 10
+mat 0x2E4A44
+pattern 3
+box 0.2 0.8 0.05 0.12 0.18 0.12
+mat 0x86C8B6
+pattern 8
+box 0.2 0.84 0.05 0.08 0.08 0.02
+endpart
+endmesh
+
+mesh PROP_JUKEBOX
+part body pivot 0 0 0
+mat 0x5A2A20
+pattern 2
+box 0 0.8 0 0.8 1.6 0.6
+mat 0x3A1A16
+pattern 2
+box 0 0.85 0.32 0.62 1.1 0.06
+mat 0x1A1414
+pattern 0
+box 0 0.9 0.36 0.5 0.6 0.02
+mat 0x39E0D0
+pattern 8
+box -0.22 0.9 0.38 0.05 1.0 0.02
+box 0.22 0.9 0.38 0.05 1.0 0.02
+mat 0xFF3D8B
+pattern 8
+box 0 1.45 0.38 0.42 0.05 0.02
+mat 0x8C6A34
+pattern 3
+box 0 0.1 0 0.86 0.2 0.66
+mat 0x2A2018
+pattern 0
+box 0 1.62 0 0.72 0.06 0.52
+endpart
+endmesh
+
+mesh PROP_BAR_SHELF
+part body pivot 0 0 0
+mat 0x2E2018
+pattern 2
+box 0 0.55 0 3.2 1.0 0.16
+mat 0x5A3E28
+pattern 2
+box 0 0.1 0 3.2 0.08 0.22
+box 0 0.5 0 3.2 0.06 0.22
+box 0 0.9 0 3.2 0.06 0.22
+mat 0x9A7A3A
+pattern 0
+box -1.2 0.28 0 0.07 0.3 0.07
+box -1.0 0.28 0 0.07 0.3 0.07
+box -0.8 0.28 0 0.07 0.3 0.07
+box 0.4 0.28 0 0.07 0.26 0.07
+box 0.6 0.28 0 0.07 0.32 0.07
+box 0.8 0.28 0 0.07 0.24 0.07
+box -1.1 0.7 0 0.07 0.34 0.07
+box 0.2 0.7 0 0.07 0.28 0.07
+box 1.0 0.7 0 0.07 0.3 0.07
+mat 0x4E7A5A
+pattern 0
+box -1.3 0.72 0 0.09 0.3 0.09
+box 0.5 0.72 0 0.09 0.26 0.09
+mat 0x7A4E4E
+pattern 0
+box -0.5 0.72 0 0.09 0.3 0.09
+endpart
+endmesh
+
+mesh PROP_SPEAKER
+part body pivot 0 0 0
+mat 0x22201E
+pattern 5
+box 0 0.7 0 0.5 1.4 0.5
+mat 0x141212
+pattern 0
+cyl 0 0.45 0.26 0.16 0.16 0.02 12
+cyl 0 1.0 0.26 0.1 0.1 0.02 10
+mat 0x3A3632
+pattern 3
+box 0 0.05 0 0.6 0.1 0.6
+mat 0x6A2A2A
+pattern 8
+box 0 1.34 0.26 0.06 0.04 0.02
+endpart
+endmesh
+
+mesh PROP_TERMINAL
+part body pivot 0 0 0
+mat 0x2A2620
+pattern 3
+box 0 0.65 0 0.9 1.3 0.5
+mat 0x151A1A
+pattern 0
+box 0 0.95 0.26 0.7 0.5 0.02
+mat 0x39E0D0
+pattern 8
+box 0 1.0 0.28 0.5 0.3 0.01
+box 0 0.9 0.28 0.4 0.02 0.01
+mat 0x8C6A34
+pattern 3
+box 0 1.32 0 0.94 0.06 0.54
+mat 0x3A3630
+pattern 3
+box 0 0.08 0 0.96 0.16 0.56
+endpart
+endmesh

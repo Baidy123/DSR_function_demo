@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <climits>
 #include <cstring>
+#include <fstream>
 #include <cwchar>
 
 namespace fc {
@@ -277,8 +278,8 @@ std::unique_ptr<TextBlock> TextRenderer::Build(const std::string& text, int px,
 
     if (m_device != nullptr) {
         if (!m_device->CreateTexture(pixelCopy.data(), textureWidth,
-                                     textureHeight, true, block->texture,
-                                     "TextBlock")) {
+                                     textureHeight, "TextBlock",
+                                     block->texture)) {
             LogError("TextRenderer: failed to upload text texture");
             return nullptr;
         }

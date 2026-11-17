@@ -1,0 +1,149 @@
+# 通用道具：箱子、桶、门框、水洼、吊灯、托盘
+# 单位：米，原点在底座中心，+Y 向上。
+# 材质编号：0 平涂 / 1 砖 / 2 木纹 / 3 金属肋 / 4 锈 / 5 布纹 / 6 混凝土 / 8+ 自发光
+
+mesh PROP_CRATE_S
+part body pivot 0 0 0
+mat 0x6B4C2E
+pattern 2
+box 0 0.3 0 0.6 0.6 0.6
+mat 0x8A6538
+pattern 2
+box 0 0.62 0 0.62 0.05 0.62
+mat 0x2A1F16
+pattern 0
+box 0 0.3 0 0.62 0.04 0.05
+box 0 0.3 0 0.05 0.62 0.05
+endpart
+endmesh
+
+mesh PROP_CRATE_L
+part body pivot 0 0 0
+mat 0x5E4630
+pattern 2
+box 0 0.5 0 1.2 1.0 1.0
+mat 0x7A5A38
+pattern 2
+box 0 1.02 0 1.24 0.06 1.04
+mat 0x2A1F16
+pattern 0
+box 0 0.5 0.51 1.24 0.05 0.04
+box 0 0.5 -0.51 1.24 0.05 0.04
+mat 0xC08A34
+pattern 0
+box 0.4 0.62 0.52 0.28 0.16 0.02
+endpart
+endmesh
+
+mesh PROP_BARREL
+part body pivot 0 0 0
+mat 0x704428
+pattern 4
+cyl 0 0 0 0.3 0.3 0.9 10
+mat 0x2C2A28
+pattern 3
+cyl 0 0.16 0 0.31 0.31 0.06 10
+cyl 0 0.68 0 0.31 0.31 0.06 10
+mat 0x8A5A32
+pattern 4
+cyl 0 0.9 0 0.3 0.28 0.05 10
+endpart
+endmesh
+
+mesh PROP_PALLET
+part body pivot 0 0 0
+mat 0x6A4E32
+pattern 2
+box 0 0.08 0 1.6 0.16 1.2
+mat 0x4A3624
+pattern 2
+box 0 0.02 0 1.6 0.04 0.12
+box 0 0.02 0.5 1.6 0.04 0.12
+box 0 0.02 -0.5 1.6 0.04 0.12
+endpart
+endmesh
+
+mesh PROP_PUDDLE
+part body pivot 0 0 0
+mat 0x121C26
+pattern 0
+plane 0 0.012 0 1.2 0.8
+mat 0x1E3540
+pattern 0
+plane 0 0.016 0 0.7 0.45
+mat 0x2E5A64
+pattern 8
+plane 0 0.02 -0.05 0.18 0.1
+endpart
+endmesh
+
+mesh PROP_DOOR_FRAME
+part body pivot 0 0 0
+mat 0x2A1C18
+pattern 2
+box -0.95 1.2 0 0.18 2.4 0.22
+box 0.95 1.2 0 0.18 2.4 0.22
+box 0 2.32 0 2.1 0.18 0.22
+mat 0x3A2A22
+pattern 2
+box 0 1.12 0 1.7 2.24 0.08
+mat 0x7A5A2E
+pattern 0
+box 0 2.42 0 2.3 0.05 0.3
+mat 0x8E6A34
+pattern 3
+box 0 1.02 -0.06 0.06 0.06 0.06
+endpart
+endmesh
+
+mesh PROP_LAMP_HANG
+part body pivot 0 0 0
+mat 0x1A1C1E
+pattern 3
+cyl 0 0 0 0.02 0.02 0.32 6
+mat 0x2A2C2E
+pattern 3
+cyl 0 0.32 0 0.26 0.09 0.18 10
+mat 0xFFC178
+pattern 8
+cyl 0 0.5 0 0.08 0.08 0.02 8
+mat 0x3A3C3E
+pattern 3
+cyl 0 0.52 0 0.1 0.1 0.04 8
+endpart
+endmesh
+
+mesh PROP_ROLLER_DOOR
+part body pivot 0 0 0
+mat 0x3A4046
+pattern 3
+box 0 2.0 0 5.0 4.0 0.16
+mat 0x8A7430
+pattern 0
+box 0 1.1 0.1 4.6 0.12 0.02
+box 0 2.1 0.1 4.6 0.12 0.02
+mat 0x22262A
+pattern 3
+box 0 4.12 0 5.2 0.2 0.24
+endpart
+endmesh
+
+mesh PROP_PART
+part body pivot 0 0 0
+mat 0x6E7276
+pattern 3
+box 0 0.06 0 0.34 0.06 0.26
+mat 0x9AA0A4
+pattern 3
+box 0 0.14 0 0.24 0.1 0.18
+mat 0xC79A4A
+pattern 0
+box 0 0.2 0 0.1 0.04 0.12
+mat 0x39E0D0
+pattern 8
+box 0.08 0.14 0.1 0.05 0.05 0.02
+mat 0x8A3A2A
+pattern 4
+box -0.09 0.12 -0.06 0.03 0.05 0.05
+endpart
+endmesh

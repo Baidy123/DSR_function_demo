@@ -1,117 +1,163 @@
 #ifndef __GAME_RENDERER_HPP__
 #define __GAME_RENDERER_HPP__
 
+#include "Game_Characters.hpp"
 #include "Game_Types.hpp"
-#include "Shared_Types.hpp"
-#include "World_Map.hpp"
+#include "Render_Device.hpp"
+#include "Render_Mesh.hpp"
+#include "World_Types.hpp"
 
 #include <string>
 #include <vector>
 
 namespace fc {
 
-class RenderDevice;
-class TextRenderer;
+/**
+ * @brief 场景中的静态道具实例。
+ */
+struct PropInstance {
+    const Mesh* mesh = nullptr;
+    Vec3 position;
+    float yaw = 0.0f;
+    float scale = 1.0f;
+    Color tint{1.0f, 1.0f, 1.0f, 1.0f};
+    AABB bounds;
+    bool solid = false;
+    bool hidden = false;
+};
 
 /**
- * @brief 世界渲染器：瓷砖、道具、角色、子弹、粒子、灯光与后处理。
- *
- * 调用前必须由 GameApp 执行 SpriteBatch::Begin；本类不负责 Present。
+ * @brief 场景中的 NPC 实例。
+ */
+struct NpcInstance {
+    CharacterId id = CharacterId::BARTENDER;
+    Vec3 position;
+    float yaw = 0.0f;
+    bool visible = true;
+    bool armed = false;
+};
+
+/**
+ * @brief 3D 场景渲染器：房间、道具、角色、子弹与掉落物。
  */
 class GameRenderer {
 public:
+    GameRenderer() = default;
+
     /**
      * @brief 初始化。
      * @param [IN] device 渲染设备。
-     * @param [IN] text 文字渲染器（当前未直接使用，保留扩展）。
+     * @param [IN] meshes 网格库。
+     * @param [IN] characters 角色库。
      * @return 成功返回 true。
      */
-    bool Initialize(RenderDevice* device, TextRenderer* text);
+    bool Initialize(RenderDevice* device, MeshLibrary* meshes,
+                    CharacterLibrary* characters);
 
     /**
-     * @brief 绘制世界。
-     * @param [IN] map 地图。
+     * @brief 加载场景静态几何与道具。
+     * @param [IN] scene 场景定义。
+     * @param [IN/OUT] collision 碰撞世界（追加盒）。
+     * @return 成功返回 true。
+     */
+    bool LoadScene(const SceneDef& scene, class CollisionWorld& collision);
+
+    /**
+     * @brief 绘制场景。
+     * @param [IN] scene 场景定义。
      * @param [IN] player 玩家。
+     * @param [IN] npcs NPC 列表。
      * @param [IN] enemies 敌人列表。
      * @param [IN] bullets 子弹列表。
      * @param [IN] particles 粒子列表。
      * @param [IN] pickups 掉落物列表。
-     * @param [IN] camera 摄像机。
-     * @param [IN] shake 屏幕震动偏移。
-     * @param [IN] time 累计时间（秒）。
-     * @param [IN] alarm 是否处于警报状态。
+     * @param [IN] camera 摄像机（含视图/投影矩阵）。
+     * @param [IN] lights 光源列表（可被玩法层修改）。
+     * @param [IN] time 累计时间。
      */
-    void DrawWorld(const WorldMap& map, const Player& player,
+    void DrawScene(const SceneDef& scene, const Player& player,
+                   const std::vector<NpcInstance>& npcs,
                    const std::vector<Enemy>& enemies,
                    const std::vector<Bullet>& bullets,
                    const std::vector<Particle>& particles,
-                   const std::vector<Pickup>& pickups, const Camera& camera,
-                   Vec2 shake, float time, bool alarm);
+                   const std::vector<Pickup>& pickups,
+                   const CameraRuntime& camera,
+                   const std::vector<LightDef>& lights, float time);
 
     /**
-     * @brief 绘制雨滴（屏幕空间）。
-     * @param [IN] drops 雨滴列表。
+     * @brief 绘制世界空间辉光（在 2D 覆盖层之前调用）。
+     * @param [IN] camera 摄像机。
+     * @param [IN] lights 光源列表。
+     * @param [IN] time 时间。
+     * @param [IN] player 玩家（枪口辉光）。
+     * @param [IN] alarm 是否警报（红色脉冲）。
      */
-    void DrawRain(const std::vector<RainDrop>& drops);
+    void DrawLightGlows(const CameraRuntime& camera,
+                        const std::vector<LightDef>& lights, float time,
+                        const Player& player, bool alarm);
 
     /**
-     * @brief 绘制暗角、扫描线与受伤红闪。
-     * @param [IN] damageFlash 受伤红闪强度（0–1）。
+     * @brief 初始化角色头像（3D 胸像渲染到 64×64 纹理）。
+     * @return 成功返回 true。
      */
-    void DrawPostOverlay(float damageFlash);
+    bool BuildPortraits();
 
     /**
-     * @brief 绘制纯色矩形（白纹理着色）。
-     * @param [IN] rect 目标矩形。
-     * @param [IN] color 颜色。
+     * @brief 获取角色头像纹理。
+     * @param [IN] id 角色。
+     * @return 纹理指针；未生成返回 nullptr。
      */
-    void DrawRect(const RectF& rect, Color color);
+    const Texture* Portrait(CharacterId id) const;
 
     /**
-     * @brief 绘制图标精灵。
-     * @param [IN] name 资产名。
-     * @param [IN] x 左上角 x。
-     * @param [IN] y 左上角 y。
-     * @param [IN] w 宽度。
-     * @param [IN] h 高度。
-     * @param [IN] tint 颜色。
-     * @param [IN] additive 是否加色。
+     * @brief 世界坐标转内部像素坐标。
+     * @param [IN] camera 摄像机。
+     * @param [IN] world 世界坐标。
+     * @param [OUT] screen 内部坐标。
+     * @return 在摄像机前方返回 true。
      */
-    void DrawSprite(const char* name, float x, float y, float w, float h,
-                    Color tint, bool additive = false);
+    bool WorldToScreen(const CameraRuntime& camera, const Vec3& world,
+                       Vec2& screen) const;
 
     /**
-     * @brief 获取渲染设备。
-     * @return 渲染设备指针。
+     * @brief 获取道具实例。
+     * @return 列表。
      */
-    RenderDevice* Device() const { return m_device; }
+    const std::vector<PropInstance>& Props() const { return m_props; }
+
+    /**
+     * @brief 按网格名隐藏道具（取走货物/零件后使用）。
+     * @param [IN] meshName 网格名。
+     */
+    void HidePropsByMesh(const std::string& meshName);
 
 private:
-    struct DrawItem {
-        float baseline = 0.0f;
-        int order = 0;
-        const Sprite* sprite = nullptr;
-        float x = 0.0f;
-        float y = 0.0f;
-        float w = 0.0f;
-        float h = 0.0f;
-        Color tint;
-        bool additive = false;
-    };
-
-    void AddPropItems(const WorldMap& map, float camX, float camY,
-                      std::vector<DrawItem>& items);
-    void AddActorItems(const Player& player, const std::vector<Enemy>& enemies,
-                       const std::vector<Pickup>& pickups, float camX, float camY,
-                       std::vector<DrawItem>& items);
-    void DrawLights(const WorldMap& map, float camX, float camY, float time,
-                    bool alarm);
-    std::string ActorSprite(const char* prefix, int facingDir, float animTime,
-                            bool moving) const;
+    void DrawShadow(const Vec3& position, float radius, float alpha);
+    void DrawBullet(const Bullet& bullet) const;
+    void DrawPickup(const Pickup& pickup) const;
+    void DrawParticle(const Particle& particle) const;
+    Vec3 MuzzlePosition(const Player& player) const;
 
     RenderDevice* m_device = nullptr;
-    TextRenderer* m_text = nullptr;
+    MeshLibrary* m_meshes = nullptr;
+    CharacterLibrary* m_characters = nullptr;
+
+    const Mesh* m_roomMesh = nullptr;
+    const Mesh* m_cube = nullptr;
+    const Mesh* m_shadowMesh = nullptr;
+    const Mesh* m_sphere = nullptr;
+
+    std::vector<PropInstance> m_props;
+    RenderTarget m_portraits[6];
+    bool m_portraitsReady = false;
 };
+
+/**
+ * @brief 由摄像机姿态与宽高比构造视图/投影矩阵。
+ * @param [IN/OUT] camera 摄像机运行时。
+ * @param [IN] aspect 宽高比。
+ */
+void UpdateCameraMatrices(CameraRuntime& camera, float aspect);
 
 } // namespace fc
 

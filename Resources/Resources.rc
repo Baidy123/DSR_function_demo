@@ -1,3 +1,6 @@
-// 资源脚本：将运行时资产包嵌入最终 exe。
-// 路径相对于构建命令的工作目录（项目根目录），因此使用 Resources/ 前缀。
-ART_PACK RCDATA "Resources/ArtPack.bin"
+// Resource script: embeds the plain-text mesh libraries into the exe.
+// Paths are relative to the build working directory (project root).
+MESH_COMMON RCDATA "Resources/Meshes/Props/common.fcm"
+MESH_STREET RCDATA "Resources/Meshes/Props/street.fcm"
+MESH_BAR    RCDATA "Resources/Meshes/Props/bar.fcm"
+MESH_HARBOR RCDATA "Resources/Meshes/Props/harbor.fcm"

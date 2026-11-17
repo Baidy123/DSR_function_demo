@@ -95,25 +95,16 @@ void SpriteBatch::Begin(int width, int height)
         std::memcpy(mapped.pData, matrix, sizeof(matrix));
         m_context->Unmap(m_constantBuffer.Get(), 0);
     }
+
+    {
+        m_context->Unmap(m_constantBuffer.Get(), 0);
+    }
 }
 
 void SpriteBatch::End()
 {
     Flush();
     m_inFrame = false;
-}
-
-void SpriteBatch::DrawSprite(const Sprite& sprite, float x, float y, float w,
-                             float h, Color tint, bool flipX, bool additive)
-{
-    if (sprite.texture == nullptr) {
-        return;
-    }
-    const Texture* texture = reinterpret_cast<const Texture*>(sprite.texture);
-    const float drawW = w > 0.0f ? w : static_cast<float>(sprite.width);
-    const float drawH = h > 0.0f ? h : static_cast<float>(sprite.height);
-    AppendQuad(*texture, x, y, drawW, drawH, sprite.u0, sprite.v0,
-               sprite.u1, sprite.v1, tint, flipX, additive, false);
 }
 
 void SpriteBatch::DrawTexture(const Texture& texture, float x, float y, float w,
@@ -212,6 +203,7 @@ void SpriteBatch::Flush()
                                                 : m_pipeline.alphaBlend;
     const float blendFactor[4] = {0.0f, 0.0f, 0.0f, 0.0f};
     m_context->OMSetBlendState(blend, blendFactor, 0xFFFFFFFF);
+    m_context->OMSetDepthStencilState(m_pipeline.depthDisabled, 0);
     m_context->RSSetState(m_pipeline.rasterizer);
 
     m_context->DrawIndexed(static_cast<UINT>(m_quadCount * 6), 0, 0);

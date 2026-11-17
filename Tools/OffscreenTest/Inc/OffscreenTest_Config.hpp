@@ -4,8 +4,8 @@
 namespace fc {
 namespace offscreen {
 
-/** @brief 默认资产包路径（相对项目根目录）。 */
-constexpr const char* DEFAULT_ASSET_PATH = "Resources/ArtPack.bin";
+/** @brief 默认网格资产目录（相对项目根目录）。 */
+constexpr const char* DEFAULT_MESH_DIR = "Resources/Meshes/Props";
 
 /** @brief 默认截图输出目录。 */
 constexpr const char* DEFAULT_OUTPUT_DIR = "Temp/Screenshots";

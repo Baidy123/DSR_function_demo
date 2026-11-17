@@ -26,6 +26,7 @@ struct SpritePipeline {
     ID3D11BlendState* alphaBlend = nullptr;
     ID3D11BlendState* additiveBlend = nullptr;
     ID3D11RasterizerState* rasterizer = nullptr;
+    ID3D11DepthStencilState* depthDisabled = nullptr;
 };
 
 /**
@@ -57,20 +58,6 @@ public:
      * @brief 结束并提交剩余绘制。
      */
     void End();
-
-    /**
-     * @brief 绘制一个资产包精灵。
-     * @param [IN] sprite 精灵引用。
-     * @param [IN] x 目标左上角 x。
-     * @param [IN] y 目标左上角 y。
-     * @param [IN] w 目标宽度；<=0 时使用原始宽度。
-     * @param [IN] h 目标高度；<=0 时使用原始高度。
-     * @param [IN] tint 颜色乘数。
-     * @param [IN] flipX 是否水平翻转。
-     * @param [IN] additive 是否使用加色混合。
-     */
-    void DrawSprite(const Sprite& sprite, float x, float y, float w, float h,
-                    Color tint, bool flipX = false, bool additive = false);
 
     /**
      * @brief 绘制整张纹理。

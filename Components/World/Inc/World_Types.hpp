@@ -19,15 +19,6 @@ enum class SceneId : std::uint8_t {
 };
 
 /**
- * @brief 场景主题，决定瓷砖与光照风格。
- */
-enum class SceneTheme : std::uint8_t {
-    BAR = 0,
-    STREET = 1,
-    HARBOR = 2
-};
-
-/**
  * @brief 敌人类型。
  */
 enum class EnemyType : std::uint8_t {
@@ -36,24 +27,49 @@ enum class EnemyType : std::uint8_t {
 };
 
 /**
- * @brief 静态道具定义（含 NPC 站/坐姿精灵）。
+ * @brief 场景中的静态房间块（墙、地板、天花板、管道等）。
+ */
+struct RoomBlock {
+    Vec3 center;
+    Vec3 half;
+    Color color{0.5f, 0.5f, 0.5f, 1.0f};
+    int pattern = 0;
+    bool solid = true;
+};
+
+/**
+ * @brief 场景道具（使用文本网格资产）。
  */
 struct PropDef {
-    std::string sprite;  ///< 资产名。
-    float x = 0.0f;      ///< 左上角 x（世界像素）。
-    float y = 0.0f;      ///< 左上角 y。
-    bool blocking = true;
+    std::string mesh;
+    Vec3 position;
+    float yawDegrees = 0.0f;
+    float scale = 1.0f;
+    Color tint{1.0f, 1.0f, 1.0f, 1.0f};
+    bool solid = true;
+    Vec3 colliderHalf;   ///< 为零时按网格包围盒推导。
+    Vec3 colliderOffset; ///< 相对于道具位置的碰撞盒中心偏移。
+};
+
+/**
+ * @brief 点光源定义。
+ */
+struct LightDef {
+    Vec3 position;
+    Color color{1.0f, 0.8f, 0.5f, 1.0f};
+    float intensity = 1.0f;
+    float range = 6.0f;
+    float flicker = 0.0f;  ///< 0 稳定，>0 为闪烁强度。
 };
 
 /**
  * @brief 交互点定义。
  */
 struct InteractDef {
-    std::string id;       ///< 逻辑 ID，由 GameApp 分发。
-    float x = 0.0f;       ///< 交互中心 x（世界像素）。
-    float y = 0.0f;       ///< 交互中心 y。
-    float radius = 28.0f; ///< 交互半径。
-    std::string prompt;   ///< 提示文本（UTF-8）。
+    std::string id;
+    Vec3 position;
+    float radius = 1.4f;
+    std::string prompt;
 };
 
 /**
@@ -61,39 +77,54 @@ struct InteractDef {
  */
 struct EnemySpawnDef {
     EnemyType type = EnemyType::SCAVENGER;
-    float x = 0.0f;
-    float y = 0.0f;
+    Vec3 position;
+    float yawDegrees = 0.0f;
 };
 
 /**
- * @brief 场景蓝本：瓷砖、道具、交互点、出生点与氛围参数。
+ * @brief 固定摄像机区域；玩家进入区域时平滑切换到对应机位。
  */
-struct SceneDefinition {
+struct CameraZoneDef {
+    AABB bounds;
+    CameraPose pose;
+};
+
+/**
+ * @brief 场景定义。
+ */
+struct SceneDef {
     SceneId id = SceneId::BAR_EXTERIOR;
-    SceneTheme theme = SceneTheme::STREET;
-    int widthTiles = 30;
-    int heightTiles = 17;
-    std::vector<std::string> tiles;     ///< 每行一个字符串。
+    std::string displayName;
+    Color fogColor{0.02f, 0.03f, 0.05f, 1.0f};
+    float fogNear = 5.0f;
+    float fogFar = 30.0f;
+    float fogDensity = 0.8f;
+    Color ambient{0.10f, 0.11f, 0.14f, 1.0f};
+    std::vector<RoomBlock> blocks;
     std::vector<PropDef> props;
+    std::vector<LightDef> lights;
     std::vector<InteractDef> interactions;
     std::vector<EnemySpawnDef> enemies;
-    Vec2 playerSpawn;
-    bool cameraFollow = false;
-    bool raining = true;
-    std::string displayName;
-
-    /**
-     * @brief 地图像素宽度。
-     * @return 宽度。
-     */
-    int PixelWidth() const { return widthTiles * TILE_SIZE; }
-
-    /**
-     * @brief 地图像素高度。
-     * @return 高度。
-     */
-    int PixelHeight() const { return heightTiles * TILE_SIZE; }
+    std::vector<CameraZoneDef> cameras;
+    Vec3 playerSpawn;
+    float playerYawDegrees = 180.0f;
+    bool rain = false;
+    bool outdoor = false;
 };
+
+/**
+ * @brief 构建场景定义。
+ * @param [IN] id 场景 ID。
+ * @return 场景定义。
+ */
+SceneDef BuildScene(SceneId id);
+
+/**
+ * @brief 场景显示名。
+ * @param [IN] id 场景 ID。
+ * @return UTF-8 名称。
+ */
+const char* SceneDisplayName(SceneId id);
 
 } // namespace fc
 

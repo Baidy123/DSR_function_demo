@@ -1,0 +1,92 @@
+# 街道道具：霓虹招牌、车辆、垃圾桶、路灯
+# 单位：米，原点在底座中心。
+
+mesh PROP_NEON_BAR
+part body pivot 0 0 0
+mat 0x120E14
+pattern 0
+box 0 0.36 0 2.8 0.72 0.14
+mat 0x3A2030
+pattern 3
+box 0 0.36 0.08 2.62 0.58 0.02
+mat 0xFF3D8B
+pattern 8
+box 0 0.5 0.11 2.3 0.09 0.02
+box -0.95 0.3 0.11 0.16 0.3 0.02
+box 0.95 0.3 0.11 0.16 0.3 0.02
+mat 0x39E0D0
+pattern 8
+box 0 0.22 0.11 1.5 0.06 0.02
+mat 0xFFB347
+pattern 8
+box -1.2 0.62 0.11 0.12 0.04 0.02
+box 1.2 0.62 0.11 0.12 0.04 0.02
+endpart
+endmesh
+
+mesh PROP_CAR
+part body pivot 0 0 0
+mat 0x222A31
+pattern 3
+box 0 0.55 0 4.2 0.6 1.8
+mat 0x2A343C
+pattern 3
+box 0 1.02 0 2.1 0.46 1.5
+mat 0x0E1418
+pattern 0
+box 0 1.04 0 1.98 0.38 1.42
+mat 0x2C4A56
+pattern 8
+box 0.32 1.1 0.74 1.4 0.22 0.02
+box 0.32 1.1 -0.74 1.4 0.22 0.02
+mat 0xFFC46B
+pattern 8
+box 2.1 0.62 0.55 0.06 0.16 0.3
+box 2.1 0.62 -0.55 0.06 0.16 0.3
+mat 0x8E1E1E
+pattern 0
+box -2.1 0.62 0.55 0.06 0.14 0.3
+box -2.1 0.62 -0.55 0.06 0.14 0.3
+mat 0x14181C
+pattern 0
+box 1.35 0.32 0.84 0.3 0.62 0.16
+box 1.35 0.32 -0.84 0.3 0.62 0.16
+box -1.35 0.32 0.84 0.3 0.62 0.16
+box -1.35 0.32 -0.84 0.3 0.62 0.16
+mat 0x5A6268
+pattern 3
+box 1.35 0.32 0.9 0.16 0.3 0.08
+box -1.35 0.32 0.9 0.16 0.3 0.08
+endpart
+endmesh
+
+mesh PROP_BIN
+part body pivot 0 0 0
+mat 0x2E3A34
+pattern 3
+cyl 0 0 0 0.28 0.32 0.82 10
+mat 0x1A2220
+pattern 0
+cyl 0 0.82 0 0.33 0.31 0.06 10
+mat 0x445450
+pattern 3
+box 0 0.5 0.28 0.4 0.1 0.02
+endpart
+endmesh
+
+mesh PROP_LAMPPOST
+part body pivot 0 0 0
+mat 0x22262A
+pattern 3
+cyl 0 0 0 0.09 0.07 3.6 8
+mat 0x2A2E32
+pattern 3
+box 0 3.62 0.35 0.16 0.16 0.9
+mat 0xFFD79A
+pattern 8
+box 0 3.5 0.72 0.4 0.08 0.28
+mat 0x30363A
+pattern 3
+box 0 3.42 0.72 0.46 0.06 0.34
+endpart
+endmesh

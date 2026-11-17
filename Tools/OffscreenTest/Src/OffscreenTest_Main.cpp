@@ -4,6 +4,7 @@
 #include "Platform_Window.hpp"
 #include "Shared_Log.hpp"
 
+#include <algorithm>
 #include <cstdlib>
 #include <filesystem>
 #include <cstdio>
@@ -15,11 +16,48 @@ using namespace fc;
 
 namespace {
 
+/**
+ * @brief 拼接目录下所有文本网格（.fcm）为一份网格库文本。
+ * @param [IN] directory 网格目录（相对项目根目录）。
+ * @param [OUT] text 网格库文本。
+ * @return 至少成功读取一个文件时返回 true。
+ */
+bool LoadMeshText(const std::string& directory, std::string& text)
+{
+    text.clear();
+    std::error_code error;
+    std::vector<std::filesystem::path> files;
+    for (const auto& entry :
+         std::filesystem::directory_iterator(directory, error)) {
+        if (error) {
+            return false;
+        }
+        if (entry.is_regular_file() && entry.path().extension() == ".fcm") {
+            files.push_back(entry.path());
+        }
+    }
+    if (files.empty()) {
+        return false;
+    }
+    std::sort(files.begin(), files.end());
+    for (const std::filesystem::path& path : files) {
+        std::vector<uint8_t> bytes;
+        if (!LoadFileBytes(path.string(), bytes)) {
+            std::printf("[WARN] Cannot read mesh file: %s\n",
+                        path.string().c_str());
+            continue;
+        }
+        text.append(reinterpret_cast<const char*>(bytes.data()), bytes.size());
+        text.push_back('\n');
+    }
+    return !text.empty();
+}
+
 struct Options {
     std::string scene = "title";
     std::string ui = "none";
     std::string output;
-    std::string assets = offscreen::DEFAULT_ASSET_PATH;
+    std::string meshes = offscreen::DEFAULT_MESH_DIR;
     int frames = offscreen::DEFAULT_FRAMES;
     bool endingWait = false;
     bool flow = false;
@@ -50,8 +88,8 @@ Options ParseOptions(int argc, char** argv)
             options.ui = argv[++i];
         } else if (arg == "--out" && i + 1 < argc) {
             options.output = argv[++i];
-        } else if (arg == "--assets" && i + 1 < argc) {
-            options.assets = argv[++i];
+        } else if (arg == "--meshes" && i + 1 < argc) {
+            options.meshes = argv[++i];
         } else if (arg == "--frames" && i + 1 < argc) {
             ParseInt(argv[++i], options.frames);
         } else if (arg == "--choice" && i + 1 < argc) {
@@ -233,16 +271,16 @@ int main(int argc, char** argv)
         return 1;
     }
 
-    std::vector<uint8_t> pack;
-    if (!LoadFileBytes(options.assets, pack)) {
-        std::printf("[FAIL] Cannot load asset pack: %s\n", options.assets.c_str());
+    std::string meshText;
+    if (!LoadMeshText(options.meshes, meshText)) {
+        std::printf("[FAIL] Cannot load mesh assets: %s\n", options.meshes.c_str());
         LogShutdown();
         return 1;
     }
 
     GameApp app;
     if (!app.Initialize(window.Handle(), window.ClientWidth(),
-                        window.ClientHeight(), pack, true)) {
+                        window.ClientHeight(), meshText, true)) {
         std::printf("[FAIL] Cannot initialize game\n");
         LogShutdown();
         return 1;

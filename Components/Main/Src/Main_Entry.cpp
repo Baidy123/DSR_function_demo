@@ -4,7 +4,6 @@
 #include "Platform_Time.hpp"
 #include "Platform_Window.hpp"
 #include "Shared_Log.hpp"
-#include "Shared_String.hpp"
 
 #include <algorithm>
 #include <cstdlib>
@@ -28,16 +27,14 @@ std::string ArgumentValue(const std::string& commandLine, const char* key)
 {
     const std::string text = " " + commandLine + " ";
     const std::string needle = std::string(" ") + key + " ";
-    size_t pos = text.find(needle);
+    const size_t pos = text.find(needle);
     if (pos == std::string::npos) {
         return std::string();
     }
-    pos += needle.size();
-    size_t end = text.find(' ', pos);
-    if (end == std::string::npos) {
-        end = text.size();
-    }
-    return text.substr(pos, end - pos);
+    const size_t begin = pos + needle.size();
+    const size_t end = text.find(' ', begin);
+    return text.substr(begin, end == std::string::npos ? std::string::npos
+                                                      : end - begin);
 }
 
 bool HasFlag(const std::string& commandLine, const char* key)
@@ -73,6 +70,23 @@ LaunchOptions ParseOptions()
     return options;
 }
 
+std::string LoadMeshLibrary()
+{
+    const wchar_t* names[] = {L"MESH_COMMON", L"MESH_STREET", L"MESH_BAR",
+                              L"MESH_HARBOR"};
+    std::string text;
+    for (const wchar_t* name : names) {
+        std::vector<uint8_t> data;
+        if (!LoadEmbeddedResource(name, data)) {
+            LogError("Missing embedded mesh library: %ls", name);
+            continue;
+        }
+        text.append(reinterpret_cast<const char*>(data.data()), data.size());
+        text.append("\n");
+    }
+    return text;
+}
+
 void ApplyDebugView(GameApp& app, const LaunchOptions& options)
 {
     if (options.scene == "street") {
@@ -81,6 +95,8 @@ void ApplyDebugView(GameApp& app, const LaunchOptions& options)
         app.DebugLoadScene(SceneId::BAR_INTERIOR);
     } else if (options.scene == "harbor") {
         app.DebugLoadScene(SceneId::IRON_HARBOR);
+    } else {
+        app.DebugSetTitleMode();
     }
 
     if (options.ui == "dialogue") {
@@ -112,14 +128,16 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
     LogInitialize();
 
     const LaunchOptions options = ParseOptions();
-    LogInfo("Ember of Free City starting (screenshot=%d, scene=%s, ui=%s)",
+    LogInfo("Ember of Free City (3D) starting (shot=%d, scene=%s, ui=%s)",
             options.screenshot ? 1 : 0, options.scene.c_str(),
             options.ui.c_str());
 
     const int screenWidth = GetSystemMetrics(SM_CXSCREEN);
     const int screenHeight = GetSystemMetrics(SM_CYSCREEN);
-    const int windowWidth = std::min(WINDOW_WIDTH, std::max(960, screenWidth - 80));
-    const int windowHeight = std::min(WINDOW_HEIGHT, std::max(540, screenHeight - 120));
+    const int windowWidth =
+        std::min(WINDOW_WIDTH, std::max(960, screenWidth - 80));
+    const int windowHeight =
+        std::min(WINDOW_HEIGHT, std::max(540, screenHeight - 120));
 
     Window window;
     if (!window.Create(windowWidth, windowHeight, L"Ember of Free City",
@@ -129,16 +147,11 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
         return 1;
     }
 
-    std::vector<uint8_t> pack;
-    if (!LoadEmbeddedResource(L"ART_PACK", pack)) {
-        LogError("Failed to load embedded art pack");
-        LogShutdown();
-        return 1;
-    }
+    const std::string meshText = LoadMeshLibrary();
 
     GameApp app;
     if (!app.Initialize(window.Handle(), window.ClientWidth(),
-                        window.ClientHeight(), pack, options.screenshot)) {
+                        window.ClientHeight(), meshText, options.screenshot)) {
         LogError("Failed to initialize game");
         LogShutdown();
         return 1;

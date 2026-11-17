@@ -55,6 +55,4 @@ Tools/**/Build/
 *.gltf
 *.obj
 *.blend
-
-# 说明：Resources/ArtPack.bin 是上一版 2D 归档资源包，
-# 保留到 3D 版本完成替代为止；届时删除并在此忽略 *.bin。
+*.bin

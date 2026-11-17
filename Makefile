@@ -217,7 +217,7 @@ $(BUILD_DIR)/$(SUB_DIR_RELEASE)/%.o: %.cpp Makefile | $(BUILD_DIR)/$(SUB_DIR_REL
 	$(CXX_COMPLIER) -c $(CXXFLAGS) $(RELEASE_OPT) -Wa,-a,-ad,-ahlms=$(BUILD_DIR)/$(SUB_DIR_RELEASE)/$(notdir $(<:.cpp=.lst)) $< -o $@
 
 # Release 资源脚本文件编译
-$(BUILD_DIR)/$(SUB_DIR_RELEASE)/%.o: %.rc Resources/ArtPack.bin Makefile | $(BUILD_DIR)/$(SUB_DIR_RELEASE)
+$(BUILD_DIR)/$(SUB_DIR_RELEASE)/%.o: %.rc $(wildcard Resources/Meshes/Props/*.fcm) Makefile | $(BUILD_DIR)/$(SUB_DIR_RELEASE)
 	@echo ====== [Release] Windows Resource Script File "$<" Compiling... ====== 
 	$(WIN_RES_COMPLIER) $(foreach path,$(WIN_RESOURCE_INCLUDES_PATHS),$(addprefix -I,$(path))) $< -o $@
 
@@ -232,7 +232,7 @@ $(BUILD_DIR)/$(SUB_DIR_DEBUG)/%.o: %.cpp Makefile | $(BUILD_DIR)/$(SUB_DIR_DEBUG
 	$(CXX_COMPLIER) -c $(CXXFLAGS) $(DEBUG_OPT) -g -Wa,-a,-ad,-ahlms=$(BUILD_DIR)/$(SUB_DIR_DEBUG)/$(notdir $(<:.cpp=.lst)) $< -o $@
 
 # Debug 资源脚本文件编译
-$(BUILD_DIR)/$(SUB_DIR_DEBUG)/%.o: %.rc Resources/ArtPack.bin Makefile | $(BUILD_DIR)/$(SUB_DIR_DEBUG)
+$(BUILD_DIR)/$(SUB_DIR_DEBUG)/%.o: %.rc $(wildcard Resources/Meshes/Props/*.fcm) Makefile | $(BUILD_DIR)/$(SUB_DIR_DEBUG)
 	@echo ====== [Debug] Windows Resource Script File "$<" Compiling... ====== 
 	$(WIN_RES_COMPLIER) $(foreach path,$(WIN_RESOURCE_INCLUDES_PATHS),$(addprefix -I,$(path))) $< -o $@
 

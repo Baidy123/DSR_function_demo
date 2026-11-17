@@ -1,6 +1,7 @@
 #ifndef __GAME_TYPES_HPP__
 #define __GAME_TYPES_HPP__
 
+#include "Game_Characters.hpp"
 #include "Shared_Types.hpp"
 #include "World_Types.hpp"
 
@@ -10,35 +11,38 @@
 
 namespace fc {
 
-/** @brief 玩家移动速度（像素/秒）。 */
-constexpr float PLAYER_SPEED = 92.0f;
+/** @brief 玩家移动速度（米/秒）。 */
+constexpr float PLAYER_SPEED = 3.0f;
 
-/** @brief 玩家碰撞半径（像素）。 */
-constexpr float PLAYER_RADIUS = 5.0f;
+/** @brief 玩家奔跑速度（米/秒）。 */
+constexpr float PLAYER_RUN_SPEED = 4.4f;
+
+/** @brief 玩家碰撞半径（米）。 */
+constexpr float PLAYER_RADIUS = 0.28f;
 
 /** @brief 玩家生命上限。 */
 constexpr int PLAYER_MAX_HP = 100;
 
-/** @brief 玩家子弹速度（像素/秒）。 */
-constexpr float PLAYER_BULLET_SPEED = 520.0f;
+/** @brief 玩家子弹速度（米/秒）。 */
+constexpr float PLAYER_BULLET_SPEED = 42.0f;
 
 /** @brief 玩家射击间隔（秒）。 */
-constexpr float PLAYER_FIRE_INTERVAL = 0.18f;
+constexpr float PLAYER_FIRE_INTERVAL = 0.20f;
 
 /** @brief 玩家子弹伤害。 */
-constexpr int PLAYER_BULLET_DAMAGE = 26;
+constexpr int PLAYER_BULLET_DAMAGE = 28;
 
 /** @brief 装填耗时（秒）。 */
-constexpr float RELOAD_TIME = 1.10f;
+constexpr float RELOAD_TIME = 1.05f;
 
 /** @brief 医疗包使用耗时（秒）。 */
-constexpr float MEDKIT_TIME = 0.60f;
+constexpr float MEDKIT_TIME = 0.75f;
 
 /** @brief 医疗包回复量。 */
 constexpr int MEDKIT_HEAL = 40;
 
-/** @brief 受伤后的无敌时间（秒）。 */
-constexpr float PLAYER_INVULNERABLE_TIME = 0.35f;
+/** @brief 受伤无敌时间（秒）。 */
+constexpr float PLAYER_INVULNERABLE_TIME = 0.45f;
 
 /**
  * @brief 游戏模式。
@@ -56,7 +60,7 @@ enum class GameMode : std::uint8_t {
 };
 
 /**
- * @brief 当前对话的上下文，用于对话结束后的状态推进。
+ * @brief 当前对话上下文。
  */
 enum class DialogueContext : std::uint8_t {
     NONE = 0,
@@ -73,8 +77,9 @@ enum class DialogueContext : std::uint8_t {
     CAR_LOCKED,
     BAR_EXIT_LOCKED,
     JUKEBOX,
-    BACKDOOR,
-    STREET_SIGN
+    TERMINAL,
+    STREET_SIGN,
+    AMBUSH_WARNING
 };
 
 /**
@@ -87,55 +92,61 @@ enum class EndingChoice : std::uint8_t {
 };
 
 /**
- * @brief 玩家战斗状态。
+ * @brief 玩家状态。
  */
 struct Player {
-    Vec2 position;
-    Vec2 aim;
-    float aimAngle = 0.0f;
-    int facingDir = 0;  ///< 0=S，1=N，2=E，3=W。
+    Vec3 position;
+    float yaw = 0.0f;
+    float aimYaw = 0.0f;
+    float aimPitch = 0.0f;
     int hp = PLAYER_MAX_HP;
     float fireCooldown = 0.0f;
     float reloadTimer = 0.0f;
     float medkitTimer = 0.0f;
     float invulnerableTimer = 0.0f;
     float hitFlash = 0.0f;
-    float animTime = 0.0f;
-    float muzzleTimer = 0.0f;
+    float walkPhase = 0.0f;
+    float time = 0.0f;
+    float recoil = 0.0f;
     bool reloading = false;
     bool usingMedkit = false;
     bool moving = false;
+    bool running = false;
+    bool aiming = true;
 };
 
 /**
- * @brief 敌人战斗状态。
+ * @brief 敌人状态。
  */
 struct Enemy {
     EnemyType type = EnemyType::SCAVENGER;
-    Vec2 position;
+    CharacterId character = CharacterId::SCAVENGER;
+    Vec3 position;
+    float yaw = 0.0f;
     float hp = 45.0f;
     float maxHp = 45.0f;
-    float speed = 52.0f;
-    float radius = 6.0f;
+    float speed = 2.1f;
+    float radius = 0.3f;
     float shootTimer = 0.0f;
     float hitFlash = 0.0f;
-    float animTime = 0.0f;
+    float walkPhase = 0.0f;
+    float time = 0.0f;
     float deathTimer = 0.0f;
     float muzzleTimer = 0.0f;
-    float wanderTimer = 0.0f;
-    Vec2 wanderDirection;
-    int facingDir = 0;
+    float aimPitch = 0.0f;
     bool alerted = false;
     bool dead = false;
     bool moving = false;
+    bool aiming = false;
 };
 
 /**
  * @brief 子弹。
  */
 struct Bullet {
-    Vec2 position;
-    Vec2 velocity;
+    Vec3 position;
+    Vec3 direction{0.0f, 0.0f, 1.0f};
+    float speed = PLAYER_BULLET_SPEED;
     float damage = 0.0f;
     float life = 0.0f;
     bool hostile = false;
@@ -146,14 +157,13 @@ struct Bullet {
  * @brief 粒子。
  */
 struct Particle {
-    Vec2 position;
-    Vec2 velocity;
+    Vec3 position;
+    Vec3 velocity;
     float life = 0.0f;
     float maxLife = 0.0f;
-    float size = 1.0f;
+    float size = 0.05f;
     Color color;
     bool additive = false;
-    bool smoke = false;
 };
 
 /**
@@ -171,14 +181,14 @@ enum class PickupType : std::uint8_t {
  */
 struct Pickup {
     PickupType type = PickupType::AMMO;
-    Vec2 position;
+    Vec3 position;
     int amount = 0;
     float bob = 0.0f;
     bool active = true;
 };
 
 /**
- * @brief 屏幕提示。
+ * @brief 界面提示。
  */
 struct Toast {
     std::string text;
@@ -198,7 +208,7 @@ struct RainDrop {
 };
 
 /**
- * @brief 商店商品。
+ * @brief 商店商品索引。
  */
 enum class ShopItem : std::uint8_t {
     AMMO = 0,
@@ -217,6 +227,23 @@ struct ShopState {
     bool browseOnly = false;
     std::string message;
     float messageTimer = 0.0f;
+};
+
+/**
+ * @brief 摄像机运行时状态（支持区域平滑切换）。
+ */
+struct CameraRuntime {
+    CameraPose current;
+    CameraPose target;
+    float blend = 1.0f;
+    int zoneIndex = -1;
+    float shakeTime = 0.0f;
+    float shakeDuration = 0.0f;
+    float shakeIntensity = 0.0f;
+    Vec3 shakeOffset;
+    Mat4 view;
+    Mat4 projection;
+    Mat4 viewProjection;
 };
 
 } // namespace fc
