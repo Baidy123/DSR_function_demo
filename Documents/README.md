@@ -1,29 +1,27 @@
-# 文档索引
+# Documents 索引
 
-本项目文档按“约束 → 设定 → 玩法 → 技术 → 协作”的顺序组织。新接手者请按下表顺序阅读。
+> 文档按“规则 → 记忆 → 设计 → 验收”的顺序阅读。所有文件均为 UTF-8（无 BOM）+ LF。
 
-| 序号 | 文档 | 内容 | 必读 |
-| --- | --- | --- | --- |
-| 1 | [Project_Rules.md](Project_Rules.md) | 项目目标、目录/命名/代码/构建/测试/Git 约束、验收清单 | 所有 Agent 必读 |
-| 2 | [Agent_Mem.md](Agent_Mem.md) | 当前状态、下一步、已知问题、接口契约、阶段日志 | 所有 Agent 必读 |
-| 3 | [Design_World.md](Design_World.md) | 自由城、FS-Link、公司、旧城、铁港、经济与术语 | 策划/美术/程序 |
-| 4 | [Design_Characters.md](Design_Characters.md) | 原始角色保护、视觉设定、像素规格、对白语气 | 策划/美术 |
-| 5 | [Design_Art.md](Design_Art.md) | 色板、场景构图、资产清单、动画、UI、生成流程 | 美术/程序 |
-| 6 | [Design_Gameplay.md](Design_Gameplay.md) | 操作、战斗、交互、任务、商店、节奏与平衡 | 策划/程序 |
-| 7 | [Design_Story.md](Design_Story.md) | Demo 剧情流程、对白节拍、分支、结局 | 策划/程序 |
-| 8 | [Design_Technical.md](Design_Technical.md) | 架构、渲染、资源包、输入、碰撞、构建、测试 | 程序 |
-| 9 | [Test_Plan.md](Test_Plan.md) | 测试范围、用例、无头验证流程 | 程序/测试 |
-| 10 | [Art_Manifest.md](Art_Manifest.md) | 已生成资产清单与审阅状态 | 美术/程序 |
+| 文件 | 内容 | 何时读 |
+| --- | --- | --- |
+| `Project_Rules.md` | 最高约束：定位、创作边界、目录/命名/代码/构建/资源/测试/Git 规范 | 动任何文件之前 |
+| `Agent_Mem.md` | 当前状态、本轮改动、下一步、已知问题、接口契约、阶段日志 | 接手任务时 |
+| `Design_World.md` | 世界观、地理、势力、基调、动线 | 写剧情或搭场景时 |
+| `Design_Characters.md` | 四名原始角色 + 两类敌人 + 骨架与头像规格 | 改角色或对白时 |
+| `Design_Art.md` | 渲染规格、光照模型、程序化图案、`.fcm` 格式、UI 视觉 | 调画面时 |
+| `Design_Gameplay.md` | 操作、移动与相机、战斗、商店、任务、交互清单 | 改玩法时 |
+| `Design_Story.md` | 主线/支线结构、台词基调、结局、数据结构 | 改剧情时 |
+| `Design_Technical.md` | 组件职责、渲染管线、数学约定、文字渲染、性能预算、技术债 | 改引擎时 |
+| `Test_Plan.md` | 工具用法、用例覆盖、视觉验收清单、回归重点 | 验证与提交前 |
 
-## 原始资料
+## 原始输入
 
-- `场景剧本.docx`：项目唯一原始剧本。**只读，不得修改**。
-  - 角色设定（小明、大美、东子、小帅）为最高优先级。
-  - 第二个主线委托在原稿中为空白，Demo 以“铁港取货 + 公司特工伏击”补全，详见 `Design_Story.md` 第 9 节。
+- `场景剧本.docx`：唯一的原始设定来源。角色姓名、身份、性格、关系不可改写。
+  由于是二进制文档，内容已转写进 `Design_Story.md` 与 `Design_Characters.md`；冲突时以原始剧本为准。
 
-## 阅读建议
+## 维护规则
 
-1. 先读 `Project_Rules.md` 与 `Agent_Mem.md`。
-2. 修改玩法/剧情前，读 `Design_Story.md` 与 `Design_Characters.md`。
-3. 修改渲染/资源前，读 `Design_Technical.md` 与 `Design_Art.md`。
-4. 提交前，对照 `Project_Rules.md` 第 12 节验收清单。
+1. 改动行为 → 同步 `Design_*`；改动状态 → 同步 `Agent_Mem.md`。
+2. 新增工具 → 同步 `Tools/README.md` 与 `Test_Plan.md`。
+3. 不在文档里写机器绝对路径；路径一律相对仓库根目录。
+4. 文档保持短句与表格，避免长篇叙述。
