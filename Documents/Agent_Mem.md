@@ -26,12 +26,12 @@
 
 | 项目 | 值 |
 | --- | --- |
-| 当前阶段 | 阶段 0：仓库初始化与文档体系 |
+| 当前阶段 | 阶段 2：构建系统与渲染平台层（美术资产已完成） |
 | 最近更新 | 2026-11-17 |
 | 更新者 | DeepSeek-V4.1-Flash |
-| 构建状态 | 尚未开始（仅有 Makefile 范本） |
+| 构建状态 | 尚未开始（Makefile 待填充；ArtGen 已可独立编译） |
 | 可玩状态 | 不可运行 |
-| Git 基线 | `1f4395a 初始提交：导入工程骨架与项目输入` |
+| Git 基线 | `1f4395a` 初始提交；`c9fa7bb` 文档体系；美术资产随本阶段提交 |
 | 下一步负责人 | 任意接手 Agent（见第 2 节） |
 
 ### 1.1 本阶段完成内容
@@ -41,6 +41,9 @@
 - 完善 `.gitattributes`：源码/文档/Makefile/资源脚本统一 UTF-8 + LF，`.bat` 使用 CRLF，二进制资产标记 binary。
 - 完成需求提取：从 `Documents/场景剧本.docx` 提取全文，确认角色与剧情基线。
 - 产出一套设计文档与项目规则（见第 5 节文档索引）。
+- 完成 C++ 像素美术生成器：195 项资产、19 类角色帧、4 张头像、标题图与资产包。
+- 生成 `Resources/ArtPack.bin`（约 1.97 MB）与审阅预览图，并完成首轮视觉审阅。
+- 本工作区设置 `core.autocrlf=false`、`core.eol=lf`，确保检出为 LF。
 
 ---
 
@@ -70,7 +73,7 @@
 
 | 编号 | 类型 | 描述 | 处理建议 |
 | --- | --- | --- | --- |
-| R-01 | 环境 | 系统未安装 Python，无法用 PIL 生成美术 | 使用 C++ 编写 `ArtGen`，随 MinGW 工具链编译 |
+| R-01 | 环境 | 系统未安装 Python，无法用 PIL 生成美术 | **已解决**：使用 C++ 编写 `ArtGen`，随 MinGW 工具链编译 |
 | R-02 | 兼容 | 全局 `core.autocrlf=true`，Git 对 LF 文件仍可能提示警告 | 以 `.gitattributes` 为准，提交后用 `git ls-files --eol` 校验 |
 | R-03 | 原始资料 | `场景剧本.docx` 存在 `~$` 锁文件，说明可能被 Word 占用 | 已忽略锁文件；读取时用共享模式复制，不修改原文件 |
 | R-04 | 范围 | 剧本中第二个主线委托内容为空白（“此处接……”） | Demo 使用“铁港仓库取货 + 公司特工伏击”补全，并在设计文档说明 |
@@ -149,8 +152,8 @@
 
 | 阶段 | 日期 | 执行者 | 内容 | 验证 | 提交 |
 | --- | --- | --- | --- | --- | --- |
-| 0 | 2026-11-17 | DeepSeek-V4.1-Flash | 仓库初始化、规则与设计文档、需求提取 | `git log`、文档人工校对 | `1f4395a` |
-| 1 | - | - | 待执行 | - | - |
+| 0 | 2026-11-17 | DeepSeek-V4.1-Flash | 仓库初始化、规则与设计文档、需求提取 | `git log`、文档人工校对 | `1f4395a` / `c9fa7bb` |
+| 1 | 2026-11-17 | DeepSeek-V4.1-Flash | C++ 美术生成器、195 项资产、资产包、预览图 | 生成器编译通过；PNG/包已生成；接触表/角色/头像/标题预览已审阅 | 本阶段提交 |
 | 2 | - | - | 待执行 | - | - |
 | 3 | - | - | 待执行 | - | - |
 | 4 | - | - | 待执行 | - | - |
@@ -166,6 +169,9 @@
 | 2026-11-17 | `git ls-files --eol .gitattributes .gitignore` | `i/lf w/lf` | 换行符合规范 |
 | 2026-11-17 | `g++ --version` / `make --version` / `windres --version` | 通过 | MinGW 16.1.0 / Make 4.4.1 / Binutils 2.46 |
 | 2026-11-17 | `python --version` | 不存在 | 改用 C++ ArtGen |
+| 2026-11-17 | `g++ -std=c++17 -O2 Resources\ArtGen\ArtGen_Main.cpp -o Temp\ArtGen.exe` | 通过 | 无错误 |
+| 2026-11-17 | `.\Temp\ArtGen.exe Resources` | 通过 | 195 PNG；ArtPack.bin = 1,972,556 B |
+| 2026-11-17 | 视觉审阅 `_ContactSheet.png` / `_CharacterPreview.png` / `_PortraitPreview.png` / `_TitlePreview.png` | 通过 | 角色辨识度可用，后续在场景截图中复核 |
 
 ---
 
@@ -181,6 +187,8 @@
 | D-06 | 对话/任务用代码内数据结构而非外部脚本 | 避免运行时解析器复杂度，便于类型检查与测试 |
 | D-07 | 音频使用 waveOut + 程序化合成 | 无外部素材、无额外依赖，能提供氛围与反馈 |
 | D-08 | Demo 以“仓库货物是未登记神经桥”收束 | 把主线动机与取货目标绑定，形成完整叙事弧 |
+| D-09 | 美术生成器使用 C++ 自实现 PNG 写出（无压缩 Deflate） | 本机无 Python/zlib；PNG 体积换实现简单可靠 |
+| D-10 | 仓库级 `core.autocrlf=false` + `core.eol=lf` | 全局 `autocrlf=true` 会使检出变为 CRLF，违背 .gitattributes |
 
 ---
 
