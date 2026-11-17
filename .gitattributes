@@ -1,0 +1,40 @@
+# 源码相关文件配置
+*.c     text eol=LF
+*.cpp   text eol=LF
+*.h     text eol=LF
+*.hpp   text eol=LF
+*.s     text eol=LF
+*.ld    text eol=LF
+
+# 参与构建的文本与着色器
+*.rc    text eol=LF
+*.hlsl  text eol=LF
+*.txt   text eol=LF
+*.dat   text eol=LF
+*.py    text eol=LF
+*.ps1   text eol=LF
+
+# JSON 文件配置
+*.json text eol=LF
+
+# Markdown 文件配置
+*.md text eol=LF
+
+# 二进制资产（不做换行转换）
+*.png   binary
+*.bmp   binary
+*.bin   binary
+*.ico   binary
+*.docx  binary
+
+# 仓库配置相关文件配置
+.gitignore      text eol=LF
+.gitattributes  text eol=LF
+*.exe           binary
+
+# 编译规则相关
+*.mk     text eol=LF
+Makefile text eol=LF
+
+# Windows 批处理文件需要以CRLF结尾
+*.bat text eol=CRLF
