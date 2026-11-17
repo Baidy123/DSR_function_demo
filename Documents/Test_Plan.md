@@ -109,3 +109,31 @@
 截图路径：
 下一步：
 ```
+
+---
+
+## 7. 实际执行结果（2026-11-17）
+
+| 项目 | 命令 | 结果 | 备注 |
+| --- | --- | --- | --- |
+| Release 构建 | `make release` | PASS | `Build/Release/Target.exe`（约 3.2 MB） |
+| Debug 构建 | `make debug` | PASS | `Build/Debug/Target.exe` |
+| 单元测试 | `.\Tools\UnitTests\Build\UnitTests.exe` | PASS 68/68 | 数学、背包、任务、对话、剧情数据 |
+| 主线流程 | `.\Tools\OffscreenTest\Build\OffscreenTest.exe --flow` | PASS 25/25 | 开场→酒吧→商店→铁港→伏击→返回→支线→结局 |
+| 隐藏截图 | `Target.exe --shot ...` / `OffscreenTest ...` | PASS | 标题、街道、酒吧、仓库、对话、商店、日志、结局、死亡、暂停 |
+| 音频启动 | 隐藏窗口启动 | PASS | 音频初始化成功；测试模式静音 |
+| 视觉复核 | 人工查看截图 | PASS | 修复多行文字重叠、HUD 遮挡、商店上下文、结局布局 |
+
+### 7.1 遗留问题
+
+- 无存档/读档；使用检查点。
+- 街道与仓库仍偏空旷；美术迭代可增加路灯、广告牌、货架与光池。
+- 菜单为键盘操作，未实现鼠标点击。
+- 续作可补全原剧本中第二个主线委托。
+
+### 7.2 回归建议
+
+- 修改剧情/任务：重跑 `UnitTests` 与 `--flow`。
+- 修改渲染/布局：重跑对应场景的 `OffscreenTest` 截图。
+- 修改音频：隐藏启动并检查退出，实机抽查音量。
+- 提交前：`make` + 针对性测试 + `git status`。

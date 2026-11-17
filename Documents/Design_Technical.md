@@ -131,19 +131,21 @@ Data:
 - 纹理创建使用 `DXGI_FORMAT_B8G8R8A8_UNORM`；采样器：
   - 像素艺术：`D3D11_FILTER_MIN_MAG_MIP_POINT`；
   - 文字：`D3D11_FILTER_MIN_MAG_MIP_LINEAR`。
-- 缺失资源：返回 1×1 洋红占位纹理，并写日志。
+- 缺失资源：返回 4×4 洋红占位纹理，并写日志。
+- 运行时将全部小资产打入 2048×2048 图集；超大资产单独建纹理。
 
 ### 4.3 RC 嵌入
 
 `Resources/Resources.rc`：
 
 ```rc
-ART_PACK RCDATA "ArtPack.bin"
+ART_PACK RCDATA "Resources/ArtPack.bin"
 ```
 
+- `windres` 从项目根目录执行，路径相对构建 cwd，因此带 `Resources/` 前缀。
 - `windres` 将其编译为目标文件，链接进 exe。
 - 运行时 `FindResourceW(GetModuleHandleW(nullptr), L"ART_PACK", RT_RCDATA)`。
-- 路径相对 `.rc` 所在目录，避免绝对路径。
+- 根 Makefile 的资源规则依赖 `Resources/ArtPack.bin`，资产更新后会重新嵌入。
 
 ---
 
@@ -164,7 +166,7 @@ ART_PACK RCDATA "ArtPack.bin"
 - 动态顶点缓冲：8192 个四边形（4 顶点/6 索引）。
 - 每帧 `Begin(projection)` → 多次 `Draw` → `End()`。
 - 按纹理分组以减少状态切换；同纹理连续绘制合并到一个批次。
-- 支持：源矩形、目标矩形、颜色 tint、翻转（通过 uv）、旋转（可选）。
+- 支持：源矩形、目标矩形、颜色 tint、水平翻转（通过 uv）；不引入旋转以保持像素对齐。
 - 绘制顺序：背景瓷砖 → 地面装饰 → 角色/道具（按脚底 y 排序）→ 子弹/粒子 → 光照（加色）→ 天气 → 后处理 → UI。
 
 ### 5.3 文字渲染
@@ -294,9 +296,9 @@ TITLE
 ### 10.2 Tools Makefile
 
 - 独立编译，不污染根 Makefile。
-- `UnitTests`：只链接 Shared 的纯逻辑源文件 + 测试源文件。
-- `OffscreenTest`：链接全部组件源文件（排除 `Main_Entry.cpp`）+ 自带 `main`。
-- 输出到 `Tools/<工具>/Build/<工具>.exe`。
+- `UnitTests`：只链接 Shared 的纯逻辑源文件 + Game 的背包/任务/对话/剧情 + 测试源文件。
+- `OffscreenTest`：链接全部组件源文件（排除 `Main_Entry.cpp`）+ 自带 `main`；支持截图与 `--flow` 主线流程测试。
+- 输出到 `Tools/<工具>/Build/<工具>.exe`；默认从项目根目录运行，资产包读取 `Resources/ArtPack.bin`。
 
 ---
 
@@ -315,10 +317,10 @@ TITLE
 
 - 创建 `SW_HIDE` 窗口（不激活、不显示）。
 - 初始化真实 D3D11 管线与游戏。
-- 通过 `GameApp::DebugLoadScene(SceneId)` 加载场景，模拟固定步长 1/60s，渲染 N 帧。
-- 从交换链/离屏目标读回像素，写 BMP 到 `Temp/Screenshots/`。
-- 不调用 `SetForegroundWindow`、不移动鼠标、不发送键盘事件。
-- 可选 `--scene bar|street|harbor|title`。
+- 通过 `GameApp::DebugLoadScene(SceneId)` 或 `DebugShow*` 加载场景/界面，模拟固定步长 1/60s，渲染 N 帧。
+- 从离屏纹理读回像素，写 BMP 到 `Temp/Screenshots/`。
+- 不调用 `SetForegroundWindow`、不移动鼠标、不发送键盘事件；音频静音。
+- 可选 `--scene title|street|bar|harbor`、`--ui dialogue|shop|journal|ending|death|pause`、`--flow`。
 
 ---
 

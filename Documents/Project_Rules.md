@@ -199,7 +199,13 @@ user.name  = DeepSeek-V4.1-Flash
 user.email = <>
 ```
 
-2. 禁止修改全局 Git 配置。
+2. 禁止修改全局 Git 配置。本工作区额外设置（仅本地）：
+
+```text
+core.autocrlf = false
+core.eol = lf
+```
+
 3. 阶段性功能完善后才提交；一次提交对应一个可说明的阶段，不提交半成品或临时文件。
 4. 初始文件已完成一次 init 提交；之后每次提交信息使用简洁中文，说明“改了什么 + 为什么”。
 5. 多行提交信息写入 `Temp/` 下的 UTF-8 文件，通过 `git commit -F` 提交，避免终端截断。

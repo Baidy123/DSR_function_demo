@@ -29,7 +29,7 @@ CXX_STD = c++17
 INPUT_CHAR_ENCODING = UTF-8
 
 # 编译产物单字节字符(char)编码定义
-OUTPUT_CHAR_ENCODING = GBK
+OUTPUT_CHAR_ENCODING = UTF-8
 
 # 编译产物宽字符(wchar_t)编码定义
 OUTPUT_WCHAR_ENCODING = UTF-16LE
@@ -51,11 +51,13 @@ WIN_RES_COMPLIER = windres
 # 链接库
 LIB_LINK = 			\
 -lgdi32				\
--lgdiplus			\
--lcomdlg32			\
+-luser32			\
 -ld3d11				\
--ldwmapi 			\
 -ld3dcompiler		\
+-ldxgi				\
+-lwinmm				\
+-lole32				\
+-luuid				\
 
 # C定义
 C_DEFS =			\
@@ -77,22 +79,23 @@ _UNICODE			\
 UNICODE				\
 
 # C++ 头文件目录
-CXX_INCLUDES_PATHS =	\
-Utilities/Inc			\
-Components/Main/Inc		\
-Components/Application/Inc	\
-Components/Toolbar/Inc	\
-Components/SignalPanel/Inc	\
-Components/PlotView/Inc	\
+CXX_INCLUDES_PATHS = 		\
+Components/Shared/Inc		\
+Components/Platform/Inc		\
+Components/Render/Inc		\
+Components/World/Inc		\
+Components/Game/Inc			\
+Components/Audio/Inc		\
 
 # C++源文件目录
-CXX_SOURCES_PATHS =		\
-Utilities/Src			\
-Components/Main/Src		\
-Components/Application/Src	\
-Components/Toolbar/Src	\
-Components/SignalPanel/Src	\
-Components/PlotView/Src	\
+CXX_SOURCES_PATHS = 		\
+Components/Main/Src			\
+Components/Shared/Src		\
+Components/Platform/Src		\
+Components/Render/Src		\
+Components/World/Src		\
+Components/Game/Src			\
+Components/Audio/Src		\
 
 # C++额外单个源文件
 CXX_EXTERA_SOURCES = 	\
@@ -101,7 +104,7 @@ CXX_EXTERA_SOURCES = 	\
 WIN_RESOURCE_INCLUDES_PATHS = 	\
 
 # Windows 资源文件脚本列表
-WIN_RESOURCE_SCRIPTS =			\
+WIN_RESOURCE_SCRIPTS = Resources/Resources.rc
 
 ##################################################################################
 
@@ -126,7 +129,7 @@ CXXFLAGS = $(foreach text,$(CXX_DEFS),$(addprefix -D,$(text)))				\
 		  -static 															\
 		  -Wall 															\
 		  -MMD -MP -MF"$(@:%.o=%.d)"										\
-		  -lstdc++															\
+
 
 # 链接选项
 LDFLAGS = -Wl,-Map,$(basename $@).map \
@@ -214,7 +217,7 @@ $(BUILD_DIR)/$(SUB_DIR_RELEASE)/%.o: %.cpp Makefile | $(BUILD_DIR)/$(SUB_DIR_REL
 	$(CXX_COMPLIER) -c $(CXXFLAGS) $(RELEASE_OPT) -Wa,-a,-ad,-ahlms=$(BUILD_DIR)/$(SUB_DIR_RELEASE)/$(notdir $(<:.cpp=.lst)) $< -o $@
 
 # Release 资源脚本文件编译
-$(BUILD_DIR)/$(SUB_DIR_RELEASE)/%.o: %.rc Makefile | $(BUILD_DIR)/$(SUB_DIR_RELEASE)
+$(BUILD_DIR)/$(SUB_DIR_RELEASE)/%.o: %.rc Resources/ArtPack.bin Makefile | $(BUILD_DIR)/$(SUB_DIR_RELEASE)
 	@echo ====== [Release] Windows Resource Script File "$<" Compiling... ====== 
 	$(WIN_RES_COMPLIER) $(foreach path,$(WIN_RESOURCE_INCLUDES_PATHS),$(addprefix -I,$(path))) $< -o $@
 
@@ -229,7 +232,7 @@ $(BUILD_DIR)/$(SUB_DIR_DEBUG)/%.o: %.cpp Makefile | $(BUILD_DIR)/$(SUB_DIR_DEBUG
 	$(CXX_COMPLIER) -c $(CXXFLAGS) $(DEBUG_OPT) -g -Wa,-a,-ad,-ahlms=$(BUILD_DIR)/$(SUB_DIR_DEBUG)/$(notdir $(<:.cpp=.lst)) $< -o $@
 
 # Debug 资源脚本文件编译
-$(BUILD_DIR)/$(SUB_DIR_DEBUG)/%.o: %.rc Makefile | $(BUILD_DIR)/$(SUB_DIR_DEBUG)
+$(BUILD_DIR)/$(SUB_DIR_DEBUG)/%.o: %.rc Resources/ArtPack.bin Makefile | $(BUILD_DIR)/$(SUB_DIR_DEBUG)
 	@echo ====== [Debug] Windows Resource Script File "$<" Compiling... ====== 
 	$(WIN_RES_COMPLIER) $(foreach path,$(WIN_RESOURCE_INCLUDES_PATHS),$(addprefix -I,$(path))) $< -o $@
 
