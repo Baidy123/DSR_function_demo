@@ -7,3 +7,9 @@ class_name InteractionEffect
 
 func apply(_context: InteractionContext) -> void:
 	push_warning("InteractionEffect 缺少 apply 实现：%s" % get_script().resource_path)
+
+func execute(context: InteractionContext) -> Dictionary:
+	if context.execution == null or not context.execution.is_current():
+		return {"status": &"cancelled", "reason": &"invalid_execution"}
+	apply(context)
+	return {"status": &"completed", "reason": &""}

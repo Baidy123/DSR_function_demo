@@ -339,6 +339,8 @@ existing_squads = Array[NodePath]([NodePath("../../Squad")])
 
 [node name="Wave2" parent="SceneDirector" unique_id=1773581671 instance=ExtResource("enemy_wave")]
 editor_description = "第二波为可调示例：直接移动、替换或删除下方小队与敌人。"
+show_spawn_presentation = true
+presentation_target_path = NodePath("Squad/Enemy")
 
 [node name="Squad" parent="SceneDirector/Wave2" unique_id=1473184881 instance=ExtResource("squad")]
 profile = SubResource("Resource_psy3o")

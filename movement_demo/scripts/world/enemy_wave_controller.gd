@@ -21,14 +21,14 @@ signal encounter_completed
 ## 关闭可由场景规则的 COMPLETE_SCENE 决定完成；不会改变敌人实际清空统计。
 @export var complete_when_all_waves_cleared := true
 @export_group("场景绑定")
-## 当前玩家Health，相对SceneDirector。收到died后由调度器显示原死亡UI并处理重开。
+## 当前玩家Health，相对SceneDirector。收到died后由调度器显示死亡UI并处理重开或回酒馆。
 @export_node_path("Node") var health_path: NodePath = ^"../Player/Health"
 ## 当前关结果界面，默认同级LevelFlow；其关卡编号和五关路径表保持原配置。
 ## 留空不启用默认全波通关界面；独立玩法可另接自定义结果。
 @export_node_path("CanvasLayer") var result_view_path: NodePath = ^"../LevelFlow"
-## 可选开场提供者，默认临时PlayGuide。清空即可跳过，删除PlayGuide也不会永久等待。
+## 可选开场提供者，默认留空；操作说明改由 Esc → 设置手动打开。
 ## 替换教程时选择有begin()/cancel()/finished信号的适配节点，不要求固定脚本类型。
-@export_node_path("Node") var guide_path: NodePath = ^"../LevelFlow/PlayGuide"
+@export_node_path("Node") var guide_path: NodePath
 ## 开启后指定的引导缺失会报告配置错误；默认关闭，便于移除临时说明。
 @export var guide_required := false
 ## 临时说明开启；未来互动教程允许玩家行动时关闭。仅影响开场引导，不改变死亡暂停。
@@ -92,10 +92,15 @@ func _ready() -> void:
 		"presentation_options": {"move_seconds": camera_move_seconds, "hold_seconds": camera_hold_seconds, "return_seconds": camera_return_seconds}})
 	# Never make the host Always: enemy descendants must remain pausable.
 	add_child(director, false, Node.INTERNAL_MODE_BACK)
+	# Reserve explicit ownership before legacy region deferred setup runs.
+	var health := get_node_or_null(health_path) if not health_path.is_empty() else null
+	if health != null and not health.has_meta(&"scene_director"):
+		health.set_meta(&"scene_director", weakref(director))
 
 func start_encounter() -> void:
-	_ensure_runtime()
-	_runtime.start_encounter()
+	if not is_instance_valid(director): return
+	if is_node_ready() and director.state == &"preparing": director.initialize()
+	director.request_action(&"wave", {"source": self, "parameters": {"command": &"start"}})
 
 func advance_from_region(delta: float) -> void:
 	if _runtime != null: _runtime.advance_from_region(delta)
@@ -106,13 +111,15 @@ func reset_encounter() -> void:
 
 ## 调试入口：只跳过当前区域本轮的剩余波次，仍通过正式完成信号开放关卡结果。
 func debug_complete_encounter() -> bool:
-	_ensure_runtime()
-	return _runtime.debug_complete_encounter()
+	if not is_instance_valid(director): return false
+	var request = director.request_action(&"wave", {"source": self, "parameters": {"command": &"debug_complete"}})
+	return request.get_result().get("success", false)
 
 
 func request_wave(wave: Node) -> bool:
-	_ensure_runtime()
-	return _runtime.request_wave(wave)
+	if not is_instance_valid(director): return false
+	if is_node_ready() and director.state == &"preparing": director.initialize()
+	return director.request_wave_for_flow(wave, false, {})
 
 func wave_status(wave: Node) -> StringName:
 	return _runtime.wave_status(wave) if _runtime != null else &"unknown"

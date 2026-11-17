@@ -77,8 +77,11 @@ func select_reward(reward_id: StringName) -> bool:
 			_heal_player(float(option.amount))
 		RewardOption.Effect.REFILL_AMMO:
 			_refill_ammo()
-		RewardOption.Effect.SYSTEM_PROGRESS:
-			_add_progress(option.amount)
+		RewardOption.Effect.SET_FLAG:
+			var state := _state()
+			if state == null or option.flag_key == &"":
+				return false
+			state.grant_shop_flag(option.flag_key)
 		_:
 			return false
 	var tree := get_tree()
@@ -118,12 +121,6 @@ func _refill_ammo() -> void:
 	var slots := player.get_node_or_null("Equipment")
 	if slots != null and slots.has_method(&"refill_all_ammo"):
 		slots.refill_all_ammo()
-
-
-func _add_progress(amount: int) -> void:
-	var state := _state()
-	if state != null and state.has_method(&"add_system_progress"):
-		state.add_system_progress(amount)
 
 
 func _player() -> Node3D:

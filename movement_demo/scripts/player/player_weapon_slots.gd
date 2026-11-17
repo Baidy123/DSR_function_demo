@@ -70,12 +70,37 @@ func _ready() -> void:
 		combat.equip_weapon(null)
 	_update_display()
 
+## 当前医疗库存共用一种资源；同一资源叠加，空库存可接收另一种医疗包。
+func can_add_medkits(data: MedkitData, amount: int) -> bool:
+	return data != null and amount > 0 and (medkit_count == 0 or medkit == data)
+
+
+func add_medkits(data: MedkitData, amount: int) -> bool:
+	if not can_add_medkits(data, amount):
+		return false
+	medkit = data
+	medkit_count += amount
+	return true
+
+
 func refill_all_ammo() -> void:
-	# 已初始化的 WeaponAmmo 持有该字典引用，必须原地恢复。
-	# 重新绑定槽位，让奖励恢复后的共享池同时重建资源定义与冲突诊断。
+	# 已初始化的 WeaponAmmo 持有该字典引用，必须原地恢复，不能直接换新字典。
+	# 先保留当前所有备弹类型（包括 initial_ammo 之外的类型），再把已配置类型
+	# 抬到至少初始数量；超过初值的库存不会被回退或清掉。
+	var preserved: Dictionary = reserve_ammo.duplicate()
 	_slot_weapons = [null, null]
 	_slot_definitions = [null, null]
-	_initialize_ammo()
+	for supply in initial_ammo:
+		if supply == null or supply.ammo == null or not supply.ammo.has_valid_id():
+			continue
+		_remember_definition(supply.ammo)
+		var key := supply.ammo.ammo_id
+		preserved[key] = maxi(int(preserved.get(key, 0)), maxi(0, supply.amount))
+	for slot in range(2):
+		_bind_slot(slot)
+	reserve_ammo.clear()
+	for key in preserved:
+		reserve_ammo[key] = maxi(0, int(preserved[key]))
 	for slot in range(2):
 		var data := _weapon_at(slot)
 		var state = _ammo_states[slot]
@@ -84,6 +109,27 @@ func refill_all_ammo() -> void:
 		state.cancel_reload()
 		state.magazine_rounds = data.magazine_capacity
 	_update_display()
+
+
+## 全部已装备弹匣满匣，且所有配置的初始共享备弹都不低于初始数量时为 true。
+## 商店用此查询在补满弹药商品当前没有实际效果时拒绝购买。
+func can_refill_all_ammo() -> bool:
+	for slot in range(2):
+		var data := _weapon_at(slot)
+		if data == null:
+			continue
+		var state = _ammo_states[slot]
+		# 未创建运行状态的已装备槽按出生满匣处理；只有真正存在缺弹、
+		# 状态过期或仍在换弹时才需要补给。
+		if state != null and (state.weapon != data or state.magazine_rounds < data.magazine_capacity or state.is_reloading):
+			return false
+	for supply in initial_ammo:
+		if supply == null or supply.ammo == null:
+			continue
+		var key := supply.ammo.ammo_id
+		if int(reserve_ammo.get(key, 0)) < int(supply.amount):
+			return false
+	return true
 
 
 func campaign_snapshot() -> Dictionary:
@@ -103,6 +149,23 @@ func campaign_snapshot() -> Dictionary:
 		"reserve_ammo": reserve_ammo.duplicate(),
 		"magazines": magazines,
 	}
+
+
+## 把商店购买的枪械写入指定槽位，并保留另一把武器、医疗包、共享备弹和无关玩家状态。
+## 目标槽位重新以满匣出生；只接受槽位 0/1 且非空、非专用近战 WeaponData。
+func replace_weapon_slot(slot: int, weapon: WeaponData) -> bool:
+	if slot not in [0, 1] or weapon == null or weapon.fire_mode == WeaponData.FireMode.MELEE:
+		return false
+	var snapshot := campaign_snapshot()
+	if slot == 0:
+		snapshot["primary_weapon"] = weapon
+	else:
+		snapshot["secondary_weapon"] = weapon
+	var magazines: Array = snapshot["magazines"]
+	magazines[slot] = weapon.magazine_capacity
+	snapshot["magazines"] = magazines
+	apply_campaign_snapshot(snapshot)
+	return _weapon_at(slot) == weapon
 
 
 func apply_campaign_snapshot(snapshot: Dictionary) -> void:

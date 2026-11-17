@@ -1,0 +1,90 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://scripts/ui/shop_board.gd" id="1_shop_board"]
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_shop_panel"]
+bg_color = Color(0.05, 0.07, 0.1, 0.96)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0.7, 0.78, 0.9, 0.9)
+content_margin_left = 24.0
+content_margin_top = 18.0
+content_margin_right = 24.0
+content_margin_bottom = 18.0
+
+[node name="ShopBoard" type="CanvasLayer"]
+layer = 10
+process_mode = 3
+visible = false
+script = ExtResource("1_shop_board")
+
+[node name="Backdrop" type="ColorRect" parent="."]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 0
+color = Color(0, 0, 0, 0.62)
+
+[node name="Center" type="CenterContainer" parent="Backdrop"]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="Panel" type="PanelContainer" parent="Backdrop/Center"]
+custom_minimum_size = Vector2(1040, 680)
+theme_override_styles/panel = SubResource("StyleBoxFlat_shop_panel")
+
+[node name="Margin" type="MarginContainer" parent="Backdrop/Center/Panel"]
+layout_mode = 2
+theme_override_constants/margin_left = 12
+theme_override_constants/margin_top = 8
+theme_override_constants/margin_right = 12
+theme_override_constants/margin_bottom = 8
+
+[node name="Content" type="VBoxContainer" parent="Backdrop/Center/Panel/Margin"]
+layout_mode = 2
+theme_override_constants/separation = 14
+
+[node name="Header" type="HBoxContainer" parent="Backdrop/Center/Panel/Margin/Content"]
+layout_mode = 2
+theme_override_constants/separation = 16
+
+[node name="Title" type="Label" parent="Backdrop/Center/Panel/Margin/Content/Header"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_font_sizes/font_size = 34
+text = "商店"
+
+[node name="Balance" type="Label" parent="Backdrop/Center/Panel/Margin/Content/Header"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 26
+text = "货币：0"
+horizontal_alignment = 2
+
+[node name="Scroll" type="ScrollContainer" parent="Backdrop/Center/Panel/Margin/Content"]
+layout_mode = 2
+size_flags_vertical = 3
+
+[node name="Items" type="GridContainer" parent="Backdrop/Center/Panel/Margin/Content/Scroll"]
+layout_mode = 2
+size_flags_horizontal = 3
+columns = 3
+theme_override_constants/h_separation = 12
+theme_override_constants/v_separation = 12
+
+[node name="Result" type="Label" parent="Backdrop/Center/Panel/Margin/Content"]
+layout_mode = 2
+text = ""
+horizontal_alignment = 1
+
+[node name="Close" type="Button" parent="Backdrop/Center/Panel/Margin/Content"]
+custom_minimum_size = Vector2(0, 48)
+layout_mode = 2
+theme_override_font_sizes/font_size = 22
+text = "关闭"

@@ -49,6 +49,17 @@ func _run() -> void:
 			var state = slots._ammo_states[slot]
 			_check("弹药奖励补满槽%d并取消换弹" % slot, state.magazine_rounds == data.magazine_capacity and not state.is_reloading)
 			_check("弹药奖励同步已初始化槽%d备弹" % slot, state.reserve_count() == expected_reserve[data.get_ammo_definition().ammo_id])
+	slots.reserve_ammo[&"rifle"] = slots.starting_rifle_ammo + 12
+	slots.reserve_ammo[&"pistol"] = 2
+	slots.reserve_ammo[&"smg"] = slots.starting_smg_ammo + 5
+	slots.reserve_ammo[&"shotgun"] = 1
+	slots.reserve_ammo[&"extra_type"] = 9
+	slots.refill_all_ammo()
+	_check("弹药补给不降低高于初值的步枪备弹", slots.reserve_ammo[&"rifle"] == slots.starting_rifle_ammo + 12)
+	_check("弹药补给把低于初值的手枪备弹补回初值", slots.reserve_ammo[&"pistol"] == slots.starting_pistol_ammo)
+	_check("弹药补给不降低高于初值的冲锋枪备弹", slots.reserve_ammo[&"smg"] == slots.starting_smg_ammo + 5)
+	_check("弹药补给把低于初值的霰弹备弹补回初值", slots.reserve_ammo[&"shotgun"] == slots.starting_shotgun_ammo)
+	_check("弹药补给保留 initial_ammo 之外的备弹类型", slots.reserve_ammo[&"extra_type"] == 9)
 	combat.accuracy = 0.05
 	combat.accuracy_recovery_timer = 0.6
 	combat.shot_cooldown = 0.7
@@ -134,6 +145,11 @@ func _run() -> void:
 	root.add_child(other)
 	_check("两槽都为空时安全保持无武器", other_slots.active_slot == -1 and other.get_node("Player/Combat").weapon == null)
 	other.free()
+	var full_fresh = packed.instantiate()
+	root.add_child(full_fresh)
+	var fresh_slots = full_fresh.get_node("Player/Equipment")
+	_check("未创建运行状态的已装备槽按满匣计入可补满", fresh_slots.can_refill_all_ammo())
+	full_fresh.free()
 	var health = player.get_node("Health")
 	health.debug_invincible = false
 	health.receive_hit(health.max_health)

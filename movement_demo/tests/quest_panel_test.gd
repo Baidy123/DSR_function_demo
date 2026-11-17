@@ -24,7 +24,7 @@ func check(condition: bool, label_text: String) -> void:
 
 
 func run_checks() -> void:
-	root.get_node("GameState").system_progress = 0
+	root.get_node("GameState").set_flag(&"has_mind_access_device", false)
 	await _check_empty_placeholder()
 	await _check_live_scene()
 	if checks_run != EXPECTED_CHECKS:
@@ -43,8 +43,8 @@ func _check_empty_placeholder() -> void:
 	await process_frame
 	check(not _is_open(panel), "任务面板默认隐藏")
 	check(_tab_is_bound(), "Tab 已绑定到任务面板切换动作")
-	check(_progress_bar(panel).max_value == 100.0 and _progress_bar(panel).value == 0.0, "系统进度条范围为零到一百")
-	check(_progress_label(panel).text.contains("0 / 100"), "系统进度显示当前值和上限")
+	check(not panel.has_node("Panel/Margin/Content/SystemProgress"), "任务面板已移除旧进度节点")
+	check(panel.find_children("*", "ProgressBar", true, false).is_empty(), "任务面板不显示数值进度条")
 	await _press_tab(panel)
 	check(_is_open(panel), "按 Tab 显示任务面板")
 	check(_text(panel).contains("暂无任务"), "没有任务控制器时显示占位文本")
@@ -52,21 +52,21 @@ func _check_empty_placeholder() -> void:
 	var container: Control = panel.get_node("Panel")
 	check(container.mouse_filter == Control.MOUSE_FILTER_IGNORE, "面板不接收鼠标事件")
 	var state: Node = root.get_node("GameState")
-	var progress_events: Array = []
-	var record_progress := func(previous: int, current: int) -> void:
-		progress_events.append([previous, current])
-	state.system_progress_changed.connect(record_progress)
-	state.add_system_progress(20)
+	var flag_events: Array = []
+	var record_flag := func(key: StringName, value: bool) -> void:
+		flag_events.append([key, value])
+	state.flag_changed.connect(record_flag)
+	state.grant_shop_flag(&"has_mind_access_device")
 	await process_frame
-	check(_progress_bar(panel).value == 20.0 and _progress_label(panel).text.contains("20 / 100"), "系统进度变化后刷新")
+	check(state.get_flag(&"has_mind_access_device"), "商品通过旗标表示拥有")
 	check(
-		progress_events == [[0, 20]],
-		"系统进度变化报告前后值"
+		flag_events == [[&"has_mind_access_device", true]],
+		"商品旗标变化发出布尔信号"
 	)
-	state.add_system_progress(90)
+	state.set_flag(&"has_mind_access_device")
 	await process_frame
-	check(_progress_bar(panel).value == 100.0 and _progress_label(panel).text.contains("100 / 100"), "系统进度累计不超过一百")
-	state.system_progress_changed.disconnect(record_progress)
+	check(flag_events.size() == 1 and _text(panel).contains("暂无任务"), "重复置位不重复通知且不改变任务列表")
+	state.flag_changed.disconnect(record_flag)
 	await _press_tab(panel)
 	check(not _is_open(panel), "再次按 Tab 隐藏任务面板")
 	panel.queue_free()
@@ -74,7 +74,7 @@ func _check_empty_placeholder() -> void:
 
 
 func _check_live_scene() -> void:
-	root.get_node("GameState").system_progress = 0
+	root.get_node("GameState").set_flag(&"has_mind_access_device", false)
 	var scene: Node = load("res://scenes/main.tscn").instantiate()
 	scene.add_child(load("res://scenes/ui/quest_panel.tscn").instantiate())
 	root.add_child(scene)
@@ -99,9 +99,9 @@ func _check_live_scene() -> void:
 	state.help_choice = "accepted"
 	await process_frame
 	check(_text(panel).contains("进行中"), "任务状态变化后面板刷新")
-	state.add_system_progress(20)
+	state.grant_shop_flag(&"has_mind_access_device")
 	await process_frame
-	check(_progress_bar(panel).value == 20.0 and _progress_label(panel).text.contains("20 / 100"), "主场景任务栏显示系统进度")
+	check(state.get_flag(&"has_mind_access_device") and panel.find_children("*", "ProgressBar", true, false).is_empty(), "获得商品不再创建任务进度条")
 	await _press_tab(panel)
 	check(not _is_open(panel), "主场景再次按 Tab 隐藏任务面板")
 	scene.queue_free()
@@ -114,14 +114,6 @@ func _text(panel: Node) -> String:
 
 func _is_open(panel: Node) -> bool:
 	return (panel.get_node("Panel") as Control).visible
-
-
-func _progress_bar(panel: Node) -> ProgressBar:
-	return panel.get_node("Panel/Margin/Content/SystemProgress/Bar") as ProgressBar
-
-
-func _progress_label(panel: Node) -> Label:
-	return panel.get_node("Panel/Margin/Content/SystemProgress/Label") as Label
 
 
 func _press_tab(panel: Node) -> void:

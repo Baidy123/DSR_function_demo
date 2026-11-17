@@ -4,8 +4,9 @@ signal presentation_reset(region: Node)
 signal combat_cleared(region: Node)
 
 const EnemyWaves = preload("res://scripts/world/enemy_wave_controller.gd")
+const Director = preload("res://scripts/systems/scene_director.gd")
 var _enemy_waves: Node
-var _standalone_director: Node
+var _scene_director: Node
 
 ## Match members by faction and communication group; only team awareness is shared.
 @export var team_cooperation_bindings: Array[EnemyTeamCooperationBinding] = []
@@ -61,11 +62,13 @@ func _enter_tree() -> void:
 
 func _ready() -> void:
 	_bind_combat_zone()
-	if not is_instance_valid(_enemy_waves): _bind_standalone_director.call_deferred()
+	_bind_scene_director.call_deferred()
 
 
-func _bind_standalone_director() -> void:
-	# Legacy Main has no EnemyWaves. Bind the same core once to the scene's player.
+func _bind_scene_director() -> void:
+	_scene_director = Director.for_node(self)
+	if is_instance_valid(_scene_director): return
+	# An explicit facade may have reserved Health before its deferred initialize.
 	var scope: Node = self
 	var health: Node
 	while scope != null:
@@ -74,14 +77,13 @@ func _bind_standalone_director() -> void:
 		scope = scope.get_parent()
 	if health == null: return
 	if health.has_meta(&"scene_director"):
-		var existing = health.get_meta(&"scene_director").get_ref()
-		if is_instance_valid(existing): return
-	_standalone_director = preload("res://scripts/systems/scene_director.gd").new()
-	_standalone_director.name = "SceneDirector"
-	_standalone_director.configure(scope, {"health": health})
-	health.set_meta(&"scene_director", weakref(_standalone_director))
-	scope.add_child(_standalone_director, false, Node.INTERNAL_MODE_BACK)
-	_standalone_director.initialize()
+		var reference: WeakRef = health.get_meta(&"scene_director")
+		var explicit = reference.get_ref()
+		if is_instance_valid(explicit) and explicit.is_inside_tree():
+			if explicit.state == &"preparing": explicit.initialize()
+			_scene_director = Director.for_node(self)
+	if not is_instance_valid(_scene_director):
+		push_warning("Region %s requires an explicit SceneDirector in its scene" % get_path())
 
 
 func _physics_process(delta: float) -> void:
@@ -138,6 +140,7 @@ func _reset_targets() -> void:
 	ammo_drops.reset()
 	# 先取消波次；queue_free 尚未退树的成员也必须排除，不能复活旧波。
 	if is_instance_valid(_enemy_waves): _enemy_waves.reset_encounter()
+	elif is_instance_valid(_scene_director): _scene_director.reset_region(self)
 	cooperation.reset()
 	tactical_map.reset()
 	_encounter_cleared = false

@@ -1,9 +1,3 @@
 ~ start
-if GameState.completed_level <= 0
-	N: 完成一个关卡并回到酒馆后，再来找我领取结算奖励。
-	=> END
-if GameState.completed_reward_claimed == true
-	N: 本关的报酬已经领过了。
-	=> END
-N: 当前关卡还没有可领取的报酬。
+N: 商店暂时没有可购买的商品。
 => END

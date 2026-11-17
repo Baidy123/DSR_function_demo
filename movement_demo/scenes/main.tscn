@@ -1,4 +1,5 @@
 [gd_scene format=3 uid="uid://dmglkk0768iby"]
+[ext_resource type="PackedScene" path="res://scenes/world/scene_director.tscn" id="director_authority"]
 
 [ext_resource type="PackedScene" path="res://scenes/player/player.tscn" id="player_prefab"]
 
@@ -24,9 +25,9 @@
 [ext_resource type="Resource" path="res://resources/stages/stage_table_template.tres" id="25_stage_table"]
 [ext_resource type="Script" uid="uid://by7iy6ibrwkth" path="res://scripts/world/zone_volume.gd" id="26_zone_volume"]
 [ext_resource type="PackedScene" path="res://scenes/ui/quest_panel.tscn" id="27_quest_panel"]
-[ext_resource type="PackedScene" path="res://scenes/ui/reward_board.tscn" id="28_reward_board"]
-[ext_resource type="Resource" path="res://resources/rewards/level_rewards.tres" id="31_level_rewards"]
-[ext_resource type="Script" uid="uid://dxjjmttkvs4gf" path="res://scripts/systems/stage/encounter_controller.gd" id="30_encounter_controller"]
+[ext_resource type="PackedScene" path="res://scenes/ui/shop_board.tscn" id="28_shop_board"]
+[ext_resource type="Script" path="res://scripts/shop/shop_controller.gd" id="30_shop_controller"]
+[ext_resource type="Resource" path="res://resources/shop/shop_catalog.tres" id="31_shop_catalog"]
 [ext_resource type="PackedScene" path="res://scenes/world/objects/quest_portal.tscn" id="17_quest_portal"]
 [ext_resource type="PackedScene" path="res://scenes/world/objects/wine_glass.tscn" id="18_wine_glass"]
 [ext_resource type="PackedScene" path="res://scenes/world/objects/terminal.tscn" id="19_terminal"]
@@ -108,7 +109,7 @@ height = 1.75
 
 [node name="QuestPanel" parent="." instance=ExtResource("27_quest_panel")]
 
-[node name="RewardBoard" parent="." instance=ExtResource("28_reward_board")]
+[node name="ShopBoard" parent="." instance=ExtResource("28_shop_board")]
 
 [node name="TavernReturnPoint" type="Marker3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 6.5)
@@ -190,6 +191,9 @@ shape = SubResource("BoxShape3D_ycdy4")
 [node name="Player" parent="." unique_id=670735899 instance=ExtResource("player_prefab")]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 6.5)
 
+[node name="Health" parent="Player" index="4" unique_id=550391103]
+max_health = 100.0
+
 [node name="NPC" type="StaticBody3D" parent="." unique_id=226967711]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0)
 script = ExtResource("2")
@@ -266,6 +270,7 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 8.4, 0, -6.25)
 script = ExtResource("5_reward_npc")
 npc_id = &"reward_npc"
 dialogue_resource = ExtResource("6_reward_dialogue")
+shop_controller_path = NodePath("../ShopController")
 
 [node name="Body" type="MeshInstance3D" parent="RewardNPC"]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.875, 0)
@@ -285,7 +290,7 @@ shape = SubResource("InteractionShape")
 [node name="Name" type="Label3D" parent="RewardNPC"]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 2.15, 0)
 billboard = 1
-text = "结算奖励"
+text = "商店"
 font_size = 36
 
 [node name="Presentation" type="Node3D" parent="RewardNPC"]
@@ -344,14 +349,20 @@ script = ExtResource("23_quest_controller")
 script = ExtResource("24_stage_state_controller")
 stage_table = ExtResource("25_stage_table")
 
+[node name="ShopController" type="Node" parent="."]
+script = ExtResource("30_shop_controller")
+shop_catalog = ExtResource("31_shop_catalog")
+shop_board_path = NodePath("../ShopBoard")
+
 [node name="CameraOcclusionDemo" parent="." unique_id=1093836274 instance=ExtResource("camera_occlusion_demo")]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 35, 0, 12)
-
-[node name="EncounterController" type="Node" parent="."]
-script = ExtResource("30_encounter_controller")
-reward_table = ExtResource("31_level_rewards")
-reward_board_path = NodePath("../RewardBoard")
 
 [editable path="Player"]
 
 [editable path="Camera3D"]
+
+[node name="SceneDirector" parent="." instance=ExtResource("director_authority")]
+auto_start_on_enter = false
+complete_when_all_waves_cleared = false
+result_view_path = NodePath("")
+guide_path = NodePath("")
