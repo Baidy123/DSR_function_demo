@@ -1,24 +1,27 @@
+# 默认：所有文本文件统一 UTF-8 + LF（由 Git 自动识别文本）
+* text=auto eol=lf
+
 # 源码相关文件配置
-*.c     text eol=LF
-*.cpp   text eol=LF
-*.h     text eol=LF
-*.hpp   text eol=LF
-*.s     text eol=LF
-*.ld    text eol=LF
+*.c     text eol=lf
+*.cpp   text eol=lf
+*.h     text eol=lf
+*.hpp   text eol=lf
+*.s     text eol=lf
+*.ld    text eol=lf
 
 # 参与构建的文本与着色器
-*.rc    text eol=LF
-*.hlsl  text eol=LF
-*.txt   text eol=LF
-*.dat   text eol=LF
-*.py    text eol=LF
-*.ps1   text eol=LF
+*.rc    text eol=lf
+*.hlsl  text eol=lf
+*.txt   text eol=lf
+*.dat   text eol=lf
+*.py    text eol=lf
+*.ps1   text eol=lf
 
 # JSON 文件配置
-*.json text eol=LF
+*.json text eol=lf
 
 # Markdown 文件配置
-*.md text eol=LF
+*.md text eol=lf
 
 # 二进制资产（不做换行转换）
 *.png   binary
@@ -28,13 +31,13 @@
 *.docx  binary
 
 # 仓库配置相关文件配置
-.gitignore      text eol=LF
-.gitattributes  text eol=LF
+.gitignore      text eol=lf
+.gitattributes  text eol=lf
 *.exe           binary
 
 # 编译规则相关
-*.mk     text eol=LF
-Makefile text eol=LF
+*.mk     text eol=lf
+Makefile text eol=lf
 
-# Windows 批处理文件需要以CRLF结尾
-*.bat text eol=CRLF
+# Windows 批处理文件需要以 CRLF 结尾
+*.bat text eol=crlf
