@@ -18,6 +18,7 @@ movement_demo/
 ├── scenes/
 │   ├── main.tscn          酒馆主场景，F5 入口；含任务、商店 NPC（RewardNPC）、竞技场与关卡传送门
 │   ├── arena.tscn         战斗区域与敌人实例
+│   ├── access_denied/hub/ 酒馆建筑、家具、碰撞与灯光；不拥有任务、货币或商店状态
 │   ├── enemy/             公共 enemy.tscn，types/兵种继承场景，levels/lvl_N/关卡预设
 │   ├── player/            独立 player.tscn、player_camera_rig.tscn 与战斗／生命／装备子场景
 │   ├── world/             掩体、训练区域、墙体、交互物与场景入口
