@@ -6,6 +6,7 @@
 #include "Shared_Log.hpp"
 #include "Shared_String.hpp"
 
+#include <algorithm>
 #include <cstdlib>
 #include <cstring>
 #include <string>
@@ -115,8 +116,13 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
             options.screenshot ? 1 : 0, options.scene.c_str(),
             options.ui.c_str());
 
+    const int screenWidth = GetSystemMetrics(SM_CXSCREEN);
+    const int screenHeight = GetSystemMetrics(SM_CYSCREEN);
+    const int windowWidth = std::min(WINDOW_WIDTH, std::max(960, screenWidth - 80));
+    const int windowHeight = std::min(WINDOW_HEIGHT, std::max(540, screenHeight - 120));
+
     Window window;
-    if (!window.Create(WINDOW_WIDTH, WINDOW_HEIGHT, L"Ember of Free City",
+    if (!window.Create(windowWidth, windowHeight, L"Ember of Free City",
                        !options.screenshot)) {
         LogError("Failed to create window");
         LogShutdown();
