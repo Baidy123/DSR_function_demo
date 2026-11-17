@@ -127,7 +127,7 @@
 | 头像 | 4 张（48×48） |
 | 资产包 | `Resources/ArtPack.bin` ≈ 1.97 MB |
 | 可审阅 PNG | `Resources/Art/*.png` |
-| 总资源体积 | 约 10.9 MB（PNG + 包） |
+| 总资源体积 | 约 12.8 MB（PNG + 包） |
 
 ---
 

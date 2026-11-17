@@ -78,7 +78,7 @@ WinMain
   ├─ ArtPack::LoadFromResource(GetModuleHandle(nullptr), L"ART_PACK")
   ├─ TextRenderer::Initialize(device)
   ├─ AudioSystem::Initialize()
-  ├─ GameApp::Initialize(hwnd)
+  ├─ GameApp::Initialize(hwnd, width, height, artPack, muted)
   └─ while (running)
        ├─ Input::Poll()
        ├─ dt = Time::Tick()（上限 50ms）
@@ -287,7 +287,7 @@ TITLE
 
 - 更新 `CXX_INCLUDES_PATHS`：所有组件的 `Inc`。
 - 更新 `CXX_SOURCES_PATHS`：所有组件的 `Src`。
-- `LIB_LINK`：`-lgdi32 -luser32 -ld3d11 -ld3dcompiler -ldxgi -lwinmm -lole32 -luuid -lshlwapi`
+- `LIB_LINK`：`-lgdi32 -luser32 -ld3d11 -ld3dcompiler -ldxgi -lwinmm -lole32 -luuid`
 - `WIN_RESOURCE_SCRIPTS = Resources/Resources.rc`
 - `OUTPUT_CHAR_ENCODING = UTF-8`（源码中的窄字符串保持 UTF-8，文字系统按 UTF-8 解析）。
 - `GUI = 1`，`LDFLAGS += -mwindows`；入口使用 `WinMain`。

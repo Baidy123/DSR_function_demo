@@ -87,7 +87,7 @@ public:
 private:
     static constexpr int SAMPLE_RATE = 44100;
     static constexpr int CHANNELS = 2;
-    static constexpr int FRAMES_PER_BUFFER = 2048;
+    static constexpr int FRAMES_PER_BUFFER = 512;
     static constexpr int BUFFER_COUNT = 4;
     static constexpr int MAX_VOICES = 16;
 
