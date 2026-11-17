@@ -31,7 +31,7 @@
 | 更新者 | DeepSeek-V4.1-Flash |
 | 构建状态 | `make` Release + Debug 通过；Release exe 3,309,056 B，Debug 12,597,980 B |
 | 可玩状态 | 可玩；主线可完整通关（流程测试 25/25） |
-| Git 基线 | `1f4395a` 初始；`c9fa7bb` 文档；`7291f33` 美术；`5fe5fa1` 核心实现与工具 |
+| Git 基线 | `1f4395a` 初始；`c9fa7bb` 文档；`7291f33` 美术；`5fe5fa1` 核心实现与工具；`13d5879` 换行规范；`e9a077c` 文档/音频微调 |
 | 下一步负责人 | 任意接手 Agent（见第 2 节） |
 
 ### 1.1 已完成内容
@@ -171,6 +171,7 @@
 | 3 | 2026-11-17 | DeepSeek-V4.1-Flash | 世界/玩法：三场景、碰撞、交互、对话、任务、商店、战斗、UI、结局 | 流程测试 25/25；三场景截图审阅 | `5fe5fa1` |
 | 4 | 2026-11-17 | DeepSeek-V4.1-Flash | 程序化音频、雨/霓虹/震动、HUD/菜单打磨 | 隐藏启动正常退出；静音测试通过 | `5fe5fa1` |
 | 5 | 2026-11-17 | DeepSeek-V4.1-Flash | Tools：UnitTests 68 项、OffscreenTest 截图 + flow 25 项 | 全部通过；文档与记忆更新 | `5fe5fa1` |
+| 6 | 2026-11-17 | DeepSeek-V4.1-Flash | 修正 .gitattributes 大小写；同步文档；音频缓冲降至 512 帧 | Release/Debug + UnitTests 68/68 + flow 25/25 + 隐藏截图 | `13d5879` / `e9a077c` |
 
 ---
 
@@ -194,6 +195,8 @@
 | 2026-11-17 | `git commit` | 通过 | `5fe5fa1 核心：完成可玩 Demo、程序化音频与无头验证` |
 | 2026-11-17 | `objdump -p Build\Release\Target.exe` | 通过 | 仅依赖系统 DLL（d3d11/d3dcompiler/gdi32/user32/winmm/ucrt） |
 | 2026-11-17 | 隐藏窗口运行嵌入资源 exe | 通过 | 195 项资产从 RCDATA 加载，截图正常，进程正常退出 |
+| 2026-11-17 | 新克隆换行验证（全局 autocrlf=true） | 通过 | `.gitattributes` 使用小写 `eol=lf` 后，Makefile/源码/文档/RC 均为 LF |
+| 2026-11-17 | 音频缓冲 512 帧后的 `make release` / `make debug` / `make -C Tools` | 通过 | 68/68 单元测试、25/25 流程测试、隐藏截图正常退出 |
 
 ---
 
