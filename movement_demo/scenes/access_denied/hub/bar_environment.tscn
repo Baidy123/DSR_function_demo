@@ -95,6 +95,14 @@ material_override = SubResource("MatWall")
 [node name="Collision" type="CollisionShape3D" parent="Architecture/SouthWallRight"]
 shape = SubResource("UnitBoxShape")
 
+[node name="SouthEntranceDoor" type="StaticBody3D" parent="Architecture"]
+transform = Transform3D(4.4, 0, 0, 0, 3.2, 0, 0, 0, 0.35, 0, 1.6, 8)
+[node name="Mesh" type="MeshInstance3D" parent="Architecture/SouthEntranceDoor"]
+mesh = SubResource("UnitBoxMesh")
+material_override = SubResource("MatWood")
+[node name="Collision" type="CollisionShape3D" parent="Architecture/SouthEntranceDoor"]
+shape = SubResource("UnitBoxShape")
+
 [node name="WestWall" type="StaticBody3D" parent="Architecture"]
 transform = Transform3D(0.35, 0, 0, 0, 3.2, 0, 0, 0, 16, -11, 1.6, 0)
 [node name="Mesh" type="MeshInstance3D" parent="Architecture/WestWall"]

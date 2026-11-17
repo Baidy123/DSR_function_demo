@@ -323,7 +323,7 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 2.4, 1.05, -3.9)
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 5.1, 0, -5.55)
 
 [node name="RecordPlayer" parent="Interactables" instance=ExtResource("20_record_player")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -9.1, 0, 1.0)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -9.1, 0, -3.0)
 
 [node name="ImpactEffects" parent="." unique_id=157028740 instance=ExtResource("impact_effects")]
 
