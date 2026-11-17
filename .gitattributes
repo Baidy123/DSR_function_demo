@@ -17,6 +17,12 @@
 *.py    text eol=lf
 *.ps1   text eol=lf
 
+# 本项目 3D 文本资产（网格 / 场景 / 材质参数）
+*.fcm   text eol=lf
+*.fcs   text eol=lf
+*.fcl   text eol=lf
+*.md    text eol=lf
+
 # JSON 文件配置
 *.json text eol=lf
 
