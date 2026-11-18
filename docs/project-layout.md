@@ -81,7 +81,7 @@ movement_demo/
 
 阶段、任务与 NPC 状态规则集中在 `scripts/systems/stage/`：阶段判定、任务状态与状态解析各一个控制器，配置表资源脚本与 `resources/stages/` 下的 `.tres` 配套维护。控制器挂在 `main.tscn`、按 group 互相查找，不新增全局单例；NPC 只按 `npc_id` 与接收接口被驱动，不反向依赖控制器。见 [阶段与任务](gameplay/STAGE_STATE.md)。
 
-酒馆布局参照 `movement_demo/scenes/main.svg`。`main.tscn` 的 `BarEnvironment` 使用 `svg_tavern_environment.tscn`，包含六个围墙卡座、七组普通沙发、三张放大的中央桌、左墙吧台和员工门，中央偏南留空。卡座使用独立的深色菱格皮革三面沙发，普通沙发的侧座落地。中央桌与吧台散座共用圆形转凳模型。酒保以胶囊表示，站在吧台内侧，委托人 A 在北侧卡座外。卡座门帘在玩家经过时拉开，离开门槛后自动合拢。原 `Interactables/LevelPortal` 兼任南侧正门，沿用任务进关流程。点唱机位于吧台下方，出生和返程位置在南门内侧。
+酒馆布局参照 `movement_demo/scenes/main.svg`。`main.tscn` 的 `BarEnvironment` 使用 `svg_tavern_environment.tscn`，包含六个围墙卡座、七组普通沙发、三张放大的中央桌、左墙吧台和员工门，中央偏南留空。卡座使用独立的 U 形菱格皮革沙发，落地底座、坐垫和靠背沿两个圆角连续成形，普通沙发的侧座落地。中央桌与吧台散座共用圆形转凳模型。酒保以胶囊表示，站在吧台内侧，委托人 A 在北侧卡座外。卡座门帘在玩家经过时拉开，离开门槛后自动合拢。原 `Interactables/LevelPortal` 兼任南侧正门，沿用任务进关流程。点唱机位于吧台下方，出生和返程位置在南门内侧。
 
 正式场景切换统一经过 `scripts/systems/scene_transition.gd`。该入口在释放当前场景前，把 `World3D.environment` 与 `fallback_environment` 恢复为显式中性环境，避免 GL Compatibility 在目标场景没有 `WorldEnvironment` 时沿用上一场景的环境光。酒馆关卡门、五关返程门、死亡重开和返回酒馆都使用这一入口；目标场景自身配置的 `WorldEnvironment` 仍可在加载后覆盖该中性回退。
 

@@ -63,10 +63,12 @@ func _run() -> void:
 		and bar.has_node("BarCounter/Stool1/Seat"),
 		"table and counter stools use the shared swivel design")
 	var bartender := bar.get_node_or_null("BarCounter/Bartender/Body") as MeshInstance3D
-	check(bartender != null and bartender.mesh is CapsuleMesh and scene.has_node("NPC"),
+	check(bartender != null and bartender.mesh is CapsuleMesh
+		and is_equal_approx((bartender.mesh as CapsuleMesh).radius, 0.35) and scene.has_node("NPC"),
 		"the bartender uses a capsule and is separate from the quest giver")
-	check(booths != null and booths.has_node("Booth1/Seating/RearBench"),
-		"private booths use the separate upholstered bench model")
+	var sofa := bar.get_node_or_null("Booths/Booth1/Seating/Sofa") as MeshInstance3D
+	check(sofa != null and sofa.mesh is ArrayMesh and sofa.mesh.get_surface_count() == 3,
+		"private booths use the continuous upholstered sofa mesh")
 
 	var portal: Node3D = scene.get_node("Interactables/LevelPortal")
 	check(absf(portal.position.x) < 0.01 and portal.position.z > 7.0,

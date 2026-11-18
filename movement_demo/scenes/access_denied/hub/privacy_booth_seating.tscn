@@ -1,273 +1,71 @@
 [gd_scene format=3]
 
-[ext_resource type="Shader" path="res://scenes/access_denied/hub/tufted_leather.gdshader" id="tufting"]
+[ext_resource type="Script" path="res://scenes/access_denied/hub/curved_booth_sofa.gd" id="sofa"]
+[ext_resource type="Shader" path="res://scenes/access_denied/hub/tufted_leather.gdshader" id="leather"]
 
-[sub_resource type="StandardMaterial3D" id="Base"]
-albedo_color = Color(0.055, 0.087, 0.095, 1)
+[sub_resource type="StandardMaterial3D" id="BaseLeather"]
+albedo_color = Color(0.052, 0.076, 0.083, 1)
+roughness = 0.7
 
-[sub_resource type="StandardMaterial3D" id="Seat"]
-albedo_color = Color(0.09, 0.16, 0.17, 1)
+[sub_resource type="StandardMaterial3D" id="CushionLeather"]
+albedo_color = Color(0.088, 0.135, 0.145, 1)
+roughness = 0.61
 
-[sub_resource type="StandardMaterial3D" id="Backing"]
-albedo_color = Color(0.10, 0.17, 0.18, 1)
+[sub_resource type="ShaderMaterial" id="BackrestLeather"]
+shader = ExtResource("leather")
 
-[sub_resource type="StandardMaterial3D" id="Table"]
+[sub_resource type="StandardMaterial3D" id="TableMaterial"]
 albedo_color = Color(0.075, 0.115, 0.14, 1)
+roughness = 0.64
 
-[sub_resource type="StandardMaterial3D" id="Metal"]
-albedo_color = Color(0.16, 0.20, 0.23, 1)
+[sub_resource type="BoxShape3D" id="RearShape"]
+size = Vector3(2.85, 1.49, 0.65)
 
-[sub_resource type="ShaderMaterial" id="TuftedLeather"]
-shader = ExtResource("tufting")
+[sub_resource type="BoxShape3D" id="SideShape"]
+size = Vector3(0.66, 1.49, 3.2)
 
-[sub_resource type="BoxMesh" id="Box6"]
-material = SubResource("Base")
-size = Vector3(3.5200, 0.4000, 0.6300)
+[sub_resource type="BoxMesh" id="TableTop"]
+material = SubResource("TableMaterial")
+size = Vector3(0.98, 0.16, 1.52)
 
-[sub_resource type="BoxShape3D" id="Box6Shape"]
-size = Vector3(3.5200, 0.4000, 0.6300)
+[sub_resource type="BoxShape3D" id="TableShape"]
+size = Vector3(0.98, 0.16, 1.52)
 
-[sub_resource type="BoxMesh" id="Box8"]
-material = SubResource("Backing")
-size = Vector3(3.5200, 1.5200, 0.1600)
-
-[sub_resource type="BoxShape3D" id="Box8Shape"]
-size = Vector3(3.5200, 1.5200, 0.1600)
-
-[sub_resource type="BoxMesh" id="Box10"]
-material = SubResource("Seat")
-size = Vector3(3.5200, 0.1400, 0.2200)
-
-[sub_resource type="QuadMesh" id="TuftPanel352"]
-material = SubResource("TuftedLeather")
-size = Vector2(0.8580, 0.99)
-
-[sub_resource type="BoxMesh" id="Box12"]
-material = SubResource("Seat")
-size = Vector3(0.8580, 0.1400, 0.6600)
-
-[sub_resource type="BoxMesh" id="Box13"]
-material = SubResource("Base")
-size = Vector3(3.3800, 0.4000, 0.6300)
-
-[sub_resource type="BoxShape3D" id="Box13Shape"]
-size = Vector3(3.3800, 0.4000, 0.6300)
-
-[sub_resource type="BoxMesh" id="Box15"]
-material = SubResource("Backing")
-size = Vector3(3.3800, 1.5200, 0.1600)
-
-[sub_resource type="BoxShape3D" id="Box15Shape"]
-size = Vector3(3.3800, 1.5200, 0.1600)
-
-[sub_resource type="BoxMesh" id="Box17"]
-material = SubResource("Seat")
-size = Vector3(3.3800, 0.1400, 0.2200)
-
-[sub_resource type="QuadMesh" id="TuftPanel338"]
-material = SubResource("TuftedLeather")
-size = Vector2(0.8230, 0.99)
-
-[sub_resource type="BoxMesh" id="Box19"]
-material = SubResource("Seat")
-size = Vector3(0.8230, 0.1400, 0.6600)
-
-[sub_resource type="BoxMesh" id="Box20"]
-material = SubResource("Table")
-size = Vector3(0.9800, 0.1600, 1.5200)
-
-[sub_resource type="BoxShape3D" id="Box20Shape"]
-size = Vector3(0.9800, 0.1600, 1.5200)
-
-[sub_resource type="BoxMesh" id="Box22"]
-material = SubResource("Metal")
-size = Vector3(0.3200, 0.6200, 0.5900)
+[sub_resource type="BoxMesh" id="Pedestal"]
+material = SubResource("TableMaterial")
+size = Vector3(0.32, 0.62, 0.59)
 
 [node name="PrivacyBoothSeating" type="Node3D"]
 
-[node name="RearBench" type="Node3D" parent="."]
-position = Vector3(0.0000, 0.0000, -2.3800)
-rotation_degrees = Vector3(0.0000, 0.0000, 0.0000)
+[node name="Sofa" type="MeshInstance3D" parent="."]
+script = ExtResource("sofa")
+base_material = SubResource("BaseLeather")
+cushion_material = SubResource("CushionLeather")
+backrest_material = SubResource("BackrestLeather")
 
-[node name="Plinth" type="StaticBody3D" parent="RearBench"]
-position = Vector3(0.0000, 0.2000, 0.3100)
+[node name="SofaCollision" type="StaticBody3D" parent="."]
 
-[node name="Mesh" type="MeshInstance3D" parent="RearBench/Plinth"]
-mesh = SubResource("Box6")
+[node name="Rear" type="CollisionShape3D" parent="SofaCollision"]
+position = Vector3(0, 0.745, -2.06)
+shape = SubResource("RearShape")
 
-[node name="Collision" type="CollisionShape3D" parent="RearBench/Plinth"]
-shape = SubResource("Box6Shape")
+[node name="Left" type="CollisionShape3D" parent="SofaCollision"]
+position = Vector3(-1.68, 0.745, -0.08)
+shape = SubResource("SideShape")
 
-[node name="Backrest" type="StaticBody3D" parent="RearBench"]
-position = Vector3(0.0000, 0.7600, 0.0500)
-
-[node name="Mesh" type="MeshInstance3D" parent="RearBench/Backrest"]
-mesh = SubResource("Box8")
-
-[node name="Collision" type="CollisionShape3D" parent="RearBench/Backrest"]
-shape = SubResource("Box8Shape")
-
-[node name="TopRoll" type="MeshInstance3D" parent="RearBench"]
-position = Vector3(0.0000, 1.4800, 0.1150)
-mesh = SubResource("Box10")
-
-[node name="Seat1" type="MeshInstance3D" parent="RearBench"]
-position = Vector3(-1.3200, 0.4600, 0.3400)
-mesh = SubResource("Box12")
-
-[node name="Tuft1" type="MeshInstance3D" parent="RearBench"]
-position = Vector3(-1.3200, 1.0100, 0.1380)
-mesh = SubResource("TuftPanel352")
-
-[node name="Seat2" type="MeshInstance3D" parent="RearBench"]
-position = Vector3(-0.4400, 0.4600, 0.3400)
-mesh = SubResource("Box12")
-
-[node name="Tuft2" type="MeshInstance3D" parent="RearBench"]
-position = Vector3(-0.4400, 1.0100, 0.1380)
-mesh = SubResource("TuftPanel352")
-
-[node name="Seat3" type="MeshInstance3D" parent="RearBench"]
-position = Vector3(0.4400, 0.4600, 0.3400)
-mesh = SubResource("Box12")
-
-[node name="Tuft3" type="MeshInstance3D" parent="RearBench"]
-position = Vector3(0.4400, 1.0100, 0.1380)
-mesh = SubResource("TuftPanel352")
-
-[node name="Seat4" type="MeshInstance3D" parent="RearBench"]
-position = Vector3(1.3200, 0.4600, 0.3400)
-mesh = SubResource("Box12")
-
-[node name="Tuft4" type="MeshInstance3D" parent="RearBench"]
-position = Vector3(1.3200, 1.0100, 0.1380)
-mesh = SubResource("TuftPanel352")
-
-[node name="LeftBench" type="Node3D" parent="."]
-position = Vector3(-2.0000, 0.0000, -0.0800)
-rotation_degrees = Vector3(0.0000, 90.0000, 0.0000)
-
-[node name="Plinth" type="StaticBody3D" parent="LeftBench"]
-position = Vector3(0.0000, 0.2000, 0.3100)
-
-[node name="Mesh" type="MeshInstance3D" parent="LeftBench/Plinth"]
-mesh = SubResource("Box13")
-
-[node name="Collision" type="CollisionShape3D" parent="LeftBench/Plinth"]
-shape = SubResource("Box13Shape")
-
-[node name="Backrest" type="StaticBody3D" parent="LeftBench"]
-position = Vector3(0.0000, 0.7600, 0.0500)
-
-[node name="Mesh" type="MeshInstance3D" parent="LeftBench/Backrest"]
-mesh = SubResource("Box15")
-
-[node name="Collision" type="CollisionShape3D" parent="LeftBench/Backrest"]
-shape = SubResource("Box15Shape")
-
-[node name="TopRoll" type="MeshInstance3D" parent="LeftBench"]
-position = Vector3(0.0000, 1.4800, 0.1150)
-mesh = SubResource("Box17")
-
-[node name="Seat1" type="MeshInstance3D" parent="LeftBench"]
-position = Vector3(-1.2675, 0.4600, 0.3400)
-mesh = SubResource("Box19")
-
-[node name="Tuft1" type="MeshInstance3D" parent="LeftBench"]
-position = Vector3(-1.2675, 1.0100, 0.1380)
-mesh = SubResource("TuftPanel338")
-
-[node name="Seat2" type="MeshInstance3D" parent="LeftBench"]
-position = Vector3(-0.4225, 0.4600, 0.3400)
-mesh = SubResource("Box19")
-
-[node name="Tuft2" type="MeshInstance3D" parent="LeftBench"]
-position = Vector3(-0.4225, 1.0100, 0.1380)
-mesh = SubResource("TuftPanel338")
-
-[node name="Seat3" type="MeshInstance3D" parent="LeftBench"]
-position = Vector3(0.4225, 0.4600, 0.3400)
-mesh = SubResource("Box19")
-
-[node name="Tuft3" type="MeshInstance3D" parent="LeftBench"]
-position = Vector3(0.4225, 1.0100, 0.1380)
-mesh = SubResource("TuftPanel338")
-
-[node name="Seat4" type="MeshInstance3D" parent="LeftBench"]
-position = Vector3(1.2675, 0.4600, 0.3400)
-mesh = SubResource("Box19")
-
-[node name="Tuft4" type="MeshInstance3D" parent="LeftBench"]
-position = Vector3(1.2675, 1.0100, 0.1380)
-mesh = SubResource("TuftPanel338")
-
-[node name="RightBench" type="Node3D" parent="."]
-position = Vector3(2.0000, 0.0000, -0.0800)
-rotation_degrees = Vector3(0.0000, -90.0000, 0.0000)
-
-[node name="Plinth" type="StaticBody3D" parent="RightBench"]
-position = Vector3(0.0000, 0.2000, 0.3100)
-
-[node name="Mesh" type="MeshInstance3D" parent="RightBench/Plinth"]
-mesh = SubResource("Box13")
-
-[node name="Collision" type="CollisionShape3D" parent="RightBench/Plinth"]
-shape = SubResource("Box13Shape")
-
-[node name="Backrest" type="StaticBody3D" parent="RightBench"]
-position = Vector3(0.0000, 0.7600, 0.0500)
-
-[node name="Mesh" type="MeshInstance3D" parent="RightBench/Backrest"]
-mesh = SubResource("Box15")
-
-[node name="Collision" type="CollisionShape3D" parent="RightBench/Backrest"]
-shape = SubResource("Box15Shape")
-
-[node name="TopRoll" type="MeshInstance3D" parent="RightBench"]
-position = Vector3(0.0000, 1.4800, 0.1150)
-mesh = SubResource("Box17")
-
-[node name="Seat1" type="MeshInstance3D" parent="RightBench"]
-position = Vector3(-1.2675, 0.4600, 0.3400)
-mesh = SubResource("Box19")
-
-[node name="Tuft1" type="MeshInstance3D" parent="RightBench"]
-position = Vector3(-1.2675, 1.0100, 0.1380)
-mesh = SubResource("TuftPanel338")
-
-[node name="Seat2" type="MeshInstance3D" parent="RightBench"]
-position = Vector3(-0.4225, 0.4600, 0.3400)
-mesh = SubResource("Box19")
-
-[node name="Tuft2" type="MeshInstance3D" parent="RightBench"]
-position = Vector3(-0.4225, 1.0100, 0.1380)
-mesh = SubResource("TuftPanel338")
-
-[node name="Seat3" type="MeshInstance3D" parent="RightBench"]
-position = Vector3(0.4225, 0.4600, 0.3400)
-mesh = SubResource("Box19")
-
-[node name="Tuft3" type="MeshInstance3D" parent="RightBench"]
-position = Vector3(0.4225, 1.0100, 0.1380)
-mesh = SubResource("TuftPanel338")
-
-[node name="Seat4" type="MeshInstance3D" parent="RightBench"]
-position = Vector3(1.2675, 0.4600, 0.3400)
-mesh = SubResource("Box19")
-
-[node name="Tuft4" type="MeshInstance3D" parent="RightBench"]
-position = Vector3(1.2675, 1.0100, 0.1380)
-mesh = SubResource("TuftPanel338")
+[node name="Right" type="CollisionShape3D" parent="SofaCollision"]
+position = Vector3(1.68, 0.745, -0.08)
+shape = SubResource("SideShape")
 
 [node name="Table" type="StaticBody3D" parent="."]
-position = Vector3(0.0000, 0.6900, 0.1200)
+position = Vector3(0, 0.69, 0.12)
 
 [node name="Mesh" type="MeshInstance3D" parent="Table"]
-mesh = SubResource("Box20")
+mesh = SubResource("TableTop")
 
 [node name="Collision" type="CollisionShape3D" parent="Table"]
-shape = SubResource("Box20Shape")
+shape = SubResource("TableShape")
 
-[node name="TableBase" type="MeshInstance3D" parent="."]
-position = Vector3(0.0000, 0.3100, 0.1200)
-mesh = SubResource("Box22")
+[node name="Pedestal" type="MeshInstance3D" parent="."]
+position = Vector3(0, 0.31, 0.12)
+mesh = SubResource("Pedestal")

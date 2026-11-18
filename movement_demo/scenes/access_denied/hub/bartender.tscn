@@ -1,15 +1,15 @@
 [gd_scene format=3]
 
 [sub_resource type="StandardMaterial3D" id="BartenderMaterial"]
-albedo_color = Color(0.30, 0.55, 0.51, 1)
+albedo_color = Color(0.63, 0.37, 0.20, 1)
 
 [sub_resource type="CapsuleMesh" id="Mesh"]
 material = SubResource("BartenderMaterial")
-radius = 0.3
+radius = 0.35
 height = 1.75
 
 [sub_resource type="CapsuleShape3D" id="BodyShape"]
-radius = 0.3
+radius = 0.35
 height = 1.75
 
 [node name="Bartender" type="StaticBody3D"]
