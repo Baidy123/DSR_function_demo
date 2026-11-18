@@ -81,6 +81,8 @@ movement_demo/
 
 阶段、任务与 NPC 状态规则集中在 `scripts/systems/stage/`：阶段判定、任务状态与状态解析各一个控制器，配置表资源脚本与 `resources/stages/` 下的 `.tres` 配套维护。控制器挂在 `main.tscn`、按 group 互相查找，不新增全局单例；NPC 只按 `npc_id` 与接收接口被驱动，不反向依赖控制器。见 [阶段与任务](gameplay/STAGE_STATE.md)。
 
+酒馆布局参照 `movement_demo/scenes/main.svg`。`main.tscn` 的 `BarEnvironment` 使用 `svg_tavern_environment.tscn`，包含六个围墙卡座、七组普通沙发、六张中央桌、左墙吧台和员工门。卡座门帘在玩家经过时拉开，离开门槛后自动合拢。原 `Interactables/LevelPortal` 兼任南侧正门，沿用任务进关流程。点唱机位于吧台下方，出生和返程位置在南门内侧。
+
 正式场景切换统一经过 `scripts/systems/scene_transition.gd`。该入口在释放当前场景前，把 `World3D.environment` 与 `fallback_environment` 恢复为显式中性环境，避免 GL Compatibility 在目标场景没有 `WorldEnvironment` 时沿用上一场景的环境光。酒馆关卡门、五关返程门、死亡重开和返回酒馆都使用这一入口；目标场景自身配置的 `WorldEnvironment` 仍可在加载后覆盖该中性回退。
 
 `scripts/debug/coordinator_paths.gd` 保留 DebugSettings 入口，使用世界空间 Mesh 绘制 RTS 路线、箭头和站位，以及面积观察状态、责任预约和未来路线。每秒最多十次读取公开副本，不调用导航、规划或补写观察；成员颜色在死亡减员后保持稳定。当前 `main.tscn` 按用户确认保留任务面板、商店面板及交互演示物；五关场景不挂载这套酒馆任务节点，交互组件仍可由 `tests/interaction_fixture.gd` 独立装配验证。五关清场后仍只开放返程门，回酒馆与 A 交互后才解锁下一关。

@@ -32,7 +32,7 @@
 [ext_resource type="PackedScene" path="res://scenes/world/objects/wine_glass.tscn" id="18_wine_glass"]
 [ext_resource type="PackedScene" path="res://scenes/world/objects/terminal.tscn" id="19_terminal"]
 [ext_resource type="PackedScene" path="res://scenes/world/objects/record_player.tscn" id="20_record_player"]
-[ext_resource type="PackedScene" path="res://scenes/access_denied/hub/bar_environment.tscn" id="32_bar_environment"]
+[ext_resource type="PackedScene" path="res://scenes/access_denied/hub/svg_tavern_environment.tscn" id="32_bar_environment"]
 
 [sub_resource type="Environment" id="Environment"]
 background_mode = 1
@@ -85,7 +85,7 @@ height = 1.75
 radius = 1.2
 
 [sub_resource type="BoxShape3D" id="TavernZoneShape"]
-size = Vector3(18, 3, 10)
+size = Vector3(32.4, 3, 21.96)
 
 [sub_resource type="StandardMaterial3D" id="StandardMaterial3D_kek77"]
 albedo_color = Color(0.82990223, 0.6462546, 0.22172275, 1)
@@ -195,7 +195,7 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 6.5)
 max_health = 100.0
 
 [node name="NPC" type="StaticBody3D" parent="." unique_id=226967711]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0)
+position = Vector3(0.8820, 0.0000, -9.0800)
 script = ExtResource("2")
 npc_id = &"npc_a"
 dialogue_resource = ExtResource("4_5vw27")
@@ -235,7 +235,7 @@ script = ExtResource("impact_receiver")
 [node name="Camera3D" parent="." unique_id=1669516944 instance=ExtResource("player_camera_prefab")]
 
 [node name="NPCB" type="StaticBody3D" parent="." unique_id=494376989]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -7.4, 0, 0)
+position = Vector3(-0.5760, 0.0000, -1.3400)
 script = ExtResource("2")
 npc_id = &"npc_b"
 dialogue_resource = ExtResource("8_kek77")
@@ -266,7 +266,7 @@ script = ExtResource("npc_presentation")
 script = ExtResource("impact_receiver")
 
 [node name="RewardNPC" type="StaticBody3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 8.4, 0, -6.25)
+position = Vector3(-0.4500, 0.0000, -5.8940)
 script = ExtResource("5_reward_npc")
 npc_id = &"reward_npc"
 dialogue_resource = ExtResource("6_reward_dialogue")
@@ -314,7 +314,7 @@ visible = false
 [node name="Interactables" type="Node3D" parent="."]
 
 [node name="LevelPortal" parent="Interactables" instance=ExtResource("17_quest_portal")]
-transform = Transform3D(0, 0, -1, 0, 1, 0, 1, 0, 0, 10.975, 0, 0)
+position = Vector3(0.0000, 0.0000, 7.7500)
 
 [node name="WineGlass" parent="Interactables" instance=ExtResource("18_wine_glass")]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 2.4, 1.05, -3.9)
@@ -323,12 +323,12 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 2.4, 1.05, -3.9)
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 5.1, 0, -5.55)
 
 [node name="RecordPlayer" parent="Interactables" instance=ExtResource("20_record_player")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -9.1, 0, -3.0)
+position = Vector3(-5.4720, 0.0000, 3.9160)
 
 [node name="ImpactEffects" parent="." unique_id=157028740 instance=ExtResource("impact_effects")]
 
 [node name="TavernZone" type="Area3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1, 0)
+position = Vector3(9.1800, 1.0000, -3.2300)
 collision_layer = 0
 script = ExtResource("26_zone_volume")
 zone_id = &"tavern"
