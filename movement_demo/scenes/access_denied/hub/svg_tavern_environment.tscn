@@ -158,13 +158,13 @@ radial_segments = 24
 
 [sub_resource type="CylinderMesh" id="Box43"]
 material = SubResource("Wood")
-top_radius = 1.02
-bottom_radius = 1.02
+top_radius = 0.90
+bottom_radius = 0.90
 height = 0.14
 radial_segments = 48
 
 [sub_resource type="CylinderShape3D" id="Box43Shape"]
-radius = 1.02
+radius = 0.90
 height = 0.14
 
 [sub_resource type="BoxMesh" id="Box45"]
