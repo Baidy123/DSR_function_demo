@@ -66,6 +66,18 @@ func _run() -> void:
 	var hall_seat := tables.get_node("Table1/Seats/North") as Node3D
 	check(hall_top.mesh is CylinderMesh and hall_top.global_position.y > 1.0
 		and hall_seat.scale.y > 1.25, "hall seating uses round high tables with tall stools")
+	var terminal := bar.get_node("TerminalColumn")
+	check(terminal.get_node("Stools").get_child_count() == 8
+		and terminal.has_node("WraparoundDesk/North/Collision")
+		and terminal.has_node("WraparoundDesk/South/Collision")
+		and terminal.has_node("Projections/East/Panel3")
+		and terminal.has_node("Projections/West/Panel3"),
+		"the terminal wall has wraparound seating and projections on both faces")
+	for aisle_x in [7.0, 13.18]:
+		player.global_position = Vector3(aisle_x, 0, -7.4)
+		await physics_frame
+		check(player.move_and_collide(Vector3(0, 0, 7.7)) == null,
+			"the aisle beside the terminal stays clear at x = %s" % aisle_x)
 	var bartender := bar.get_node_or_null("BarCounter/Bartender/Body") as MeshInstance3D
 	check(bartender != null and bartender.mesh is CapsuleMesh
 		and is_equal_approx((bartender.mesh as CapsuleMesh).radius, 0.35) and scene.has_node("NPC"),
@@ -97,6 +109,8 @@ func _run() -> void:
 		var panel: Node3D = curtain.get_node("Left")
 		var inward := -curtain.global_basis.z
 		player.global_position = curtain.global_position
+		await physics_frame
+		await physics_frame
 		await create_timer(0.35).timeout
 		check(panel.scale.x < 0.2, "booth curtain opens while the player crosses")
 		player.global_position = curtain.global_position + inward * 1.26

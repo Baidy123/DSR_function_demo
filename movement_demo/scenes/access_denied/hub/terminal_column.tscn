@@ -1,107 +1,554 @@
 [gd_scene format=3]
 
-
+[ext_resource type="PackedScene" path="res://scenes/access_denied/hub/swivel_stool.tscn" id="stool"]
 
 [sub_resource type="StandardMaterial3D" id="Shell"]
 albedo_color = Color(0.11, 0.14, 0.19, 1)
 
 [sub_resource type="StandardMaterial3D" id="Rim"]
-albedo_color = Color(0.34, 0.22, 0.13, 1)
+albedo_color = Color(0.30, 0.21, 0.15, 1)
 
-[sub_resource type="StandardMaterial3D" id="Screen"]
-albedo_color = Color(0.11, 0.59, 0.71, 1)
+[sub_resource type="StandardMaterial3D" id="Desk"]
+albedo_color = Color(0.22, 0.12, 0.085, 1)
+
+[sub_resource type="StandardMaterial3D" id="Cyan"]
+albedo_color = Color(0.09, 0.74, 0.88, 1)
 emission_enabled = true
-emission = Color(0.11, 0.59, 0.71, 1)
+emission = Color(0.09, 0.74, 0.88, 1)
 
-[sub_resource type="StandardMaterial3D" id="Glass"]
-albedo_color = Color(0.08, 0.23, 0.29, 1)
+[sub_resource type="StandardMaterial3D" id="Magenta"]
+albedo_color = Color(0.75, 0.19, 0.56, 1)
+emission_enabled = true
+emission = Color(0.75, 0.19, 0.56, 1)
 
-[sub_resource type="BoxMesh" id="Box4"]
+[sub_resource type="StandardMaterial3D" id="CyanGlass"]
+transparency = 1
+shading_mode = 0
+albedo_color = Color(0.095, 0.60, 0.73, 0.30)
+
+[sub_resource type="StandardMaterial3D" id="MagentaGlass"]
+transparency = 1
+shading_mode = 0
+albedo_color = Color(0.60, 0.12, 0.41, 0.30)
+
+[sub_resource type="BoxMesh" id="Box7"]
 material = SubResource("Rim")
-size = Vector3(1.3, 0.18, 1.3)
+size = Vector3(1.1800, 0.1800, 4.1800)
 
-[sub_resource type="BoxShape3D" id="Box4Shape"]
-size = Vector3(1.3, 0.18, 1.3)
-
-[sub_resource type="BoxMesh" id="Box6"]
-material = SubResource("Shell")
-size = Vector3(0.95, 2.64, 0.95)
-
-[sub_resource type="BoxShape3D" id="Box6Shape"]
-size = Vector3(0.95, 2.64, 0.95)
-
-[sub_resource type="BoxMesh" id="Box8"]
-material = SubResource("Rim")
-size = Vector3(1.14, 0.18, 1.14)
+[sub_resource type="BoxShape3D" id="Box7Shape"]
+size = Vector3(1.1800, 0.1800, 4.1800)
 
 [sub_resource type="BoxMesh" id="Box9"]
-material = SubResource("Screen")
-size = Vector3(0.8250, 0.0649, 0.0262)
+material = SubResource("Shell")
+size = Vector3(0.9500, 2.6400, 4.1800)
 
-[sub_resource type="BoxMesh" id="Box10"]
-material = SubResource("Rim")
-size = Vector3(0.6875, 0.6844, 0.1625)
+[sub_resource type="BoxShape3D" id="Box9Shape"]
+size = Vector3(0.9500, 2.6400, 4.1800)
 
 [sub_resource type="BoxMesh" id="Box11"]
-material = SubResource("Glass")
-size = Vector3(0.5625, 0.5664, 0.0225)
+material = SubResource("Rim")
+size = Vector3(1.1200, 0.1800, 4.3000)
 
 [sub_resource type="BoxMesh" id="Box12"]
-material = SubResource("Screen")
-size = Vector3(0.3875, 0.0295, 0.0150)
+material = SubResource("Desk")
+size = Vector3(1.0620, 0.1200, 4.1800)
 
-[sub_resource type="BoxMesh" id="Box13"]
-material = SubResource("Screen")
-size = Vector3(0.3000, 0.0295, 0.0150)
+[sub_resource type="BoxShape3D" id="Box12Shape"]
+size = Vector3(1.0620, 0.1200, 4.1800)
 
 [sub_resource type="BoxMesh" id="Box14"]
-material = SubResource("Screen")
-size = Vector3(0.3500, 0.0295, 0.0150)
+material = SubResource("Rim")
+size = Vector3(0.0210, 0.0400, 5.7800)
+
+[sub_resource type="BoxMesh" id="Box15"]
+material = SubResource("Rim")
+size = Vector3(0.2300, 0.2900, 4.0800)
+
+[sub_resource type="BoxMesh" id="Box16"]
+material = SubResource("Desk")
+size = Vector3(3.0600, 0.1200, 0.8000)
+
+[sub_resource type="BoxShape3D" id="Box16Shape"]
+size = Vector3(3.0600, 0.1200, 0.8000)
+
+[sub_resource type="BoxMesh" id="Box18"]
+material = SubResource("Rim")
+size = Vector3(3.0600, 0.0400, 0.0220)
+
+[sub_resource type="BoxMesh" id="Box19"]
+material = SubResource("Rim")
+size = Vector3(1.0400, 0.2900, 0.2300)
+
+[sub_resource type="BoxMesh" id="Box20"]
+material = SubResource("Cyan")
+size = Vector3(0.0400, 0.0600, 3.6900)
+
+[sub_resource type="BoxMesh" id="Box21"]
+material = SubResource("CyanGlass")
+size = Vector3(0.0110, 0.6300, 0.9400)
+
+[sub_resource type="BoxMesh" id="Box22"]
+material = SubResource("Cyan")
+size = Vector3(0.0130, 0.0110, 0.9400)
+
+[sub_resource type="BoxMesh" id="Box23"]
+material = SubResource("Cyan")
+size = Vector3(0.0130, 0.6300, 0.0120)
+
+[sub_resource type="BoxMesh" id="Box24"]
+material = SubResource("Cyan")
+size = Vector3(0.0130, 0.1100, 0.0560)
+
+[sub_resource type="BoxMesh" id="Box25"]
+material = SubResource("Cyan")
+size = Vector3(0.0130, 0.2100, 0.0560)
+
+[sub_resource type="BoxMesh" id="Box26"]
+material = SubResource("Cyan")
+size = Vector3(0.0130, 0.1600, 0.0560)
+
+[sub_resource type="BoxMesh" id="Box27"]
+material = SubResource("Cyan")
+size = Vector3(0.0130, 0.2900, 0.0560)
+
+[sub_resource type="BoxMesh" id="Box28"]
+material = SubResource("Cyan")
+size = Vector3(0.0130, 0.2400, 0.0560)
+
+[sub_resource type="BoxMesh" id="Box29"]
+material = SubResource("Cyan")
+size = Vector3(0.0130, 0.3600, 0.0560)
+
+[sub_resource type="BoxMesh" id="Box30"]
+material = SubResource("MagentaGlass")
+size = Vector3(0.0110, 0.6600, 1.1000)
+
+[sub_resource type="BoxMesh" id="Box31"]
+material = SubResource("Magenta")
+size = Vector3(0.0130, 0.0110, 1.1000)
+
+[sub_resource type="BoxMesh" id="Box32"]
+material = SubResource("Magenta")
+size = Vector3(0.0130, 0.6600, 0.0120)
+
+[sub_resource type="BoxMesh" id="Box33"]
+material = SubResource("Magenta")
+size = Vector3(0.0130, 0.0190, 0.7040)
+
+[sub_resource type="BoxMesh" id="Box34"]
+material = SubResource("Magenta")
+size = Vector3(0.0130, 0.0190, 0.5280)
+
+[sub_resource type="BoxMesh" id="Box35"]
+material = SubResource("Magenta")
+size = Vector3(0.0130, 0.0190, 0.6270)
+
+[sub_resource type="BoxMesh" id="Box36"]
+material = SubResource("CyanGlass")
+size = Vector3(0.0110, 0.5600, 0.8600)
+
+[sub_resource type="BoxMesh" id="Box37"]
+material = SubResource("Cyan")
+size = Vector3(0.0130, 0.0110, 0.8600)
+
+[sub_resource type="BoxMesh" id="Box38"]
+material = SubResource("Cyan")
+size = Vector3(0.0130, 0.5600, 0.0120)
+
+[sub_resource type="BoxMesh" id="Box39"]
+material = SubResource("Cyan")
+size = Vector3(0.0130, 0.0190, 0.5504)
+
+[sub_resource type="BoxMesh" id="Box40"]
+material = SubResource("Cyan")
+size = Vector3(0.0130, 0.0190, 0.4128)
+
+[sub_resource type="BoxMesh" id="Box41"]
+material = SubResource("Cyan")
+size = Vector3(0.0130, 0.0190, 0.4902)
 
 [node name="TerminalColumn" type="Node3D"]
 
 [node name="Foot" type="StaticBody3D" parent="."]
-position = Vector3(0, 0.09, 0)
+position = Vector3(0.0000, 0.0900, 0.0000)
 
 [node name="Mesh" type="MeshInstance3D" parent="Foot"]
-mesh = SubResource("Box4")
+mesh = SubResource("Box7")
 
 [node name="Collision" type="CollisionShape3D" parent="Foot"]
-shape = SubResource("Box4Shape")
+shape = SubResource("Box7Shape")
 
 [node name="Column" type="StaticBody3D" parent="."]
-position = Vector3(0, 1.50, 0)
+position = Vector3(0.0000, 1.5000, 0.0000)
 
-[node name="Mesh" type="MeshInstance3D" parent="Column"]
-mesh = SubResource("Box6")
-
-[node name="Collision" type="CollisionShape3D" parent="Column"]
-shape = SubResource("Box6Shape")
-
-[node name="Crown" type="MeshInstance3D" parent="."]
-position = Vector3(0, 2.91, 0)
-mesh = SubResource("Box8")
-
-[node name="StatusLight" type="MeshInstance3D" parent="."]
-position = Vector3(0, 2.08, 0.485)
+[node name="Mesh" type="MeshInstance3D" parent="Column" groups=["camera_fadeable"]]
 mesh = SubResource("Box9")
 
-[node name="ScreenCase" type="MeshInstance3D" parent="."]
-position = Vector3(0, 1.60, 0.52)
-mesh = SubResource("Box10")
+[node name="Collision" type="CollisionShape3D" parent="Column"]
+shape = SubResource("Box9Shape")
 
-[node name="Screen" type="MeshInstance3D" parent="."]
-position = Vector3(0, 1.60, 0.6125)
+[node name="Crown" type="MeshInstance3D" parent="." groups=["camera_fadeable"]]
+position = Vector3(0.0000, 2.9100, 0.0000)
 mesh = SubResource("Box11")
 
-[node name="ScreenLine1" type="MeshInstance3D" parent="."]
-position = Vector3(0, 1.73, 0.63)
+[node name="WraparoundDesk" type="Node3D" parent="."]
+
+[node name="East" type="StaticBody3D" parent="WraparoundDesk"]
+position = Vector3(0.9990, 1.0100, 0.0000)
+
+[node name="Mesh" type="MeshInstance3D" parent="WraparoundDesk/East"]
 mesh = SubResource("Box12")
 
-[node name="ScreenLine2" type="MeshInstance3D" parent="."]
-position = Vector3(0, 1.612, 0.63)
-mesh = SubResource("Box13")
+[node name="Collision" type="CollisionShape3D" parent="WraparoundDesk/East"]
+shape = SubResource("Box12Shape")
 
-[node name="ScreenLine3" type="MeshInstance3D" parent="."]
-position = Vector3(0, 1.494, 0.63)
+[node name="EastEdge" type="MeshInstance3D" parent="WraparoundDesk"]
+position = Vector3(1.5220, 1.0350, 0.0000)
 mesh = SubResource("Box14")
+
+[node name="EastApron" type="MeshInstance3D" parent="WraparoundDesk"]
+position = Vector3(0.5300, 0.8300, 0.0000)
+mesh = SubResource("Box15")
+
+[node name="West" type="StaticBody3D" parent="WraparoundDesk"]
+position = Vector3(-0.9990, 1.0100, 0.0000)
+
+[node name="Mesh" type="MeshInstance3D" parent="WraparoundDesk/West"]
+mesh = SubResource("Box12")
+
+[node name="Collision" type="CollisionShape3D" parent="WraparoundDesk/West"]
+shape = SubResource("Box12Shape")
+
+[node name="WestEdge" type="MeshInstance3D" parent="WraparoundDesk"]
+position = Vector3(-1.5220, 1.0350, 0.0000)
+mesh = SubResource("Box14")
+
+[node name="WestApron" type="MeshInstance3D" parent="WraparoundDesk"]
+position = Vector3(-0.5300, 0.8300, 0.0000)
+mesh = SubResource("Box15")
+
+[node name="North" type="StaticBody3D" parent="WraparoundDesk"]
+position = Vector3(0.0000, 1.0100, -2.4900)
+
+[node name="Mesh" type="MeshInstance3D" parent="WraparoundDesk/North"]
+mesh = SubResource("Box16")
+
+[node name="Collision" type="CollisionShape3D" parent="WraparoundDesk/North"]
+shape = SubResource("Box16Shape")
+
+[node name="NorthEdge" type="MeshInstance3D" parent="WraparoundDesk"]
+position = Vector3(0.0000, 1.0350, -2.8800)
+mesh = SubResource("Box18")
+
+[node name="NorthApron" type="MeshInstance3D" parent="WraparoundDesk"]
+position = Vector3(0.0000, 0.8300, -2.1400)
+mesh = SubResource("Box19")
+
+[node name="South" type="StaticBody3D" parent="WraparoundDesk"]
+position = Vector3(0.0000, 1.0100, 2.4900)
+
+[node name="Mesh" type="MeshInstance3D" parent="WraparoundDesk/South"]
+mesh = SubResource("Box16")
+
+[node name="Collision" type="CollisionShape3D" parent="WraparoundDesk/South"]
+shape = SubResource("Box16Shape")
+
+[node name="SouthEdge" type="MeshInstance3D" parent="WraparoundDesk"]
+position = Vector3(0.0000, 1.0350, 2.8800)
+mesh = SubResource("Box18")
+
+[node name="SouthApron" type="MeshInstance3D" parent="WraparoundDesk"]
+position = Vector3(0.0000, 0.8300, 2.1400)
+mesh = SubResource("Box19")
+
+[node name="Stools" type="Node3D" parent="."]
+
+[node name="East1" parent="Stools" instance=ExtResource("stool")]
+position = Vector3(1.9900, 0.0000, -1.4300)
+rotation_degrees = Vector3(0.0000, 0.0000, 0.0000)
+scale = Vector3(1.26, 1.26, 1.26)
+
+[node name="East2" parent="Stools" instance=ExtResource("stool")]
+position = Vector3(1.9900, 0.0000, 0.0000)
+rotation_degrees = Vector3(0.0000, 0.0000, 0.0000)
+scale = Vector3(1.26, 1.26, 1.26)
+
+[node name="East3" parent="Stools" instance=ExtResource("stool")]
+position = Vector3(1.9900, 0.0000, 1.4300)
+rotation_degrees = Vector3(0.0000, 0.0000, 0.0000)
+scale = Vector3(1.26, 1.26, 1.26)
+
+[node name="West1" parent="Stools" instance=ExtResource("stool")]
+position = Vector3(-1.9900, 0.0000, -1.4300)
+rotation_degrees = Vector3(0.0000, 0.0000, 0.0000)
+scale = Vector3(1.26, 1.26, 1.26)
+
+[node name="West2" parent="Stools" instance=ExtResource("stool")]
+position = Vector3(-1.9900, 0.0000, 0.0000)
+rotation_degrees = Vector3(0.0000, 0.0000, 0.0000)
+scale = Vector3(1.26, 1.26, 1.26)
+
+[node name="West3" parent="Stools" instance=ExtResource("stool")]
+position = Vector3(-1.9900, 0.0000, 1.4300)
+rotation_degrees = Vector3(0.0000, 0.0000, 0.0000)
+scale = Vector3(1.26, 1.26, 1.26)
+
+[node name="North" parent="Stools" instance=ExtResource("stool")]
+position = Vector3(0.0000, 0.0000, -3.3800)
+rotation_degrees = Vector3(0.0000, 0.0000, 0.0000)
+scale = Vector3(1.26, 1.26, 1.26)
+
+[node name="South" parent="Stools" instance=ExtResource("stool")]
+position = Vector3(0.0000, 0.0000, 3.3800)
+rotation_degrees = Vector3(0.0000, 0.0000, 0.0000)
+scale = Vector3(1.26, 1.26, 1.26)
+
+[node name="Projections" type="Node3D" parent="."]
+
+[node name="East" type="Node3D" parent="Projections"]
+rotation_degrees = Vector3(0.0000, 0.0000, 0.0000)
+
+[node name="Emitter" type="MeshInstance3D" parent="Projections/East" groups=["camera_fadeable"]]
+position = Vector3(0.4850, 2.6600, 0.0000)
+mesh = SubResource("Box20")
+
+[node name="Panel1" type="Node3D" parent="Projections/East"]
+position = Vector3(0.6500, 2.0500, -1.1400)
+
+[node name="Glass" type="MeshInstance3D" parent="Projections/East/Panel1" groups=["camera_fadeable"]]
+position = Vector3(0.0000, 0.0000, 0.0000)
+mesh = SubResource("Box21")
+
+[node name="Top" type="MeshInstance3D" parent="Projections/East/Panel1" groups=["camera_fadeable"]]
+position = Vector3(0.0110, 0.3150, 0.0000)
+mesh = SubResource("Box22")
+
+[node name="Bottom" type="MeshInstance3D" parent="Projections/East/Panel1" groups=["camera_fadeable"]]
+position = Vector3(0.0110, -0.3150, 0.0000)
+mesh = SubResource("Box22")
+
+[node name="Left" type="MeshInstance3D" parent="Projections/East/Panel1" groups=["camera_fadeable"]]
+position = Vector3(0.0110, 0.0000, 0.4700)
+mesh = SubResource("Box23")
+
+[node name="Right" type="MeshInstance3D" parent="Projections/East/Panel1" groups=["camera_fadeable"]]
+position = Vector3(0.0110, 0.0000, -0.4700)
+mesh = SubResource("Box23")
+
+[node name="ChartBar1" type="MeshInstance3D" parent="Projections/East/Panel1" groups=["camera_fadeable"]]
+position = Vector3(0.0160, -0.1150, -0.3200)
+mesh = SubResource("Box24")
+
+[node name="ChartBar2" type="MeshInstance3D" parent="Projections/East/Panel1" groups=["camera_fadeable"]]
+position = Vector3(0.0160, -0.0650, -0.1930)
+mesh = SubResource("Box25")
+
+[node name="ChartBar3" type="MeshInstance3D" parent="Projections/East/Panel1" groups=["camera_fadeable"]]
+position = Vector3(0.0160, -0.0900, -0.0660)
+mesh = SubResource("Box26")
+
+[node name="ChartBar4" type="MeshInstance3D" parent="Projections/East/Panel1" groups=["camera_fadeable"]]
+position = Vector3(0.0160, -0.0250, 0.0610)
+mesh = SubResource("Box27")
+
+[node name="ChartBar5" type="MeshInstance3D" parent="Projections/East/Panel1" groups=["camera_fadeable"]]
+position = Vector3(0.0160, -0.0500, 0.1880)
+mesh = SubResource("Box28")
+
+[node name="ChartBar6" type="MeshInstance3D" parent="Projections/East/Panel1" groups=["camera_fadeable"]]
+position = Vector3(0.0160, 0.0100, 0.3150)
+mesh = SubResource("Box29")
+
+[node name="Panel2" type="Node3D" parent="Projections/East"]
+position = Vector3(0.6500, 1.8800, 0.0000)
+
+[node name="Glass" type="MeshInstance3D" parent="Projections/East/Panel2" groups=["camera_fadeable"]]
+position = Vector3(0.0000, 0.0000, 0.0000)
+mesh = SubResource("Box30")
+
+[node name="Top" type="MeshInstance3D" parent="Projections/East/Panel2" groups=["camera_fadeable"]]
+position = Vector3(0.0110, 0.3300, 0.0000)
+mesh = SubResource("Box31")
+
+[node name="Bottom" type="MeshInstance3D" parent="Projections/East/Panel2" groups=["camera_fadeable"]]
+position = Vector3(0.0110, -0.3300, 0.0000)
+mesh = SubResource("Box31")
+
+[node name="Left" type="MeshInstance3D" parent="Projections/East/Panel2" groups=["camera_fadeable"]]
+position = Vector3(0.0110, 0.0000, 0.5500)
+mesh = SubResource("Box32")
+
+[node name="Right" type="MeshInstance3D" parent="Projections/East/Panel2" groups=["camera_fadeable"]]
+position = Vector3(0.0110, 0.0000, -0.5500)
+mesh = SubResource("Box32")
+
+[node name="Line1" type="MeshInstance3D" parent="Projections/East/Panel2" groups=["camera_fadeable"]]
+position = Vector3(0.0160, 0.1500, -0.0400)
+mesh = SubResource("Box33")
+
+[node name="Line2" type="MeshInstance3D" parent="Projections/East/Panel2" groups=["camera_fadeable"]]
+position = Vector3(0.0160, 0.0200, -0.0400)
+mesh = SubResource("Box34")
+
+[node name="Line3" type="MeshInstance3D" parent="Projections/East/Panel2" groups=["camera_fadeable"]]
+position = Vector3(0.0160, -0.1100, -0.0400)
+mesh = SubResource("Box35")
+
+[node name="Panel3" type="Node3D" parent="Projections/East"]
+position = Vector3(0.6500, 2.1400, 1.1800)
+
+[node name="Glass" type="MeshInstance3D" parent="Projections/East/Panel3" groups=["camera_fadeable"]]
+position = Vector3(0.0000, 0.0000, 0.0000)
+mesh = SubResource("Box36")
+
+[node name="Top" type="MeshInstance3D" parent="Projections/East/Panel3" groups=["camera_fadeable"]]
+position = Vector3(0.0110, 0.2800, 0.0000)
+mesh = SubResource("Box37")
+
+[node name="Bottom" type="MeshInstance3D" parent="Projections/East/Panel3" groups=["camera_fadeable"]]
+position = Vector3(0.0110, -0.2800, 0.0000)
+mesh = SubResource("Box37")
+
+[node name="Left" type="MeshInstance3D" parent="Projections/East/Panel3" groups=["camera_fadeable"]]
+position = Vector3(0.0110, 0.0000, 0.4300)
+mesh = SubResource("Box38")
+
+[node name="Right" type="MeshInstance3D" parent="Projections/East/Panel3" groups=["camera_fadeable"]]
+position = Vector3(0.0110, 0.0000, -0.4300)
+mesh = SubResource("Box38")
+
+[node name="Line1" type="MeshInstance3D" parent="Projections/East/Panel3" groups=["camera_fadeable"]]
+position = Vector3(0.0160, 0.1500, -0.0400)
+mesh = SubResource("Box39")
+
+[node name="Line2" type="MeshInstance3D" parent="Projections/East/Panel3" groups=["camera_fadeable"]]
+position = Vector3(0.0160, 0.0200, -0.0400)
+mesh = SubResource("Box40")
+
+[node name="Line3" type="MeshInstance3D" parent="Projections/East/Panel3" groups=["camera_fadeable"]]
+position = Vector3(0.0160, -0.1100, -0.0400)
+mesh = SubResource("Box41")
+
+[node name="West" type="Node3D" parent="Projections"]
+rotation_degrees = Vector3(0.0000, 180.0000, 0.0000)
+
+[node name="Emitter" type="MeshInstance3D" parent="Projections/West" groups=["camera_fadeable"]]
+position = Vector3(0.4850, 2.6600, 0.0000)
+mesh = SubResource("Box20")
+
+[node name="Panel1" type="Node3D" parent="Projections/West"]
+position = Vector3(0.6500, 2.0500, -1.1400)
+
+[node name="Glass" type="MeshInstance3D" parent="Projections/West/Panel1" groups=["camera_fadeable"]]
+position = Vector3(0.0000, 0.0000, 0.0000)
+mesh = SubResource("Box21")
+
+[node name="Top" type="MeshInstance3D" parent="Projections/West/Panel1" groups=["camera_fadeable"]]
+position = Vector3(0.0110, 0.3150, 0.0000)
+mesh = SubResource("Box22")
+
+[node name="Bottom" type="MeshInstance3D" parent="Projections/West/Panel1" groups=["camera_fadeable"]]
+position = Vector3(0.0110, -0.3150, 0.0000)
+mesh = SubResource("Box22")
+
+[node name="Left" type="MeshInstance3D" parent="Projections/West/Panel1" groups=["camera_fadeable"]]
+position = Vector3(0.0110, 0.0000, 0.4700)
+mesh = SubResource("Box23")
+
+[node name="Right" type="MeshInstance3D" parent="Projections/West/Panel1" groups=["camera_fadeable"]]
+position = Vector3(0.0110, 0.0000, -0.4700)
+mesh = SubResource("Box23")
+
+[node name="ChartBar1" type="MeshInstance3D" parent="Projections/West/Panel1" groups=["camera_fadeable"]]
+position = Vector3(0.0160, -0.1150, -0.3200)
+mesh = SubResource("Box24")
+
+[node name="ChartBar2" type="MeshInstance3D" parent="Projections/West/Panel1" groups=["camera_fadeable"]]
+position = Vector3(0.0160, -0.0650, -0.1930)
+mesh = SubResource("Box25")
+
+[node name="ChartBar3" type="MeshInstance3D" parent="Projections/West/Panel1" groups=["camera_fadeable"]]
+position = Vector3(0.0160, -0.0900, -0.0660)
+mesh = SubResource("Box26")
+
+[node name="ChartBar4" type="MeshInstance3D" parent="Projections/West/Panel1" groups=["camera_fadeable"]]
+position = Vector3(0.0160, -0.0250, 0.0610)
+mesh = SubResource("Box27")
+
+[node name="ChartBar5" type="MeshInstance3D" parent="Projections/West/Panel1" groups=["camera_fadeable"]]
+position = Vector3(0.0160, -0.0500, 0.1880)
+mesh = SubResource("Box28")
+
+[node name="ChartBar6" type="MeshInstance3D" parent="Projections/West/Panel1" groups=["camera_fadeable"]]
+position = Vector3(0.0160, 0.0100, 0.3150)
+mesh = SubResource("Box29")
+
+[node name="Panel2" type="Node3D" parent="Projections/West"]
+position = Vector3(0.6500, 1.8800, 0.0000)
+
+[node name="Glass" type="MeshInstance3D" parent="Projections/West/Panel2" groups=["camera_fadeable"]]
+position = Vector3(0.0000, 0.0000, 0.0000)
+mesh = SubResource("Box30")
+
+[node name="Top" type="MeshInstance3D" parent="Projections/West/Panel2" groups=["camera_fadeable"]]
+position = Vector3(0.0110, 0.3300, 0.0000)
+mesh = SubResource("Box31")
+
+[node name="Bottom" type="MeshInstance3D" parent="Projections/West/Panel2" groups=["camera_fadeable"]]
+position = Vector3(0.0110, -0.3300, 0.0000)
+mesh = SubResource("Box31")
+
+[node name="Left" type="MeshInstance3D" parent="Projections/West/Panel2" groups=["camera_fadeable"]]
+position = Vector3(0.0110, 0.0000, 0.5500)
+mesh = SubResource("Box32")
+
+[node name="Right" type="MeshInstance3D" parent="Projections/West/Panel2" groups=["camera_fadeable"]]
+position = Vector3(0.0110, 0.0000, -0.5500)
+mesh = SubResource("Box32")
+
+[node name="Line1" type="MeshInstance3D" parent="Projections/West/Panel2" groups=["camera_fadeable"]]
+position = Vector3(0.0160, 0.1500, -0.0400)
+mesh = SubResource("Box33")
+
+[node name="Line2" type="MeshInstance3D" parent="Projections/West/Panel2" groups=["camera_fadeable"]]
+position = Vector3(0.0160, 0.0200, -0.0400)
+mesh = SubResource("Box34")
+
+[node name="Line3" type="MeshInstance3D" parent="Projections/West/Panel2" groups=["camera_fadeable"]]
+position = Vector3(0.0160, -0.1100, -0.0400)
+mesh = SubResource("Box35")
+
+[node name="Panel3" type="Node3D" parent="Projections/West"]
+position = Vector3(0.6500, 2.1400, 1.1800)
+
+[node name="Glass" type="MeshInstance3D" parent="Projections/West/Panel3" groups=["camera_fadeable"]]
+position = Vector3(0.0000, 0.0000, 0.0000)
+mesh = SubResource("Box36")
+
+[node name="Top" type="MeshInstance3D" parent="Projections/West/Panel3" groups=["camera_fadeable"]]
+position = Vector3(0.0110, 0.2800, 0.0000)
+mesh = SubResource("Box37")
+
+[node name="Bottom" type="MeshInstance3D" parent="Projections/West/Panel3" groups=["camera_fadeable"]]
+position = Vector3(0.0110, -0.2800, 0.0000)
+mesh = SubResource("Box37")
+
+[node name="Left" type="MeshInstance3D" parent="Projections/West/Panel3" groups=["camera_fadeable"]]
+position = Vector3(0.0110, 0.0000, 0.4300)
+mesh = SubResource("Box38")
+
+[node name="Right" type="MeshInstance3D" parent="Projections/West/Panel3" groups=["camera_fadeable"]]
+position = Vector3(0.0110, 0.0000, -0.4300)
+mesh = SubResource("Box38")
+
+[node name="Line1" type="MeshInstance3D" parent="Projections/West/Panel3" groups=["camera_fadeable"]]
+position = Vector3(0.0160, 0.1500, -0.0400)
+mesh = SubResource("Box39")
+
+[node name="Line2" type="MeshInstance3D" parent="Projections/West/Panel3" groups=["camera_fadeable"]]
+position = Vector3(0.0160, 0.0200, -0.0400)
+mesh = SubResource("Box40")
+
+[node name="Line3" type="MeshInstance3D" parent="Projections/West/Panel3" groups=["camera_fadeable"]]
+position = Vector3(0.0160, -0.1100, -0.0400)
+mesh = SubResource("Box41")
