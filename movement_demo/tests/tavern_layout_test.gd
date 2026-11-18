@@ -62,6 +62,10 @@ func _run() -> void:
 	check(tables.has_node("Table1/Seats/North/Seat")
 		and bar.has_node("BarCounter/Stool1/Seat"),
 		"table and counter stools use the shared swivel design")
+	var hall_top := tables.get_node("Table1/Top/Mesh") as MeshInstance3D
+	var hall_seat := tables.get_node("Table1/Seats/North") as Node3D
+	check(hall_top.mesh is CylinderMesh and hall_top.global_position.y > 1.0
+		and hall_seat.scale.y > 1.25, "hall seating uses round high tables with tall stools")
 	var bartender := bar.get_node_or_null("BarCounter/Bartender/Body") as MeshInstance3D
 	check(bartender != null and bartender.mesh is CapsuleMesh
 		and is_equal_approx((bartender.mesh as CapsuleMesh).radius, 0.35) and scene.has_node("NPC"),
@@ -98,7 +102,7 @@ func _run() -> void:
 		player.global_position = curtain.global_position + inward * 1.26
 		await create_timer(0.35).timeout
 		check(is_equal_approx(panel.scale.x, 1.0), "booth curtain closes with the player inside")
-		for side in [-0.91, 0.91]:
+		for side in [-0.97, 0.97]:
 			player.global_position = curtain.to_global(Vector3(side, 0.0, -1.26))
 			await physics_frame
 			check(player.move_and_collide(inward * 2.12) == null,

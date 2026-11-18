@@ -149,16 +149,23 @@ size = Vector3(0.1100, 0.1900, 0.1100)
 material = SubResource("Teal")
 size = Vector3(0.1100, 0.2200, 0.1100)
 
-[sub_resource type="BoxMesh" id="Box42"]
+[sub_resource type="CylinderMesh" id="Box42"]
 material = SubResource("Steel")
-size = Vector3(0.27, 0.86, 0.27)
+top_radius = 0.13
+bottom_radius = 0.31
+height = 1.02
+radial_segments = 24
 
-[sub_resource type="BoxMesh" id="Box43"]
+[sub_resource type="CylinderMesh" id="Box43"]
 material = SubResource("Wood")
-size = Vector3(2.04, 0.2, 2.04)
+top_radius = 1.02
+bottom_radius = 1.02
+height = 0.14
+radial_segments = 48
 
-[sub_resource type="BoxShape3D" id="Box43Shape"]
-size = Vector3(2.04, 0.2, 2.04)
+[sub_resource type="CylinderShape3D" id="Box43Shape"]
+radius = 1.02
+height = 0.14
 
 [sub_resource type="BoxMesh" id="Box45"]
 material = SubResource("Amber")
@@ -525,11 +532,11 @@ rotation_degrees = Vector3(0.0000, 180.0000, 0.0000)
 position = Vector3(3.9600, 0.0000, -6.3800)
 
 [node name="Pedestal" type="MeshInstance3D" parent="Tables/Table1"]
-position = Vector3(0, 0.43, 0)
+position = Vector3(0, 0.51, 0)
 mesh = SubResource("Box42")
 
 [node name="Top" type="StaticBody3D" parent="Tables/Table1"]
-position = Vector3(0, 0.81, 0)
+position = Vector3(0, 1.06, 0)
 
 [node name="Mesh" type="MeshInstance3D" parent="Tables/Table1/Top"]
 mesh = SubResource("Box43")
@@ -538,32 +545,36 @@ mesh = SubResource("Box43")
 shape = SubResource("Box43Shape")
 
 [node name="Inlay" type="MeshInstance3D" parent="Tables/Table1"]
-position = Vector3(0, 0.916, 0)
+position = Vector3(0, 1.136, 0)
 mesh = SubResource("Box45")
 
 [node name="Seats" type="Node3D" parent="Tables/Table1"]
 
 [node name="West" parent="Tables/Table1/Seats" instance=ExtResource("stool")]
 position = Vector3(-1.5400, 0.0000, 0.0000)
+scale = Vector3(1.32, 1.32, 1.32)
 
 [node name="East" parent="Tables/Table1/Seats" instance=ExtResource("stool")]
 position = Vector3(1.5400, 0.0000, 0.0000)
+scale = Vector3(1.32, 1.32, 1.32)
 
 [node name="North" parent="Tables/Table1/Seats" instance=ExtResource("stool")]
 position = Vector3(0.0000, 0.0000, -1.5400)
+scale = Vector3(1.32, 1.32, 1.32)
 
 [node name="South" parent="Tables/Table1/Seats" instance=ExtResource("stool")]
 position = Vector3(0.0000, 0.0000, 1.5400)
+scale = Vector3(1.32, 1.32, 1.32)
 
 [node name="Table3" type="Node3D" parent="Tables"]
 position = Vector3(15.5700, 0.0000, -5.8400)
 
 [node name="Pedestal" type="MeshInstance3D" parent="Tables/Table3"]
-position = Vector3(0, 0.43, 0)
+position = Vector3(0, 0.51, 0)
 mesh = SubResource("Box42")
 
 [node name="Top" type="StaticBody3D" parent="Tables/Table3"]
-position = Vector3(0, 0.81, 0)
+position = Vector3(0, 1.06, 0)
 
 [node name="Mesh" type="MeshInstance3D" parent="Tables/Table3/Top"]
 mesh = SubResource("Box43")
@@ -572,22 +583,26 @@ mesh = SubResource("Box43")
 shape = SubResource("Box43Shape")
 
 [node name="Inlay" type="MeshInstance3D" parent="Tables/Table3"]
-position = Vector3(0, 0.916, 0)
+position = Vector3(0, 1.136, 0)
 mesh = SubResource("Box45")
 
 [node name="Seats" type="Node3D" parent="Tables/Table3"]
 
 [node name="West" parent="Tables/Table3/Seats" instance=ExtResource("stool")]
 position = Vector3(-1.5400, 0.0000, 0.0000)
+scale = Vector3(1.32, 1.32, 1.32)
 
 [node name="East" parent="Tables/Table3/Seats" instance=ExtResource("stool")]
 position = Vector3(1.5400, 0.0000, 0.0000)
+scale = Vector3(1.32, 1.32, 1.32)
 
 [node name="North" parent="Tables/Table3/Seats" instance=ExtResource("stool")]
 position = Vector3(0.0000, 0.0000, -1.5400)
+scale = Vector3(1.32, 1.32, 1.32)
 
 [node name="South" parent="Tables/Table3/Seats" instance=ExtResource("stool")]
 position = Vector3(0.0000, 0.0000, 1.5400)
+scale = Vector3(1.32, 1.32, 1.32)
 
 [node name="Counter" type="OmniLight3D" parent="Lighting"]
 position = Vector3(-3.4200, 3.0000, -2.9600)
