@@ -57,8 +57,8 @@ func _run() -> void:
 		return sofa.has_node("Upholstery/LeftSeat") and sofa.has_node("Upholstery/RightSeat")),
 		"ordinary sofas have seats on both sides of the rear bench")
 	var tables := bar.get_node("Tables")
-	check(tables.get_child_count() == 3 and not tables.has_node("CommunalTable"),
-		"only the three upper tables remain")
+	check(tables.get_child_count() == 2 and bar.has_node("TerminalColumn/Column/Collision"),
+		"two hall tables flank the terminal column")
 	check(tables.has_node("Table1/Seats/North/Seat")
 		and bar.has_node("BarCounter/Stool1/Seat"),
 		"table and counter stools use the shared swivel design")
@@ -70,6 +70,20 @@ func _run() -> void:
 	check(sofa != null and sofa.mesh is ArrayMesh and sofa.mesh.get_surface_count() == 3,
 		"private booths use the continuous upholstered sofa mesh")
 
+	var lounge := bar.get_node("SouthLounge")
+	var lounge_tables := lounge.get_node("Tables")
+	check(lounge_tables.get_child_count() == 3 and lounge_tables.get_children().all(
+		func(setting: Node) -> bool:
+			return setting.has_node("NorthSofa/Backrest") and setting.has_node("SouthSofa/Backrest")
+	), "three lounge tables each have a pair of single-sided sofas")
+	player.global_position = Vector3(12.08, 0.0, 1.0)
+	await physics_frame
+	check(player.move_and_collide(Vector3(0, 0, 2.0)) == null,
+		"the player can enter the lounge through the northern opening")
+	player.global_position = Vector3(12.08, 0.0, 7.2)
+	await physics_frame
+	check(player.move_and_collide(Vector3(0, 0, -1.5)) != null,
+		"the southern railing blocks access from the entrance corridor")
 	var portal: Node3D = scene.get_node("Interactables/LevelPortal")
 	check(absf(portal.position.x) < 0.01 and portal.position.z > 7.0,
 		"the original quest portal forms the south entrance")

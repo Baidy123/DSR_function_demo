@@ -6,6 +6,9 @@
 [ext_resource type="PackedScene" path="res://scenes/access_denied/hub/swivel_stool.tscn" id="stool"]
 [ext_resource type="PackedScene" path="res://scenes/access_denied/hub/bartender.tscn" id="bartender"]
 
+[ext_resource type="PackedScene" path="res://scenes/access_denied/hub/south_lounge.tscn" id="south_lounge"]
+[ext_resource type="PackedScene" path="res://scenes/access_denied/hub/terminal_column.tscn" id="terminal_column"]
+
 [sub_resource type="StandardMaterial3D" id="Floor"]
 albedo_color = Color(0.14, 0.15, 0.18, 1)
 
@@ -179,6 +182,11 @@ size = Vector3(0.64, 3, 0.288)
 [node name="SofaSeats" type="Node3D" parent="."]
 
 [node name="Tables" type="Node3D" parent="."]
+
+[node name="TerminalColumn" parent="." instance=ExtResource("terminal_column")]
+position = Vector3(10.36, 0, -3.6)
+
+[node name="SouthLounge" parent="." instance=ExtResource("south_lounge")]
 
 [node name="Lighting" type="Node3D" parent="."]
 
@@ -545,40 +553,6 @@ position = Vector3(1.5400, 0.0000, 0.0000)
 position = Vector3(0.0000, 0.0000, -1.5400)
 
 [node name="South" parent="Tables/Table1/Seats" instance=ExtResource("stool")]
-position = Vector3(0.0000, 0.0000, 1.5400)
-
-[node name="Table2" type="Node3D" parent="Tables"]
-position = Vector3(10.1700, 0.0000, -5.9300)
-
-[node name="Pedestal" type="MeshInstance3D" parent="Tables/Table2"]
-position = Vector3(0.0000, 0.3600, 0.0000)
-mesh = SubResource("Box42")
-
-[node name="Top" type="StaticBody3D" parent="Tables/Table2"]
-position = Vector3(0.0000, 0.6700, 0.0000)
-
-[node name="Mesh" type="MeshInstance3D" parent="Tables/Table2/Top"]
-mesh = SubResource("Box43")
-
-[node name="Collision" type="CollisionShape3D" parent="Tables/Table2/Top"]
-shape = SubResource("Box43Shape")
-
-[node name="Inlay" type="MeshInstance3D" parent="Tables/Table2"]
-position = Vector3(0.0000, 0.7760, 0.0000)
-mesh = SubResource("Box45")
-
-[node name="Seats" type="Node3D" parent="Tables/Table2"]
-
-[node name="West" parent="Tables/Table2/Seats" instance=ExtResource("stool")]
-position = Vector3(-1.5400, 0.0000, 0.0000)
-
-[node name="East" parent="Tables/Table2/Seats" instance=ExtResource("stool")]
-position = Vector3(1.5400, 0.0000, 0.0000)
-
-[node name="North" parent="Tables/Table2/Seats" instance=ExtResource("stool")]
-position = Vector3(0.0000, 0.0000, -1.5400)
-
-[node name="South" parent="Tables/Table2/Seats" instance=ExtResource("stool")]
 position = Vector3(0.0000, 0.0000, 1.5400)
 
 [node name="Table3" type="Node3D" parent="Tables"]
