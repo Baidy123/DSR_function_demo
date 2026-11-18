@@ -41,34 +41,6 @@ ambient_light_source = 3
 ambient_light_color = Color(0.8, 0.86, 1, 1)
 ambient_light_energy = 0.65
 
-[sub_resource type="StandardMaterial3D" id="FloorMaterial"]
-albedo_color = Color(0.22, 0.26, 0.3, 1)
-
-[sub_resource type="BoxMesh" id="FloorMesh"]
-material = SubResource("FloorMaterial")
-size = Vector3(18, 0.5, 10)
-
-[sub_resource type="BoxShape3D" id="FloorShape"]
-size = Vector3(18, 0.5, 10)
-
-[sub_resource type="BoxMesh" id="WallMesh"]
-size = Vector3(18.5, 0.6, 0.25)
-
-[sub_resource type="BoxShape3D" id="WallShape"]
-size = Vector3(18.5, 0.6, 0.25)
-
-[sub_resource type="BoxMesh" id="SideWallMesh"]
-size = Vector3(0.25, 0.6, 10)
-
-[sub_resource type="BoxShape3D" id="SideWallShape"]
-size = Vector3(0.25, 0.6, 10)
-
-[sub_resource type="BoxMesh" id="BoxMesh_dg77c"]
-size = Vector3(0.25, 0.6, 4)
-
-[sub_resource type="BoxShape3D" id="BoxShape3D_ycdy4"]
-size = Vector3(0.25, 0.6, 4)
-
 [sub_resource type="StandardMaterial3D" id="StandardMaterial3D_ail86"]
 albedo_color = Color(0.3363157, 0.5744454, 3.85046e-07, 1)
 
@@ -123,70 +95,6 @@ environment = SubResource("Environment")
 transform = Transform3D(0.90630776, 0.38302225, -0.17860618, 0, 0.42261824, 0.9063078, 0.42261827, -0.8213938, 0.3830222, 0, 0, 0)
 light_energy = 0.35
 shadow_enabled = true
-
-[node name="Floor" type="StaticBody3D" parent="." unique_id=1434684259]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.25, 0)
-
-[node name="MeshInstance3D" type="MeshInstance3D" parent="Floor" unique_id=1724085114]
-visible = false
-mesh = SubResource("FloorMesh")
-
-[node name="CollisionShape3D" type="CollisionShape3D" parent="Floor" unique_id=1450013688]
-disabled = true
-shape = SubResource("FloorShape")
-
-[node name="Borders" type="Node3D" parent="." unique_id=1992265323]
-visible = false
-
-[node name="North" type="StaticBody3D" parent="Borders" unique_id=691024214]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.3, -5.125)
-
-[node name="MeshInstance3D" type="MeshInstance3D" parent="Borders/North" unique_id=1770685761]
-mesh = SubResource("WallMesh")
-
-[node name="CollisionShape3D" type="CollisionShape3D" parent="Borders/North" unique_id=1652379150]
-disabled = true
-shape = SubResource("WallShape")
-
-[node name="South" type="StaticBody3D" parent="Borders" unique_id=1120612743]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.3, 5.125)
-
-[node name="MeshInstance3D" type="MeshInstance3D" parent="Borders/South" unique_id=334018905]
-mesh = SubResource("WallMesh")
-
-[node name="CollisionShape3D" type="CollisionShape3D" parent="Borders/South" unique_id=561585797]
-disabled = true
-shape = SubResource("WallShape")
-
-[node name="West" type="StaticBody3D" parent="Borders" unique_id=1493409880]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -9.125, 0.3, 0)
-
-[node name="MeshInstance3D" type="MeshInstance3D" parent="Borders/West" unique_id=691334457]
-mesh = SubResource("SideWallMesh")
-
-[node name="CollisionShape3D" type="CollisionShape3D" parent="Borders/West" unique_id=1254191933]
-disabled = true
-shape = SubResource("SideWallShape")
-
-[node name="East" type="StaticBody3D" parent="Borders" unique_id=297034028]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 9.125, 0.3, -3.125)
-
-[node name="MeshInstance3D" type="MeshInstance3D" parent="Borders/East" unique_id=925471549]
-mesh = SubResource("BoxMesh_dg77c")
-
-[node name="CollisionShape3D" type="CollisionShape3D" parent="Borders/East" unique_id=1444644318]
-disabled = true
-shape = SubResource("BoxShape3D_ycdy4")
-
-[node name="EastSouth" type="StaticBody3D" parent="Borders" unique_id=551203761]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 9.125, 0.3, 3.125)
-
-[node name="MeshInstance3D" type="MeshInstance3D" parent="Borders/EastSouth" unique_id=873673687]
-mesh = SubResource("BoxMesh_dg77c")
-
-[node name="CollisionShape3D" type="CollisionShape3D" parent="Borders/EastSouth" unique_id=2109488797]
-disabled = true
-shape = SubResource("BoxShape3D_ycdy4")
 
 [node name="Player" parent="." unique_id=670735899 instance=ExtResource("player_prefab")]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 6.5)

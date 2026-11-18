@@ -259,7 +259,7 @@ movement_demo/
 ├── scenes/
 │   ├── main.tscn
 │   └── access_denied/hub/
-│       ├── bar_environment.tscn
+│       ├── svg_tavern_environment.tscn
 │       └── booth_unit.tscn
 ├── scripts/
 │   ├── shop/
@@ -270,7 +270,7 @@ movement_demo/
     └── stages/stage_table_template.tres
 ```
 
-`bar_environment.tscn` 与 `booth_unit.tscn` 只拥有建筑、家具、碰撞和灯光；`main.tscn` 继续拥有 Player、NPC、任务入口、商店、阶段控制器和 SceneDirector。任务金额由 `QuestController` 与 `GameState` 处理，商品购买由 `ShopController` 处理。后续扩展环境表现时继续复用这些权威入口，不在 `access_denied/` 下复制战斗、任务、货币或商店系统。
+`svg_tavern_environment.tscn` 与 `booth_unit.tscn` 只拥有建筑、家具、碰撞和灯光；`main.tscn` 继续拥有 Player、NPC、任务入口、商店、阶段控制器和 SceneDirector。任务金额由 `QuestController` 与 `GameState` 处理，商品购买由 `ShopController` 处理。后续扩展环境表现时继续复用这些权威入口，不在 `access_denied/` 下复制战斗、任务、货币或商店系统。
 
 ## 9. 第一阶段灰盒验收
 
@@ -288,7 +288,9 @@ movement_demo/
 
 只有这个闭环稳定后，再开始制作霓虹材质、正式模型、复杂灯光和环境音。
 
-## 10. 当前酒馆灰盒接入（2026-11-06）
+## 10. 第一版酒馆灰盒记录（2026-11-06）
+
+以下内容为旧布局记录。原 `bar_environment.tscn` 已退役，当前布局和接入见 [项目结构](project-layout.md)。
 
 当前第一版采用“复古工业酒馆、少量隐藏科技”的视觉方向，已经把独立环境场景
 `movement_demo/scenes/access_denied/hub/bar_environment.tscn` 实例化到现有
