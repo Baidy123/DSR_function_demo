@@ -85,6 +85,15 @@ public:
      */
     bool Capture(const std::string& path);
 
+    /**
+     * @brief 开启/关闭截图模式。
+     *
+     * 开启后渲染会进入离屏大尺寸目标（含 UI），因此在隐藏窗口或无窗口焦点
+     * 的情况下也能得到完整画面。
+     * @param [IN] enabled 是否开启。
+     */
+    void SetCaptureMode(bool enabled) { m_device.SetCaptureMode(enabled); }
+
     // ---- 无头测试入口 ----
     void DebugLoadScene(SceneId scene);
     void DebugSetMode(GameMode mode);
@@ -102,6 +111,7 @@ public:
     void DebugCloseShop();
     void DebugKillEnemies();
     void DebugSetTitleMode();
+    void DebugSetWalkPose(bool enabled) { m_debugWalkPose = enabled; }
 
     MainStage DebugMainStage() const { return m_quest.main; }
     SideStage DebugSideStage() const { return m_quest.side; }
@@ -196,10 +206,14 @@ private:
     DialogueController m_dialogue;
     DialogueContext m_dialogueContext = DialogueContext::NONE;
     bool m_dialogueCinematic = true;
+    float m_skipHold = 0.0f;       ///< Ctrl 按住累计时间。
+    float m_skipTick = 0.0f;       ///< 快进推进间隔计时。
+    bool m_skipActive = false;     ///< 是否已进入快进。
 
     CameraRuntime m_camera;
     CameraPose m_cameraStart;
     CameraPose m_cameraTarget;
+    Vec3 m_cameraFollow;
     float m_cameraBlend = 1.0f;
     int m_cameraZone = -1;
 
@@ -231,6 +245,7 @@ private:
     bool m_titleScene = false;
     bool m_hasScene = false;
     bool m_hidePlayer = false;
+    bool m_debugWalkPose = false;
 
     int m_noGearToastCooldown = 0;
     Rng m_rng{0x51EEDu};

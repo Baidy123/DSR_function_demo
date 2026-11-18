@@ -49,10 +49,14 @@ public:
 
     /**
      * @brief 开始一批绘制。
-     * @param [IN] width 目标宽度（像素）。
-     * @param [IN] height 目标高度（像素）。
+     * @param [IN] width 逻辑宽度（与 UI 坐标一致）。
+     * @param [IN] height 逻辑高度。
+     * @param [IN] scale 逻辑像素到目标像素的缩放倍率。
+     * @param [IN] offset 目标表面上的像素偏移（左上角）。
+     * @param [IN] targetSize 目标表面像素尺寸；为零时按逻辑尺寸乘缩放推导。
      */
-    void Begin(int width, int height);
+    void Begin(int width, int height, float scale = 1.0f,
+               Vec2 offset = Vec2(), Vec2 targetSize = Vec2());
 
     /**
      * @brief 结束并提交剩余绘制。

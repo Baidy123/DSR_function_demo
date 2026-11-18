@@ -44,6 +44,24 @@ constexpr int MEDKIT_HEAL = 40;
 /** @brief 受伤无敌时间（秒）。 */
 constexpr float PLAYER_INVULNERABLE_TIME = 0.45f;
 
+/** @brief 相机跟随玩家的比例（0 为完全固定，1 为完全跟随）。 */
+constexpr float CAMERA_FOLLOW_RATIO = 0.55f;
+
+/** @brief 相机跟随位移的上限（米）。 */
+constexpr float CAMERA_FOLLOW_LIMIT = 2.6f;
+
+/** @brief 相机注视点向玩家靠拢的比例。 */
+constexpr float CAMERA_TARGET_BIAS = 0.55f;
+
+/** @brief 停止射击后仍举枪的时间（秒），让静止姿态自然下垂。 */
+constexpr float AIM_HOLD_TIME = 1.35f;
+
+/** @brief 按住 Ctrl 进入对话快进所需的时间（秒）。 */
+constexpr float SKIP_HOLD_TIME = 2.0f;
+
+/** @brief 快进时每个对话节点的停留时间（秒）。 */
+constexpr float SKIP_STEP_TIME = 0.09f;
+
 /**
  * @brief 游戏模式。
  */
@@ -96,7 +114,8 @@ enum class EndingChoice : std::uint8_t {
  */
 struct Player {
     Vec3 position;
-    float yaw = 0.0f;
+    float yaw = 0.0f;         ///< 瞄准方向（朝鼠标）。
+    float facing = 0.0f;      ///< 身体朝向（跟移动方向）。
     float aimYaw = 0.0f;
     float aimPitch = 0.0f;
     int hp = PLAYER_MAX_HP;
@@ -106,8 +125,10 @@ struct Player {
     float invulnerableTimer = 0.0f;
     float hitFlash = 0.0f;
     float walkPhase = 0.0f;
+    float walkAmp = 0.0f;     ///< 步幅强度（0 站立，1 全速）。
     float time = 0.0f;
     float recoil = 0.0f;
+    float aimTimer = 0.0f;    ///< 举枪保持时间（秒）。
     bool reloading = false;
     bool usingMedkit = false;
     bool moving = false;
@@ -130,6 +151,7 @@ struct Enemy {
     float shootTimer = 0.0f;
     float hitFlash = 0.0f;
     float walkPhase = 0.0f;
+    float walkAmp = 0.0f;
     float time = 0.0f;
     float deathTimer = 0.0f;
     float muzzleTimer = 0.0f;

@@ -171,3 +171,190 @@ pattern 3
 box 0 0.08 0 0.96 0.16 0.56
 endpart
 endmesh
+# ---- 酒吧补充道具（本轮新增）----
+
+mesh PROP_PENDANT
+part body pivot 0 0 0
+mat 0x15120F
+pattern 3
+cyl 0 -0.55 0 0.016 0.016 0.55 6
+mat 0x2A201A
+pattern 3
+box 0 -0.02 0 0.09 0.03 0.09
+mat 0x3A2A20
+pattern 2
+cyl 0 -1.15 0 0.36 0.13 0.3 12
+mat 0x6A5240
+pattern 3
+cyl 0 -1.17 0 0.37 0.36 0.03 12
+mat 0xFFD79A
+pattern 8
+sphere 0 -1.08 0 0.13 10 6
+mat 0xFFE9C0
+pattern 8
+cyl 0 -1.2 0 0.18 0.26 0.02 10
+endpart
+endmesh
+
+mesh PROP_BOTTLE_RACK
+part body pivot 0 0 0
+mat 0x2A1E16
+pattern 2
+box 0 0.9 0 1.5 1.8 0.12
+mat 0x5A3E28
+pattern 2
+box 0 0.25 0.08 1.55 0.05 0.18
+box 0 0.85 0.08 1.55 0.05 0.18
+box 0 1.45 0.08 1.55 0.05 0.18
+mat 0x8C6A34
+pattern 3
+box 0 1.78 0.02 1.5 0.04 0.14
+mat 0x4E7A5A
+pattern 0
+cyl -0.55 0.3 0.06 0.055 0.05 0.34 8
+cyl -0.4 0.3 0.06 0.055 0.05 0.3 8
+cyl -0.25 0.3 0.06 0.055 0.05 0.36 8
+cyl 0.3 0.3 0.06 0.055 0.05 0.32 8
+cyl 0.45 0.3 0.06 0.055 0.05 0.28 8
+mat 0x7A4E4E
+pattern 0
+cyl -0.5 0.9 0.06 0.055 0.05 0.32 8
+cyl -0.35 0.9 0.06 0.055 0.05 0.28 8
+cyl 0.25 0.9 0.06 0.055 0.05 0.34 8
+cyl 0.4 0.9 0.06 0.055 0.05 0.3 8
+mat 0x9A7A3A
+pattern 0
+cyl -0.45 1.5 0.06 0.055 0.05 0.26 8
+cyl 0.0 1.5 0.06 0.055 0.05 0.3 8
+cyl 0.35 1.5 0.06 0.055 0.05 0.24 8
+mat 0xD8C08A
+pattern 8
+box -0.55 0.64 0.06 0.05 0.02 0.05
+box -0.25 0.66 0.06 0.05 0.02 0.05
+box 0.3 0.62 0.06 0.05 0.02 0.05
+box 0.4 0.58 0.06 0.05 0.02 0.05
+endpart
+endmesh
+
+mesh PROP_RUG
+part body pivot 0 0 0
+mat 0x4A1E26
+pattern 5
+plane 0 0.012 0 1.9 1.3
+mat 0x6A2A32
+pattern 5
+box 0 0.014 1.32 1.92 0.008 0.05
+box 0 0.014 -1.32 1.92 0.008 0.05
+box 1.92 0.014 0 0.05 0.008 2.64
+box -1.92 0.014 0 0.05 0.008 2.64
+mat 0x8A3A42
+pattern 5
+plane 0 0.016 0 1.2 0.7
+endpart
+endmesh
+
+mesh PROP_POSTER
+part body pivot 0 0 0
+mat 0x1A1614
+pattern 0
+box 0 1.0 0 0.52 0.72 0.01
+mat 0x2E4A6A
+pattern 0
+box 0 1.0 0.012 0.44 0.6 0.006
+mat 0xFFB347
+pattern 8
+box 0 1.18 0.02 0.3 0.06 0.004
+mat 0x39E0D0
+pattern 8
+box 0 1.02 0.02 0.22 0.04 0.004
+mat 0xE8DCC0
+pattern 0
+box 0 0.84 0.02 0.34 0.03 0.004
+endpart
+endmesh
+
+mesh PROP_CEILING_FAN
+part body pivot 0 0 0
+mat 0x1E1A18
+pattern 3
+cyl 0 -0.42 0 0.03 0.03 0.42 6
+mat 0x2A2622
+pattern 3
+cyl 0 -0.5 0 0.14 0.14 0.12 10
+mat 0x3A3632
+pattern 3
+box 0.55 -0.5 0 0.5 0.02 0.09 16
+box -0.55 -0.5 0 0.5 0.02 0.09 -16
+box 0 -0.5 0.55 0.09 0.02 0.5 16
+box 0 -0.5 -0.55 0.09 0.02 0.5 -16
+mat 0xFFC46B
+pattern 8
+sphere 0 -0.56 0 0.06 8 5
+endpart
+endmesh
+
+mesh PROP_TAP
+part body pivot 0 0 0
+mat 0x8C6A34
+pattern 3
+box 0 0.06 0 0.36 0.06 0.14
+box -0.12 0.3 0 0.05 0.24 0.05
+box 0.0 0.3 0 0.05 0.24 0.05
+box 0.12 0.3 0 0.05 0.24 0.05
+mat 0xB8A070
+pattern 3
+box -0.12 0.44 0.06 0.04 0.04 0.12
+box 0.0 0.44 0.06 0.04 0.04 0.12
+box 0.12 0.44 0.06 0.04 0.04 0.12
+mat 0x2A2018
+pattern 0
+box -0.12 0.4 0.12 0.06 0.09 0.06
+box 0.0 0.4 0.12 0.06 0.09 0.06
+box 0.12 0.4 0.12 0.06 0.09 0.06
+endpart
+endmesh
+
+mesh PROP_REGISTER
+part body pivot 0 0 0
+mat 0x2E2A24
+pattern 3
+box 0 0.16 0 0.42 0.16 0.34
+mat 0x3A3630
+pattern 3
+box 0 0.34 0.06 0.4 0.04 0.3
+mat 0x141A18
+pattern 0
+box 0 0.46 -0.02 0.34 0.2 0.06
+mat 0x39E0D0
+pattern 8
+box 0 0.5 -0.05 0.26 0.12 0.01
+mat 0x8C6A34
+pattern 3
+box 0.02 0.4 0.16 0.3 0.02 0.12
+endpart
+endmesh
+
+mesh PROP_GLASS
+part body pivot 0 0 0
+mat 0xB8D8D0
+pattern 8
+cyl 0 0.02 0 0.05 0.06 0.14 8
+mat 0xE8DCC0
+pattern 8
+cyl 0 0.01 0 0.05 0.05 0.02 8
+endpart
+endmesh
+
+mesh PROP_ASHTRAY
+part body pivot 0 0 0
+mat 0x3A3630
+pattern 3
+cyl 0 0.01 0 0.11 0.11 0.03 10
+mat 0x6A6258
+pattern 3
+cyl 0 0.03 0 0.1 0.1 0.02 10
+mat 0xD8C08A
+pattern 0
+box 0.02 0.04 0.02 0.08 0.006 0.008 0.5
+endpart
+endmesh

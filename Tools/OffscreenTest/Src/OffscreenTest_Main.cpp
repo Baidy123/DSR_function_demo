@@ -294,11 +294,11 @@ int main(int argc, char** argv)
     }
 
     ApplyView(app, options);
+    app.SetCaptureMode(true);
     for (int frame = 0; frame < options.frames; ++frame) {
         app.Update(1.0f / 60.0f);
         app.Render();
     }
-    app.Present(false);
 
     try {
         const std::filesystem::path outputPath(options.output);

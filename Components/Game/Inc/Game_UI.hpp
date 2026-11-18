@@ -41,9 +41,18 @@ public:
                  const std::vector<Enemy>& enemies,
                  const CameraRuntime& camera, const GameRenderer& renderer);
 
-    /** @brief 绘制对话框。 */
+    /**
+     * @brief 绘制对话框。
+     * @param [IN] dialogue 对话控制器。
+     * @param [IN] cinematic 是否显示上下黑边。
+     * @param [IN] time 累计时间。
+     * @param [IN] renderer 场景渲染器（头像）。
+     * @param [IN] skipProgress 按住 Ctrl 的进度（0–1）。
+     * @param [IN] skipping 是否已经处于快进状态。
+     */
     void DrawDialogue(const DialogueController& dialogue, bool cinematic,
-                      float time, const GameRenderer& renderer);
+                      float time, const GameRenderer& renderer,
+                      float skipProgress = 0.0f, bool skipping = false);
 
     /** @brief 绘制商店。 */
     void DrawShop(const Inventory& inventory, const ShopState& shop,

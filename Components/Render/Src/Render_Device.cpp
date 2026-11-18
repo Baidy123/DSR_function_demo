@@ -150,7 +150,7 @@ float4 PSMain(VSOutput input) : SV_TARGET
     }
 
     float3 albedo = ApplyPattern(input.color * uTint.rgb, uv * 0.5, input.pattern);
-    float3 ambient = uAmbient.rgb * (0.52 + 0.48 * saturate(N.y * 0.5 + 0.5));
+    float3 ambient = uAmbient.rgb * (0.72 + 0.28 * saturate(N.y * 0.5 + 0.5));
     float3 color = albedo * ambient;
 
     int count = (int)uLightCount.x;
@@ -179,7 +179,7 @@ float4 PSMain(VSOutput input) : SV_TARGET
     }
 
     float rim = pow(1.0 - saturate(dot(N, V)), 3.0);
-    color += rim * uAmbient.rgb * 0.45;
+    color += rim * uAmbient.rgb * 1.05;
 
     // 材质编号 8 及以上表示自发光表面（霓虹、屏幕、灯罩）。
     float emissive = input.pattern > 7.5 ? 1.6 : 0.0;
@@ -799,8 +799,60 @@ void RenderDevice::BeginInternalTarget()
 
 void RenderDevice::BeginFrame(const Color& fogColor)
 {
+    m_overlayStarted = false;
     m_frame.fogColor = fogColor;
     BeginRenderTarget(m_internal, fogColor);
+}
+
+void RenderDevice::BeginOverlay()
+{
+    if (m_context == nullptr) {
+        return;
+    }
+    m_overlayStarted = true;
+
+    const float clear[4] = {0.0f, 0.0f, 0.0f, 1.0f};
+    D3D11_VIEWPORT viewport = {};
+    viewport.MinDepth = 0.0f;
+    viewport.MaxDepth = 1.0f;
+
+    if (m_capturing) {
+        EnsureCaptureTarget();
+        if (!m_capture.rtv) {
+            return;
+        }
+        m_context->ClearRenderTargetView(m_capture.rtv.Get(), clear);
+        RunPostPass(m_capture.rtv.Get(), 0, 0, m_capture.width, m_capture.height);
+        viewport.Width = static_cast<float>(m_capture.width);
+        viewport.Height = static_cast<float>(m_capture.height);
+        m_overlayScale = static_cast<float>(m_capture.width) /
+                         static_cast<float>(UI_WIDTH);
+        m_overlayOffset = Vec2();
+        m_overlayTarget = Vec2(static_cast<float>(m_capture.width),
+                               static_cast<float>(m_capture.height));
+    } else {
+        m_context->ClearRenderTargetView(m_backBufferRTV.Get(), clear);
+        RunPostPass(m_backBufferRTV.Get(),
+                    static_cast<int>(m_letterbox.x),
+                    static_cast<int>(m_letterbox.y),
+                    static_cast<int>(m_letterbox.w),
+                    static_cast<int>(m_letterbox.h));
+        viewport.Width = static_cast<float>(m_windowWidth);
+        viewport.Height = static_cast<float>(m_windowHeight);
+        m_overlayScale = m_letterbox.w / static_cast<float>(UI_WIDTH);
+        m_overlayOffset = Vec2(m_letterbox.x, m_letterbox.y);
+        m_overlayTarget = Vec2(static_cast<float>(m_windowWidth),
+                               static_cast<float>(m_windowHeight));
+    }
+
+    m_context->RSSetViewports(1, &viewport);
+    // UI 不参与深度测试，使用不裁面的光栅并保持普通 Alpha 混合。
+    m_context->OMSetDepthStencilState(nullptr, 0);
+    m_context->RSSetState(m_rasterizerNoCull.Get());
+    const float blendFactor[4] = {0.0f, 0.0f, 0.0f, 0.0f};
+    m_context->OMSetBlendState(m_alphaBlend.Get(), blendFactor, 0xFFFFFFFF);
+    m_depthEnabled = false;
+    m_currentTarget = nullptr;
 }
 
 void RenderDevice::BeginScene3D(const SceneFrame& frame)
@@ -1000,29 +1052,20 @@ bool RenderDevice::RunPostPass(ID3D11RenderTargetView* target, int vpX, int vpY,
 
 void RenderDevice::Present(bool vsync)
 {
-    if (m_swapChain == nullptr) {
+    if (m_swapChain == nullptr || m_capturing) {
         return;
     }
-    const float clear[4] = {0.0f, 0.0f, 0.0f, 1.0f};
-    m_context->ClearRenderTargetView(m_backBufferRTV.Get(), clear);
-    RunPostPass(m_backBufferRTV.Get(),
-                static_cast<int>(m_letterbox.x),
-                static_cast<int>(m_letterbox.y),
-                static_cast<int>(m_letterbox.w),
-                static_cast<int>(m_letterbox.h));
+    // 如果调用方没有显式开始覆盖层，这里补一次，避免呈现黑屏。
+    if (!m_overlayStarted) {
+        BeginOverlay();
+    }
     m_swapChain->Present(vsync ? 1 : 0, 0);
 }
 
 bool RenderDevice::CaptureOffscreen(const std::string& path)
 {
-    EnsureCaptureTarget();
-    if (!m_capture.rtv) {
-        return false;
-    }
-    const float clear[4] = {0.0f, 0.0f, 0.0f, 1.0f};
-    m_context->ClearRenderTargetView(m_capture.rtv.Get(), clear);
-    if (!RunPostPass(m_capture.rtv.Get(), 0, 0, m_capture.width,
-                     m_capture.height)) {
+    // 截图目标已由 BeginOverlay 写入（包含后处理与 UI），这里只负责读回。
+    if (!m_capturing || !m_capture.rtv) {
         return false;
     }
 
@@ -1058,11 +1101,13 @@ bool RenderDevice::CaptureOffscreen(const std::string& path)
 
 void RenderDevice::EnsureCaptureTarget()
 {
-    if (m_capture.rtv != nullptr && m_capture.width == INTERNAL_WIDTH &&
-        m_capture.height == INTERNAL_HEIGHT) {
+    const int width = INTERNAL_WIDTH * (m_scale > 0 ? m_scale : 1);
+    const int height = INTERNAL_HEIGHT * (m_scale > 0 ? m_scale : 1);
+    if (m_capture.rtv != nullptr && m_capture.width == width &&
+        m_capture.height == height) {
         return;
     }
-    CreateRenderTarget(INTERNAL_WIDTH, INTERNAL_HEIGHT, false, m_capture);
+    CreateRenderTarget(width, height, false, m_capture);
 }
 
 bool RenderDevice::CreateTexture(const uint8_t* bgra, int width, int height,
@@ -1114,19 +1159,19 @@ void RenderDevice::UpdateLetterbox()
 
 Vec2 RenderDevice::ScreenToInternal(Vec2 screen) const
 {
-    const float scale = static_cast<float>(m_scale);
+    const float scale = m_overlayScale;
     if (scale <= 0.0f) {
         return Vec2();
     }
-    return Vec2((screen.x - m_letterbox.x) / scale,
-                (screen.y - m_letterbox.y) / scale);
+    return Vec2((screen.x - m_overlayOffset.x) / scale,
+                (screen.y - m_overlayOffset.y) / scale);
 }
 
 Vec2 RenderDevice::InternalToScreen(Vec2 internal) const
 {
-    const float scale = static_cast<float>(m_scale);
-    return Vec2(m_letterbox.x + internal.x * scale,
-                m_letterbox.y + internal.y * scale);
+    const float scale = m_overlayScale;
+    return Vec2(m_overlayOffset.x + internal.x * scale,
+                m_overlayOffset.y + internal.y * scale);
 }
 
 bool RenderDevice::WriteBmp(const std::string& path, const uint8_t* bgra,

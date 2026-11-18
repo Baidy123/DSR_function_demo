@@ -66,7 +66,8 @@ bool SpriteBatch::Initialize(ID3D11Device* device, ID3D11DeviceContext* context,
     return true;
 }
 
-void SpriteBatch::Begin(int width, int height)
+void SpriteBatch::Begin(int width, int height, float scale, Vec2 offset,
+                        Vec2 targetSize)
 {
     if (m_vertices.size() > 0) {
         m_vertices.clear();
@@ -74,19 +75,30 @@ void SpriteBatch::Begin(int width, int height)
     m_quadCount = 0;
     m_width = width > 0 ? width : 1;
     m_height = height > 0 ? height : 1;
+    if (scale <= 0.0f) {
+        scale = 1.0f;
+    }
     m_inFrame = true;
     m_currentTexture = nullptr;
     m_currentAdditive = false;
     m_currentLinear = false;
 
-    // 行主序正交投影，y 向下。
+    // 行主序正交投影，y 向下；把逻辑坐标映射到目标表面的任意矩形。
     const float w = static_cast<float>(m_width);
     const float h = static_cast<float>(m_height);
+    const float targetW =
+        targetSize.x > 0.0f ? targetSize.x : w * scale;
+    const float targetH =
+        targetSize.y > 0.0f ? targetSize.y : h * scale;
+    const float sx = 2.0f * scale / targetW;
+    const float sy = -2.0f * scale / targetH;
+    const float tx = 2.0f * offset.x / targetW - 1.0f;
+    const float ty = 1.0f - 2.0f * offset.y / targetH;
     float matrix[16] = {
-        2.0f / w, 0.0f, 0.0f, 0.0f,
-        0.0f, -2.0f / h, 0.0f, 0.0f,
+        sx,   0.0f, 0.0f, 0.0f,
+        0.0f, sy,   0.0f, 0.0f,
         0.0f, 0.0f, 1.0f, 0.0f,
-        -1.0f, 1.0f, 0.0f, 1.0f
+        tx,   ty,   0.0f, 1.0f
     };
 
     D3D11_MAPPED_SUBRESOURCE mapped = {};

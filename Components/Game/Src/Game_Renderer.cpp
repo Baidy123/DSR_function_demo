@@ -25,12 +25,6 @@ Color FlickerColor(const LightDef& light, float time)
                  light.color.b * intensity, 1.0f);
 }
 
-Mat4 TransformFor(const Vec3& position, float yaw, float scale)
-{
-    return Mat4::Scale(Vec3(scale, scale, scale)) *
-           Mat4::RotationY(yaw) * Mat4::Translation(position);
-}
-
 } // namespace
 
 void UpdateCameraMatrices(CameraRuntime& camera, float aspect)
@@ -127,11 +121,14 @@ bool GameRenderer::LoadScene(const SceneDef& scene, CollisionWorld& collision)
             colliderHalf = halfExtent;
         }
         if (std::fabs(prop.yaw) > 0.001f) {
-            // 旋转道具用包围盒的 XZ 最大半径近似，避免旋转后穿模。
-            const float radiusXZ = std::sqrt(colliderHalf.x * colliderHalf.x +
-                                             colliderHalf.z * colliderHalf.z);
-            colliderHalf.x = radiusXZ;
-            colliderHalf.z = radiusXZ;
+            // 旋转后的 OBB 投影到 XZ 轴：比“最大半径”精确得多，
+            // 否则一辆横停的汽车会生成 4.5×4.5 的方块把整条街堵死。
+            const float c = std::fabs(std::cos(prop.yaw));
+            const float s = std::fabs(std::sin(prop.yaw));
+            const float halfX = colliderHalf.x;
+            const float halfZ = colliderHalf.z;
+            colliderHalf.x = c * halfX + s * halfZ;
+            colliderHalf.z = s * halfX + c * halfZ;
         }
         colliderHalf *= prop.scale;
         const Vec3 center = def.position + def.colliderOffset +
@@ -167,7 +164,8 @@ void GameRenderer::DrawScene(const SceneDef& scene, const Player& player,
                              const std::vector<Particle>& particles,
                              const std::vector<Pickup>& pickups,
                              const CameraRuntime& camera,
-                             const std::vector<LightDef>& lights, float time)
+                             const std::vector<LightDef>& lights, float time,
+                             bool drawPlayer)
 {
     if (m_device == nullptr || m_roomMesh == nullptr) {
         return;
@@ -240,9 +238,11 @@ void GameRenderer::DrawScene(const SceneDef& scene, const Player& player,
         }
         CharacterAnim anim;
         anim.time = time;
-        anim.walking = false;
+        anim.walkAmp = 0.0f;
         anim.aiming = false;
-        const Mat4 base = Mat4::RotationY(npc.yaw) *
+        const float height = m_characters->Style(npc.id).height;
+        const Mat4 base = Mat4::Scale(Vec3(height, height, height)) *
+                          Mat4::RotationY(npc.yaw) *
                           Mat4::Translation(npc.position);
         m_characters->Draw(*m_device, *mesh, base, anim, WHITE);
     }
@@ -253,35 +253,40 @@ void GameRenderer::DrawScene(const SceneDef& scene, const Player& player,
         if (mesh == nullptr) {
             continue;
         }
+        const float height = m_characters->Style(enemy.character).height;
         CharacterAnim anim;
         anim.time = enemy.time;
         anim.walkPhase = enemy.walkPhase;
-        anim.walking = enemy.moving;
+        anim.walkAmp = enemy.walkAmp;
         anim.aiming = enemy.aiming && !enemy.dead;
         anim.aimPitch = enemy.aimPitch;
         anim.hitFlash = enemy.hitFlash;
         if (enemy.dead) {
-            anim.alpha = Clamp(enemy.deathTimer / 0.6f, 0.0f, 1.0f);
+            anim.deathLean = 1.0f - Clamp(enemy.deathTimer / 0.6f, 0.0f, 1.0f);
         }
-        const Mat4 base = Mat4::RotationY(enemy.yaw) *
+        const Mat4 base = Mat4::Scale(Vec3(height, height, height)) *
+                          Mat4::RotationY(enemy.yaw) *
                           Mat4::Translation(enemy.position);
         const Color tint = enemy.dead ? Color(0.6f, 0.55f, 0.55f, 1.0f) : WHITE;
         m_characters->Draw(*m_device, *mesh, base, anim, tint);
     }
 
     // 玩家
-    {
+    if (drawPlayer) {
         const Mesh* mesh = m_characters->Get(CharacterId::PLAYER);
         if (mesh != nullptr) {
             CharacterAnim anim;
             anim.time = player.time;
             anim.walkPhase = player.walkPhase;
-            anim.walking = player.moving;
+            anim.walkAmp = player.walkAmp;
             anim.aiming = player.aiming;
+            anim.aimOffset = WrapAngle(player.yaw - player.facing);
             anim.aimPitch = player.aimPitch;
             anim.recoil = player.recoil;
             anim.hitFlash = player.hitFlash;
-            const Mat4 base = Mat4::RotationY(player.yaw) *
+            const float height = m_characters->Style(CharacterId::PLAYER).height;
+            const Mat4 base = Mat4::Scale(Vec3(height, height, height)) *
+                              Mat4::RotationY(player.facing) *
                               Mat4::Translation(player.position);
             m_characters->Draw(*m_device, *mesh, base, anim, WHITE);
         }
@@ -373,8 +378,8 @@ bool GameRenderer::WorldToScreen(const CameraRuntime& camera, const Vec3& world,
     }
     const float ndcX = x / w;
     const float ndcY = y / w;
-    screen.x = (ndcX * 0.5f + 0.5f) * static_cast<float>(INTERNAL_WIDTH);
-    screen.y = (1.0f - (ndcY * 0.5f + 0.5f)) * static_cast<float>(INTERNAL_HEIGHT);
+    screen.x = (ndcX * 0.5f + 0.5f) * static_cast<float>(UI_WIDTH);
+    screen.y = (1.0f - (ndcY * 0.5f + 0.5f)) * static_cast<float>(UI_HEIGHT);
     return true;
 }
 

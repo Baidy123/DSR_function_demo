@@ -47,13 +47,35 @@ void TextRenderer::Shutdown()
     m_device = nullptr;
 }
 
+void TextRenderer::SetPixelScale(int scale)
+{
+    if (scale < 1) {
+        scale = 1;
+    }
+    if (scale > 8) {
+        scale = 8;
+    }
+    if (scale == m_pixelScale) {
+        return;
+    }
+    m_pixelScale = scale;
+    // 密度变化后，旧纹理的像素密度不再匹配，必须重建。
+    ClearCache();
+    for (auto& pair : m_fonts) {
+        if (pair.second.font != nullptr) {
+            DeleteObject(pair.second.font);
+        }
+    }
+    m_fonts.clear();
+}
+
 TextRenderer::FontRecord* TextRenderer::GetFont(int px)
 {
     if (px < 6) {
         px = 6;
     }
-    if (px > 48) {
-        px = 48;
+    if (px > 256) {
+        px = 256;
     }
     auto it = m_fonts.find(px);
     if (it != m_fonts.end()) {
@@ -114,8 +136,9 @@ const TextBlock* TextRenderer::Get(const std::string& text, int px, int maxWidth
     if (px <= 0) {
         px = 12;
     }
-    const std::string key = std::to_string(px) + "|" + std::to_string(maxWidth) +
-                            "|" + text;
+    const std::string key = std::to_string(px) + "|" +
+                            std::to_string(maxWidth) + "|" +
+                            std::to_string(m_pixelScale) + "|" + text;
     auto it = m_cache.find(key);
     if (it != m_cache.end()) {
         return it->second.get();
@@ -141,13 +164,17 @@ int TextRenderer::MeasureHeight(const std::string& text, int px, int maxWidth)
 std::unique_ptr<TextBlock> TextRenderer::Build(const std::string& text, int px,
                                                int maxWidth)
 {
-    FontRecord* font = GetFont(px);
+    // 逻辑字号乘像素密度得到实际光栅化字号；排版宽度同样放大。
+    const int scale = m_pixelScale;
+    FontRecord* font = GetFont(px * scale);
     if (font == nullptr) {
         return nullptr;
     }
+    const int rasterMaxWidth = std::max(1, maxWidth * scale);
 
     std::unique_ptr<TextBlock> block(new TextBlock());
-    block->lineHeight = font->lineHeight;
+    block->pixelScale = scale;
+    block->lineHeight = std::max(1, font->lineHeight / scale);
 
     const std::wstring wide = Utf8ToWide(text);
     const int unitCount = static_cast<int>(wide.size());
@@ -176,7 +203,7 @@ std::unique_ptr<TextBlock> TextRenderer::Build(const std::string& text, int px,
             SIZE size = {};
             GetTextExtentPoint32W(m_memoryDC, wide.c_str() + start, end - start + 1,
                                   &size);
-            if (size.cx > maxWidth && end > start) {
+            if (size.cx > rasterMaxWidth && end > start) {
                 break;
             }
             ++end;
@@ -240,18 +267,18 @@ std::unique_ptr<TextBlock> TextRenderer::Build(const std::string& text, int px,
         TextLine line;
         line.startUnit = raw.start;
         line.lengthUnits = raw.length;
-        line.y = static_cast<int>(i) * font->lineHeight;
-        line.height = font->lineHeight;
-        line.width = raw.width;
+        line.y = static_cast<int>(i) * block->lineHeight;
+        line.height = block->lineHeight;
+        line.width = std::max(1, raw.width / scale);
         line.charX.assign(static_cast<size_t>(raw.length) + 1, 0);
         for (int k = 1; k <= raw.length; ++k) {
             SIZE size = {};
             GetTextExtentPoint32W(m_memoryDC, wide.c_str() + raw.start, k, &size);
-            line.charX[static_cast<size_t>(k)] = size.cx;
+            line.charX[static_cast<size_t>(k)] = size.cx / scale;
         }
         if (raw.length > 0) {
-            TextOutW(m_memoryDC, 0, line.y + 1, wide.c_str() + raw.start,
-                     raw.length);
+            TextOutW(m_memoryDC, 0, static_cast<int>(i) * font->lineHeight + 1,
+                     wide.c_str() + raw.start, raw.length);
         }
         block->lines.push_back(std::move(line));
     }
@@ -285,8 +312,8 @@ std::unique_ptr<TextBlock> TextRenderer::Build(const std::string& text, int px,
         }
     }
 
-    block->width = textureWidth;
-    block->height = textureHeight;
+    block->width = std::max(1, textureWidth / scale);
+    block->height = std::max(1, textureHeight / scale);
     return block;
 }
 
@@ -318,9 +345,10 @@ void TextRenderer::Draw(SpriteBatch& batch, const TextBlock& block, float x,
         if (sourceWidth <= 0) {
             continue;
         }
-        const RectF source(0.0f, static_cast<float>(line.y),
-                           static_cast<float>(sourceWidth),
-                           static_cast<float>(line.height));
+        const float pixelScale = static_cast<float>(block.pixelScale);
+        const RectF source(0.0f, static_cast<float>(line.y) * pixelScale,
+                           static_cast<float>(sourceWidth) * pixelScale,
+                           static_cast<float>(line.height) * pixelScale);
         const float destinationY = y + static_cast<float>(line.y);
         if (shadow) {
             batch.DrawTextureRegion(block.texture, x + 1.0f, destinationY + 1.0f,

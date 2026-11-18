@@ -5,40 +5,79 @@
 
 ---
 
-## 1. 当前状态（截至本轮）
+## 1. 当前状态
 
 | 项 | 状态 |
 | --- | --- |
 | 分支 | `fish-dev`（本地提交，**禁止推送**） |
-| 远端 | `github` = `git@github.com:Baidy123/DSR_function_demo.git`（只读参考，不推送、不重建分支） |
-| 构建 | `make release -j4` 通过；产物 `Build/Release/Target.exe`（约 1.4 MB） |
-| 渲染 | 纯 D3D11 三维管线；内部 480×270，整数倍放大 + 后处理（抖动/扫描线/暗角/噪点/故障） |
-| 场景 | 酒吧外（雨夜街道）、酒吧内、铁港仓库；固定机位 + 区域混合 |
-| 角色 | 6 套程序化骨架：`PLAYER / BIGSISTER / MERCHANT / BARTENDER / SCAVENGER / AGENT` |
-| 剧情 | 主线闭环 + 点唱机支线 + 商店 + 日志 + 双结局 |
-| 资产 | 文本网格 `Resources/Meshes/Props/*.fcm`；无二进制素材入库 |
-| 工具 | `UnitTests` 93/93 通过；`OffscreenTest --flow` 25/25 通过；离屏截图正常 |
+| 远端 | `github` = `git@github.com:Baidy123/DSR_function_demo.git`（只读参考） |
+| 构建 | `make release` / `make debug` 通过，`-Wall` 零警告 |
+| 3D 分辨率 | `720×405`（内部），整数倍放大到窗口 |
+| UI 分辨率 | 逻辑坐标 `480×270`，按屏幕像素密度 3× 高清渲染 |
+| 场景 | 酒吧外、余烬酒吧、铁港仓库；相机随玩家部分跟随 |
+| 角色 | 15 骨骼层级（髋/腰/头/双臂三段/双腿三段），6 套风格 |
+| 工具 | `UnitTests` 93/93；`OffscreenTest --flow` 25/25；截图 1440×810 |
 
 ---
 
 ## 2. 本轮完成的工作
 
-1. **定位并修复 UI 文字残缺**：`SpriteBatch::Flush` 未绑定深度模板状态，精灵沿用了 3D 场景的深度状态，UI 与文字被场景深度部分裁剪。新增 `RenderDevice::m_depthDisabled` 并在每次 flush 时绑定。
-2. **修复三维头像空白**：`RenderDevice::BeginScene3D` 固定绑定 `m_internal`，导致 `BeginRenderTarget(m_portraits[i])` 之后的绘制全被写回主目标。改为记录 `m_currentTarget` 并按当前目标的尺寸设置视口。
-3. **修复剧情事件丢失**：`HandleDialogueFinished` 未派发挂起的 `DialogueEvent`，导致“接受支线”“结局选择”在调试与快速推进路径下丢失。收尾前统一 drain 事件；`BIGSISTER_RETURN` 不再无条件覆盖结局选择。
-4. **相机与光照**：酒吧相机移入房间（`eye ≈ (5.6, 2.95, 4.35)`），铁港屋顶抬高到 y≈5.9、三台相机进入室内；环境光整体提亮；边缘光系数由 `2.2` 降到 `0.45`（原先细长圆柱体全轮廓过曝成白条）。
-5. **工具适配 3D**：`UnitTests` 数学用例改写为 Vec3/Mat4/AABB/碰撞；`OffscreenTest` 改为直接读取 `Resources/Meshes/Props/*.fcm` 文本拼接成网格库（不再依赖已删除的 `ArtPack.bin`）。
-6. **文本换行统一**：把工作区文本文件重写为 UTF-8 无 BOM + LF。
+### 2.1 UI 与文字清晰度
+
+- 3D 渲染与 UI 彻底分层：3D 画到 `720×405`，后处理放大到窗口，UI 再以屏幕像素密度叠加。
+- `SpriteBatch::Begin` 支持 `scale / offset / targetSize`，UI 逻辑坐标 `480×270` 映射到任意窗口尺寸。
+- `TextRenderer::SetPixelScale(n)` 让文字按物理像素光栅化（12px 逻辑字号 → 36px 纹理），彻底解决“放大后模糊”。
+- 截图流程改为 `SetCaptureMode(true)` → 渲染到 `m_capture`（`1440×810`）→ 直接读回，包含后处理与 UI。
+
+### 2.2 相机与可见性
+
+- `CameraRuntime` 增加跟随：机位按玩家在区域内的位移平移（`CAMERA_FOLLOW_RATIO 0.55`，限幅 2.6 m），
+  注视点额外向玩家靠拢 `CAMERA_TARGET_BIAS 0.55`，并把 eye 限制在区域边界内 0.35 m，避免穿墙。
+- 三个场景的机位与出生点重设；铁港改为三段机位、抬到 y≈4.8，视野覆盖更宽。
+- 场景提亮：环境光、雾浓度、地面/墙体基色整体上调；角色额外获得一盏跟随玩家的柔和补光。
+
+### 2.3 碰撞（阻断性 Bug）
+
+- 旋转道具的碰撞盒此前用“最大半径”近似，一辆横停的汽车会生成 4.5×4.5 m 的方块堵死街道，
+  铁港 12 m 集装箱更会生成 17×17 m 的巨块。
+- 改为 OBB 在 XZ 轴上的投影公式（`|cos|·hx + |sin|·hz`），并调整车辆位置与交互点。
+
+### 2.4 角色重建
+
+- 旧实现每个部件是整体刚性块、无层级、无手。新实现：
+  - 15 根骨骼：`hips / torso / head / upperArm(L,R) / foreArm(L,R) / hand(L,R) / thigh(L,R) / shin(L,R) / foot(L,R)`。
+  - 每段几何以自身关节为原点，`part.pivot` 存“相对父关节的偏移”，绘制时做一次自顶向下 FK。
+  - 建模细节：头骨 + 下颌 + 耳 + 鼻 + 眉 + 眼白/瞳孔 + 嘴；外套分腹/胸/肩线 + 口袋 + 中缝；
+    前臂 + 护腕；手掌 + 拇指 + 指节；靴筒 + 鞋头 + 鞋底 + 鞋带；武器（手枪/步枪/铁管）。
+  - 角色差异：大美长风衣 + 发髻，东子光头 + 背心 + 背包 + 护目镜，小帅围裙 + 衬衫，
+    拾荒者兜帽 + 面罩 + 步枪，特工全罩头盔 + 发光面甲 + 护肩。
+- 动画：走路（大腿/膝盖/脚踝 + 反相摆臂 + 重心起伏 + 髋部侧摆 + 躯干扭动）、
+  idle（呼吸 + 头部微动）、瞄准（右臂抬起、左臂托握、上身与头转向）、后坐力、受击、死亡前倾。
+- 身体朝向与瞄准方向分离：`Player::facing` 跟随移动方向，`aimOffset` 让上半身转向鼠标；
+  停止射击 1.35 s 后放下枪，避免整段静止都保持举枪 T 形。
+
+### 2.5 对话快进
+
+- 按住 `Ctrl` 累积到 `SKIP_HOLD_TIME 2.0 s` 后进入快进：文字瞬间补全并按 `SKIP_STEP_TIME 0.09 s` 推进节点，
+  遇到选项自动停下，松开 `Ctrl` 立即取消。
+- 对话框右下角显示“按住 Ctrl 快进” + 进度条；进入快进后变为“快进中”琥珀色。
+
+### 2.6 酒吧场景
+
+- 新增文本网格：`PROP_PENDANT`（吊灯）、`PROP_BOTTLE_RACK`（酒瓶架）、`PROP_RUG`（地毯）、
+  `PROP_POSTER`（海报）、`PROP_CEILING_FAN`（吊扇）、`PROP_TAP`（啤酒龙头）、
+  `PROP_REGISTER`（收银机）、`PROP_GLASS`（酒杯）、`PROP_ASHTRAY`（烟灰缸）。
+- 房间增加天花板横梁、踢脚线、吧台脚踩杆、卡座隔断墙；补光改为吊灯位置。
 
 ---
 
 ## 3. 下一步（建议顺序）
 
-1. 视觉打磨：检查 `DrawLightGlows` 的辉光尺寸与 `uEmission` 全局自发光项是否过强；核对酒吧内白色圆环（疑似拾取物/标记）的绘制条件。
-2. 场景补全：铁港的集装箱与吊灯在当前机位下几乎不可见，考虑调整道具位置或增加一台反向机位。
-3. 战斗手感：命中反馈、受击闪白、弹道拖尾的时长与强度需要按最终帧率再调。
-4. 音频：确认 `Audio_System` 在场景切换时不会叠加过多音源；紧急警报的循环需要显式停止。
-5. 若继续扩展内容，优先补“东子”与“小帅”的支线对白，保持与剧本语气一致。
+1. 战斗手感：命中反馈、受击闪白、弹道拖尾需要按最终帧率再调。
+2. 角色动画：可加“转身插值”“上下台阶”“开火时的上身后仰回弹曲线”。
+3. 场景：铁港远处集装箱仍偏暗，可加 2 盏高处的钠灯；街道可加远处建筑剪影。
+4. 音频：场景切换时确认音源不叠加；警报循环需要显式停止。
+5. 文本纹理缓存目前按字符串保存且无上限，长期运行需要字形图集或 LRU。
 
 ---
 
@@ -46,48 +85,42 @@
 
 | 现象 | 影响 | 备注 |
 | --- | --- | --- |
-| 酒吧场景底部中央出现白色圆环 | 轻微 | 疑似拾取物/目标标记在相机后方的投影，尚未定位 |
-| 铁港部分道具（集装箱、吊灯）在当前机位下不可见 | 轻微 | 机位或道具位置需要再平衡 |
-| 角色行走动画在低帧率下略有跳变 | 轻微 | 动画相位用累计时间驱动，可加插值 |
-| 文本纹理按字符串缓存 | 中 | 每帧变化的数值文本（血量、弹药）会创建新纹理；若出现卡顿需改为字形图集 |
+| 酒吧底部偶见白色椭圆光斑 | 轻微 | 疑似掉落物/标记投影，未定位 |
+| 角色脚部在行走相位极端时会轻微入地 | 轻微 | 低模可接受，可在根骨加垂直偏移修正 |
+| 文本缓存无上限 | 中 | 数值型文本每帧变化会新建纹理 |
+| 铁港哨戒时相机切换为硬切 | 轻微 | 已有 0.55 s 平滑，但跨区域仍会“跳一下” |
 
 ---
 
 ## 5. 接口契约
 
-### 5.1 文本网格 `.fcm`
+### 5.1 骨骼与角色网格
+
+部件名固定为 15 个骨骼名（见上），`part.pivot` 存**相对父关节的偏移**，
+绘制时 `CharacterLibrary::Draw` 按 `kSkeleton` 顺序做 FK：
 
 ```text
-mesh <名称>
-part <部件名> pivot <x> <y> <z>
-mat 0xRRGGBB          # 颜色
-pattern <0..9>        # 0 素色 1 砖 2 木 3 金属筋 4 锈 5 布料 6 混凝土 8+ 自发光
-box   <cx> <cy> <cz> <hx> <hy> <hz> [yaw]
-bevel <cx> <cy> <cz> <hx> <hy> <hz> <bevel> [yaw]
-cyl   <bx> <by> <bz> <rBottom> <rTop> <height> <segments>
-cone  <bx> <by> <bz> <radius> <height> <segments>
-sphere <cx> <cy> <cz> <radius> <segments> <rings>
-plane <cx> <cy> <cz> <halfX> <halfZ>
-quad   <x0> <y0> <z0> <x1> <y1> <z1> <x2> <y2> <z2> <x3> <y3> <z3>
-tri    <x0> <y0> <z0> <x1> <y1> <z1> <x2> <y2> <z2>
-endpart
-endmesh
+world[bone] = R_bone * T(offset_bone) * world[parent]
 ```
 
-### 5.2 场景数据（`Components/World/Inc/World_Types.hpp`）
+角色的缩放通过 `base` 矩阵的最左侧 `Scale(style.height)` 完成，模型原点在脚底，因此缩放不会离地。
 
-- `Block(center, half, color, pattern, solid)`：房间体块，`solid=false` 不参与碰撞。
-- `Prop(meshName, position, yaw, scale, tint, hidden)`：静态道具，`hidden=true` 时初始隐藏。
-- `Light(position, color, intensity, range, flicker)`：点光源，最多 8 盏生效。
-- `CameraZone(boundsMin, boundsMax, eye, target, fov)`：按玩家 XZ 区域切换机位。
-- `Interact(id, position, radius, prompt)`：交互点，`id` 与 `GameApp::HandleInteraction` 对应。
+### 5.2 坐标空间
 
-### 5.3 游戏接口（`Components/Game/Inc/Game_App.hpp`）
+| 空间 | 尺寸 | 使用者 |
+| --- | --- | --- |
+| 世界 | 米，y 向上 | 玩法、碰撞、相机 |
+| 3D 内部 | `INTERNAL_WIDTH × INTERNAL_HEIGHT`（720×405） | 场景、后处理输入 |
+| UI 逻辑 | `UI_WIDTH × UI_HEIGHT`（480×270） | 所有界面与 HUD |
+| 窗口/截图 | letterbox 区域（1440×810） | 最终输出 |
 
-- `Initialize(hwnd, width, height, const std::string& meshLibraryText, bool muted)`
-- `Update(dt)` / `Render()` / `Present(vsync)` / `Capture(path)`
-- 调试钩子：`DebugStartNewGame / DebugLoadScene / DebugInteract / DebugAdvanceDialogue / DebugChooseDialogue / DebugFinishDialogue / DebugCloseShop / DebugKillEnemies / DebugSetMode / DebugMainStage / DebugSideStage / DebugScene / DebugMode / DebugMoney / DebugHasGear / DebugEndingChoice / DebugAliveEnemies`
-- 调试钩子仅供 `Tools/OffscreenTest` 使用，不参与正式玩法路径。
+`GameRenderer::WorldToScreen` 返回 **UI 逻辑坐标**；`RenderDevice::ScreenToInternal` 也返回 UI 逻辑坐标。
+
+### 5.3 新增调试入口
+
+- `GameApp::SetCaptureMode(bool)`：截图模式，渲染到离屏大目标。
+- `GameApp::DebugSetWalkPose(bool)`：让玩家原地播放走路动画（无头验证骨骼）。
+- 命令行：`--walk`、`--px <x> --pz <z>`。
 
 ---
 
@@ -95,23 +128,23 @@ endmesh
 
 | 阶段 | 内容 | 验证 |
 | --- | --- | --- |
-| 1 | 2D 像素 Demo（已归档） | 曾经 68/68 + 25/25 |
-| 2 | 清理二进制美术，改为纯程序化资产策略 | `git log` 归档提交 `9e2d90e` |
-| 3 | 数学/网格/3D 渲染/后处理/场景/角色/剧情/UI 全量重写 | `make release` 通过 |
-| 4 | 修复 UI 深度裁剪、头像空白、剧情事件丢失；相机与光照重调 | 93/93 + 25/25，截图复核 |
-| 5 | 文档按 3D 现状重写 | 本文件与 `README.md` |
+| 1 | 2D 像素 Demo（已归档） | 68/68 + 25/25 |
+| 2 | 清理二进制美术，纯程序化资产 | 归档提交 |
+| 3 | 3D 重写（数学/网格/场景/角色/剧情/UI） | 构建通过 |
+| 4 | 修复 UI 深度裁剪、头像空白、剧情事件 | 93/93 + 25/25 |
+| 5 | 文档按 3D 现状重写 | 文档审阅 |
+| 6 | UI 高清化、相机跟随、碰撞修正、角色骨骼与动画、酒吧扩充、对话快进 | 93/93 + 25/25 + 截图验收 |
 
 ---
 
 ## 7. 常用命令
 
 ```powershell
-make release -j4                       # 构建最终产物
-make -C Tools                          # 构建全部工具
-make -C Tools unit                     # 仅构建单元测试
+make release -j4
+make -C Tools
 & .\Tools\UnitTests\Build\UnitTests.exe
 & .\Tools\OffscreenTest\Build\OffscreenTest.exe --flow
-& .\Tools\OffscreenTest\Build\OffscreenTest.exe --scene bar --ui dialogue --out Temp/Screenshots/bar_dialogue.bmp
+& .\Tools\OffscreenTest\Build\OffscreenTest.exe --scene bar --ui dialogue
 ```
 
-> 截图与临时文件只写 `Temp/`；`Build/`、`Temp/` 均被 `.gitignore` 忽略。
+> 截图、临时文件只写 `Temp/`；`Build/`、`Temp/` 均被 `.gitignore` 忽略。

@@ -23,7 +23,20 @@ enum class CharacterId : std::uint8_t {
 };
 
 /**
- * @brief 角色风格参数（低多面体配色与轮廓特征）。
+ * @brief 角色持有的武器类型。
+ */
+enum class WeaponKind : std::uint8_t {
+    NONE = 0,
+    PISTOL,
+    RIFLE,
+    PIPE
+};
+
+/**
+ * @brief 角色风格参数：配色、服装部件开关与体型。
+ *
+ * 所有角色共用同一套骨骼（见 `Game_Characters.cpp` 的骨骼表），
+ * 通过这里的不同开关组合出可辨识的轮廓与服装层次。
  */
 struct CharacterStyle {
     Color skin{0.79f, 0.56f, 0.42f, 1.0f};
@@ -31,36 +44,49 @@ struct CharacterStyle {
     Color hair{0.10f, 0.10f, 0.12f, 1.0f};
     Color coat{0.18f, 0.23f, 0.18f, 1.0f};
     Color coatShade{0.12f, 0.15f, 0.13f, 1.0f};
+    Color shirt{0.62f, 0.62f, 0.58f, 1.0f};
     Color pants{0.15f, 0.17f, 0.20f, 1.0f};
     Color boots{0.10f, 0.10f, 0.12f, 1.0f};
+    Color belt{0.09f, 0.08f, 0.08f, 1.0f};
     Color accent{0.18f, 0.66f, 0.63f, 1.0f};
     Color accentHi{0.50f, 0.85f, 0.81f, 1.0f};
     Color metal{0.42f, 0.45f, 0.47f, 1.0f};
-    bool longCoat = false;
-    bool apron = false;
-    bool vest = false;
-    bool hood = false;
-    bool visor = false;
-    bool goggles = false;
-    bool bulky = false;
-    bool bun = false;
-    bool scarf = false;
-    bool armed = false;
-    bool hairLong = false;
+
+    float height = 1.0f;      ///< 整体身高倍率。
+    float bulk = 1.0f;        ///< 躯干与四肢的宽度倍率。
+    WeaponKind weapon = WeaponKind::NONE;
+
+    bool longCoat = false;    ///< 及膝长风衣。
+    bool apron = false;       ///< 吧台围裙。
+    bool vest = false;        ///< 工作背心。
+    bool hood = false;        ///< 兜帽。
+    bool helmet = false;      ///< 全罩头盔。
+    bool visor = false;       ///< 发光面甲。
+    bool goggles = false;     ///< 护目镜（架在额头）。
+    bool mask = false;        ///< 半脸面罩。
+    bool scarf = false;       ///< 围巾。
+    bool backpack = false;    ///< 背包。
+    bool bandolier = false;   ///< 斜挎弹带。
+    bool shoulderPads = false;///< 硬质护肩。
+    bool hairLong = false;    ///< 长发。
+    bool bun = false;         ///< 发髻。
+    bool bald = false;        ///< 光头/剃短。
 };
 
 /**
  * @brief 角色动画输入。
  */
 struct CharacterAnim {
-    float walkPhase = 0.0f;
-    float time = 0.0f;
-    bool walking = false;
-    bool aiming = false;
-    float aimPitch = 0.0f;
-    float recoil = 0.0f;
-    float hitFlash = 0.0f;
-    float alpha = 1.0f;
+    float walkPhase = 0.0f;   ///< 步行相位（弧度）。
+    float walkAmp = 0.0f;     ///< 步行幅度（0 站立，1 全速）。
+    float time = 0.0f;        ///< 累计时间（呼吸与微动作）。
+    bool aiming = false;      ///< 是否举枪。
+    float aimOffset = 0.0f;   ///< 上半身相对身体的偏航（弧度）。
+    float aimPitch = 0.0f;    ///< 俯仰（-1 下，1 上）。
+    float recoil = 0.0f;      ///< 后坐力（0–1）。
+    float hitFlash = 0.0f;    ///< 受击闪红（0–1）。
+    float alpha = 1.0f;       ///< 透明度。
+    float deathLean = 0.0f;   ///< 死亡倒地程度（0–1）。
 };
 
 /**
@@ -82,7 +108,7 @@ public:
     const Mesh* Get(CharacterId id) const;
 
     /**
-     * @brief 绘制角色。
+     * @brief 绘制角色（含骨骼层级与动画）。
      * @param [IN/OUT] device 渲染设备。
      * @param [IN] mesh 网格。
      * @param [IN] base 角色世界矩阵（含朝向）。

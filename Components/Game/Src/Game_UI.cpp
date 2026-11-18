@@ -285,7 +285,8 @@ void GameUI::DrawHUD(const Player& player, const Inventory& inventory,
 }
 
 void GameUI::DrawDialogue(const DialogueController& dialogue, bool cinematic,
-                          float time, const GameRenderer& renderer)
+                          float time, const GameRenderer& renderer,
+                          float skipProgress, bool skipping)
 {
     const DialogueNode* node = dialogue.Current();
     if (node == nullptr) {
@@ -345,12 +346,36 @@ void GameUI::DrawDialogue(const DialogueController& dialogue, bool cinematic,
                  rowY, 11, static_cast<int>(boxW - 44.0f),
                  selected ? AMBER : BONE);
         }
-        Text("W/S 选择   E 确认", boxX + boxW - 130.0f,
+        Text("W/S 选择   E 确认", boxX + 14.0f,
              boxY + boxHeight - 14.0f, 9, 130, DIM);
     } else if (dialogue.IsTextComplete()) {
         const float blink = 0.60f + 0.40f * std::sin(time * 6.0f);
-        Text("▼", boxX + boxW - 22.0f, boxY + boxHeight - 20.0f, 12, 20,
+        Text("▼", boxX + boxW - 24.0f, boxY + 6.0f, 12, 20,
              Color(1.0f, 0.75f, 0.35f, blink));
+    }
+
+    // 快进提示：按住 Ctrl 时进度条逐渐填满，满格后进入快进。
+    {
+        const float labelX = boxX + boxW - 152.0f;
+        const float labelY = boxY + boxHeight - 15.0f;
+        const float barX = labelX + 78.0f;
+        const float barY = labelY + 3.0f;
+        const float barW = 58.0f;
+        const float barH = 5.0f;
+        SpriteBatch& batch = m_device->Batch();
+        const Color label = skipping ? AMBER : DIM;
+        Text(skipping ? "快进中" : "按住 Ctrl 快进", labelX, labelY, 9, 90, label);
+        batch.DrawTexture(m_device->White(), barX, barY, barW, barH,
+                          Rgba(16, 20, 24, 220));
+        const float filled = Clamp(skipProgress, 0.0f, 1.0f) * barW;
+        if (filled > 0.0f) {
+            batch.DrawTexture(m_device->White(), barX, barY, filled, barH,
+                              skipping ? AMBER : Rgba(120, 190, 205, 230));
+        }
+        batch.DrawTexture(m_device->White(), barX, barY, barW, 1.0f,
+                          Rgba(90, 120, 130, 160));
+        batch.DrawTexture(m_device->White(), barX, barY + barH - 1.0f, barW,
+                          1.0f, Rgba(90, 120, 130, 160));
     }
 }
 

@@ -102,6 +102,36 @@ public:
     void BeginFrame(const Color& fogColor);
 
     /**
+     * @brief 开始 2D 覆盖层：把低清场景经后处理输出到窗口（或截图目标），
+     *        并把坐标空间切换为高分辨率 UI 层。
+     *
+     * 调用后应使用 `UiScale()` / `UiOffset()` / `UiTargetSize()` 作为
+     * `SpriteBatch::Begin` 的参数，并同步 `TextRenderer::SetPixelScale`。
+     */
+    void BeginOverlay();
+
+    /** @brief UI 逻辑像素到目标像素的缩放倍率。 */
+    float UiScale() const { return m_overlayScale; }
+
+    /** @brief UI 在目标表面上的像素偏移。 */
+    Vec2 UiOffset() const { return m_overlayOffset; }
+
+    /** @brief 目标表面的像素尺寸。 */
+    Vec2 UiTargetSize() const { return m_overlayTarget; }
+
+    /**
+     * @brief 设置截图模式。
+     *
+     * 开启后，`BeginOverlay` 会把后处理结果与 UI 一并画到内部截图目标，
+     * `CaptureOffscreen` 直接读取该目标，因此在隐藏窗口下也能得到完整画面。
+     * @param [IN] enabled 是否开启。
+     */
+    void SetCaptureMode(bool enabled) { m_capturing = enabled; }
+
+    /** @brief 是否处于截图模式。 */
+    bool CaptureMode() const { return m_capturing; }
+
+    /**
      * @brief 结束 3D 场景绘制（恢复 2D 状态）。
      */
     void EndScene3D();
@@ -293,6 +323,11 @@ private:
     Texture m_glowTexture;
 
     bool m_depthEnabled = false;
+    bool m_capturing = false;
+    bool m_overlayStarted = false;
+    float m_overlayScale = 1.0f;
+    Vec2 m_overlayOffset;
+    Vec2 m_overlayTarget{1.0f, 1.0f};
     float m_postTime = 0.0f;
     float m_postDamage = 0.0f;
     float m_postFade = 0.0f;

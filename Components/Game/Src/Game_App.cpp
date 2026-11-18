@@ -155,8 +155,10 @@ void GameApp::LoadScene(SceneId id, Vec3 spawn, float yawDegrees)
 
     m_player.position = spawn;
     m_player.yaw = yawDegrees * PI / 180.0f;
+    m_player.facing = m_player.yaw;
     m_player.aimYaw = m_player.yaw;
     m_player.moving = false;
+    m_player.walkAmp = 0.0f;
     m_player.reloading = false;
     m_player.usingMedkit = false;
     m_player.reloadTimer = 0.0f;
@@ -318,6 +320,9 @@ void GameApp::StartDialogue(const Dialogue& dialogue, DialogueContext context)
     m_dialogue.Start(dialogue);
     m_dialogueContext = context;
     m_dialogueCinematic = dialogue.cinematic;
+    m_skipHold = 0.0f;
+    m_skipTick = 0.0f;
+    m_skipActive = false;
     m_mode = GameMode::DIALOGUE;
     m_prompt.clear();
     m_hasPrompt = false;
@@ -427,9 +432,9 @@ Vec3 GameApp::ScreenRayDirection(Vec2 screen) const
     const Vec3 up = Cross(forward, right);
 
     const float ndcX =
-        (screen.x / static_cast<float>(INTERNAL_WIDTH)) * 2.0f - 1.0f;
+        (screen.x / static_cast<float>(UI_WIDTH)) * 2.0f - 1.0f;
     const float ndcY =
-        1.0f - (screen.y / static_cast<float>(INTERNAL_HEIGHT)) * 2.0f;
+        1.0f - (screen.y / static_cast<float>(UI_HEIGHT)) * 2.0f;
     const float tanHalf = std::tan(pose.fovDegrees * PI / 180.0f * 0.5f);
     const float aspect = static_cast<float>(INTERNAL_WIDTH) /
                          static_cast<float>(INTERNAL_HEIGHT);
@@ -472,7 +477,13 @@ void GameApp::UpdatePlaying(float dt)
     m_player.yaw = YawFromDirection(toAim);
     m_player.aimYaw = m_player.yaw;
     m_player.aimPitch = 0.0f;
-    m_player.aiming = true;
+    // 只在开火或主动瞄准后短时间内举枪，否则安静站立。
+    if (input.MouseDown(0)) {
+        m_player.aimTimer = AIM_HOLD_TIME;
+    }
+    m_player.aimTimer = std::max(0.0f, m_player.aimTimer - dt);
+    m_player.aiming = m_player.aimTimer > 0.0f || m_player.reloading ||
+                      m_player.usingMedkit;
     m_player.time += dt;
 
     Vec3 forward = NormalizeXZ(m_camera.current.target - m_camera.current.eye);
@@ -502,9 +513,20 @@ void GameApp::UpdatePlaying(float dt)
         m_player.moving = DistanceXZ(before, m_player.position) > 0.01f;
         if (m_player.moving) {
             m_player.walkPhase += dt * (m_player.running ? 11.0f : 7.5f);
+            // 身体转向移动方向；上半身随后再转向鼠标。
+            m_player.facing = MoveTowardsAngle(
+                m_player.facing, YawFromDirection(move), dt * 9.0f);
+            m_player.walkAmp = MoveTowards(
+                m_player.walkAmp, m_player.running ? 1.0f : 0.82f, dt * 4.8f);
+        } else {
+            m_player.walkAmp = MoveTowards(m_player.walkAmp, 0.0f, dt * 6.0f);
         }
     } else {
         m_player.moving = false;
+        m_player.walkAmp = MoveTowards(m_player.walkAmp, 0.0f, dt * 6.0f);
+        // 停下时缓慢把身体转回瞄准方向，避免突然甩头。
+        m_player.facing =
+            MoveTowardsAngle(m_player.facing, m_player.yaw, dt * 2.2f);
     }
 
     m_player.fireCooldown = std::max(0.0f, m_player.fireCooldown - dt);
@@ -559,6 +581,12 @@ void GameApp::UpdatePlaying(float dt)
     UpdatePrompt();
     CheckCombatProgress();
 
+    if (m_debugWalkPose) {
+        // 无头验证时让角色原地"走"，方便检查骨骼摆动。
+        m_player.walkAmp = 1.0f;
+        m_player.walkPhase += dt * 7.5f;
+    }
+
     bool alerted = m_alarm;
     for (const Enemy& enemy : m_enemies) {
         if (!enemy.dead && enemy.alerted) {
@@ -577,13 +605,42 @@ void GameApp::UpdatePlaying(float dt)
 
 void GameApp::UpdateDialogue(float dt)
 {
-    m_dialogue.Update(dt);
+    Input& input = Input::Get();
+
+    // 按住 Ctrl 两秒进入快进；期间显示逐渐填满的进度条，松开即取消。
+    const bool ctrlDown = input.Down(VK_CONTROL);
+    if (ctrlDown) {
+        m_skipHold = std::min(SKIP_HOLD_TIME, m_skipHold + dt);
+        if (m_skipHold >= SKIP_HOLD_TIME) {
+            m_skipActive = true;
+        }
+    } else {
+        m_skipHold = 0.0f;
+        m_skipActive = false;
+        m_skipTick = 0.0f;
+    }
+
+    if (m_skipActive) {
+        // 快进：先把当前节点文字瞬间补全，再按固定节奏跳到下一节点；
+        // 遇到选项会停下，把选择权交还玩家。
+        m_dialogue.Update(10.0f);
+        if (!m_dialogue.IsWaitingForChoice()) {
+            m_skipTick -= dt;
+            if (m_skipTick <= 0.0f) {
+                m_dialogue.Advance();
+                m_dialogue.Update(10.0f);
+                m_skipTick = SKIP_STEP_TIME;
+            }
+        }
+    } else {
+        m_dialogue.Update(dt);
+    }
+
     DialogueEvent event = DialogueEvent::NONE;
     while ((event = m_dialogue.ConsumeEvent()) != DialogueEvent::NONE) {
         HandleDialogueEvent(event);
     }
 
-    Input& input = Input::Get();
     if (m_dialogue.IsWaitingForChoice()) {
         if (input.Pressed('W') || input.Pressed(VK_UP)) {
             m_dialogue.MoveSelection(-1);
@@ -600,6 +657,9 @@ void GameApp::UpdateDialogue(float dt)
     }
 
     if (m_dialogue.IsFinished()) {
+        m_skipHold = 0.0f;
+        m_skipActive = false;
+        m_skipTick = 0.0f;
         HandleDialogueFinished();
         return;
     }
@@ -857,6 +917,8 @@ void GameApp::UpdateEnemies(float dt)
         } else {
             enemy.moving = false;
         }
+        enemy.walkAmp = MoveTowards(enemy.walkAmp,
+                                    enemy.moving ? 0.9f : 0.0f, dt * 5.0f);
 
         // 互相分离，避免叠在一起
         for (const Enemy& other : m_enemies) {
@@ -1017,12 +1079,12 @@ void GameApp::UpdateRain(float dt)
     for (RainDrop& drop : m_rain) {
         drop.y += drop.speed * dt;
         drop.x += 26.0f * dt;
-        if (drop.y > static_cast<float>(INTERNAL_HEIGHT) + 6.0f) {
+        if (drop.y > static_cast<float>(UI_HEIGHT) + 6.0f) {
             drop.y = -drop.length;
-            drop.x = m_rng.Float(0.0f, static_cast<float>(INTERNAL_WIDTH));
+            drop.x = m_rng.Float(0.0f, static_cast<float>(UI_WIDTH));
         }
-        if (drop.x > static_cast<float>(INTERNAL_WIDTH)) {
-            drop.x -= static_cast<float>(INTERNAL_WIDTH);
+        if (drop.x > static_cast<float>(UI_WIDTH)) {
+            drop.x -= static_cast<float>(UI_WIDTH);
         }
     }
 }
@@ -1072,16 +1134,47 @@ void GameApp::UpdateCamera(float dt)
         zone = 0;
     }
 
+    const CameraZoneDef& selected = m_scene.cameras[static_cast<size_t>(zone)];
+
+    // 机位跟随：固定构图仍然是主体，但会按玩家在区域内的位移做部分平移，
+    // 这样走到角落交互时角色不会跑出画面。
+    const Vec3 zoneCenter(
+        (selected.bounds.min.x + selected.bounds.max.x) * 0.5f, 0.0f,
+        (selected.bounds.min.z + selected.bounds.max.z) * 0.5f);
+    Vec3 delta = m_player.position - zoneCenter;
+    delta.y = 0.0f;
+    delta.x = Clamp(delta.x * CAMERA_FOLLOW_RATIO, -CAMERA_FOLLOW_LIMIT,
+                    CAMERA_FOLLOW_LIMIT);
+    delta.z = Clamp(delta.z * CAMERA_FOLLOW_RATIO, -CAMERA_FOLLOW_LIMIT,
+                    CAMERA_FOLLOW_LIMIT);
+    const float followBlend = 1.0f - std::exp(-dt * 4.5f);
+    m_cameraFollow.x += (delta.x - m_cameraFollow.x) * followBlend;
+    m_cameraFollow.z += (delta.z - m_cameraFollow.z) * followBlend;
+
+    CameraPose desired = selected.pose;
+    desired.eye += m_cameraFollow;
+    desired.target += m_cameraFollow * 0.75f;
+    // 目标点还要向玩家靠拢，保证角色不会跑到画面外。
+    const Vec3 lookAt = m_player.position + Vec3(0.0f, 1.05f, 0.0f);
+    desired.target += (lookAt - desired.target) * CAMERA_TARGET_BIAS;
+    // 相机必须留在房间内，否则会穿墙。
+    desired.eye.x = Clamp(desired.eye.x, selected.bounds.min.x + 0.35f,
+                          selected.bounds.max.x - 0.35f);
+    desired.eye.z = Clamp(desired.eye.z, selected.bounds.min.z + 0.35f,
+                          selected.bounds.max.z - 0.35f);
+
+    m_cameraTarget = desired;
     if (zone != m_cameraZone) {
         m_cameraZone = zone;
         m_cameraStart = m_camera.current;
-        m_cameraTarget = m_scene.cameras[static_cast<size_t>(zone)].pose;
         m_cameraBlend = 0.0f;
     }
     if (m_cameraBlend < 1.0f) {
         m_cameraBlend = std::min(1.0f, m_cameraBlend + dt / 0.55f);
         const float t = SmoothStep(m_cameraBlend);
         m_camera.current = LerpPose(m_cameraStart, m_cameraTarget, t);
+    } else {
+        m_camera.current = m_cameraTarget;
     }
 
     if (m_camera.shakeTime > 0.0f) {
@@ -1390,11 +1483,11 @@ void GameApp::InitRain()
     m_rain.reserve(160);
     for (int i = 0; i < 160; ++i) {
         RainDrop drop;
-        drop.x = m_rng.Float(0.0f, static_cast<float>(INTERNAL_WIDTH));
-        drop.y = m_rng.Float(0.0f, static_cast<float>(INTERNAL_HEIGHT));
+        drop.x = m_rng.Float(0.0f, static_cast<float>(UI_WIDTH));
+        drop.y = m_rng.Float(0.0f, static_cast<float>(UI_HEIGHT));
         drop.speed = m_rng.Float(170.0f, 320.0f);
         drop.length = m_rng.Float(5.0f, 12.0f);
-        drop.alpha = m_rng.Float(0.06f, 0.26f);
+        drop.alpha = m_rng.Float(0.05f, 0.18f);
         m_rain.push_back(drop);
     }
 }
@@ -1444,6 +1537,7 @@ void GameApp::FirePlayerWeapon()
     }
 
     m_inventory.ConsumeRound();
+    m_player.aimTimer = AIM_HOLD_TIME;
     const Vec3 forward(std::sin(m_player.yaw), 0.0f, std::cos(m_player.yaw));
     Bullet bullet;
     bullet.position = m_player.position + Vec3(0.0f, 1.32f, 0.0f) +
@@ -1656,6 +1750,15 @@ void GameApp::TriggerShake(float intensity, float duration)
 
 void GameApp::Render()
 {
+    // 后处理参数必须在覆盖层开始前设置，因为 BeginOverlay 会执行后处理。
+    float glitch = m_player.hitFlash * 0.7f;
+    if (m_mode == GameMode::DEAD) {
+        glitch = 0.6f;
+    } else if (m_alarm) {
+        glitch = std::max(glitch, 0.08f);
+    }
+    m_device.SetPostParams(m_time, m_damageFlash, m_fadeAlpha, glitch);
+
     const Color clearColor = m_scene.fogColor;
     m_device.BeginFrame(clearColor);
 
@@ -1666,9 +1769,18 @@ void GameApp::Render()
     const std::vector<NpcInstance>& npcs = m_hidePlayer ? emptyNpcs : m_npcs;
 
     m_renderer.DrawScene(m_scene, renderPlayer, npcs, enemies, m_bullets,
-                         m_particles, m_pickups, m_camera, m_lights, m_time);
+                         m_particles, m_pickups, m_camera, m_lights, m_time,
+                         !m_hidePlayer);
+
     SpriteBatch& batch = m_device.Batch();
-    batch.Begin(INTERNAL_WIDTH, INTERNAL_HEIGHT);
+
+    // 覆盖层：低清 3D 画面先放大到窗口，再在其上以屏幕像素密度绘制 UI。
+    m_device.BeginOverlay();
+    const int textScale =
+        std::max(1, static_cast<int>(m_device.UiScale() + 0.5f));
+    m_text.SetPixelScale(textScale);
+    batch.Begin(UI_WIDTH, UI_HEIGHT, m_device.UiScale(), m_device.UiOffset(),
+                m_device.UiTargetSize());
 
     m_renderer.DrawLightGlows(m_camera, m_lights, m_time, renderPlayer, m_alarm);
     if (!m_rain.empty()) {
@@ -1699,7 +1811,9 @@ void GameApp::Render()
         break;
     }
     case GameMode::DIALOGUE:
-        m_ui.DrawDialogue(m_dialogue, m_dialogueCinematic, m_time, m_renderer);
+        m_ui.DrawDialogue(m_dialogue, m_dialogueCinematic, m_time, m_renderer,
+                          Clamp(m_skipHold / SKIP_HOLD_TIME, 0.0f, 1.0f),
+                          m_skipActive);
         m_ui.DrawDamageOverlay(m_damageFlash, 0.0f);
         break;
     case GameMode::SHOP:
@@ -1737,14 +1851,6 @@ void GameApp::Render()
     }
 
     batch.End();
-
-    float glitch = m_player.hitFlash * 0.7f;
-    if (m_mode == GameMode::DEAD) {
-        glitch = 0.6f;
-    } else if (m_alarm) {
-        glitch = std::max(glitch, 0.08f);
-    }
-    m_device.SetPostParams(m_time, m_damageFlash, m_fadeAlpha, glitch);
 }
 
 void GameApp::DebugStartNewGame()

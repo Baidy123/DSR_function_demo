@@ -6,11 +6,17 @@
 
 namespace fc {
 
-/** @brief 内部渲染宽度（像素）；3D 与 UI 共享同一低分辨率帧缓冲。 */
-constexpr int INTERNAL_WIDTH = 480;
+/** @brief 3D 内部渲染宽度（像素）；低清多面体风格的基础分辨率。 */
+constexpr int INTERNAL_WIDTH = 720;
 
-/** @brief 内部渲染高度（像素）。 */
-constexpr int INTERNAL_HEIGHT = 270;
+/** @brief 3D 内部渲染高度（像素）。 */
+constexpr int INTERNAL_HEIGHT = 405;
+
+/** @brief UI 逻辑坐标宽度；UI 层按屏幕像素密度高清渲染。 */
+constexpr int UI_WIDTH = 480;
+
+/** @brief UI 逻辑坐标高度。 */
+constexpr int UI_HEIGHT = 270;
 
 /** @brief 游戏默认窗口客户区宽度。 */
 constexpr int WINDOW_WIDTH = 1440;

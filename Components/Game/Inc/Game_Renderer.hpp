@@ -74,6 +74,7 @@ public:
      * @param [IN] camera 摄像机（含视图/投影矩阵）。
      * @param [IN] lights 光源列表（可被玩法层修改）。
      * @param [IN] time 累计时间。
+     * @param [IN] drawPlayer 是否绘制玩家（标题界面为 false）。
      */
     void DrawScene(const SceneDef& scene, const Player& player,
                    const std::vector<NpcInstance>& npcs,
@@ -82,7 +83,8 @@ public:
                    const std::vector<Particle>& particles,
                    const std::vector<Pickup>& pickups,
                    const CameraRuntime& camera,
-                   const std::vector<LightDef>& lights, float time);
+                   const std::vector<LightDef>& lights, float time,
+                   bool drawPlayer = true);
 
     /**
      * @brief 绘制世界空间辉光（在 2D 覆盖层之前调用）。

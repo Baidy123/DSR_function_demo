@@ -118,6 +118,17 @@ void ApplyDebugView(GameApp& app, const LaunchOptions& options)
         }
         app.DebugSetMode(GameMode::PAUSED);
     }
+    if (HasFlag(GetCommandLineA(), "--walk")) {
+        app.DebugSetWalkPose(true);
+    }
+    const char* rawCommand = GetCommandLineA();
+    const std::string commandLine = rawCommand != nullptr ? rawCommand : "";
+    const std::string px = ArgumentValue(commandLine, "--px");
+    const std::string pz = ArgumentValue(commandLine, "--pz");
+    if (!px.empty() && !pz.empty()) {
+        app.DebugSetPlayerPosition(static_cast<float>(std::atof(px.c_str())),
+                                   static_cast<float>(std::atof(pz.c_str())));
+    }
 }
 
 } // namespace
@@ -159,11 +170,11 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 
     if (options.screenshot) {
         ApplyDebugView(app, options);
+        app.SetCaptureMode(true);
         for (int frame = 0; frame < options.frames; ++frame) {
             app.Update(1.0f / 60.0f);
             app.Render();
         }
-        app.Present(false);
         if (!app.Capture(options.screenshotPath)) {
             LogError("Failed to capture screenshot: %s",
                      options.screenshotPath.c_str());
