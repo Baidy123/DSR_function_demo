@@ -49,8 +49,10 @@ func _run() -> void:
 
 
 	var booths: Node3D = scene.get_node_or_null("BarEnvironment/Booths")
-	check(booths != null and booths.get_child_count() == 6
-		and booths.get_children().all(func(booth: Node) -> bool: return booth.has_node("Curtain")), "six booths have privacy curtains")
+	var curtained_booths := booths.get_children().filter(
+		func(booth: Node) -> bool: return booth.has_node("Curtain"))
+	check(booths.has_node("Booth4/Curtain") and curtained_booths.size() == 1,
+		"only the northeast booth has a privacy curtain")
 	var bar := scene.get_node("BarEnvironment")
 	var sofas := bar.get_node("SofaSeats")
 	check(sofas.get_children().all(func(sofa: Node) -> bool:
@@ -82,7 +84,7 @@ func _run() -> void:
 	check(bartender != null and bartender.mesh is CapsuleMesh
 		and is_equal_approx((bartender.mesh as CapsuleMesh).radius, 0.35) and scene.has_node("NPC"),
 		"the bartender uses a capsule and is separate from the quest giver")
-	var sofa := bar.get_node_or_null("Booths/Booth1/Seating/Sofa") as MeshInstance3D
+	var sofa := bar.get_node_or_null("Booths/Booth4/Seating/Sofa") as MeshInstance3D
 	check(sofa != null and sofa.mesh is ArrayMesh and sofa.mesh.get_surface_count() == 3,
 		"private booths use the continuous upholstered sofa mesh")
 
@@ -101,11 +103,15 @@ func _run() -> void:
 	await physics_frame
 	check(player.move_and_collide(Vector3(0, 0, -1.5)) != null,
 		"the southern railing blocks access from the entrance corridor")
+	check(record.has_node("Body/Cabinet") and record.get_node("Body/Cabinet") is CSGPolygon3D,
+		"the record player uses an arched cabinet")
+	var commissioner_name := scene.get_node("NPC/Name") as Label3D
+	check(commissioner_name.text == "委托人", "the commissioner label only names the commissioner")
 	var portal: Node3D = scene.get_node("Interactables/LevelPortal")
 	check(absf(portal.position.x) < 0.01 and portal.position.z > 7.0,
 		"the original quest portal forms the south entrance")
-	if booths != null and booths.has_node("Booth1/Curtain"):
-		var curtain: Area3D = booths.get_node("Booth1/Curtain")
+	if booths != null and booths.has_node("Booth4/Curtain"):
+		var curtain: Area3D = booths.get_node("Booth4/Curtain")
 		var panel: Node3D = curtain.get_node("Left")
 		var inward := -curtain.global_basis.z
 		player.global_position = curtain.global_position

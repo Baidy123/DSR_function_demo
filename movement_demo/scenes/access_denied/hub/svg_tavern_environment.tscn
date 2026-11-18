@@ -1,5 +1,6 @@
 [gd_scene format=3]
 
+[ext_resource type="PackedScene" path="res://scenes/access_denied/hub/curtained_booth.tscn" id="curtained_booth"]
 [ext_resource type="PackedScene" path="res://scenes/access_denied/hub/booth_unit.tscn" id="seat"]
 [ext_resource type="PackedScene" path="res://scenes/access_denied/hub/privacy_booth.tscn" id="booth"]
 
@@ -488,7 +489,7 @@ rotation_degrees = Vector3(0.0000, 0.0000, 0.0000)
 position = Vector3(5.6250, 0.0000, -11.6000)
 rotation_degrees = Vector3(0.0000, 0.0000, 0.0000)
 
-[node name="Booth4" parent="Booths" instance=ExtResource("booth")]
+[node name="Booth4" parent="Booths" instance=ExtResource("curtained_booth")]
 position = Vector3(22.1850, 0.0000, -11.6000)
 rotation_degrees = Vector3(0.0000, 0.0000, 0.0000)
 

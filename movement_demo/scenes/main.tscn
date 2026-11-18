@@ -127,7 +127,7 @@ shape = SubResource("InteractionShape")
 [node name="Name" type="Label3D" parent="NPC"]
 position = Vector3(0, 2.15, 0)
 billboard = 1
-text = "酒保 / 委托人"
+text = "委托人"
 font_size = 36
 
 [node name="Presentation" type="Node3D" parent="NPC" unique_id=537327942]

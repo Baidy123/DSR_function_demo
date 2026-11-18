@@ -1,19 +1,9 @@
 [gd_scene format=3]
 
 [ext_resource type="PackedScene" path="res://scenes/access_denied/hub/privacy_booth_seating.tscn" id="seat"]
-[ext_resource type="Script" path="res://scripts/world/tavern_curtain.gd" id="curtain"]
 
 [sub_resource type="StandardMaterial3D" id="Wall"]
 albedo_color = Color(0.12, 0.085, 0.13, 1)
-
-[sub_resource type="StandardMaterial3D" id="Cloth"]
-albedo_color = Color(0.29, 0.045, 0.10, 1)
-
-[sub_resource type="StandardMaterial3D" id="Pleat"]
-albedo_color = Color(0.39, 0.075, 0.16, 1)
-
-[sub_resource type="StandardMaterial3D" id="Rail"]
-albedo_color = Color(0.28, 0.23, 0.19, 1)
 
 [sub_resource type="StandardMaterial3D" id="Glow"]
 albedo_color = Color(0.68, 0.15, 0.32, 1)
@@ -44,21 +34,6 @@ size = Vector3(4.2200, 2.3600, 0.1800)
 
 [sub_resource type="BoxShape3D" id="Box10Shape"]
 size = Vector3(4.2200, 2.3600, 0.1800)
-
-[sub_resource type="BoxMesh" id="Box12"]
-material = SubResource("Rail")
-size = Vector3(2.0800, 0.1200, 0.2200)
-
-[sub_resource type="BoxShape3D" id="Threshold"]
-size = Vector3(2.02, 2, 1.58)
-
-[sub_resource type="BoxMesh" id="Box14"]
-material = SubResource("Cloth")
-size = Vector3(0.1320, 2.2200, 0.0550)
-
-[sub_resource type="BoxMesh" id="Box15"]
-material = SubResource("Pleat")
-size = Vector3(0.1320, 2.2200, 0.1070)
 
 [node name="PrivacyBooth" type="Node3D"]
 
@@ -118,89 +93,6 @@ mesh = SubResource("Box10")
 
 [node name="Collision" type="CollisionShape3D" parent="BackWall"]
 shape = SubResource("Box10Shape")
-
-[node name="Track" type="MeshInstance3D" parent="." groups=["camera_fadeable"]]
-position = Vector3(0.0000, 2.3000, 2.6500)
-mesh = SubResource("Box12")
-
-[node name="Curtain" type="Area3D" parent="."]
-position = Vector3(0, 0, 2.65)
-collision_layer = 0
-script = ExtResource("curtain")
-
-[node name="Threshold" type="CollisionShape3D" parent="Curtain"]
-position = Vector3(0, 1, 0)
-shape = SubResource("Threshold")
-
-[node name="Left" type="Node3D" parent="Curtain"]
-position = Vector3(-1.0350, 0.0000, 0.0000)
-
-[node name="Pleat1" type="MeshInstance3D" parent="Curtain/Left" groups=["camera_fadeable"]]
-position = Vector3(0.0655, 1.1250, 0.0000)
-mesh = SubResource("Box14")
-
-[node name="Pleat2" type="MeshInstance3D" parent="Curtain/Left" groups=["camera_fadeable"]]
-position = Vector3(0.1965, 1.1250, 0.0000)
-mesh = SubResource("Box15")
-
-[node name="Pleat3" type="MeshInstance3D" parent="Curtain/Left" groups=["camera_fadeable"]]
-position = Vector3(0.3275, 1.1250, 0.0000)
-mesh = SubResource("Box14")
-
-[node name="Pleat4" type="MeshInstance3D" parent="Curtain/Left" groups=["camera_fadeable"]]
-position = Vector3(0.4585, 1.1250, 0.0000)
-mesh = SubResource("Box15")
-
-[node name="Pleat5" type="MeshInstance3D" parent="Curtain/Left" groups=["camera_fadeable"]]
-position = Vector3(0.5895, 1.1250, 0.0000)
-mesh = SubResource("Box14")
-
-[node name="Pleat6" type="MeshInstance3D" parent="Curtain/Left" groups=["camera_fadeable"]]
-position = Vector3(0.7205, 1.1250, 0.0000)
-mesh = SubResource("Box15")
-
-[node name="Pleat7" type="MeshInstance3D" parent="Curtain/Left" groups=["camera_fadeable"]]
-position = Vector3(0.8515, 1.1250, 0.0000)
-mesh = SubResource("Box14")
-
-[node name="Pleat8" type="MeshInstance3D" parent="Curtain/Left" groups=["camera_fadeable"]]
-position = Vector3(0.9825, 1.1250, 0.0000)
-mesh = SubResource("Box15")
-
-[node name="Right" type="Node3D" parent="Curtain"]
-position = Vector3(1.0350, 0.0000, 0.0000)
-
-[node name="Pleat1" type="MeshInstance3D" parent="Curtain/Right" groups=["camera_fadeable"]]
-position = Vector3(-0.0655, 1.1250, 0.0000)
-mesh = SubResource("Box14")
-
-[node name="Pleat2" type="MeshInstance3D" parent="Curtain/Right" groups=["camera_fadeable"]]
-position = Vector3(-0.1965, 1.1250, 0.0000)
-mesh = SubResource("Box15")
-
-[node name="Pleat3" type="MeshInstance3D" parent="Curtain/Right" groups=["camera_fadeable"]]
-position = Vector3(-0.3275, 1.1250, 0.0000)
-mesh = SubResource("Box14")
-
-[node name="Pleat4" type="MeshInstance3D" parent="Curtain/Right" groups=["camera_fadeable"]]
-position = Vector3(-0.4585, 1.1250, 0.0000)
-mesh = SubResource("Box15")
-
-[node name="Pleat5" type="MeshInstance3D" parent="Curtain/Right" groups=["camera_fadeable"]]
-position = Vector3(-0.5895, 1.1250, 0.0000)
-mesh = SubResource("Box14")
-
-[node name="Pleat6" type="MeshInstance3D" parent="Curtain/Right" groups=["camera_fadeable"]]
-position = Vector3(-0.7205, 1.1250, 0.0000)
-mesh = SubResource("Box15")
-
-[node name="Pleat7" type="MeshInstance3D" parent="Curtain/Right" groups=["camera_fadeable"]]
-position = Vector3(-0.8515, 1.1250, 0.0000)
-mesh = SubResource("Box14")
-
-[node name="Pleat8" type="MeshInstance3D" parent="Curtain/Right" groups=["camera_fadeable"]]
-position = Vector3(-0.9825, 1.1250, 0.0000)
-mesh = SubResource("Box15")
 
 [node name="TableLight" type="OmniLight3D" parent="."]
 position = Vector3(0, 2.3, -0.25)
