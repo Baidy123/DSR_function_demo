@@ -1,6 +1,6 @@
 [gd_scene format=3]
 
-[ext_resource type="PackedScene" path="res://scenes/access_denied/hub/booth_unit.tscn" id="seat"]
+[ext_resource type="PackedScene" path="res://scenes/access_denied/hub/privacy_booth_seating.tscn" id="seat"]
 [ext_resource type="Script" path="res://scripts/world/tavern_curtain.gd" id="curtain"]
 
 [sub_resource type="StandardMaterial3D" id="Wall"]
@@ -63,7 +63,7 @@ size = Vector3(0.1320, 2.2200, 0.1070)
 [node name="PrivacyBooth" type="Node3D"]
 
 [node name="Seating" parent="." instance=ExtResource("seat")]
-position = Vector3(0.0000, 0.0000, -2.2000)
+position = Vector3(0.0000, 0.0000, 0.0000)
 rotation_degrees = Vector3(0.0000, 0.0000, 0.0000)
 
 [node name="LeftWall" type="StaticBody3D" parent="."]
@@ -204,6 +204,6 @@ mesh = SubResource("Box15")
 
 [node name="TableLight" type="OmniLight3D" parent="."]
 position = Vector3(0, 2.3, -0.25)
-light_color = Color(1, 0.41, 0.43, 1)
+light_color = Color(0.43, 0.75, 0.83, 1)
 light_energy = 0.65
 omni_range = 3.6

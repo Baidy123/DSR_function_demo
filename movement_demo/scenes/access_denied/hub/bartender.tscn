@@ -1,74 +1,26 @@
 [gd_scene format=3]
 
+[sub_resource type="StandardMaterial3D" id="BartenderMaterial"]
+albedo_color = Color(0.30, 0.55, 0.51, 1)
 
-
-[sub_resource type="StandardMaterial3D" id="Apron"]
-albedo_color = Color(0.14, 0.27, 0.27, 1)
-
-[sub_resource type="StandardMaterial3D" id="Black"]
-albedo_color = Color(0.09, 0.08, 0.12, 1)
-
-[sub_resource type="StandardMaterial3D" id="Skin"]
-albedo_color = Color(0.53, 0.32, 0.23, 1)
-
-[sub_resource type="CapsuleShape3D" id="BodyShape"]
-radius = 0.30
+[sub_resource type="CapsuleMesh" id="Mesh"]
+material = SubResource("BartenderMaterial")
+radius = 0.3
 height = 1.75
 
-[sub_resource type="BoxMesh" id="Box4"]
-material = SubResource("Apron")
-size = Vector3(0.3400, 0.8300, 0.4300)
-
-[sub_resource type="BoxMesh" id="Box5"]
-material = SubResource("Black")
-size = Vector3(0.2300, 0.7500, 0.1800)
-
-[sub_resource type="BoxMesh" id="Box6"]
-material = SubResource("Black")
-size = Vector3(0.1800, 0.5400, 0.1400)
-
-[sub_resource type="SphereMesh" id="Head"]
-material = SubResource("Skin")
-radius = 0.145
-height = 0.32
-
-[sub_resource type="BoxMesh" id="Box8"]
-material = SubResource("Black")
-size = Vector3(0.2200, 0.0950, 0.2500)
+[sub_resource type="CapsuleShape3D" id="BodyShape"]
+radius = 0.3
+height = 1.75
 
 [node name="Bartender" type="StaticBody3D"]
+
+[node name="Body" type="MeshInstance3D" parent="."]
+position = Vector3(0, 0.875, 0)
+mesh = SubResource("Mesh")
 
 [node name="CollisionShape3D" type="CollisionShape3D" parent="."]
 position = Vector3(0, 0.875, 0)
 shape = SubResource("BodyShape")
-
-[node name="Apron" type="MeshInstance3D" parent="."]
-position = Vector3(0.0000, 1.0000, 0.0000)
-mesh = SubResource("Box4")
-
-[node name="LeftLeg" type="MeshInstance3D" parent="."]
-position = Vector3(0.0000, 0.3700, -0.1232)
-mesh = SubResource("Box5")
-
-[node name="LeftArm" type="MeshInstance3D" parent="."]
-position = Vector3(0.1000, 1.0800, -0.2720)
-mesh = SubResource("Box6")
-
-[node name="RightLeg" type="MeshInstance3D" parent="."]
-position = Vector3(0.0000, 0.3700, 0.1232)
-mesh = SubResource("Box5")
-
-[node name="RightArm" type="MeshInstance3D" parent="."]
-position = Vector3(0.1000, 1.0800, 0.2720)
-mesh = SubResource("Box6")
-
-[node name="Head" type="MeshInstance3D" parent="."]
-position = Vector3(0.02, 1.56, 0)
-mesh = SubResource("Head")
-
-[node name="Hair" type="MeshInstance3D" parent="."]
-position = Vector3(-0.0320, 1.7000, 0.0000)
-mesh = SubResource("Box8")
 
 [node name="Name" type="Label3D" parent="."]
 position = Vector3(0, 1.93, 0)

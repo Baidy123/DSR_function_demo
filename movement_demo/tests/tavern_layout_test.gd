@@ -56,11 +56,17 @@ func _run() -> void:
 	check(sofas.get_children().all(func(sofa: Node) -> bool:
 		return sofa.has_node("Upholstery/LeftSeat") and sofa.has_node("Upholstery/RightSeat")),
 		"ordinary sofas have seats on both sides of the rear bench")
-	var communal_seats := bar.get_node_or_null("Tables/CommunalTable/Seats")
-	check(communal_seats != null and communal_seats.get_child_count() == 12,
-		"the lower communal table seats twelve")
-	check(bar.has_node("BarCounter/Bartender") and scene.has_node("NPC"),
-		"a separate bartender stands behind the bar")
+	var tables := bar.get_node("Tables")
+	check(tables.get_child_count() == 3 and not tables.has_node("CommunalTable"),
+		"only the three upper tables remain")
+	check(tables.has_node("Table1/Seats/North/Seat")
+		and bar.has_node("BarCounter/Stool1/Seat"),
+		"table and counter stools use the shared swivel design")
+	var bartender := bar.get_node_or_null("BarCounter/Bartender/Body") as MeshInstance3D
+	check(bartender != null and bartender.mesh is CapsuleMesh and scene.has_node("NPC"),
+		"the bartender uses a capsule and is separate from the quest giver")
+	check(booths != null and booths.has_node("Booth1/Seating/RearBench"),
+		"private booths use the separate upholstered bench model")
 
 	var portal: Node3D = scene.get_node("Interactables/LevelPortal")
 	check(absf(portal.position.x) < 0.01 and portal.position.z > 7.0,
@@ -80,7 +86,7 @@ func _run() -> void:
 			await physics_frame
 			check(player.move_and_collide(inward * 2.12) == null,
 				"player can reach the side bench at x = %s" % side)
-			check(player.move_and_collide(inward * 0.6) != null,
+			check(player.move_and_collide(inward * 0.8) != null,
 				"the rear bench stops the player at x = %s" % side)
 
 	print("tavern layout checks: ", "all passed" if failures == 0 else "%d failed" % failures)
