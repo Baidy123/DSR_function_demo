@@ -36,7 +36,8 @@ UNIT_SOURCES = \
     $(COMPONENTS)/Game/Src/Game_Inventory.cpp \
     $(COMPONENTS)/Game/Src/Game_Quest.cpp \
     $(COMPONENTS)/Game/Src/Game_Dialogue.cpp \
-    $(COMPONENTS)/Game/Src/Game_Story.cpp
+    $(COMPONENTS)/Game/Src/Game_Story.cpp \
+    $(COMPONENTS)/World/Src/World_Collision.cpp
 
 OFFSCREEN_SOURCES = \
     OffscreenTest/Src/OffscreenTest_Main.cpp \

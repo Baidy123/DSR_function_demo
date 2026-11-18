@@ -4,6 +4,7 @@
 #include "Game_Story.hpp"
 #include "Shared_Math.hpp"
 #include "UnitTests_Config.hpp"
+#include "World_Collision.hpp"
 
 #include <cmath>
 #include <cstdio>
@@ -139,6 +140,45 @@ void TestMath()
                     ground),
           "Math: ray hits ground plane");
     CheckFloat(ground.y, 0.0f, "Math: ground hit height");
+}
+
+void TestCollisionWorld()
+{
+    CollisionWorld world;
+    // 一面 2×2×2 的箱子，中心在 (0,1,0)。
+    world.AddBox(MakeAABB(Vec3(0.0f, 1.0f, 0.0f), Vec3(1.0f, 1.0f, 1.0f)));
+
+    Check(world.Blocked(Vec3(0.8f, 1.0f, 0.0f), 0.3f),
+          "World: circle blocked by box");
+    Check(!world.Blocked(Vec3(3.0f, 1.0f, 0.0f), 0.3f),
+          "World: circle free outside box");
+
+    Vec3 moving(3.0f, 1.0f, 0.0f);
+    const bool movedInto = world.Move(moving, Vec3(-1.0f, 0.0f, 0.0f), 0.3f);
+    Check(movedInto, "World: move toward box allowed until contact");
+    Check(moving.x > 1.2f, "World: move stops before overlapping box");
+
+    float hitT = 1.0f;
+    Check(world.SegmentBlocked(Vec3(-4.0f, 1.0f, 0.0f), Vec3(4.0f, 1.0f, 0.0f),
+                               hitT),
+          "World: segment blocked by box");
+    Check(hitT > 0.0f && hitT < 0.5f, "World: segment hit param in range");
+    Check(!world.SegmentBlocked(Vec3(-4.0f, 5.0f, 0.0f),
+                                Vec3(4.0f, 5.0f, 0.0f), hitT),
+          "World: segment passes above box");
+
+    // 子弹扩张检测：贴着箱体侧面 0.02 m 掠过的弹道，在扩张 0.03 m 后应被拦住。
+    const Vec3 grazingFrom(-4.0f, 1.0f, 1.02f);
+    const Vec3 grazingTo(4.0f, 1.0f, 1.02f);
+    Check(!world.SegmentBlocked(grazingFrom, grazingTo, hitT),
+          "World: grazing segment misses without dilation");
+    Check(world.SegmentBlockedDilated(grazingFrom, grazingTo, 0.03f, hitT),
+          "World: grazing segment blocked with bullet radius");
+
+    world.Clear();
+    Check(!world.SegmentBlocked(Vec3(-4.0f, 1.0f, 0.0f), Vec3(4.0f, 1.0f, 0.0f),
+                                hitT),
+          "World: clear removes colliders");
 }
 
 void TestInventory()
@@ -330,6 +370,7 @@ int main()
 {
     std::printf("=== Ember of Free City UnitTests ===\n");
     TestMath();
+    TestCollisionWorld();
     TestInventory();
     TestQuest();
     TestDialogue();
