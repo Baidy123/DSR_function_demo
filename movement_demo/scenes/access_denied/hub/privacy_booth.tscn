@@ -22,17 +22,17 @@ emission = Color(0.68, 0.15, 0.32, 1)
 
 [sub_resource type="BoxMesh" id="Box5"]
 material = SubResource("Wall")
-size = Vector3(0.1800, 2.3600, 4.0500)
+size = Vector3(0.1800, 2.3600, 5.3500)
 
 [sub_resource type="BoxShape3D" id="Box5Shape"]
-size = Vector3(0.1800, 2.3600, 4.0500)
+size = Vector3(0.1800, 2.3600, 5.3500)
 
 [sub_resource type="BoxMesh" id="Box7"]
 material = SubResource("Wall")
-size = Vector3(1.0200, 2.3600, 0.1800)
+size = Vector3(1.0900, 2.3600, 0.1800)
 
 [sub_resource type="BoxShape3D" id="Box7Shape"]
-size = Vector3(1.0200, 2.3600, 0.1800)
+size = Vector3(1.0900, 2.3600, 0.1800)
 
 [sub_resource type="BoxMesh" id="Box9"]
 material = SubResource("Glow")
@@ -40,10 +40,10 @@ size = Vector3(0.0350, 1.1200, 0.0300)
 
 [sub_resource type="BoxMesh" id="Box10"]
 material = SubResource("Wall")
-size = Vector3(4.0800, 2.3600, 0.1800)
+size = Vector3(4.2200, 2.3600, 0.1800)
 
 [sub_resource type="BoxShape3D" id="Box10Shape"]
-size = Vector3(4.0800, 2.3600, 0.1800)
+size = Vector3(4.2200, 2.3600, 0.1800)
 
 [sub_resource type="BoxMesh" id="Box12"]
 material = SubResource("Rail")
@@ -63,14 +63,11 @@ size = Vector3(0.1320, 2.2200, 0.1070)
 [node name="PrivacyBooth" type="Node3D"]
 
 [node name="Seating" parent="." instance=ExtResource("seat")]
-position = Vector3(0.0000, 0.0000, -1.6500)
+position = Vector3(0.0000, 0.0000, -2.2000)
 rotation_degrees = Vector3(0.0000, 0.0000, 0.0000)
 
-[node name="Table" parent="Seating" index="4"]
-position = Vector3(0.5, 0.39, 1.85)
-
 [node name="LeftWall" type="StaticBody3D" parent="."]
-position = Vector3(-2.0400, 1.1800, 0.0000)
+position = Vector3(-2.1100, 1.1800, 0.0000)
 
 [node name="Mesh" type="MeshInstance3D" parent="LeftWall" groups=["camera_fadeable"]]
 mesh = SubResource("Box5")
@@ -79,7 +76,7 @@ mesh = SubResource("Box5")
 shape = SubResource("Box5Shape")
 
 [node name="LeftReturn" type="StaticBody3D" parent="."]
-position = Vector3(-1.5350, 1.1800, 1.9400)
+position = Vector3(-1.5700, 1.1800, 2.6500)
 
 [node name="Mesh" type="MeshInstance3D" parent="LeftReturn" groups=["camera_fadeable"]]
 mesh = SubResource("Box7")
@@ -88,11 +85,11 @@ mesh = SubResource("Box7")
 shape = SubResource("Box7Shape")
 
 [node name="LeftEdge" type="MeshInstance3D" parent="." groups=["camera_fadeable"]]
-position = Vector3(-1.0450, 1.4700, 2.0410)
+position = Vector3(-1.0450, 1.4700, 2.7510)
 mesh = SubResource("Box9")
 
 [node name="RightWall" type="StaticBody3D" parent="."]
-position = Vector3(2.0400, 1.1800, 0.0000)
+position = Vector3(2.1100, 1.1800, 0.0000)
 
 [node name="Mesh" type="MeshInstance3D" parent="RightWall" groups=["camera_fadeable"]]
 mesh = SubResource("Box5")
@@ -101,7 +98,7 @@ mesh = SubResource("Box5")
 shape = SubResource("Box5Shape")
 
 [node name="RightReturn" type="StaticBody3D" parent="."]
-position = Vector3(1.5350, 1.1800, 1.9400)
+position = Vector3(1.5700, 1.1800, 2.6500)
 
 [node name="Mesh" type="MeshInstance3D" parent="RightReturn" groups=["camera_fadeable"]]
 mesh = SubResource("Box7")
@@ -110,11 +107,11 @@ mesh = SubResource("Box7")
 shape = SubResource("Box7Shape")
 
 [node name="RightEdge" type="MeshInstance3D" parent="." groups=["camera_fadeable"]]
-position = Vector3(1.0450, 1.4700, 2.0410)
+position = Vector3(1.0450, 1.4700, 2.7510)
 mesh = SubResource("Box9")
 
 [node name="BackWall" type="StaticBody3D" parent="."]
-position = Vector3(0.0000, 1.1800, -1.9400)
+position = Vector3(0.0000, 1.1800, -2.5400)
 
 [node name="Mesh" type="MeshInstance3D" parent="BackWall" groups=["camera_fadeable"]]
 mesh = SubResource("Box10")
@@ -123,11 +120,11 @@ mesh = SubResource("Box10")
 shape = SubResource("Box10Shape")
 
 [node name="Track" type="MeshInstance3D" parent="." groups=["camera_fadeable"]]
-position = Vector3(0.0000, 2.3000, 1.9400)
+position = Vector3(0.0000, 2.3000, 2.6500)
 mesh = SubResource("Box12")
 
 [node name="Curtain" type="Area3D" parent="."]
-position = Vector3(0, 0, 1.94)
+position = Vector3(0, 0, 2.65)
 collision_layer = 0
 script = ExtResource("curtain")
 
@@ -210,5 +207,3 @@ position = Vector3(0, 2.3, -0.25)
 light_color = Color(1, 0.41, 0.43, 1)
 light_energy = 0.65
 omni_range = 3.6
-
-[editable path="Seating"]

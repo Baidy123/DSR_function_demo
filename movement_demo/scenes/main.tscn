@@ -195,7 +195,7 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 6.5)
 max_health = 100.0
 
 [node name="NPC" type="StaticBody3D" parent="." unique_id=226967711]
-position = Vector3(0.8820, 0.0000, -9.0800)
+position = Vector3(0.8820, 0.0000, -7.6500)
 script = ExtResource("2")
 npc_id = &"npc_a"
 dialogue_resource = ExtResource("4_5vw27")

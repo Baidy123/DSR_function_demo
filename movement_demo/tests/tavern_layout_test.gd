@@ -51,6 +51,17 @@ func _run() -> void:
 	var booths: Node3D = scene.get_node_or_null("BarEnvironment/Booths")
 	check(booths != null and booths.get_child_count() == 6
 		and booths.get_children().all(func(booth: Node) -> bool: return booth.has_node("Curtain")), "six booths have privacy curtains")
+	var bar := scene.get_node("BarEnvironment")
+	var sofas := bar.get_node("SofaSeats")
+	check(sofas.get_children().all(func(sofa: Node) -> bool:
+		return sofa.has_node("Upholstery/LeftSeat") and sofa.has_node("Upholstery/RightSeat")),
+		"ordinary sofas have seats on both sides of the rear bench")
+	var communal_seats := bar.get_node_or_null("Tables/CommunalTable/Seats")
+	check(communal_seats != null and communal_seats.get_child_count() == 12,
+		"the lower communal table seats twelve")
+	check(bar.has_node("BarCounter/Bartender") and scene.has_node("NPC"),
+		"a separate bartender stands behind the bar")
+
 	var portal: Node3D = scene.get_node("Interactables/LevelPortal")
 	check(absf(portal.position.x) < 0.01 and portal.position.z > 7.0,
 		"the original quest portal forms the south entrance")
@@ -64,10 +75,13 @@ func _run() -> void:
 		player.global_position = curtain.global_position + inward * 1.26
 		await create_timer(0.35).timeout
 		check(is_equal_approx(panel.scale.x, 1.0), "booth curtain closes with the player inside")
-		player.global_position = curtain.to_global(Vector3(-0.65, 0.0, 0.5))
-		await physics_frame
-		check(player.move_and_collide(inward * 3.1) == null,
-			"player can walk from the curtain to the seating side of the table")
+		for side in [-0.91, 0.91]:
+			player.global_position = curtain.to_global(Vector3(side, 0.0, -1.26))
+			await physics_frame
+			check(player.move_and_collide(inward * 2.12) == null,
+				"player can reach the side bench at x = %s" % side)
+			check(player.move_and_collide(inward * 0.6) != null,
+				"the rear bench stops the player at x = %s" % side)
 
 	print("tavern layout checks: ", "all passed" if failures == 0 else "%d failed" % failures)
 	scene.queue_free()

@@ -30,19 +30,19 @@ radial_segments = 24
 rings = 8
 
 [sub_resource type="CylinderMesh" id="TableTop"]
-top_radius = 0.72
-bottom_radius = 0.72
+top_radius = 0.48
+bottom_radius = 0.48
 height = 0.13
 radial_segments = 32
 
 [sub_resource type="CylinderMesh" id="TableRim"]
-top_radius = 0.76
-bottom_radius = 0.76
+top_radius = 0.52
+bottom_radius = 0.52
 height = 0.045
 radial_segments = 32
 
 [sub_resource type="CylinderShape3D" id="TableShape"]
-radius = 0.76
+radius = 0.52
 height = 0.78
 
 [node name="BoothUnit" type="Node3D"]
@@ -52,13 +52,17 @@ height = 0.78
 position = Vector3(0, 0.72, 0)
 scale = Vector3(3.3, 1.45, 0.5)
 shape = SubResource("BoxShape")
+[node name="RearSeat" type="CollisionShape3D" parent="BoothCollision"]
+position = Vector3(0, 0.3, 0.58)
+scale = Vector3(2.75, 0.6, 0.92)
+shape = SubResource("BoxShape")
 [node name="LeftWing" type="CollisionShape3D" parent="BoothCollision"]
-position = Vector3(-1.45, 0.55, 0.72)
-scale = Vector3(0.4, 1.1, 1.45)
+position = Vector3(-1.5800, 0.6000, 1.1400)
+scale = Vector3(0.5400, 1.2000, 1.9400)
 shape = SubResource("BoxShape")
 [node name="RightWing" type="CollisionShape3D" parent="BoothCollision"]
-position = Vector3(1.45, 0.55, 0.72)
-scale = Vector3(0.4, 1.1, 1.45)
+position = Vector3(1.5800, 0.6000, 1.1400)
+scale = Vector3(0.5400, 1.2000, 1.9400)
 shape = SubResource("BoxShape")
 
 [node name="WoodShell" type="Node3D" parent="."]
@@ -85,13 +89,23 @@ transform = Transform3D(2.75, 0, 0, 0, 0.3, 0, 0, 0, 0.92, 0, 0.45, 0.58)
 mesh = SubResource("Box")
 material_override = SubResource("LeatherHighlight")
 [node name="LeftArm" type="MeshInstance3D" parent="Upholstery"]
-transform = Transform3D(0.42, 0, 0, 0, 0.32, 0, 0, 0, 1.18, -1.36, 0.75, 0.75)
+transform = Transform3D(0.22, 0, 0, 0, 0.78, 0, 0, 0, 1.94, -1.73, 0.81, 1.14)
 mesh = SubResource("Box")
 material_override = SubResource("LeatherDark")
 [node name="RightArm" type="MeshInstance3D" parent="Upholstery"]
-transform = Transform3D(0.42, 0, 0, 0, 0.32, 0, 0, 0, 1.18, 1.36, 0.75, 0.75)
+transform = Transform3D(0.22, 0, 0, 0, 0.78, 0, 0, 0, 1.94, 1.73, 0.81, 1.14)
 mesh = SubResource("Box")
 material_override = SubResource("LeatherDark")
+
+[node name="LeftSeat" type="MeshInstance3D" parent="Upholstery"]
+transform = Transform3D(0.55, 0, 0, 0, 0.28, 0, 0, 0, 1.74, -1.585, 0.45, 1.24)
+mesh = SubResource("Box")
+material_override = SubResource("LeatherHighlight")
+
+[node name="RightSeat" type="MeshInstance3D" parent="Upholstery"]
+transform = Transform3D(0.55, 0, 0, 0, 0.28, 0, 0, 0, 1.74, 1.585, 0.45, 1.24)
+mesh = SubResource("Box")
+material_override = SubResource("LeatherHighlight")
 
 [node name="Trim" type="Node3D" parent="."]
 [node name="BackTop" type="MeshInstance3D" parent="Trim"]

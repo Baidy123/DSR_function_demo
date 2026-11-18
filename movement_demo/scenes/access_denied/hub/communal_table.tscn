@@ -1,0 +1,273 @@
+[gd_scene format=3]
+
+
+
+[sub_resource type="StandardMaterial3D" id="Wood"]
+albedo_color = Color(0.28, 0.14, 0.10, 1)
+
+[sub_resource type="StandardMaterial3D" id="Steel"]
+albedo_color = Color(0.10, 0.12, 0.15, 1)
+
+[sub_resource type="StandardMaterial3D" id="Leather"]
+albedo_color = Color(0.20, 0.32, 0.30, 1)
+
+[sub_resource type="StandardMaterial3D" id="Brass"]
+albedo_color = Color(0.49, 0.28, 0.10, 1)
+
+[sub_resource type="BoxMesh" id="Box4"]
+material = SubResource("Wood")
+size = Vector3(8.2000, 0.1500, 1.4200)
+
+[sub_resource type="BoxShape3D" id="Box4Shape"]
+size = Vector3(8.2000, 0.1500, 1.4200)
+
+[sub_resource type="BoxMesh" id="Box6"]
+material = SubResource("Brass")
+size = Vector3(7.6500, 0.0070, 0.0450)
+
+[sub_resource type="BoxMesh" id="Box7"]
+material = SubResource("Steel")
+size = Vector3(0.2100, 0.7000, 1.0800)
+
+[sub_resource type="BoxMesh" id="Box8"]
+material = SubResource("Leather")
+size = Vector3(0.5500, 0.6400, 0.5600)
+
+[sub_resource type="BoxShape3D" id="Box8Shape"]
+size = Vector3(0.5500, 0.6400, 0.5600)
+
+[sub_resource type="BoxMesh" id="Box10"]
+material = SubResource("Leather")
+size = Vector3(0.5500, 0.4000, 0.1000)
+
+[sub_resource type="BoxMesh" id="Box11"]
+material = SubResource("Leather")
+size = Vector3(0.5600, 0.6400, 0.5500)
+
+[sub_resource type="BoxShape3D" id="Box11Shape"]
+size = Vector3(0.5600, 0.6400, 0.5500)
+
+[sub_resource type="BoxMesh" id="Box13"]
+material = SubResource("Leather")
+size = Vector3(0.1000, 0.4000, 0.5500)
+
+[node name="CommunalTable" type="Node3D"]
+
+[node name="Top" type="StaticBody3D" parent="."]
+position = Vector3(0.0000, 0.7400, 0.0000)
+
+[node name="Mesh" type="MeshInstance3D" parent="Top"]
+mesh = SubResource("Box4")
+
+[node name="Collision" type="CollisionShape3D" parent="Top"]
+shape = SubResource("Box4Shape")
+
+[node name="Inlay" type="MeshInstance3D" parent="."]
+position = Vector3(0.0000, 0.8190, 0.0000)
+mesh = SubResource("Box6")
+
+[node name="Leg1" type="MeshInstance3D" parent="."]
+position = Vector3(-2.7500, 0.3500, 0.0000)
+mesh = SubResource("Box7")
+
+[node name="Leg2" type="MeshInstance3D" parent="."]
+position = Vector3(0.0000, 0.3500, 0.0000)
+mesh = SubResource("Box7")
+
+[node name="Leg3" type="MeshInstance3D" parent="."]
+position = Vector3(2.7500, 0.3500, 0.0000)
+mesh = SubResource("Box7")
+
+[node name="Seats" type="Node3D" parent="."]
+
+[node name="North1" type="Node3D" parent="Seats"]
+position = Vector3(-3.2200, 0.0000, -1.2100)
+
+[node name="Cushion" type="StaticBody3D" parent="Seats/North1"]
+position = Vector3(0.0000, 0.3200, 0.0000)
+
+[node name="Mesh" type="MeshInstance3D" parent="Seats/North1/Cushion"]
+mesh = SubResource("Box8")
+
+[node name="Collision" type="CollisionShape3D" parent="Seats/North1/Cushion"]
+shape = SubResource("Box8Shape")
+
+[node name="Back" type="MeshInstance3D" parent="Seats/North1"]
+position = Vector3(0.0000, 0.6700, -0.2600)
+mesh = SubResource("Box10")
+
+[node name="North2" type="Node3D" parent="Seats"]
+position = Vector3(-1.6100, 0.0000, -1.2100)
+
+[node name="Cushion" type="StaticBody3D" parent="Seats/North2"]
+position = Vector3(0.0000, 0.3200, 0.0000)
+
+[node name="Mesh" type="MeshInstance3D" parent="Seats/North2/Cushion"]
+mesh = SubResource("Box8")
+
+[node name="Collision" type="CollisionShape3D" parent="Seats/North2/Cushion"]
+shape = SubResource("Box8Shape")
+
+[node name="Back" type="MeshInstance3D" parent="Seats/North2"]
+position = Vector3(0.0000, 0.6700, -0.2600)
+mesh = SubResource("Box10")
+
+[node name="North3" type="Node3D" parent="Seats"]
+position = Vector3(0.0000, 0.0000, -1.2100)
+
+[node name="Cushion" type="StaticBody3D" parent="Seats/North3"]
+position = Vector3(0.0000, 0.3200, 0.0000)
+
+[node name="Mesh" type="MeshInstance3D" parent="Seats/North3/Cushion"]
+mesh = SubResource("Box8")
+
+[node name="Collision" type="CollisionShape3D" parent="Seats/North3/Cushion"]
+shape = SubResource("Box8Shape")
+
+[node name="Back" type="MeshInstance3D" parent="Seats/North3"]
+position = Vector3(0.0000, 0.6700, -0.2600)
+mesh = SubResource("Box10")
+
+[node name="North4" type="Node3D" parent="Seats"]
+position = Vector3(1.6100, 0.0000, -1.2100)
+
+[node name="Cushion" type="StaticBody3D" parent="Seats/North4"]
+position = Vector3(0.0000, 0.3200, 0.0000)
+
+[node name="Mesh" type="MeshInstance3D" parent="Seats/North4/Cushion"]
+mesh = SubResource("Box8")
+
+[node name="Collision" type="CollisionShape3D" parent="Seats/North4/Cushion"]
+shape = SubResource("Box8Shape")
+
+[node name="Back" type="MeshInstance3D" parent="Seats/North4"]
+position = Vector3(0.0000, 0.6700, -0.2600)
+mesh = SubResource("Box10")
+
+[node name="North5" type="Node3D" parent="Seats"]
+position = Vector3(3.2200, 0.0000, -1.2100)
+
+[node name="Cushion" type="StaticBody3D" parent="Seats/North5"]
+position = Vector3(0.0000, 0.3200, 0.0000)
+
+[node name="Mesh" type="MeshInstance3D" parent="Seats/North5/Cushion"]
+mesh = SubResource("Box8")
+
+[node name="Collision" type="CollisionShape3D" parent="Seats/North5/Cushion"]
+shape = SubResource("Box8Shape")
+
+[node name="Back" type="MeshInstance3D" parent="Seats/North5"]
+position = Vector3(0.0000, 0.6700, -0.2600)
+mesh = SubResource("Box10")
+
+[node name="South1" type="Node3D" parent="Seats"]
+position = Vector3(-3.2200, 0.0000, 1.2100)
+
+[node name="Cushion" type="StaticBody3D" parent="Seats/South1"]
+position = Vector3(0.0000, 0.3200, 0.0000)
+
+[node name="Mesh" type="MeshInstance3D" parent="Seats/South1/Cushion"]
+mesh = SubResource("Box8")
+
+[node name="Collision" type="CollisionShape3D" parent="Seats/South1/Cushion"]
+shape = SubResource("Box8Shape")
+
+[node name="Back" type="MeshInstance3D" parent="Seats/South1"]
+position = Vector3(0.0000, 0.6700, 0.2600)
+mesh = SubResource("Box10")
+
+[node name="South2" type="Node3D" parent="Seats"]
+position = Vector3(-1.6100, 0.0000, 1.2100)
+
+[node name="Cushion" type="StaticBody3D" parent="Seats/South2"]
+position = Vector3(0.0000, 0.3200, 0.0000)
+
+[node name="Mesh" type="MeshInstance3D" parent="Seats/South2/Cushion"]
+mesh = SubResource("Box8")
+
+[node name="Collision" type="CollisionShape3D" parent="Seats/South2/Cushion"]
+shape = SubResource("Box8Shape")
+
+[node name="Back" type="MeshInstance3D" parent="Seats/South2"]
+position = Vector3(0.0000, 0.6700, 0.2600)
+mesh = SubResource("Box10")
+
+[node name="South3" type="Node3D" parent="Seats"]
+position = Vector3(0.0000, 0.0000, 1.2100)
+
+[node name="Cushion" type="StaticBody3D" parent="Seats/South3"]
+position = Vector3(0.0000, 0.3200, 0.0000)
+
+[node name="Mesh" type="MeshInstance3D" parent="Seats/South3/Cushion"]
+mesh = SubResource("Box8")
+
+[node name="Collision" type="CollisionShape3D" parent="Seats/South3/Cushion"]
+shape = SubResource("Box8Shape")
+
+[node name="Back" type="MeshInstance3D" parent="Seats/South3"]
+position = Vector3(0.0000, 0.6700, 0.2600)
+mesh = SubResource("Box10")
+
+[node name="South4" type="Node3D" parent="Seats"]
+position = Vector3(1.6100, 0.0000, 1.2100)
+
+[node name="Cushion" type="StaticBody3D" parent="Seats/South4"]
+position = Vector3(0.0000, 0.3200, 0.0000)
+
+[node name="Mesh" type="MeshInstance3D" parent="Seats/South4/Cushion"]
+mesh = SubResource("Box8")
+
+[node name="Collision" type="CollisionShape3D" parent="Seats/South4/Cushion"]
+shape = SubResource("Box8Shape")
+
+[node name="Back" type="MeshInstance3D" parent="Seats/South4"]
+position = Vector3(0.0000, 0.6700, 0.2600)
+mesh = SubResource("Box10")
+
+[node name="South5" type="Node3D" parent="Seats"]
+position = Vector3(3.2200, 0.0000, 1.2100)
+
+[node name="Cushion" type="StaticBody3D" parent="Seats/South5"]
+position = Vector3(0.0000, 0.3200, 0.0000)
+
+[node name="Mesh" type="MeshInstance3D" parent="Seats/South5/Cushion"]
+mesh = SubResource("Box8")
+
+[node name="Collision" type="CollisionShape3D" parent="Seats/South5/Cushion"]
+shape = SubResource("Box8Shape")
+
+[node name="Back" type="MeshInstance3D" parent="Seats/South5"]
+position = Vector3(0.0000, 0.6700, 0.2600)
+mesh = SubResource("Box10")
+
+[node name="West" type="Node3D" parent="Seats"]
+position = Vector3(-4.6500, 0.0000, 0.0000)
+
+[node name="Cushion" type="StaticBody3D" parent="Seats/West"]
+position = Vector3(0.0000, 0.3200, 0.0000)
+
+[node name="Mesh" type="MeshInstance3D" parent="Seats/West/Cushion"]
+mesh = SubResource("Box11")
+
+[node name="Collision" type="CollisionShape3D" parent="Seats/West/Cushion"]
+shape = SubResource("Box11Shape")
+
+[node name="Back" type="MeshInstance3D" parent="Seats/West"]
+position = Vector3(-0.2600, 0.6700, 0.0000)
+mesh = SubResource("Box13")
+
+[node name="East" type="Node3D" parent="Seats"]
+position = Vector3(4.6500, 0.0000, 0.0000)
+
+[node name="Cushion" type="StaticBody3D" parent="Seats/East"]
+position = Vector3(0.0000, 0.3200, 0.0000)
+
+[node name="Mesh" type="MeshInstance3D" parent="Seats/East/Cushion"]
+mesh = SubResource("Box11")
+
+[node name="Collision" type="CollisionShape3D" parent="Seats/East/Cushion"]
+shape = SubResource("Box11Shape")
+
+[node name="Back" type="MeshInstance3D" parent="Seats/East"]
+position = Vector3(0.2600, 0.6700, 0.0000)
+mesh = SubResource("Box13")
