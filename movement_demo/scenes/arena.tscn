@@ -9,7 +9,18 @@
 [ext_resource type="Resource" uid="uid://wf82uaxorlji" path="res://resources/enemy/cooperation/coordinated.tres" id="squad_profile"]
 [ext_resource type="Script" uid="uid://by7iy6ibrwkth" path="res://scripts/world/zone_volume.gd" id="zone_volume"]
 [ext_resource type="PackedScene" path="res://scenes/world/squad.tscn" id="squad_scene"]
-
+[ext_resource type="Resource" uid="uid://wf82uaxorlji" path="res://resources/enemy/cooperation/coordinated.tres" id="6_htucp"]
+[ext_resource type="Resource" uid="uid://ki6qibhaudrs" path="res://resources/enemy/units/melee.tres" id="10_41jku"]
+[ext_resource type="Script" uid="uid://cmqxbw8d8ko4e" path="res://scripts/enemy/config/enemy_training_profile.gd" id="18_r2kh7"]
+[ext_resource type="Script" uid="uid://lauyebht4oxa" path="res://scripts/enemy/config/ai_settings.gd" id="12_ti64i"]
+[ext_resource type="Script" uid="uid://c8pqrsjr22e3m" path="res://scripts/enemy/config/tactics_settings.gd" id="22_sbyfl"]
+[ext_resource type="Script" uid="uid://deqxtvcihlf8n" path="res://scripts/enemy/config/search_settings.gd" id="19_wra51"]
+[ext_resource type="Script" uid="uid://c2eu2biwoikls" path="res://scripts/enemy/config/cover_settings.gd" id="14_sya1t"]
+[ext_resource type="Script" uid="uid://c8bbxotvc8xdh" path="res://scripts/enemy/config/suppression_settings.gd" id="21_6dm5u"]
+[ext_resource type="Script" uid="uid://d1ra7e76dnl5k" path="res://scripts/enemy/config/exit_suppression_settings.gd" id="15_y6qpl"]
+[ext_resource type="Script" uid="uid://bhipw1tv8dnbd" path="res://scripts/enemy/config/fire_decision_settings.gd" id="16_7yr5k"]
+[ext_resource type="Script" uid="uid://curixaod7050y" path="res://scripts/enemy/config/perception_settings.gd" id="17_6e0wu"]
+[ext_resource type="Script" uid="uid://bk01ecvvxhl6s" path="res://scripts/enemy/config/selection_settings.gd" id="20_ua730"]
 [sub_resource type="NavigationMesh" id="NavigationMesh_4ag8t"]
 vertices = PackedVector3Array(-4.75, 0.3, -1.75, -3.5, 0.3, -2, -3.5, 0.3, -4.25, -8.25, 0.3, -4.25, -6.25, 0.3, 7.75, -4.25, 0.3, 5, -4.75, 0.3, 4.75, -8.25, 0.3, 7.5, 6.5, 0.3, -3.75, 7.25, 0.3, -4, 7.25, 0.3, -4.25, -2.5, 0.3, -1.75, -2.5, 0.3, 3, 4.5, 0.3, 1.5, 6.5, 0.3, 1.75, 4.25, 0.3, 3.25, 8.25, 0.3, -3.75, 13, 0.3, -4.25, 6.5, 0.3, 5.5, 6, 0.3, 5.75, 10, 0.3, 6.5, 10.25, 0.3, 4.75, 8.25, 0.3, 2, 6.5, 0.3, 2, 13, 0.3, 4.75, 13, 0.3, 10.25, 13, 0.3, 7, 10.25, 0.3, 7, 4.25, 0.3, 10.25, 4.25, 0.3, 5.5, 4, 0.3, 7, -2.5, 0.3, 4.75, 2.75, 0.3, 6.75, -6.25, 0.3, 9, -8.25, 0.3, 9.25, -8.25, 0.3, 10.25, 2.25, 0.3, 10.25, 2.25, 0.3, 7)
 polygons = [PackedInt32Array(1, 0, 2), PackedInt32Array(2, 0, 3), PackedInt32Array(6, 5, 4), PackedInt32Array(4, 7, 6), PackedInt32Array(6, 7, 0), PackedInt32Array(0, 7, 3), PackedInt32Array(9, 8, 10), PackedInt32Array(10, 8, 11), PackedInt32Array(10, 11, 1), PackedInt32Array(10, 1, 2), PackedInt32Array(12, 11, 13), PackedInt32Array(13, 11, 8), PackedInt32Array(8, 14, 13), PackedInt32Array(13, 15, 12), PackedInt32Array(9, 10, 16), PackedInt32Array(16, 10, 17), PackedInt32Array(20, 19, 18), PackedInt32Array(23, 22, 18), PackedInt32Array(18, 22, 21), PackedInt32Array(18, 21, 20), PackedInt32Array(21, 22, 24), PackedInt32Array(24, 22, 16), PackedInt32Array(24, 16, 17), PackedInt32Array(27, 26, 25), PackedInt32Array(19, 20, 27), PackedInt32Array(29, 19, 30), PackedInt32Array(30, 19, 28), PackedInt32Array(28, 19, 27), PackedInt32Array(28, 27, 25), PackedInt32Array(30, 32, 29), PackedInt32Array(29, 32, 15), PackedInt32Array(15, 32, 31), PackedInt32Array(15, 31, 12), PackedInt32Array(34, 33, 35), PackedInt32Array(35, 33, 36), PackedInt32Array(4, 5, 33), PackedInt32Array(33, 5, 31), PackedInt32Array(33, 31, 37), PackedInt32Array(33, 37, 36), PackedInt32Array(31, 32, 37)]
@@ -126,55 +137,151 @@ size = Vector3(22.44934, 3, 15.852051)
 
 [sub_resource type="Resource" id="Resource_41jku"]
 script = ExtResource("6_oexds")
-magazine_capacity = 7
-reload_seconds = 3.5
 display_name = "Dildo"
 damage = 20.0
+shot_interval = 0.8
 fire_range = 30.1
-stabilize_seconds = 1.0
-moving_accuracy_cap = 0.5
-player_move_accuracy_loss_per_meter = 0.05
-shot_accuracy_penalty = 0.01
-minimum_accuracy = 0.6
+magazine_capacity = 9
+reload_seconds = 1.9
+spread_recovery_delay = 0.05
 accuracy_recovery_delay = 0.2
-target_move_minimum_accuracy = 0.7
 min_spread_angle_degrees = 4.0
 max_spread_angle_degrees = 7.0
 initial_spread_angle_degrees = 4.0
-spread_recovery_degrees_per_second = 2.9
-moving_spread_angle_degrees = 7.0
 shot_max_spread_angle_degrees = 6.0
-spread_recovery_delay = 0.05
+moving_spread_angle_degrees = 7.0
 target_move_spread_degrees_per_meter_slow = 0.34
 target_move_spread_degrees_per_meter_fast = 0.5
 target_move_max_spread_angle_degrees = 5.0
+shot_accuracy_penalty = 0.01
+minimum_accuracy = 0.6
+player_move_accuracy_loss_per_meter = 0.05
+moving_accuracy_cap = 0.5
+target_move_minimum_accuracy = 0.7
+spread_recovery_degrees_per_second = 2.9
+stabilize_seconds = 1.0
 
 [sub_resource type="Resource" id="Resource_k1k1x"]
 script = ExtResource("6_oexds")
+display_name = "Dildo"
+fire_mode = 2
+damage = 10.0
+fire_range = 30.1
 ammo_type = 2
 magazine_capacity = 20
 reload_seconds = 3.5
-display_name = "Dildo"
-damage = 10.0
-fire_range = 30.1
-fire_mode = 1
-stabilize_seconds = 1.0
-moving_accuracy_cap = 0.5
-player_move_accuracy_loss_per_meter = 0.05
-shot_accuracy_penalty = 0.01
-minimum_accuracy = 0.6
+spread_recovery_delay = 0.05
 accuracy_recovery_delay = 0.2
-target_move_minimum_accuracy = 0.7
 min_spread_angle_degrees = 4.0
 max_spread_angle_degrees = 7.0
 initial_spread_angle_degrees = 4.0
-spread_recovery_degrees_per_second = 2.9
-moving_spread_angle_degrees = 7.0
 shot_max_spread_angle_degrees = 6.0
-spread_recovery_delay = 0.05
+moving_spread_angle_degrees = 7.0
 target_move_spread_degrees_per_meter_slow = 0.34
 target_move_spread_degrees_per_meter_fast = 0.5
 target_move_max_spread_angle_degrees = 5.0
+shot_accuracy_penalty = 0.01
+minimum_accuracy = 0.6
+player_move_accuracy_loss_per_meter = 0.05
+moving_accuracy_cap = 0.5
+target_move_minimum_accuracy = 0.7
+spread_recovery_degrees_per_second = 2.9
+stabilize_seconds = 1.0
+
+[sub_resource type="Resource" id="Resource_ajq0i"]
+script = ExtResource("6_oexds")
+display_name = "Dildo"
+fire_mode = 1
+damage = 10.0
+fire_range = 30.1
+ammo_type = 2
+magazine_capacity = 30
+reload_seconds = 3.5
+spread_recovery_delay = 0.05
+accuracy_recovery_delay = 0.2
+min_spread_angle_degrees = 4.0
+max_spread_angle_degrees = 7.0
+initial_spread_angle_degrees = 4.0
+shot_max_spread_angle_degrees = 6.0
+moving_spread_angle_degrees = 7.0
+target_move_spread_degrees_per_meter_slow = 0.34
+target_move_spread_degrees_per_meter_fast = 0.5
+target_move_max_spread_angle_degrees = 5.0
+shot_accuracy_penalty = 0.01
+minimum_accuracy = 0.6
+player_move_accuracy_loss_per_meter = 0.05
+moving_accuracy_cap = 0.5
+target_move_minimum_accuracy = 0.7
+spread_recovery_degrees_per_second = 2.9
+stabilize_seconds = 1.0
+
+[sub_resource type="Resource" id="ai"]
+script = ExtResource("12_ti64i")
+overridden = PackedStringArray()
+
+[sub_resource type="Resource" id="tactics"]
+script = ExtResource("22_sbyfl")
+headshot_protection = true
+fire_stability_target = 0.6
+burst_shot_count = 10
+support_burst_shot_count = 10
+overridden = PackedStringArray("fire_stability_target", "burst_shot_count", "burst_pause_seconds", "support_burst_shot_count", "headshot_protection")
+
+[sub_resource type="Resource" id="search"]
+script = ExtResource("19_wra51")
+lost_target_hint_chance = 1.0
+search_hint_chance = 1.0
+search_hint_decay_mode = 0
+search_hint_min_multiplier = 1.0
+search_hint_distance_falloff = 10.0
+debug_tracking_cheat = true
+track_seconds = 10.0
+search_pause_seconds = 0.6
+search_stuck_repath_seconds = 0.8
+overridden = PackedStringArray("lost_target_hint_chance", "search_hint_decay_mode", "search_hint_min_multiplier", "search_hint_distance_falloff", "debug_tracking_cheat", "track_seconds", "search_pause_seconds", "search_stuck_repath_seconds", "search_hint_chance")
+
+[sub_resource type="Resource" id="cover"]
+script = ExtResource("14_sya1t")
+watch_seconds = 1.0
+overridden = PackedStringArray("watch_seconds")
+
+[sub_resource type="Resource" id="suppression"]
+script = ExtResource("21_6dm5u")
+overridden = PackedStringArray()
+
+[sub_resource type="Resource" id="exit_suppression"]
+script = ExtResource("15_y6qpl")
+overridden = PackedStringArray()
+
+[sub_resource type="Resource" id="fire_decision"]
+script = ExtResource("16_7yr5k")
+overridden = PackedStringArray()
+
+[sub_resource type="Resource" id="perception"]
+script = ExtResource("17_6e0wu")
+sight_distance = 20.0
+overridden = PackedStringArray("sight_distance")
+
+[sub_resource type="Resource" id="selection"]
+script = ExtResource("20_ua730")
+vault_preference = 6.0
+cover_lateral_test_distance = 0.3
+minimum_cover_quality = 0.1
+overridden = PackedStringArray("cover_lateral_test_distance", "minimum_cover_quality")
+
+[sub_resource type="Resource" id="Resource_u80kj"]
+script = ExtResource("18_r2kh7")
+display_name = "竞技场现有训练"
+selected_tactics = Array[StringName]([&"melee_rush", &"cover", &"suppression"])
+ai = SubResource("ai")
+tactics = SubResource("tactics")
+search = SubResource("search")
+cover = SubResource("cover")
+suppression = SubResource("suppression")
+exit_suppression = SubResource("exit_suppression")
+fire_decision = SubResource("fire_decision")
+perception = SubResource("perception")
+selection = SubResource("selection")
 
 [node name="Arena" type="Node3D" unique_id=1563628380]
 script = ExtResource("3_reset")
@@ -338,7 +445,7 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 2.2246704, 0, 2.9260254)
 shape = SubResource("CombatZoneShape")
 
 [node name="Squad" parent="." unique_id=222466360 instance=ExtResource("squad_scene")]
-profile = ExtResource("squad_profile")
+profile = ExtResource("6_htucp")
 
 [node name="Enemy3" parent="Squad" unique_id=205767877 instance=ExtResource("enemy_scene")]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 8.854151, 0, 1.5152493)
@@ -348,9 +455,16 @@ weapon = SubResource("Resource_41jku")
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 10.473522, 0, 2.7041683)
 weapon = SubResource("Resource_k1k1x")
 
+[node name="UnitType" parent="Squad/Enemy2" index="0" unique_id=1065345618]
+profile = ExtResource("10_41jku")
+
 [node name="Enemy4" parent="Squad" unique_id=1573751099 instance=ExtResource("enemy_scene")]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 10.961719, 0, -0.8908446)
-weapon = SubResource("Resource_k1k1x")
+max_health = 1000.0
+weapon = SubResource("Resource_ajq0i")
+
+[node name="Training" parent="Squad/Enemy4" index="1" unique_id=740728946]
+profile = SubResource("Resource_u80kj")
 
 [node name="EntranceLabel" type="Label3D" parent="." unique_id=61251950]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -10, 0.4, 0)

@@ -1,20 +1,51 @@
 # 测试入口、选择与结果判断
 
-本页说明如何查询和运行已有验证，以及如何解释结果。AI 的真实场景、行为／性能边界见[敌人验证](enemy-tests.md)，模块职责见[项目结构](project-layout.md)。本轮文档整理不代表重新执行全部游戏测试。
+本页说明如何查询和运行已有验证，以及如何解释结果。AI 的真实场景、行为／性能边界见[敌人验证](enemy-tests.md)，模块职责见[项目结构](project-layout.md)。各轮结果按日期区分，不代表全工程回归。
 
 ## 当前五关定向记录
 
-2026-11-05 商店网格布局：`shop_board_test` 扩至 43/43，验证商品区为 `GridContainer`、默认 3 列、
-前三张卡共享一行、6 个商品自动占两行、隐藏商品不创建卡片，以及窗口宽度变化时在 3／2／1 列之间切换。
-`shop_flow_test` 与 98 项 `campaign_flow_test` 保持通过，确认网格改造没有改变购买、暂停、
-武器覆盖和死亡退款行为。`run_regressions.py --check` 为 `Catalog OK`；已知 macOS 证书诊断和既有 UID 回退警告仍存在。
+2026-11-14 Esc 暂停菜单：`pause_menu_test` 最终真实 OpenGL 渲染 52/52、headless 50/50，覆盖酒馆与五关无自动说明、Esc／按钮导航、设置和说明保持暂停、其他暂停拥有者／对话／死亡优先、打开菜单时卸载、640×480 布局，以及真实第一关按住瞄准时恢复鼠标捕获、清除 GUI 焦点且继续按钮不误开火。headless 后端不支持真实鼠标捕获，两条捕获断言仅在真实渲染下执行，瞄准／焦点／弹药断言仍在两种模式验证。`-- --confirm-exit` 独立进程确认退出前仍运行、实际点击确认后以 0 退出。截图与日志在本地 `logs/pause-menu-capture/`、`logs/pause-menu-rendered-final.log` 和 `logs/pause-menu-exit.log`，不提交。
 
-2026-11-04 货币商店、任务金额与检查点退款：蓝色商店 NPC 取代三选一。定向专项均以退出码 0 通过——
+相关定向回归：`scene_director_test` 151/151、`level_flow_test` 97/97、`shop_flow_test` 通过；登记检查为 `Catalog OK`。关卡专项只按新需求调整入场／重开不弹说明、手动打开和返回设置的断言，原清场、返酒馆、A 解锁、恢复点及独立教程合同保留。商店的故意缺少面板／目录夹具仍输出预期警告，没有脚本／资源错误。未运行全量回归，未据此重判旧记录中的其他失败。
+
+2026-11-11 最终静态审阅发现并修复三项：加载接受前取消无效、波次部署错误未结束请求、排队演出未重查条件。只运行两处针对性复现：加载／条件 6 项和波次失败 3 项，均先失败后通过；原切场专项共 23 项通过，覆盖实际目标 `_ready()` 提交和取消后的成功切换。按用户要求没有再跑下面的 28 套回归，因此不能把旧结果称作此次修复后的全套结果。
+
+按用户最新指示上传本地敌人血量／移速／武器／训练／波次配置，Main 玩家最大生命改为 100。只加载核对四个实际暂存场景和本地 Main，6 项配置检查通过；插件、地形等无关本地修改保留。日志只存本地 logs。
+
+2026-11-10 SceneDirector 统一调度：最终选择 25 个系统／玩家专项与 3 个敌人波次专项；其中 26 套通过，2 套保留修改前已捕获的 4 条失败：`campaign_flow_test` 的入关／返酒馆／酒馆恢复双弹匣三条，以及 `enemy_wave_test` 的“第一关两波完整结束”。原断言及本地装备、血量和部署未据此修改，不宣称 28 套全绿。检查点、真实五关清场返程、商品与已购武器重试通过。日志位于本地 `movement_demo/logs/director-authority-task6-final/`。
+
+新增专项覆盖请求身份／同步结果、对话首句未加载完的取消、真实 Timer／Tween 停止、复合交互子请求、纯状态准备／真实目标 `_ready()` 提交、所有波次模式授权、多区域取消与六个正式场景唯一导演。`shop_weapon_test` 保留原 27 项，将入关快照检查移至真实切场获准后，符合事务时序。
+
+真实 Windows OpenGL 渲染模式通过 47 项，实际点击商店关闭与说明按钮，并验证对话结束后镜头、死亡中断、清场返酒馆；截图及状态在 `movement_demo/logs/director-authority-capture/`。命令如下（需图形桌面）：
+
+```powershell
+& E:/Godot/Godot_v4.7.2-stable_win64_console.exe --path movement_demo --script res://tests/scene_director_authority_test.gd -- --capture
+```
+
+编辑器模式检查新动作字段显示、隐藏字段资源保存重载及六场景路径／`.tres` 引用，17/17；退出时有 `Scan thread aborted` 警告，无脚本／资源错误。无导演夹具会故意触发缺少入口警告。Catalog 检查通过；未覆盖所有显示比例、全部新地图及任意自定义脚本提供者。
+
+2026-11-10 商店医疗包改为 `ADD_MEDKIT` 资源入库：目录、真实购买、面板、武器购买、装备与医疗使用／生命周期定向回归通过。
+覆盖现有 `.tres` 引用、按类型显示资源槽、满血购买、按数量叠加、购买不回血、库存标签刷新、空库存换资源及检查点恢复资源／数量／货币。
+原生编辑器资源槽切换、医疗／枪械 `.tres` 赋值和隐藏字段保存重载断言为 7/7；编辑器退出时存在资源／RID 清理诊断，
+不记作严格无错误退出。实际渲染购买验证库存 +1、扣款 40、当前生命保持不变。
+
+2026-11-10 按用户纠正移除数值进度，改为 `SET_FLAG` 拥有类商品：思维接入装置售价 500，
+购买后 `has_mind_access_device = true`。商品回归覆盖余额 499 拒绝／500 一次扣款、一次性隐藏、
+已拥有时拒绝重复购买，以及检查点恢复同步恢复商品旗标而不影响唱片机旗标。
+任务面板专项验证已移除进度条，旗标变化不干扰任务状态显示。
+下方此前的进度／旧三选一验证为历史记录，不代表当前玩法或接口。
+
+2026-11-05 商店网格布局：`shop_board_test` 扩至 39/39，验证商品区为 `GridContainer`、默认 3 列、
+6 个商品自动占两行、隐藏商品不创建卡片，以及可用宽度变化时在 3／2／1 列之间切换。
+`shop_flow_test` 与 98 项 `campaign_flow_test` 保持通过，确认网格改造没有改变购买、暂停、
+武器覆盖和死亡回档行为。`run_regressions.py --check` 为 `Catalog OK`；已知 macOS 证书诊断和既有 UID 回退警告仍存在。
+
+2026-11-04 货币商店、任务金额与检查点恢复：蓝色商店 NPC 取代三选一。定向专项均以退出码 0 通过——
 `shop_catalog_test` 30 项（初始三商品、顺序、按 ID 查询、重复 ID 过滤、非正效果数值与武器商品校验）、
-`shop_state_test` 42 项（货币增减、一次性任务发奖、检查点退款／一次性购买回滚／入关快照）、
+`shop_state_test` 42 项（货币增减、一次性任务发奖、检查点恢复／一次性购买回滚／入关快照）、
 `shop_weapon_test` 27 项（`replace_weapon_slot` 校验、主副槽覆盖与当前关重试保留已购枪）、
 `shop_board_test` 30 项（面板隐藏、ALWAYS、行渲染、购买意图回传、按钮禁用与武器槽位禁用）、
-`shop_flow_test` 92 项（真实酒馆打开商店、三初始商品购买、武器解锁与一次性隐藏、余额不足、空目录／全锁定不暂停、交易顺序退款、暂停所有权、死亡关闭与边界拒绝）、
+`shop_flow_test` 92 项（真实酒馆打开商店、三初始商品购买、武器解锁与一次性隐藏、余额不足、空目录／全锁定不暂停、购买后的检查点恢复、暂停所有权、死亡关闭与边界拒绝）、
 `quest_money_reward_test` 11 项（默认与主线 100、无奖励支线 0、只发一次、付费支线同步当前检查点）。
 流程专项 `campaign_flow_test` 98 项、`campaign_checkpoint_test` 17/17、`scene_director_test` 150/150、
 `level_flow_test` 87/87 全部通过；兼容专项 `reward_board_test` 14/14、`campaign_quest_task_test` 32 项通过。
@@ -27,7 +58,7 @@
 `reward_npc_test`、`quest_encounter_loop_test`、`reward_per_level_test`
 已退役，不再计入 systems 清单；不据此宣称完整 systems 组全绿。
 
-2026-11-04 二选一重生与酒店检查点：新增 `campaign_checkpoint_test` 9/9，验证最近完成关卡的系统进度和奖励领取记录回退、更早奖励保留，以及完成时玩家快照恢复。`campaign_flow_test` 扩至67/67，使用真实主场景、奖励 NPC/三选一面板和关卡验证“领取第1关系统进度奖励 → 解锁并进入第2关 → 死亡 → 返回酒店”后重新开放第1关三选一、锁回下一关入口并恢复完成时玩家状态；另一条真实流程验证首关未完成时死亡返回酒店仍保留任务接取且可重新进入第1关。`scene_director_test` 扩至149/149，覆盖真实死亡界面的两个按钮、无 LevelFlow 条件、酒店路径、事务式检查点恢复、错误提示与加载失败后切换回当前关重开。直接专项 `level_flow_test` 87/87、`player_health_test` 30/30、`weapon_slots_test` 35/35 通过，`reward_npc_test`、`reward_per_level_test`、`quest_encounter_loop_test` 亦通过；`run_regressions.py --check` 为 `Catalog OK`。本轮仍出现 macOS root certificate store 诊断和既有资源 UID 回退警告，直接专项进程均以0退出；不把该诊断记为干净输出，也不宣称统一系统组全绿。
+2026-11-04 二选一重生与酒馆检查点：新增 `campaign_checkpoint_test` 9/9，验证最近完成关卡的系统进度和奖励领取记录回退、更早奖励保留，以及完成时玩家快照恢复。`campaign_flow_test` 扩至67/67，使用真实主场景、奖励 NPC/三选一面板和关卡验证“领取第1关系统进度奖励 → 解锁并进入第2关 → 死亡 → 返回酒馆”后重新开放第1关三选一、锁回下一关入口并恢复完成时玩家状态；另一条真实流程验证首关未完成时死亡返回酒馆仍保留任务接取且可重新进入第1关。`scene_director_test` 扩至149/149，覆盖真实死亡界面的两个按钮、无 LevelFlow 条件、酒馆路径、事务式检查点恢复、错误提示与加载失败后切换回当前关重开。直接专项 `level_flow_test` 87/87、`player_health_test` 30/30、`weapon_slots_test` 35/35 通过，`reward_npc_test`、`reward_per_level_test`、`quest_encounter_loop_test` 亦通过；`run_regressions.py --check` 为 `Catalog OK`。本轮仍出现 macOS root certificate store 诊断和既有资源 UID 回退警告，直接专项进程均以0退出；不把该诊断记为干净输出，也不宣称统一系统组全绿。
 
 2026-11-02 五关任务链、逐关奖励与 Debug 一键通关：新增 `campaign_quest_task_test` 22/22，验证任务面板五条主线、A 解锁后的进行中状态和返程后的完成状态。新增 `reward_per_level_test` 39/39，验证第1～5关分别开放一次三选一、领取状态互不影响，以及每关独立标题、说明和数值配置。`debug_complete_level_test` 现为10/10，验证按钮受 Debug 总开关控制、只完成当前关、重复点击不重复发信号、开放返程门、保持可操作且不直接切场景。`quest_conditions_test` 扩至 19/19，覆盖整数状态字段下限条件。
 
@@ -89,6 +120,8 @@ python movement_demo/tests/run_combat_regressions.py --godot E:/Godot/Godot_v4.7
 | 相机与独立复用 | `player_camera_test`、`player_scene_reuse_test`、`camera_occlusion_test` |
 | 五关、检查点与波次 | `campaign_checkpoint_test`、`campaign_flow_test`、`level_flow_test`、敌人波次专项；使用真实保存场景验证 |
 | 场景调度与编辑器接线 | `scene_director_test`、`scene_event_node_test`、`enemy_wave_events_test`；无Wave/无Guide、暂停拥有者、事件过滤/失效、两个死亡按钮、加载失败重试 |
+| 统一请求与取消 | `scene_request_test`、`scene_interaction_test`、`scene_script_cancellation_test`、`scene_transition_request_test`；身份、真实停止、子交互与加载事务 |
+| 正式场景与画面 | `scene_director_authority_test`；酒馆和五关唯一入口；`-- --capture` 须真实渲染，保存状态与截图 |
 | 增援与独立演出 | `scene_reinforcement_test`、`presentation_camera_test`；真实生成屏障、手动Marker3D、取消/返回；相机专项另有真实渲染模式 |
 | 任务与交互 | systems 中条件、任务、阶段、面板、唱片机与交互专项 |
 | 货币商店与任务金额 | `shop_catalog_test`、`shop_state_test`、`shop_weapon_test`、`shop_board_test`、`shop_flow_test`、`quest_money_reward_test` |
@@ -97,7 +130,7 @@ python movement_demo/tests/run_combat_regressions.py --godot E:/Godot/Godot_v4.7
 | `combat` | `tests/run_combat_regressions.py` 的原玩家战斗清单 |
 | `enemy` | `tests/enemy/run_enemy_regressions.py` 的原敌人清单 |
 
-酒馆传送门专项检查正式切换后的 `World3D` 中性回退环境；关卡流程专项使用真实五关逐波清敌，检查每关返程门、A 解锁、动态门口传送和当前关重开。检查点专项验证死亡回酒店会恢复最近完成任务时的进度、奖励资格与玩家状态。当前五关仍使用返程门，不依赖按钮直接切关；SceneDirector 的加载能力由独立场景调度专项验证。
+酒馆传送门专项检查正式切换后的 `World3D` 中性回退环境；关卡流程专项使用真实五关逐波清敌，检查每关返程门、A 解锁、动态门口传送和当前关重开。检查点专项验证死亡回酒馆会恢复最近完成任务时的进度、奖励资格与玩家状态。当前五关仍使用返程门，不依赖按钮直接切关；SceneDirector 的加载能力由独立场景调度专项验证。
 
 ## 特殊入口与会写入的维护工具
 

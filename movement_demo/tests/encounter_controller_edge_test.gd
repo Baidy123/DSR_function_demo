@@ -70,7 +70,7 @@ func _keeps_external_pause() -> void:
 func _claims_only_once() -> void:
 	var context := await _prepare(1)
 	_check(context.controller.open_reward_for_player(context.player), "未领取时打开奖励")
-	_check(context.controller.select_reward(&"system_progress"), "首次选择成功")
+	_check(context.controller.select_reward(&"mind_access_device"), "首次选择成功")
 	_check(not context.controller.select_reward(&"ammo"), "打开状态不能重复提交")
 	_check(not context.controller.open_reward_for_player(context.player), "已领取后不能再次打开")
 	await _release(context.scene)

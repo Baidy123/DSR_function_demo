@@ -3,7 +3,6 @@
 [ext_resource type="Script" uid="uid://cmqxbw8d8ko4e" path="res://scripts/enemy/config/enemy_training_profile.gd" id="1_profile"]
 [ext_resource type="Script" uid="uid://b0j3a627844ku" path="res://scripts/enemy/config/module_settings.gd" id="1_whmty"]
 [ext_resource type="Script" uid="uid://lauyebht4oxa" path="res://scripts/enemy/config/ai_settings.gd" id="2_g1khh"]
-[ext_resource type="Script" uid="uid://cqdvipxtj05rx" path="res://scripts/enemy/config/cooperation_settings.gd" id="3_htym8"]
 [ext_resource type="Script" uid="uid://c2eu2biwoikls" path="res://scripts/enemy/config/cover_settings.gd" id="4_7rr53"]
 [ext_resource type="Script" uid="uid://d1ra7e76dnl5k" path="res://scripts/enemy/config/exit_suppression_settings.gd" id="5_78ojf"]
 [ext_resource type="Script" uid="uid://bhipw1tv8dnbd" path="res://scripts/enemy/config/fire_decision_settings.gd" id="6_lf3q3"]
@@ -15,17 +14,6 @@
 
 [sub_resource type="Resource" id="Resource_k7y2y"]
 script = ExtResource("2_g1khh")
-overridden = PackedStringArray()
-
-[sub_resource type="Resource" id="Resource_ulbph"]
-script = ExtResource("3_htym8")
-score_cover_preference = null
-score_action_cost_weight = null
-score_fire_continuity_weight = null
-score_crossfire_weight = null
-score_melee_support_weight = null
-score_search_support_weight = null
-patrol_radius = null
 overridden = PackedStringArray()
 
 [sub_resource type="Resource" id="Resource_xa6b7"]
@@ -74,4 +62,3 @@ exit_suppression = SubResource("Resource_t3g5g")
 fire_decision = SubResource("Resource_6jc06")
 perception = SubResource("Resource_il0kv")
 selection = SubResource("Resource_t0uxa")
-cooperation = SubResource("Resource_ulbph")

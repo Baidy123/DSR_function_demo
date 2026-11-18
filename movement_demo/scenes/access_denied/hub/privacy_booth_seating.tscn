@@ -1,0 +1,71 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://scenes/access_denied/hub/curved_booth_sofa.gd" id="sofa"]
+[ext_resource type="Shader" path="res://scenes/access_denied/hub/tufted_leather.gdshader" id="leather"]
+
+[sub_resource type="StandardMaterial3D" id="BaseLeather"]
+albedo_color = Color(0.052, 0.076, 0.083, 1)
+roughness = 0.7
+
+[sub_resource type="StandardMaterial3D" id="CushionLeather"]
+albedo_color = Color(0.088, 0.135, 0.145, 1)
+roughness = 0.61
+
+[sub_resource type="ShaderMaterial" id="BackrestLeather"]
+shader = ExtResource("leather")
+
+[sub_resource type="StandardMaterial3D" id="TableMaterial"]
+albedo_color = Color(0.075, 0.115, 0.14, 1)
+roughness = 0.64
+
+[sub_resource type="BoxShape3D" id="RearShape"]
+size = Vector3(2.85, 1.49, 0.65)
+
+[sub_resource type="BoxShape3D" id="SideShape"]
+size = Vector3(0.66, 1.49, 3.2)
+
+[sub_resource type="BoxMesh" id="TableTop"]
+material = SubResource("TableMaterial")
+size = Vector3(1.16, 0.16, 1.88)
+
+[sub_resource type="BoxShape3D" id="TableShape"]
+size = Vector3(1.16, 0.16, 1.88)
+
+[sub_resource type="BoxMesh" id="Pedestal"]
+material = SubResource("TableMaterial")
+size = Vector3(0.39, 0.71, 0.70)
+
+[node name="PrivacyBoothSeating" type="Node3D"]
+
+[node name="Sofa" type="MeshInstance3D" parent="."]
+script = ExtResource("sofa")
+base_material = SubResource("BaseLeather")
+cushion_material = SubResource("CushionLeather")
+backrest_material = SubResource("BackrestLeather")
+
+[node name="SofaCollision" type="StaticBody3D" parent="."]
+
+[node name="Rear" type="CollisionShape3D" parent="SofaCollision"]
+position = Vector3(0, 0.745, -2.06)
+shape = SubResource("RearShape")
+
+[node name="Left" type="CollisionShape3D" parent="SofaCollision"]
+position = Vector3(-1.68, 0.745, -0.08)
+shape = SubResource("SideShape")
+
+[node name="Right" type="CollisionShape3D" parent="SofaCollision"]
+position = Vector3(1.68, 0.745, -0.08)
+shape = SubResource("SideShape")
+
+[node name="Table" type="StaticBody3D" parent="."]
+position = Vector3(0, 0.79, 0.12)
+
+[node name="Mesh" type="MeshInstance3D" parent="Table"]
+mesh = SubResource("TableTop")
+
+[node name="Collision" type="CollisionShape3D" parent="Table"]
+shape = SubResource("TableShape")
+
+[node name="Pedestal" type="MeshInstance3D" parent="."]
+position = Vector3(0, 0.355, 0.12)
+mesh = SubResource("Pedestal")

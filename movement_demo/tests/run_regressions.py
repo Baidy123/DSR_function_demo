@@ -11,12 +11,14 @@ from regression_runner import run_tests, validate_names
 DIRECTORY = Path(__file__).resolve().parent
 PROJECT = DIRECTORY.parent
 SYSTEM_TESTS = [
+    "pause_menu_test",
+    "scene_request_test", "scene_interaction_test", "scene_script_cancellation_test", "scene_transition_request_test", "scene_director_authority_test",
     "scene_director_test", "scene_event_node_test", "scene_reinforcement_test",
     "movement_test", "sprint_test", "interaction_test", "hearing_test",
     "movement_noise_modes_test", "debug_mode_test", "noise_debug_test",
     "presentation_interfaces_test", "presentation_movement_compatibility_test",
     "presentation_range_reset_test", "dialogue_cache_test",
-    "quest_conditions_test", "quest_system_test", "stage_system_test",
+    "quest_conditions_test", "quest_system_test", "stage_system_test", "tavern_layout_test",
     "quest_panel_test", "record_player_quest_test",
     "reward_board_test",
     "campaign_checkpoint_test", "campaign_flow_test",
@@ -40,6 +42,7 @@ TIMEOUTS = {"squad_command_runtime_test": 180}
 
 # These entries need their documented harness; never glob-run every .gd file.
 SPECIAL = {
+    "scene_transition_target.gd": "target-ready fixture loaded by scene_transition_request_test",
     "shotgun_pattern_editor_test.gd": "standalone --editor --max-fps 60 --script; also --headless --script with -- --preview-runtime; captures editor UI when rendered",
     "shotgun_inspector_test.gd": "standalone --headless --editor --script",
     "bake_arena.gd": "maintenance command: writes navigation; never a regression",

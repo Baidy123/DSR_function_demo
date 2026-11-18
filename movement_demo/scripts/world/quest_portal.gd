@@ -24,15 +24,8 @@ func _ready() -> void:
 	call_deferred(&"_bind_sources")
 
 
-func interact(player: Node3D) -> bool:
-	if not can_interact(player):
-		return super.interact(player)
-	if _game_state != null:
-		var snapshot: Dictionary = PlayerCampaignState.capture(player)
-		_game_state.set_pending_player_state(snapshot)
-		if _game_state.has_method(&"set_level_entry_player_state"):
-			_game_state.set_level_entry_player_state(snapshot)
-	return super.interact(player)
+func transition_parameters(player: Node3D) -> Dictionary:
+	return {"mode": &"enter_level", "player_snapshot": PlayerCampaignState.capture(player)}
 
 
 func conditions_met() -> bool:
@@ -43,6 +36,7 @@ func _refresh_prompt() -> void:
 	_sync_target()
 	var completed := _completed_level()
 	var available := _available_level()
+	_set_portal_visuals_visible(_level_available())
 	if completed >= LEVELS.size():
 		blocked_hint = "五关挑战已完成"
 	elif available <= completed:
@@ -52,6 +46,16 @@ func _refresh_prompt() -> void:
 	else:
 		blocked_hint = "下一关尚未解锁"
 	super()
+
+
+func _set_portal_visuals_visible(is_available: bool) -> void:
+	# 实体门属于酒馆建筑，始终可见并保持阻挡；只有关卡编号随解锁状态显示。
+	for path in [NodePath("Body"), NodePath("Frame"), NodePath("CenterSeam"), NodePath("Handle")]:
+		var door_part := get_node_or_null(path) as Node3D
+		if door_part != null:
+			door_part.visible = true
+	if name_label != null:
+		name_label.visible = is_available
 
 
 func _bind_sources() -> void:

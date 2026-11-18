@@ -8,6 +8,18 @@ class_name InteractionContext
 var host: Node
 var player: Node3D
 var state: Node
+var director: Node
+var execution
+
+func request_action(kind: StringName, context: Dictionary):
+	if director == null and is_instance_valid(host):
+		director = load("res://scripts/systems/scene_director.gd").for_node(host)
+	if director == null: return null
+	context["source"] = host
+	context["player"] = player
+	context["origin"] = &"interaction"
+	if execution != null: return director.request_child(execution, kind, context)
+	return director.request_action(kind, context)
 
 
 func _init(host_node: Node = null, player_node: Node3D = null, state_node: Node = null) -> void:

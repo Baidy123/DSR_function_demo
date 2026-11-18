@@ -1,0 +1,74 @@
+[gd_scene format=3]
+
+
+
+[sub_resource type="CylinderMesh" id="Seat"]
+material = SubResource("Seat")
+top_radius = 0.245
+bottom_radius = 0.245
+height = 0.104
+radial_segments = 24
+
+[sub_resource type="StandardMaterial3D" id="Frame"]
+albedo_color = Color(0.13, 0.16, 0.19, 1)
+
+[sub_resource type="StandardMaterial3D" id="Trim"]
+albedo_color = Color(0.43, 0.28, 0.13, 1)
+
+[sub_resource type="CylinderMesh" id="Base"]
+material = SubResource("Frame")
+top_radius = 0.235
+bottom_radius = 0.235
+height = 0.075
+radial_segments = 24
+
+[sub_resource type="CylinderMesh" id="Post"]
+material = SubResource("Frame")
+top_radius = 0.061
+bottom_radius = 0.061
+height = 0.5
+radial_segments = 24
+
+[sub_resource type="CylinderMesh" id="Footrest"]
+material = SubResource("Trim")
+top_radius = 0.153
+bottom_radius = 0.153
+height = 0.029
+radial_segments = 24
+
+[sub_resource type="CylinderMesh" id="SeatRim"]
+material = SubResource("Trim")
+top_radius = 0.232
+bottom_radius = 0.232
+height = 0.05
+radial_segments = 24
+
+[sub_resource type="CylinderShape3D" id="Shape"]
+radius = 0.245
+height = 0.612
+
+[node name="SwivelStool" type="StaticBody3D"]
+
+[node name="Base" type="MeshInstance3D" parent="."]
+position = Vector3(0.0000, 0.0380, 0.0000)
+mesh = SubResource("Base")
+
+[node name="Post" type="MeshInstance3D" parent="."]
+position = Vector3(0.0000, 0.2800, 0.0000)
+mesh = SubResource("Post")
+
+[node name="Footrest" type="MeshInstance3D" parent="."]
+position = Vector3(0.0000, 0.2500, 0.0000)
+mesh = SubResource("Footrest")
+
+[node name="SeatRim" type="MeshInstance3D" parent="."]
+position = Vector3(0.0000, 0.5100, 0.0000)
+mesh = SubResource("SeatRim")
+
+[node name="Seat" type="MeshInstance3D" parent="."]
+position = Vector3(0.0000, 0.5600, 0.0000)
+mesh = SubResource("Seat")
+
+[node name="Collision" type="CollisionShape3D" parent="."]
+position = Vector3(0, 0.306, 0)
+shape = SubResource("Shape")

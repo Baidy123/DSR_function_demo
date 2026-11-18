@@ -5,7 +5,7 @@ extends SceneTree
 
 const BOARD_SCENE := preload("res://scenes/ui/shop_board.tscn")
 
-const EXPECTED_CHECKS := 43
+const EXPECTED_CHECKS := 39
 
 var failures := 0
 var checks_run := 0
@@ -35,7 +35,7 @@ func _run() -> void:
 	check(grid_ready, "shop items use a grid container")
 	check(grid_ready and int(board.items_container.get("columns")) == 3,
 		"shop grid defaults to three columns")
-	check(board.columns_for_width(720.0) == 3 if board.has_method("columns_for_width") else false,
+	check(board.columns_for_width(640.0) == 3 if board.has_method("columns_for_width") else false,
 		"wide shop keeps three columns")
 	check(board.columns_for_width(500.0) == 2 if board.has_method("columns_for_width") else false,
 		"narrow shop uses two columns")
@@ -46,7 +46,7 @@ func _run() -> void:
 	check(grid_ready and int(board.items_container.get("columns")) == 2,
 		"resize updates the live grid column count")
 	if board.has_method("update_grid_for_width"):
-		board.update_grid_for_width(720.0)
+		board.update_grid_for_width(640.0)
 	check(grid_ready and int(board.items_container.get("columns")) == 3,
 		"widening restores three columns")
 
@@ -55,23 +55,12 @@ func _run() -> void:
 		requests.append([item_id, slot]))
 
 	var items: Array = [
-		{"id": &"first_aid", "name": "急救包", "description": "恢复 35 点生命", "price": 40, "weapon": false},
+		{"id": &"first_aid", "name": "急救包", "description": "医疗包 +1（按 H 使用）", "price": 40, "weapon": false},
 		{"id": &"ammo", "name": "弹药补给", "description": "补满弹匣与备弹", "price": 30, "weapon": false},
-		{"id": &"system_progress", "name": "系统进度", "description": "任务进度 +20", "price": 50, "weapon": false},
+		{"id": &"mind_access_device", "name": "思维接入装置", "description": "购买后获得思维接入装置", "price": 500, "weapon": false},
 	]
 	check(board.configure(items, 100), "configure accepts three rows")
 	check(board.item_count() == 3, "three visible rows")
-	board.update_grid_for_width(720.0)
-	board.show_board()
-	for _frame in range(3):
-		await process_frame
-	check(board.items_container.columns == 3, "wide layout keeps three live grid columns")
-	var cards: Array = board.items_container.get_children()
-	check(is_equal_approx(cards[0].position.y, cards[1].position.y)
-			and is_equal_approx(cards[1].position.y, cards[2].position.y),
-		"first three cards share one grid row")
-	check(cards[0].position.x < cards[1].position.x and cards[1].position.x < cards[2].position.x,
-		"first three cards progress left to right")
 	check(board.balance_text() == "货币：100", "balance text matches money")
 	check(board.press_purchase(&"ammo", -1), "consumable purchase intent is accepted")
 	check(board.last_purchase == {&"item_id": &"ammo", &"slot": -1},
@@ -90,14 +79,9 @@ func _run() -> void:
 		"six items populate two automatic grid rows")
 	check(board.items_container.get_child_count() == 6,
 		"grid contains one child per visible item")
-	for _frame in range(2):
-		await process_frame
-	var six_cards: Array = board.items_container.get_children()
-	check(six_cards[3].position.y > six_cards[0].position.y,
-		"fourth card starts the second automatic grid row")
 
 	var mixed: Array = [
-		{"id": &"first_aid", "name": "急救包", "description": "恢复 35 点生命", "price": 40, "weapon": false},
+		{"id": &"first_aid", "name": "急救包", "description": "医疗包 +1（按 H 使用）", "price": 40, "weapon": false},
 		{"id": &"locked_weapon", "name": "锁定武器", "description": "隐藏", "price": 200, "weapon": true, "hidden": true},
 	]
 	check(board.configure(mixed, 80), "configure accepts mixed rows")
@@ -116,7 +100,7 @@ func _run() -> void:
 		"last_purchase records secondary slot")
 
 	var disabled_items: Array = [
-		{"id": &"first_aid", "name": "急救包", "description": "恢复 35 点生命", "price": 40, "weapon": false, "enabled": false},
+		{"id": &"first_aid", "name": "急救包", "description": "医疗包 +1（按 H 使用）", "price": 40, "weapon": false, "enabled": false},
 		{"id": &"ammo", "name": "弹药补给", "description": "补满弹匣与备弹", "price": 30, "weapon": false, "enabled": true},
 	]
 	check(board.configure(disabled_items, 100), "configure accepts enabled state rows")

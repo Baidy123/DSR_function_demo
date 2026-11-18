@@ -1,14 +1,55 @@
-# 场景总调度：节点接线教程
+# 场景导演使用指南
 
-`SceneDirector` 是原 `EnemyWaves` 升级后的场景入口，负责可选引导、事件动作、敌人出场、演出镜头、死亡重开／回酒店及通关切关。现有五关只改入口名称和必要引用；CombatZone、Player、Camera3D、Wave → Squad → Enemy 的分工和摆放保持，第一关根上的原 Squad 仍由 Wave1 引用。
+`SceneDirector` 统一安排本场的对话、商店、交互、脚本演出、镜头、波次、出口和切场景。日常交互直接请求，复杂演出使用 **Scene Rules → Actions**。伤害、库存、扣款、任务和刷怪细节仍由原组件执行。
 
-新场景使用 `scenes/world/scene_director.tscn`。旧 `enemy_waves.tscn` 和 `enemy_wave_controller.gd` 保留兼容与原脚本 UID，不要在同一区域同时放两套调度器。五关装备、训练、导航和地图数值未由本功能重配。
+## 新场景先这样接入
+
+酒馆和五关已经装配，无需重复添加。新场景按以下步骤配置：
+
+1. 把 `scenes/world/scene_director.tscn` 拖到场景根下，保留一份入口。
+2. 在 **Health Path** 选择本场玩家的 Health；同级 Player 的路径是 `../Player/Health`。
+3. 有 LevelFlow 时设置 **Result View Path**。**Guide Path** 默认留空，操作说明统一从 **Esc → 设置** 手动打开；只有另需开场教程时才显式绑定。没有 Wave 也能运行，不会自动通关。
+4. 战斗场景沿用 CombatZone、Player、Camera3D 和 Wave → Squad → Enemy。Wave 放在导演入口下，第一关原根节点 Squad 仍由 Wave1 引用，无需移动。
+5. 事件、动作和手摆镜头按后文配置。不要把整个区域或敌人设成 Always；内部调度器会处理暂停期间的 UI 和取消。
+
+导演入口的 `director` 属性指向内部核心；代码用 `SceneDirector.for_node(self)` 查找本场核心。区域不会再暗中创建导演，缺少入口时会给出节点路径诊断。旧 `enemy_waves.tscn` 与脚本 UID 保留兼容，不要和新入口同时放置。
+
+## NPC 对话与商店
+
+普通 NPC 沿用现有 `npc.tscn`，配置对话资源与起点，并让其既有 `../DialogueUI` 路径指向本场对话界面。调用 `npc.request_dialogue(player)` 即可；获准后才转身和限制玩家。交互物自己的对话仍用 **ShowDialogueEffect** 拖入资源，见[交互说明](INTERACTION.md)。
+
+商店沿用 RewardNPC、ShopController、ShopBoard：NPC 绑定本场控制器，控制器绑定面板和 ShopCatalog；商品添加方式见[商店配置](REWARDS.md)。`open_shop_for_player(player)`、`close_shop()` 会转交导演，购买仍用 `purchase(item_id, slot)`。有可见商品时暂停，空目录显示“暂无商品”且不暂停。
+
+默认先结束当前对话／商店，再播放事件镜头；忙碌时再次按 E 不会排队弹出另一个窗口。死亡立即取消当前演出与界面。关闭按钮、来源离场和场景卸载只释放本次控制，不解除其他拥有者的暂停。
+
+## 脚本请求速查
+
+已有 NPC、商店和 Interactable 接口都已转交导演。自定义入口可以直接提交请求：
+
+```gdscript
+const SceneDirector = preload("res://scripts/systems/scene_director.gd")
+
+var director := SceneDirector.for_node(self)
+if director == null:
+    push_warning("当前场景缺少 SceneDirector")
+    return
+var request = director.request_action(&"dialogue", {
+    "source": self, "target": dialogue_ui, "player": player,
+    "origin": &"interaction",
+    "parameters": {"resource": dialogue_resource, "start": "start", "face_source": true}
+})
+var result: Dictionary = await request.wait_result()
+if result.status == &"completed":
+    print("对话已结束")
+```
+
+`origin = interaction` 忙碌时拒绝，`rule` 排队。`parameters` 只放数据，节点分别放在 source／target／player／scope_owner；跨场节点和参数中藏入的节点会被拒绝。请求状态为 queued／running／completed／failed／cancelled／rejected；`wait_result()` 也可读取已同步完成的结果。用 `director.cancel_request(request.id, &"reason")` 取消；自定义持续逻辑见第五节，不要在批准前自行锁住玩家。
 
 ## 编辑器里主要操作什么
 
 | 对象 | 怎么创建 | 配置内容 |
 | --- | --- | --- |
-| SceneDirector | 五关已有；新场景拖入 `scene_director.tscn` | 玩家/UI绑定、可选引导、场景规则 |
+| SceneDirector | 酒馆与五关已有；新场景拖入 `scene_director.tscn` | 玩家/UI绑定、可选引导、场景规则 |
 | SceneEvent | 拖入 `scenes/world/scene_event.tscn`，自行改名 | 来源节点、来源信号、可选过滤；也可手动触发 |
 | Wave | 原 `enemy_wave.tscn`，部署方式不变 | 出场模式、事件节点列表、延迟、出场镜头 |
 | Marker3D | 在3D编辑器创建并手动摆放 | 镜头画面中心；也可直接绑定已有 Node3D |
@@ -62,6 +103,8 @@ Lvl1
 
 ## 二、让自己的脚本发事件
 
+三种 Start Mode 都在物理调度边界向导演申请部署，实际生成前再读取当前许可；回调只记录事件，不在信号栈中直接生成。原模板、导航、二次空间检查和每步最多提交一波保持。普通等待或另一波占位不会占住整场队列；需要前台镜头的增援会等当前对话／商店结束，再真实生成与展示。
+
 原节点已经声明信号时，通常只需绑定 Source Path / Signal Name，无需改脚本。例如 `Interactable.interacted` 表示交互真正成功，`blocked` 不算成功。
 
 也可让 SceneEvent 的 **Source Path 留空**，在你自己的成功回调里直接触发：
@@ -104,7 +147,7 @@ SceneDirector 另有可选“统一出场镜头”，适合所有波使用同一
 3. **Scope = REGION**：本轮区域战斗一次，复位可重播；**SCENE**：本场一次，出入区域不重播。
 4. **Actions** 按顺序添加 `SceneFlowAction`，先选 **Kind**，再填相关字段。
 
-将鼠标悬停在 **Kind** 属性名上，可查看全部10种动作的中文用途与必填参数说明；各参数也有独立悬停注释。
+将鼠标悬停在 **Kind** 属性名上查看用途与必填参数；新增 RUN_SCRIPT 后共有11种动作，旧资源编号保持。
 
 例如“事件 → 等1秒 → 请求Wave2 → 等清空 → 调已有公开方法”：
 
@@ -123,12 +166,52 @@ REQUEST_WAVE 等真实生成才继续；若勾选 **Present Spawn**，动作的 
 | GUIDE | 调用 begin() 并等待无参 finished，可选择是否暂停 |
 | WAIT_SIGNAL | 等待 Completed Trigger 的来源信号及过滤结果 |
 | COMPLETE_SCENE | 请求完成，必要镜头结束后显示结果，同帧死亡优先 |
-| RESTART | 请求重载当前场景 |
+| RESTART | 编排者配置的重载动作；当前五关未配置，不是玩家平时的重试入口 |
 | CHANGE_SCENE | 请求 Scene Path 指定场景，失败可重试原目标 |
 
-CALL_METHOD 不接受以下划线开头的私有方法，并检查参数数量和基础类型。需要等动画或异步执行结束时配 **Completed Trigger**，订阅先于方法调用；留空只表示调用返回。例如现有滑门的状态改变不等于 Tween 已经结束，不能当作移动完成。
+CALL_METHOD 不接受以下划线开头的私有方法，并检查参数数量和基础类型。即时方法留空 Completed Trigger；需要等待异步完成时，必须同时配置 **Completed Trigger** 与 **Cancel Method**（公开、无参停止方法），缺少取消契约会在执行前拒绝。订阅先于方法调用，不遗漏同步完成；滑门状态改变不等于 Tween 已经结束。
 
-Event Nodes 和高级 Triggers 都为空表示准备好后自动运行一次。不同规则可独立等待，事件回调只记录事实，动作在调度边界推进。普通等待在暂停时冻结，资源不保存本场执行进度。
+规则请求排队后，真正开始前会重新检查 **Condition**。条件已经失效时取消本次动作，原因是 `condition_changed`，不会先执行副作用。本次规则已触发，不自动重投；REGION 规则在所属区域复位后可以重新触发，SCENE 规则本场不重播。
+
+## 五、接入可取消的脚本演出
+
+复杂演出优先用 **RUN_SCRIPT**，Target Path 选实现 `begin_scene_action(request)` 与 `cancel_scene_action(request, reason)` 的节点。Arguments 保存在 request.parameters.arguments，执行者用 `request.complete()` 或 `request.fail(reason)` 报告实际结果。每次 await 后先检查 `request.is_current()`；取消时停止自己持有的 Timer、Tween 与动画，不能只断开完成通知。
+
+例如节点下添加一次性 Timer，按下面的合同接入；持续逻辑仍留在自己的脚本中：
+
+```gdscript
+var active: SceneRequest
+
+func _ready() -> void:
+    $Timer.timeout.connect(_finished)
+
+func begin_scene_action(request: SceneRequest) -> void:
+    active = request
+    $Timer.start()
+
+func cancel_scene_action(request: SceneRequest, _reason: StringName) -> void:
+    if active != request: return
+    $Timer.stop()
+    active = null
+
+func _finished() -> void:
+    if active != null and active.is_current(): active.complete()
+    active = null
+```
+
+默认脚本演出占前台。只做局部背景动画的适配可提供 `scene_action_is_background() -> bool` 并返回 true，仍受死亡、区域复位与卸载取消管理。原滑门已这样接入：按 E、离开自动关门和防夹折返都通过导演，反向请求先取消旧 Tween。普通 WAIT／WAIT_SIGNAL／WAIT_WAVE_CLEARED 保持独立等待，不占全场前台。
+
+## 六、交互与传送怎么接入
+
+普通交互物继续用 Interactable 的 Effects 数组。`interact(player)` 先请求导演，忙碌拒绝不执行效果；返回 true 表示本次获准开始，`interacted` 表示全部效果真正完成。一次性记录和隐藏也在完成后提交。含对话的组合继承本次前台控制，不会把自己的子对话排队到自己结束之后。
+
+切场景仍配置 **ChangeSceneEffect → Scene Path**。普通交互默认 plain；QuestPortal 自动准备入关快照，TavernReturnPortal 按原 Level Number 准备完成级别、返程快照与检查点，无需重配资源。准备不改变 GameState；引擎接受切换后才提交，目标 `_ready()` 已能读取，且快照仍只消费一次。切场成功后旧来源已离树，不补发旧节点的交互信号；跨场结果查询 transition 请求与业务状态。
+
+普通门加载失败会归还本次控制，显示“交互失败，请重试”，再次按 E 重试当前配置目标。死亡／结果按钮和规则切换失败保留原暂停与重试界面；`request_load_retry()` 保留原路径与 reload 方式。源场景卸载后返回的旧异步加载结果无权提交状态。原检查点规则继续恢复医疗包资源、武器、弹药、货币及商店旗标。
+
+引擎尚未接受加载时，可用 `cancel_request()` 取消加载请求或其父交互；来源离场也会取消，并恢复本次状态、界面与暂停所有权，迟到结果不能再提交。引擎接受切换后进入提交边界，旧来源正常离场不会把成功切换误判为取消。
+
+规则的 Event Nodes 和高级 Triggers 都为空表示准备好后自动运行一次。不同规则可独立等待，事件回调只记录事实，动作在调度边界推进。普通等待在暂停时冻结，资源不保存本场执行进度。
 
 ## 路径和过滤速查
 
@@ -153,17 +236,20 @@ String 不等于 StringName，整数1不等于布尔true。需要“事件发生
 
 ## 开场、死亡、完成和取消
 
-- 清空 **Guide Path** 或移除 PlayGuide 即可跳过临时说明。未来教程适配 `begin()/cancel()/finished`；允许走动的教程关闭 Guide Pauses World。核心不依赖 PlayGuide 类型。
-- Health 只结算生命、停止玩家自身动作并发 `died`。调度器先取得死亡暂停，再取消镜头/动作，独立视图控制原 `Player/Health/DeathScreen`；“重新挑战”只报告当前场景重载请求，“返回酒店”会先调用 `GameState.restore_campaign_checkpoint()`，再通过 `LevelFlow.next_scene_path()` 加载酒馆。没有 `LevelFlow` 适配器的通用场景隐藏“返回酒店”，保留当前场景重开。
+- **Guide Path** 默认留空，当前五关进入与死亡重开不自动弹出操作说明；保留 `LevelFlow/PlayGuide` 节点路径，显式绑定的独立教程仍适配 `begin()/cancel()/finished`。允许走动的教程关闭 Guide Pauses World，核心不依赖 PlayGuide 类型。
+- 导演初始化时装配一个 `PauseMenu`，不改变地图的 Wave／Squad 层级。`request_pause_menu()` 仅在可游玩、无加载失败、世界未暂停且没有前台请求／其他控制拥有者时取得 `pause_menu` 暂停；`resume_from_pause_menu()` 只释放该令牌。菜单回传暂停、继续和确认退出意图，设置／说明子页不自行恢复世界。菜单打开时不推进导演排队请求、普通规则或演出计时；死亡／加载等状态变化及卸载关闭菜单并保留其他暂停所有权。
+- Health 只结算生命、停止玩家自身动作并发 `died`。调度器先取得死亡暂停，再取消镜头/动作，独立视图控制原 `Player/Health/DeathScreen`；“重新挑战”准备入关状态并重载当前场景，“返回酒馆”准备恢复最近酒馆检查点，再通过 `LevelFlow.next_scene_path()` 加载酒馆。两者均在加载接受后提交。没有 `LevelFlow` 适配器的通用场景隐藏“返回酒馆”，保留当前场景重开。
 - 配置了 `LevelFlow.return_portal_path` 的五关在全部波次完成后只开放本关 `TavernReturnPortal`，不暂停世界，也不显示直接进入下一关的按钮。没有返程门的结果界面仍可暂停并显示原按钮；没有任何 Wave 不自动通关。
 - `LevelFlow.completion_pauses_world()` 决定完成时是否取得暂停所有权：有返程门时返回 false，保留结果按钮时返回 true。该接口只影响完成，不改变死亡暂停。
 - 离区仍由区域服务清理敌人、掉落与协同，调度器取消 REGION 规则和镜头。SCENE 开场和结果不重播；若 SCENE 规则正等旧轮波次，该等待明确取消诊断，不自动跨轮重投。
+
+- 区域请求的 scope_owner 标明所属区域，`reset_region(region)` 只取消该区域的执行；不传参数沿用当前部署区域。另一区域的引导、镜头与 SCENE 请求不会被全局收尾分支误停。LevelFlow.show_completion 是兼容请求入口，真实出口启用由导演完成边界调用执行端。
 - 关闭说明、结束镜头、旧场景卸载只释放自己的暂停，不清除别的拥有者。重开不清空 GameState。
-- 加载失败保留暂停并恢复两个按钮；重试会沿用上一次选择的路径和重载方式。事件切场景失败重试原路径，不误用五关路径表。自定义无UI流程可读核心诊断并调用 `request_load_retry()`。
+- 死亡／结果／规则加载失败保留暂停并恢复重试按钮；普通交互失败归还控制。重试沿用上一次选择的路径和重载方式，不误用五关路径表。自定义无 UI 流程可读核心诊断并调用 `request_load_retry()`。
 
 入口的 `director` 属性指向内部核心，`debug_snapshot().scene` 提供场景状态、暂停原因、规则进度与最近错误。原波次接口仍可用：`start_encounter()`、`request_wave(wave)`、`reset_encounter()`、`wave_started`、`wave_cleared`、`encounter_completed`。
 
-旧 Main 没有波次入口时，区域为场景玩家装配同一个核心处理死亡，并防止多区域重复接管。单独复用 Player 不再自行暂停/重开，应由所在场景接入调度。
+同场多个区域通过查找共享已装配的核心。单独复用 Player 或区域时也要显式装配导演；Player 不自行暂停／重开，区域不创建替代核心。
 
 ## 排错
 
@@ -176,6 +262,7 @@ String 不等于 StringName，整数1不等于布尔true。需要“事件发生
 | 已刷敌人却无镜头 | 检查开关、手动目标、目标是否在树内及最近诊断 |
 | 构图不合意 | 移动Marker3D的世界位置，调整Size；不要移动玩家相机 |
 | 说明关闭后仍暂停 | 检查pause.reasons是否还有死亡、结果或其他拥有者 |
-| 换关没继承装备 | 当前仍按各关保存配置；PlayerSession/角色绑定属于后续连续模式，不擅自更改携带规则 |
+| 请求被拒绝／没有导演 | 检查本场唯一入口、Health Path、核心是否准备好、目标是否仍在本场；查看 request.reason |
+| 换关没继承装备 | 检查是否通过 QuestPortal／TavernReturnPortal、加载是否成功、一次性快照是否已被消费；plain 切换不自动准备战役快照 |
 
-使用依据见[设计](../superpowers/specs/2026-10-25-enemy-wave-event-triggers-design_todo.md)，验证见[实施计划](../superpowers/plans/2026-10-28-scene-director-implementation.md)。实际地图的锚点位置与镜头手感由你调整，自动测试不替你决定构图。
+统一调度的约束见[设计](../superpowers/specs/2026-11-10-scene-director-authority-design.md)，实施与验证记录见[计划](../superpowers/plans/2026-11-10-scene-director-authority.md)和[测试说明](../testing.md)。实际地图的锚点位置与镜头手感由你调整，自动测试不替你决定构图。

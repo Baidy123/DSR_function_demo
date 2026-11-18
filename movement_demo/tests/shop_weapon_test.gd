@@ -141,12 +141,13 @@ func _check_real_level_retry_preserves_paid_weapon() -> void:
 
 	var portal = scene.get_node("Interactables/LevelPortal")
 	check(portal.interact(player), "level 2 portal accepts the purchased loadout")
+
+	scene = await _wait_for_scene(LEVEL_2)
+	# Entry data is published only after the engine accepts the transition.
 	var entry_state: Dictionary = state.level_entry_player_state
 	var entry_equipment: Dictionary = entry_state.get("equipment", {})
 	check(entry_equipment.get("primary_weapon") == paid_weapon,
 		"QuestPortal records the purchased loadout at level entry")
-
-	scene = await _wait_for_scene(LEVEL_2)
 	check(scene != null, "level 2 loads after the purchase")
 	if scene == null:
 		await _release(scene)

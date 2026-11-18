@@ -13,7 +13,7 @@ const SHOTGUN := preload("res://resources/weapons/test_shotgun.tres")
 const SMG := preload("res://resources/weapons/test_smg.tres")
 
 const WATCHDOG_SECONDS := 50.0
-const EXPECTED_CHECKS := 92
+const EXPECTED_CHECKS := 122
 
 
 class FailingEffectController extends "res://scripts/shop/shop_controller.gd":
@@ -48,6 +48,8 @@ func check(condition: bool, label_text: String) -> void:
 func _run() -> void:
 	create_timer(WATCHDOG_SECONDS, true, false, true).timeout.connect(_on_watchdog)
 	await _check_real_shop_flow()
+	await _check_medkit_inventory_purchase()
+	await _check_flag_product_purchase()
 	await _check_zero_price_free_purchase()
 	await _check_full_ammo_rejection()
 	await _check_dead_player_rules()
@@ -59,6 +61,7 @@ func _run() -> void:
 
 func _check_real_shop_flow() -> void:
 	var ctx := await _prepare_main()
+	ctx.state.money = 1000
 	check(ctx.controller != null, "ShopController is mounted")
 	check(ctx.board != null, "ShopBoard is mounted")
 	check(ctx.npc != null, "RewardNPC node path is retained")
@@ -70,19 +73,20 @@ func _check_real_shop_flow() -> void:
 	check(ctx.board.item_count() == 0, "board starts with no rows")
 	check(await _open_shop_via_e(ctx), "E interaction opens the shop and pauses")
 	check(ctx.board.item_count() == 3, "level 0 shows the three initial products")
-	check(ctx.board.balance_text() == "货币：500", "board shows current money")
-	check(not ctx.board.purchase_enabled(&"first_aid", -1), "controller disables first aid while health is full")
+	check(ctx.board.balance_text() == "货币：1000", "board shows current money")
+	check(ctx.board.purchase_enabled(&"first_aid", -1), "full health still permits buying medkits")
 	check(ctx.board.purchase_enabled(&"ammo", -1), "controller enables ammo while it is depleted")
-	check(ctx.board.purchase_enabled(&"system_progress", -1),
-		"controller marks system progress enabled before it reaches maximum")
+	check(ctx.board.purchase_enabled(&"mind_access_device", -1),
+		"controller marks flag product enabled before ownership")
 
 	ctx.health.health = 20.0
 	ctx.health._update_display()
 	var health_before: float = ctx.health.health
+	var medkits_before: int = ctx.equipment.medkit_count
 	check(ctx.controller.purchase(&"first_aid", -1), "first aid purchase succeeds")
-	check(is_equal_approx(ctx.health.health, minf(ctx.health.max_health, health_before + 35.0)),
-		"first aid heals 35")
-	check(ctx.state.money == 460, "first aid deducts 40")
+	check(ctx.equipment.medkit_count == medkits_before + 1 and is_equal_approx(ctx.health.health, health_before),
+		"first aid adds one medkit without directly healing")
+	check(ctx.state.money == 960, "first aid deducts 40")
 
 	var money_before_ammo: int = ctx.state.money
 	check(ctx.controller.purchase(&"ammo", -1), "ammo purchase succeeds")
@@ -94,15 +98,21 @@ func _check_real_shop_flow() -> void:
 		"ammo restores every initial reserve type")
 	check(_magazines_full(ctx.equipment), "ammo refills both magazines and cancels reload")
 
-	check(ctx.controller.purchase(&"system_progress", -1), "system progress purchase succeeds")
-	check(int(ctx.state.system_progress) == 20, "system progress adds 20")
-	check(ctx.state.money == 380, "system progress deducts 50")
+	check(ctx.controller.purchase(&"mind_access_device", -1), "flag product purchase succeeds")
+	check(ctx.state.get_flag(&"has_mind_access_device"), "one purchase grants device ownership")
+	check(ctx.state.money == 430, "flag product deducts 500 in one payment")
+	check(ctx.state.has_purchased_shop_item(&"mind_access_device") and ctx.board.item_count() == 2,
+		"flag product is recorded and hidden after purchase")
+	check(not ctx.controller.purchase(&"mind_access_device", -1), "flag product cannot be purchased twice")
+	check(ctx.state.money == 430 and ctx.state.get_flag(&"has_mind_access_device"),
+		"repeat flag product purchase changes neither money nor ownership")
 
 	ctx.health.health = 10.0
 	ctx.health._update_display()
 	check(ctx.controller.purchase(&"first_aid", -1), "repeatable first aid purchase succeeds again")
-	check(is_equal_approx(ctx.health.health, 45.0), "repeat first aid heals again")
-	check(ctx.state.money == 340, "repeat first aid deducts again")
+	check(ctx.equipment.medkit_count == medkits_before + 2 and is_equal_approx(ctx.health.health, 10.0),
+		"repeat first aid adds another medkit without healing")
+	check(ctx.state.money == 390, "repeat first aid deducts again")
 
 	ctx.controller.close_shop()
 	await ctx.tree.process_frame
@@ -118,14 +128,14 @@ func _check_real_shop_flow() -> void:
 	await ctx.tree.process_frame
 
 	check(await _open_shop_via_e(ctx), "shop reopens after catalog change")
-	check(ctx.board.item_count() == 3, "weapon rows stay hidden before unlock level")
+	check(ctx.board.item_count() == 2, "locked weapons and the owned flag product stay hidden")
 
 	ctx.controller.close_shop()
 	await ctx.tree.process_frame
 	ctx.state.completed_level = 1
 	await ctx.tree.process_frame
 	check(await _open_shop_via_e(ctx), "shop reopens at unlock level 1")
-	check(ctx.board.item_count() == 5, "weapon rows appear at unlock level 1")
+	check(ctx.board.item_count() == 4, "weapon rows appear at unlock level 1 while the owned flag stays hidden")
 
 	var original_secondary: WeaponData = ctx.equipment.secondary_weapon
 	var money_before_weapon: int = ctx.state.money
@@ -135,7 +145,7 @@ func _check_real_shop_flow() -> void:
 	check(ctx.state.money == money_before_weapon - 100, "primary weapon deducts 100")
 	check(ctx.state.has_purchased_shop_item(&"shop_rifle_primary"),
 		"primary weapon purchase is recorded")
-	check(ctx.board.item_count() == 4, "one-time primary row disappears after purchase")
+	check(ctx.board.item_count() == 3, "one-time primary row disappears after purchase")
 
 	money_before_weapon = ctx.state.money
 	check(ctx.controller.purchase(&"shop_rifle_secondary", 1), "secondary weapon purchase succeeds")
@@ -144,7 +154,7 @@ func _check_real_shop_flow() -> void:
 	check(ctx.state.money == money_before_weapon - 120, "secondary weapon deducts 120")
 	check(ctx.state.has_purchased_shop_item(&"shop_rifle_secondary"),
 		"secondary weapon purchase is recorded")
-	check(ctx.board.item_count() == 3, "both one-time weapon rows disappear after purchase")
+	check(ctx.board.item_count() == 2, "both one-time weapon rows disappear after purchase")
 
 	var money_before_repeat: int = ctx.state.money
 	check(not ctx.controller.purchase(&"shop_rifle_primary", 0), "repeat one-time weapon is rejected")
@@ -162,9 +172,11 @@ func _check_real_shop_flow() -> void:
 	ctx.health.health = 10.0
 	ctx.health._update_display()
 	var money_before_poor: int = ctx.state.money
+	var stock_before_poor: int = ctx.equipment.medkit_count
 	check(not ctx.controller.purchase(&"first_aid", -1), "insufficient funds are rejected")
-	check(ctx.state.money == money_before_poor and is_equal_approx(ctx.health.health, 10.0),
-		"insufficient funds change neither money nor health")
+	check(ctx.state.money == money_before_poor and ctx.equipment.medkit_count == stock_before_poor
+		and is_equal_approx(ctx.health.health, 10.0),
+		"insufficient funds change neither money, stock nor health")
 
 	var pause_owner := Node.new()
 	ctx.scene.add_child(pause_owner)
@@ -180,6 +192,89 @@ func _check_real_shop_flow() -> void:
 	await _release(ctx.scene)
 
 
+func _check_medkit_inventory_purchase() -> void:
+	var ctx := await _prepare_main(false)
+	var stock_before: int = ctx.equipment.medkit_count
+	var health_before: float = ctx.health.health
+	var original_medkit: MedkitData = ctx.equipment.medkit
+	var custom: ShopCatalog = preload("res://resources/shop/shop_catalog.tres").duplicate(true)
+	var product: ShopItemDefinition = custom.item_by_id(&"first_aid")
+	product.amount = 3
+	product.medkit_data = original_medkit
+	ctx.controller.shop_catalog = custom
+	ctx.state.record_campaign_checkpoint(int(ctx.state.completed_level), PlayerCampaignState.capture(ctx.player))
+	check(await _open_shop_via_e(ctx), "medkit shop opens at full health")
+	check(ctx.board.purchase_enabled(&"first_aid", -1), "configured medkit bundle is available at full health")
+	check(ctx.controller.purchase(&"first_aid", -1), "configured medkit bundle can be purchased")
+	check(ctx.equipment.medkit_count == stock_before + 3 and is_equal_approx(ctx.health.health, health_before),
+		"Amount configures medkit count without changing health")
+	check(ctx.equipment.get_node("Panel/Content/MedkitCount").text.ends_with(str(stock_before + 3)),
+		"existing medical stock label refreshes after purchase")
+	var money_before: int = ctx.state.money
+	ctx.equipment.name = "UnavailableEquipment"
+	check(not ctx.controller.purchase(&"first_aid", -1), "missing inventory rejects medkit purchase")
+	check(ctx.state.money == money_before and ctx.equipment.medkit_count == stock_before + 3,
+		"missing inventory changes neither money nor stock")
+	ctx.equipment.name = "Equipment"
+	check(ctx.controller.purchase(&"first_aid", -1), "medkit bundles remain repeatable")
+	check(ctx.equipment.medkit_count == stock_before + 6 and ctx.state.money == 420
+		and is_equal_approx(ctx.health.health, health_before), "repeat bundle adds the configured count and charges again")
+	ctx.controller.close_shop()
+	var alternate := MedkitData.new()
+	alternate.heal_amount = 75.0
+	alternate.use_seconds = 1.0
+	product.medkit_data = alternate
+	check(await _open_shop_via_e(ctx) and not ctx.board.purchase_enabled(&"first_aid", -1),
+		"a different medical resource does not overwrite existing stock")
+	check(not ctx.controller.purchase(&"first_aid", -1) and ctx.state.money == 420
+		and ctx.equipment.medkit == original_medkit and ctx.equipment.medkit_count == stock_before + 6,
+		"incompatible medical resource changes neither stock nor money")
+	ctx.controller.close_shop()
+	ctx.equipment.medkit_count = 0
+	check(await _open_shop_via_e(ctx), "empty inventory accepts a new medical resource")
+	check(ctx.controller.purchase(&"first_aid", -1), "medical resource product can fill empty inventory")
+	check(ctx.equipment.medkit == alternate and ctx.equipment.medkit_count == 3 and ctx.state.money == 380
+		and is_equal_approx(ctx.health.health, health_before), "purchase binds the selected resource without instant healing")
+	ctx.controller.close_shop()
+	check(ctx.state.restore_campaign_checkpoint(), "checkpoint restore accepts the medical purchase snapshot")
+	PlayerCampaignState.apply(ctx.player, ctx.state.take_pending_player_state())
+	check(ctx.equipment.medkit_count == stock_before and ctx.equipment.medkit == original_medkit
+		and ctx.state.money == 500 and is_equal_approx(ctx.health.health, health_before),
+		"hotel refund restores medical resource, stock and money together")
+	await _release(ctx.scene)
+
+
+func _check_flag_product_purchase() -> void:
+	var ctx := await _prepare_main(false)
+	ctx.state.money = 499
+	check(await _open_shop_via_e(ctx), "shop opens below the flag product price")
+	check(not ctx.board.purchase_enabled(&"mind_access_device", -1), "499 cannot enable the 500 product")
+	check(not ctx.controller.purchase(&"mind_access_device", -1), "partial payment is rejected")
+	check(ctx.state.money == 499 and not ctx.state.get_flag(&"has_mind_access_device")
+		and not ctx.state.has_purchased_shop_item(&"mind_access_device"),
+		"partial payment changes neither money, ownership nor purchase records")
+	ctx.controller.close_shop()
+	ctx.state.money = 500
+	ctx.state.set_flag(&"music_playing", false)
+	ctx.state.record_campaign_checkpoint(int(ctx.state.completed_level), {})
+	check(await _open_shop_via_e(ctx), "shop reopens with exactly 500")
+	check(ctx.board.purchase_enabled(&"mind_access_device", -1), "exact price enables the product")
+	check(ctx.controller.purchase(&"mind_access_device", -1), "exact price buys the complete product")
+	check(ctx.state.money == 0 and ctx.state.get_flag(&"has_mind_access_device")
+		and ctx.state.has_purchased_shop_item(&"mind_access_device") and ctx.board.item_count() == 2,
+		"one payment sets the ownership flag and hides the product")
+	ctx.controller.close_shop()
+	ctx.state.set_flag(&"music_playing")
+	check(ctx.state.restore_campaign_checkpoint(), "flag product purchase can roll back to its checkpoint")
+	check(ctx.state.money == 500 and not ctx.state.get_flag(&"has_mind_access_device") and ctx.state.get_flag(&"music_playing")
+		and not ctx.state.has_purchased_shop_item(&"mind_access_device"),
+		"checkpoint refunds the full price and restores ownership and purchase eligibility")
+	check(await _open_shop_via_e(ctx) and ctx.board.item_count() == 3
+		and ctx.board.purchase_enabled(&"mind_access_device", -1),
+		"refunded flag product becomes available again")
+	await _release(ctx.scene)
+
+
 func _check_zero_price_free_purchase() -> void:
 	var ctx := await _prepare_main(false)
 	var state: Node = ctx.state
@@ -188,20 +283,22 @@ func _check_zero_price_free_purchase() -> void:
 	ctx.health._update_display()
 
 	var catalog := ShopCatalogScript.new()
-	var free_heal := ShopItemScript.new()
-	free_heal.id = &"free_heal"
-	free_heal.display_name = "免费急救"
-	free_heal.description = "免费恢复 5 点生命"
-	free_heal.price = 0
-	free_heal.effect = ShopItemScript.Effect.HEAL
-	free_heal.amount = 5
-	catalog.items.append(free_heal)
+	var free_medkit := ShopItemScript.new()
+	free_medkit.id = &"free_medkit"
+	free_medkit.display_name = "免费急救"
+	free_medkit.description = "免费获得 5 个医疗包"
+	free_medkit.price = 0
+	free_medkit.effect = ShopItemScript.Effect.ADD_MEDKIT
+	free_medkit.amount = 5
+	free_medkit.medkit_data = ctx.equipment.medkit
+	var stock_before: int = ctx.equipment.medkit_count
+	catalog.items.append(free_medkit)
 	catalog.items.append(_weapon_item(&"free_weapon", SHOTGUN, 0, 0))
 	ctx.controller.shop_catalog = catalog
 
 	check(ctx.controller.open_shop_for_player(ctx.player), "zero-price shop opens")
-	check(ctx.controller.purchase(&"free_heal", -1), "zero-price consumable succeeds")
-	check(is_equal_approx(ctx.health.health, 15.0) and state.money == 0,
+	check(ctx.controller.purchase(&"free_medkit", -1), "zero-price consumable succeeds")
+	check(ctx.equipment.medkit_count == stock_before + 5 and is_equal_approx(ctx.health.health, 10.0) and state.money == 0,
 		"zero-price consumable applies without charging")
 	check(ctx.controller.purchase(&"free_weapon", 0), "zero-price weapon succeeds")
 	check(ctx.equipment.primary_weapon == SHOTGUN and state.money == 0,
@@ -300,30 +397,32 @@ func _check_transaction_ordering() -> void:
 	ctx.health._update_display()
 
 	var catalog := ShopCatalogScript.new()
-	var failing_heal := ShopItemScript.new()
-	failing_heal.id = &"failing_heal"
-	failing_heal.display_name = "失败急救"
-	failing_heal.description = "应用阶段会失败，用于验证退款顺序"
-	failing_heal.price = 40
-	failing_heal.effect = ShopItemScript.Effect.HEAL
-	failing_heal.amount = 35
-	failing_heal.one_time = true
-	catalog.items.append(failing_heal)
+	var failing_medkit := ShopItemScript.new()
+	failing_medkit.id = &"failing_medkit"
+	failing_medkit.display_name = "失败急救"
+	failing_medkit.description = "应用阶段会失败，用于验证退款顺序"
+	failing_medkit.price = 40
+	failing_medkit.effect = ShopItemScript.Effect.ADD_MEDKIT
+	failing_medkit.amount = 2
+	failing_medkit.medkit_data = ctx.equipment.medkit
+	failing_medkit.one_time = true
+	catalog.items.append(failing_medkit)
 
 	var controller := FailingEffectController.new()
 	controller.shop_catalog = catalog
 	controller.shop_board_path = NodePath("../ShopBoard")
-	controller.fail_item = &"failing_heal"
+	controller.fail_item = &"failing_medkit"
 	ctx.scene.add_child(controller)
 	await process_frame
 
 	check(controller.open_shop_for_player(ctx.player), "failing-effect controller opens the shop")
 	var money_before: int = state.money
 	var health_before: float = ctx.health.health
-	check(not controller.purchase(&"failing_heal", -1), "unexpected effect failure rejects the purchase")
+	var stock_before: int = ctx.equipment.medkit_count
+	check(not controller.purchase(&"failing_medkit", -1), "unexpected effect failure rejects the purchase")
 	check(state.money == money_before, "paid purchase refunds the exact amount after an unexpected failure")
-	check(is_equal_approx(ctx.health.health, health_before), "failed purchase does not mutate player health")
-	check(not state.has_purchased_shop_item(&"failing_heal"),
+	check(ctx.equipment.medkit_count == stock_before and is_equal_approx(ctx.health.health, health_before), "failed purchase mutates neither stock nor health")
+	check(not state.has_purchased_shop_item(&"failing_medkit"),
 		"failed one-time purchase is not marked purchased")
 
 	controller.close_shop()
@@ -378,7 +477,6 @@ func _prepare_main(deplete: bool = true) -> Dictionary:
 	state.money = 500
 	state.completed_level = 0
 	state.available_level = 1
-	state.system_progress = 0
 	state.purchased_shop_item_ids = {}
 	state.rewarded_task_ids = {}
 	state.clear_interaction_state()

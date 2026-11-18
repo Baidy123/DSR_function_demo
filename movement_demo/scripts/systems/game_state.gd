@@ -1,13 +1,82 @@
 extends Node
 
+var _transition_sequence := 0
+var _transition_prepared: Dictionary = {}
+var _transition_signals: Array[Dictionary] = []
+var _transition_committing := false
+
+func _transition_snapshot() -> Dictionary:
+	var snapshot := capture_campaign_state()
+	snapshot["campaign_checkpoint"] = campaign_checkpoint.duplicate(true)
+	snapshot["level_entry_player_state"] = level_entry_player_state.duplicate(true)
+	return snapshot
+
+func prepare_scene_transition(mode: StringName, player_snapshot: Dictionary = {}, level_number: int = 0) -> Dictionary:
+	if mode not in [&"enter_level", &"return_tavern", &"retry_level", &"death_return", &"plain"]: return {}
+	if mode == &"return_tavern" and (level_number < 1 or level_number > 5): return {}
+	var before := _transition_snapshot()
+	var target := before.duplicate(true)
+	match mode:
+		&"enter_level":
+			target.player_state = player_snapshot.duplicate(true)
+			target.level_entry_player_state = player_snapshot.duplicate(true)
+		&"return_tavern":
+			target.completed_level = level_number
+			if level_number == 1: target.task_a_returned = "returned"
+			target.player_state = player_snapshot.duplicate(true)
+			var checkpoint := target.duplicate(true)
+			checkpoint.erase("campaign_checkpoint")
+			checkpoint.erase("level_entry_player_state")
+			checkpoint["level"] = level_number
+			target.campaign_checkpoint = checkpoint
+		&"retry_level":
+			if not level_entry_player_state.is_empty(): target.player_state = level_entry_player_state.duplicate(true)
+		&"death_return":
+			if not campaign_checkpoint.is_empty():
+				var defaults := {"completed_level": 0, "available_level": available_level,
+					"claimed_reward_levels": {}, "shop_flags": {}, "task_a_returned": "", "money": 0,
+					"rewarded_task_ids": {}, "purchased_shop_item_ids": {}, "player_state": {}}
+				for key in defaults:
+					target[key] = _transition_copy(campaign_checkpoint.get(key, defaults[key]))
+	_transition_sequence += 1
+	var prepared := {"id": _transition_sequence, "base": before, "target": target}
+	_transition_prepared[_transition_sequence] = prepared.duplicate(true)
+	return prepared
+
+func _transition_copy(value: Variant) -> Variant:
+	return value.duplicate(true) if value is Dictionary or value is Array else value
+
+func validate_scene_transition(prepared: Dictionary) -> bool:
+	return not prepared.is_empty() and _transition_prepared.get(prepared.get("id")) == prepared and prepared.get("base") == _transition_snapshot()
+
+func discard_scene_transition(prepared: Dictionary) -> void:
+	_transition_prepared.erase(prepared.get("id"))
+
+func commit_scene_transition(prepared: Dictionary) -> bool:
+	if not validate_scene_transition(prepared): return false
+	_transition_prepared.erase(prepared.id)
+	var target: Dictionary = prepared.target
+	_transition_committing = true
+	campaign_checkpoint = target.campaign_checkpoint.duplicate(true)
+	level_entry_player_state = target.level_entry_player_state.duplicate(true)
+	restore_campaign_state(target)
+	_transition_committing = false
+	var notifications := _transition_signals
+	_transition_signals = []
+	for notification in notifications:
+		callv(&"emit_signal", [notification.name] + notification.arguments)
+	return true
+
+func _notify_state(name: StringName, arguments: Array) -> void:
+	if _transition_committing:
+		_transition_signals.append({"name": name, "arguments": arguments})
+	else: callv(&"emit_signal", [name] + arguments)
+
 ## 对话字段被写入时通知监听者（例如任务控制器按表同步任务状态）；
 ## 值没有变化时不发信号，避免同一结果反复刷新。旗标与物品另有专用信号。
 signal value_changed(key: StringName, value: Variant)
-signal system_progress_changed(previous: int, current: int)
 signal money_changed(previous: int, current: int)
 
-const SYSTEM_PROGRESS_MAX: int = 100
-var system_progress: int = 0
 var money: int = 0:
 	set(value):
 		value = maxi(0, value)
@@ -15,7 +84,7 @@ var money: int = 0:
 			return
 		var previous := money
 		money = value
-		money_changed.emit(previous, money)
+		_notify_state(&"money_changed", [previous, money])
 
 # 本次运行共享的对话状态；重新运行游戏会重置。
 var talked_to_a: bool = false:
@@ -23,35 +92,35 @@ var talked_to_a: bool = false:
 		if talked_to_a == value:
 			return
 		talked_to_a = value
-		value_changed.emit(&"talked_to_a", value)
+		_notify_state(&"value_changed", [&"talked_to_a", value])
 # 空字符串：尚未选择；accepted：答应；refused：拒绝。
 var help_choice: String = "":
 	set(value):
 		if help_choice == value:
 			return
 		help_choice = value
-		value_changed.emit(&"help_choice", value)
+		_notify_state(&"value_changed", [&"help_choice", value])
 # 唱片机支线：空字符串＝尚未选择；accepted＝已接取；refused＝已拒绝。
 var music_quest_choice: String = "":
 	set(value):
 		if music_quest_choice == value:
 			return
 		music_quest_choice = value
-		value_changed.emit(&"music_quest_choice", value)
+		_notify_state(&"value_changed", [&"music_quest_choice", value])
 # 唱片机支线交差提交：done＝已提交（是否完成由任务条件按音乐旗标判定）。
 var music_quest_turnin: String = "":
 	set(value):
 		if music_quest_turnin == value:
 			return
 		music_quest_turnin = value
-		value_changed.emit(&"music_quest_turnin", value)
+		_notify_state(&"value_changed", [&"music_quest_turnin", value])
 # 任务一交差提交：returned＝已从第1关经传送门返回酒馆。
 var task_a_returned: String = "":
 	set(value):
 		if task_a_returned == value:
 			return
 		task_a_returned = value
-		value_changed.emit(&"task_a_returned", value)
+		_notify_state(&"value_changed", [&"task_a_returned", value])
 # 第1关领取状态兼容镜像；新的逐关状态以 claimed_reward_levels 为准。
 var task_a_reward_claimed: bool = false:
 	set(value):
@@ -62,7 +131,7 @@ var task_a_reward_claimed: bool = false:
 			claimed_reward_levels[1] = true
 		else:
 			claimed_reward_levels.erase(1)
-		value_changed.emit(&"task_a_reward_claimed", value)
+		_notify_state(&"value_changed", [&"task_a_reward_claimed", value])
 ## 已完成关卡 -> 是否已领取该关奖励。每关独立，只允许领取一次。
 var claimed_reward_levels: Dictionary = {}
 # 五关主线：最近完成关卡与当前已由 A 解锁的关卡。完成关卡不会自动解锁下一关。
@@ -72,23 +141,23 @@ var completed_level: int = 0:
 		if completed_level == value:
 			return
 		completed_level = value
-		value_changed.emit(&"completed_level", value)
+		_notify_state(&"value_changed", [&"completed_level", value])
 var available_level: int = 1:
 	set(value):
 		value = clampi(value, 1, 5)
 		if available_level == value:
 			return
 		available_level = value
-		value_changed.emit(&"available_level", value)
+		_notify_state(&"value_changed", [&"available_level", value])
 ## 下一次新玩家实例就绪后消费一次；正常进入关卡或返回酒馆时由传送门写入。
 var pending_player_state: Dictionary = {}
-## 最近一次正常完成关卡时的酒馆状态；死亡后选择回酒店时恢复，不随一次性玩家快照消费。
+## 最近一次正常完成关卡时的酒馆状态；死亡后选择回酒馆时恢复，不随一次性玩家快照消费。
 var campaign_checkpoint: Dictionary = {}
-## 已领取任务奖励的任务 ID；与检查点同步，保证死亡回酒店后不重复领取。
+## 已领取任务奖励的任务 ID；与检查点同步，保证死亡回酒馆后不重复领取。
 var rewarded_task_ids: Dictionary = {}
-## 一次性商店商品购买记录；与检查点同步，保证死亡回酒店后恢复未购买状态。
+## 一次性商店商品购买记录；与检查点同步，保证死亡回酒馆后恢复未购买状态。
 var purchased_shop_item_ids: Dictionary = {}
-## 进入当前关卡时的一次性玩家快照；死亡重开当前关时恢复，不等同于酒店检查点。
+## 进入当前关卡时的一次性玩家快照；死亡重开当前关时恢复，不等同于酒馆检查点。
 var level_entry_player_state: Dictionary = {}
 var completed_reward_claimed: bool:
 	get:
@@ -106,15 +175,30 @@ signal flag_changed(flag: StringName, value: bool)
 var items: Dictionary = {}
 ## flag -> bool
 var flags: Dictionary = {}
+## 记录商店负责的旗标键；旗标值唯一保存在 flags，回滚不涉及其他玩法旗标。
+var _shop_flag_keys: Dictionary = {}
 
 
-func add_system_progress(amount: int) -> void:
-	if amount <= 0 or system_progress >= SYSTEM_PROGRESS_MAX:
-		return
-	var previous := system_progress
-	system_progress = mini(SYSTEM_PROGRESS_MAX, previous + amount)
-	if system_progress != previous:
-		system_progress_changed.emit(previous, system_progress)
+func grant_shop_flag(flag_key: StringName) -> bool:
+	if flag_key == &"" or get_flag(flag_key):
+		return false
+	_shop_flag_keys[flag_key] = true
+	set_flag(flag_key)
+	return true
+
+
+func _capture_shop_flags() -> Dictionary:
+	var result: Dictionary = {}
+	for key in _shop_flag_keys:
+		result[key] = get_flag(key)
+	return result
+
+
+func _restore_shop_flags(snapshot: Dictionary) -> void:
+	for key in snapshot:
+		_shop_flag_keys[key] = true
+	for key in _shop_flag_keys:
+		set_flag(key, bool(snapshot.get(key, false)))
 
 
 ## 拾取或获得物品；display_name 留空时保留已有名字。
@@ -152,7 +236,7 @@ func set_flag(flag: StringName, value: bool = true) -> void:
 	if flags.get(flag, null) == value:
 		return
 	flags[flag] = value
-	flag_changed.emit(flag, value)
+	_notify_state(&"flag_changed", [flag, value])
 
 
 func get_flag(flag: StringName, fallback: bool = false) -> bool:
@@ -179,7 +263,7 @@ func spend_money(amount: int) -> bool:
 	return true
 
 
-## 领取任务奖励；同一任务只成功一次，并同步到匹配完成级别的酒店检查点。
+## 领取任务奖励；同一任务只成功一次，并同步到匹配完成级别的酒馆检查点。
 func claim_task_reward(task_id: StringName, amount: int, completion_level: int) -> bool:
 	if amount <= 0 or task_id == &"" or has_task_reward(task_id):
 		return false
@@ -242,7 +326,7 @@ func record_campaign_checkpoint(level_number: int, player_snapshot: Dictionary) 
 		"completed_level": completed_level,
 		"available_level": available_level,
 		"claimed_reward_levels": claimed_reward_levels.duplicate(),
-		"system_progress": system_progress,
+		"shop_flags": _capture_shop_flags(),
 		"task_a_returned": task_a_returned,
 		"money": money,
 		"rewarded_task_ids": rewarded_task_ids.duplicate(),
@@ -251,20 +335,20 @@ func record_campaign_checkpoint(level_number: int, player_snapshot: Dictionary) 
 	}
 
 
-## 死亡后返回酒店沿用最近完成任务的状态；检查点不清空，加载失败后可再次重试。
+## 死亡后返回酒馆沿用最近完成任务的状态；检查点不清空，加载失败后可再次重试。
 func restore_campaign_checkpoint() -> bool:
 	if campaign_checkpoint.is_empty():
 		return false
 	return restore_campaign_state(campaign_checkpoint)
 
 
-## 捕获当前酒店相关状态；场景加载失败时用于撤销尚未完成的检查点恢复。
+## 捕获当前酒馆相关状态；场景加载失败时用于撤销尚未完成的检查点恢复。
 func capture_campaign_state() -> Dictionary:
 	return {
 		"completed_level": completed_level,
 		"available_level": available_level,
 		"claimed_reward_levels": claimed_reward_levels.duplicate(),
-		"system_progress": system_progress,
+		"shop_flags": _capture_shop_flags(),
 		"task_a_returned": task_a_returned,
 		"money": money,
 		"rewarded_task_ids": rewarded_task_ids.duplicate(),
@@ -281,12 +365,8 @@ func restore_campaign_state(snapshot: Dictionary) -> bool:
 	var restored_claims: Dictionary = snapshot.get("claimed_reward_levels", {}).duplicate()
 	claimed_reward_levels = restored_claims
 	task_a_reward_claimed = bool(restored_claims.get(1, false))
-	value_changed.emit(&"claimed_reward_levels", restored_claims.duplicate())
-	var restored_progress := int(snapshot.get("system_progress", system_progress))
-	if system_progress != restored_progress:
-		var previous := system_progress
-		system_progress = restored_progress
-		system_progress_changed.emit(previous, system_progress)
+	_notify_state(&"value_changed", [&"claimed_reward_levels", restored_claims.duplicate()])
+	_restore_shop_flags(snapshot.get("shop_flags", {}))
 	task_a_returned = str(snapshot.get("task_a_returned", ""))
 	money = int(snapshot.get("money", 0))
 	rewarded_task_ids = snapshot.get("rewarded_task_ids", {}).duplicate()
@@ -306,16 +386,17 @@ func mark_reward_claimed(level_number: int) -> void:
 	claimed_reward_levels[level_number] = true
 	if level_number == 1:
 		task_a_reward_claimed = true
-	value_changed.emit(&"claimed_reward_levels", claimed_reward_levels.duplicate())
+	_notify_state(&"value_changed", [&"claimed_reward_levels", claimed_reward_levels.duplicate()])
 
 
 func reset_reward_claims() -> void:
 	claimed_reward_levels.clear()
 	task_a_reward_claimed = false
-	value_changed.emit(&"claimed_reward_levels", {})
+	_notify_state(&"value_changed", [&"claimed_reward_levels", {}])
 
 
 ## 供测试与重开流程使用；正常死亡重开不清空。
 func clear_interaction_state() -> void:
 	items.clear()
 	flags.clear()
+	_shop_flag_keys.clear()

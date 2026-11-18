@@ -15,7 +15,8 @@
 | [霰弹](gameplay/SHOTGUN.md) | 图样编辑、散布标定与逐发装填 |
 | [近战](gameplay/MELEE.md) | 玩家近战、眩晕破绽、近战兵及命中反馈 |
 | [生命与医疗包](gameplay/PLAYER_HEALTH.md) | 伤害、治疗、二选一重生与 Debug |
-| [货币商店与任务奖励](gameplay/REWARDS.md) | 商品目录、价格、解锁隐藏、任务金额与酒店退款 |
+| [货币商店与任务奖励](gameplay/REWARDS.md) | 商品目录、价格、解锁隐藏、任务金额与死亡返回酒馆的恢复点 |
+| [酒馆场景方案](access-denied-scene-plan.md) | 复古工业酒馆布局、当前接入边界与货币商店表现 |
 
 ## 敌人与关卡
 
@@ -45,6 +46,8 @@
 | [当前待办](TODO.md) | 项目进度及后续工作 |
 
 ## 当前说明与历史依据
+
+场景配置从[场景导演使用指南](gameplay/SCENE_DIRECTOR.md)开始：包含新场景接入、NPC／商店、事件与波次、动作列表、可取消脚本及传送。实现范围见[统一调度设计](superpowers/specs/2026-11-10-scene-director-authority-design.md)与[实施记录](superpowers/plans/2026-11-10-scene-director-authority.md)，当前测试和已知失败见[验证](testing.md)。
 
 现行文档说明当前用法，后续应直接更新对应章节，不在文件开头持续堆叠逐日更新。历史参数、实施过程与旧验证结果保存在[整理前记录目录](history/2026-10-28/index.md)，引用历史结果时保留当时的范围和失败项。
 

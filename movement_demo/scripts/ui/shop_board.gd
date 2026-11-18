@@ -1,18 +1,20 @@
 extends CanvasLayer
 
-## Currency shop board: builds one visible card per view dictionary and only
+## Currency shop board: builds one visible row per view dictionary and only
 ## emits purchase intent. It never mutates GameState, player, or equipment.
 
 signal purchase_requested(item_id: StringName, slot: int)
 signal close_requested
 
 const GRID_GAP := 12
-const LAYOUT_PADDING := 72.0
+const PANEL_SIZE := Vector2(1040.0, 680.0)
+const SCREEN_MARGIN := Vector2(48.0, 48.0)
 
 @export_range(1, 6, 1) var preferred_columns: int = 3
 @export_range(120, 320, 10) var minimum_card_width: float = 190.0
 
 @onready var title_label: Label = $Backdrop/Center/Panel/Margin/Content/Header/Title
+@onready var panel: PanelContainer = $Backdrop/Center/Panel
 @onready var balance_label: Label = $Backdrop/Center/Panel/Margin/Content/Header/Balance
 @onready var scroll: ScrollContainer = $Backdrop/Center/Panel/Margin/Content/Scroll
 @onready var items_container: GridContainer = $Backdrop/Center/Panel/Margin/Content/Scroll/Items
@@ -26,12 +28,12 @@ var _visible_count := 0
 
 
 func _ready() -> void:
+	get_viewport().size_changed.connect(_update_panel_size)
+	_update_panel_size()
 	if close_button != null:
 		close_button.pressed.connect(_on_close_pressed)
 	if scroll != null:
 		scroll.resized.connect(_on_scroll_resized)
-	if is_inside_tree() and not get_viewport().size_changed.is_connected(_update_columns_from_layout):
-		get_viewport().size_changed.connect(_update_columns_from_layout)
 	call_deferred("_update_columns_from_layout")
 
 
@@ -55,7 +57,7 @@ func balance_text() -> String:
 
 
 func columns_for_width(width: float) -> int:
-	var available := maxf(0.0, width - LAYOUT_PADDING)
+	var available := maxf(0.0, width)
 	var fit := floori((available + GRID_GAP) / (minimum_card_width + GRID_GAP))
 	return clampi(fit, 1, preferred_columns)
 
@@ -64,9 +66,6 @@ func update_grid_for_width(width: float) -> void:
 	var next_columns := columns_for_width(width)
 	if items_container != null and items_container.columns != next_columns:
 		items_container.columns = next_columns
-	if scroll != null:
-		scroll.custom_minimum_size.x = minimum_card_width * next_columns \
-			+ GRID_GAP * maxi(0, next_columns - 1)
 	for child in items_container.get_children():
 		if child is Control:
 			(child as Control).custom_minimum_size.x = minimum_card_width
@@ -139,17 +138,19 @@ func _build_row(item: Dictionary) -> Control:
 	var name_label := Label.new()
 	name_label.text = str(item.get("name", ""))
 	name_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	name_label.add_theme_font_size_override("font_size", 20)
+	name_label.add_theme_font_size_override("font_size", 24)
 	row.add_child(name_label)
 
 	var description_label := Label.new()
 	description_label.text = str(item.get("description", ""))
 	description_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	description_label.add_theme_font_size_override("font_size", 16)
+	description_label.add_theme_font_size_override("font_size", 20)
+	description_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	row.add_child(description_label)
 
 	var price_label := Label.new()
 	price_label.text = "%d 货币" % int(item.get("price", 0))
+	price_label.add_theme_font_size_override("font_size", 20)
 	price_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	row.add_child(price_label)
 
@@ -189,6 +190,8 @@ func _slot_enabled(item: Dictionary, slot: int) -> bool:
 func _make_button(text: String, item_id: StringName, slot: int, enabled: bool) -> Button:
 	var button := Button.new()
 	button.text = text
+	button.custom_minimum_size.y = 44.0
+	button.add_theme_font_size_override("font_size", 20)
 	button.disabled = not enabled
 	button.pressed.connect(_request_purchase.bind(item_id, slot))
 	return button
@@ -206,8 +209,14 @@ func _on_scroll_resized() -> void:
 	_update_columns_from_layout()
 
 
+func _update_panel_size() -> void:
+	var available := (get_viewport().get_visible_rect().size - SCREEN_MARGIN).max(Vector2.ZERO)
+	panel.custom_minimum_size = PANEL_SIZE.min(available)
+
+
 func _update_columns_from_layout() -> void:
 	if items_container == null:
 		return
 	var viewport_width: float = get_viewport().get_visible_rect().size.x if is_inside_tree() else 0.0
-	update_grid_for_width(viewport_width)
+	var available: float = scroll.size.x if scroll != null and scroll.size.x > 0.0 else viewport_width
+	update_grid_for_width(available)

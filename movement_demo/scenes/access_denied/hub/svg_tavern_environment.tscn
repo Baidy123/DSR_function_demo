@@ -1,0 +1,624 @@
+[gd_scene format=3]
+
+[ext_resource type="PackedScene" path="res://scenes/access_denied/hub/curtained_booth.tscn" id="curtained_booth"]
+[ext_resource type="PackedScene" path="res://scenes/access_denied/hub/booth_unit.tscn" id="seat"]
+[ext_resource type="PackedScene" path="res://scenes/access_denied/hub/privacy_booth.tscn" id="booth"]
+
+[ext_resource type="PackedScene" path="res://scenes/access_denied/hub/swivel_stool.tscn" id="stool"]
+[ext_resource type="PackedScene" path="res://scenes/access_denied/hub/bartender.tscn" id="bartender"]
+
+[ext_resource type="PackedScene" path="res://scenes/access_denied/hub/south_lounge.tscn" id="south_lounge"]
+[ext_resource type="PackedScene" path="res://scenes/access_denied/hub/terminal_column.tscn" id="terminal_column"]
+
+[sub_resource type="StandardMaterial3D" id="Floor"]
+albedo_color = Color(0.14, 0.15, 0.18, 1)
+
+[sub_resource type="StandardMaterial3D" id="Wall"]
+albedo_color = Color(0.095, 0.12, 0.15, 1)
+
+[sub_resource type="StandardMaterial3D" id="Wood"]
+albedo_color = Color(0.26, 0.125, 0.082, 1)
+
+[sub_resource type="StandardMaterial3D" id="Steel"]
+albedo_color = Color(0.12, 0.14, 0.18, 1)
+
+[sub_resource type="StandardMaterial3D" id="Teal"]
+albedo_color = Color(0.14, 0.50, 0.46, 1)
+emission_enabled = true
+emission = Color(0.14, 0.50, 0.46, 1)
+
+[sub_resource type="StandardMaterial3D" id="Amber"]
+albedo_color = Color(0.75, 0.38, 0.15, 1)
+emission_enabled = true
+emission = Color(0.75, 0.38, 0.15, 1)
+
+[sub_resource type="BoxMesh" id="Box7"]
+material = SubResource("Floor")
+size = Vector3(32.6880, 0.3600, 22.2480)
+
+[sub_resource type="BoxShape3D" id="Box7Shape"]
+size = Vector3(32.6880, 0.3600, 22.2480)
+
+[sub_resource type="BoxMesh" id="Box9"]
+material = SubResource("Wall")
+size = Vector3(32.6880, 3.0000, 0.2880)
+
+[sub_resource type="BoxShape3D" id="Box9Shape"]
+size = Vector3(32.6880, 3.0000, 0.2880)
+
+[sub_resource type="BoxMesh" id="Box11"]
+material = SubResource("Wall")
+size = Vector3(0.2880, 3.0000, 22.1040)
+
+[sub_resource type="BoxShape3D" id="Box11Shape"]
+size = Vector3(0.2880, 3.0000, 22.1040)
+
+[sub_resource type="BoxMesh" id="Box13"]
+material = SubResource("Wall")
+size = Vector3(0.2880, 3.0000, 5.2200)
+
+[sub_resource type="BoxShape3D" id="Box13Shape"]
+size = Vector3(0.2880, 3.0000, 5.2200)
+
+[sub_resource type="BoxMesh" id="Box15"]
+material = SubResource("Wall")
+size = Vector3(0.2880, 3.0000, 15.2100)
+
+[sub_resource type="BoxShape3D" id="Box15Shape"]
+size = Vector3(0.2880, 3.0000, 15.2100)
+
+[sub_resource type="BoxMesh" id="Box17"]
+material = SubResource("Wall")
+size = Vector3(4.68, 3, 0.288)
+
+[sub_resource type="BoxShape3D" id="Box17Shape"]
+size = Vector3(4.68, 3, 0.288)
+
+[sub_resource type="BoxMesh" id="Box19"]
+material = SubResource("Wall")
+size = Vector3(23.04, 3, 0.288)
+
+[sub_resource type="BoxShape3D" id="Box19Shape"]
+size = Vector3(23.04, 3, 0.288)
+
+[sub_resource type="BoxMesh" id="Box21"]
+material = SubResource("Steel")
+size = Vector3(0.2520, 2.4000, 1.6740)
+
+[sub_resource type="BoxShape3D" id="Box21Shape"]
+size = Vector3(0.2520, 2.4000, 1.6740)
+
+[sub_resource type="BoxMesh" id="Box23"]
+material = SubResource("Teal")
+size = Vector3(0.0540, 0.0500, 1.6740)
+
+[sub_resource type="BoxMesh" id="Box24"]
+material = SubResource("Teal")
+size = Vector3(31.5000, 0.0370, 0.0720)
+
+[sub_resource type="BoxMesh" id="Box25"]
+material = SubResource("Wood")
+size = Vector3(0.8100, 1.0000, 8.9100)
+
+[sub_resource type="BoxShape3D" id="Box25Shape"]
+size = Vector3(0.8100, 1.0000, 8.9100)
+
+[sub_resource type="BoxMesh" id="Box27"]
+material = SubResource("Steel")
+size = Vector3(0.9180, 0.0750, 9.0180)
+
+[sub_resource type="BoxMesh" id="Box28"]
+material = SubResource("Wood")
+size = Vector3(3.0060, 1.0000, 0.7200)
+
+[sub_resource type="BoxShape3D" id="Box28Shape"]
+size = Vector3(3.0060, 1.0000, 0.7200)
+
+[sub_resource type="BoxMesh" id="Box30"]
+material = SubResource("Steel")
+size = Vector3(3.1140, 0.0750, 0.8280)
+
+[sub_resource type="BoxMesh" id="Box31"]
+material = SubResource("Amber")
+size = Vector3(0.0360, 0.0550, 8.8200)
+
+[sub_resource type="BoxMesh" id="Box32"]
+material = SubResource("Wood")
+size = Vector3(0.3960, 0.0750, 7.3440)
+
+[sub_resource type="BoxMesh" id="Box33"]
+material = SubResource("Teal")
+size = Vector3(0.1100, 0.1600, 0.1100)
+
+[sub_resource type="BoxMesh" id="Box34"]
+material = SubResource("Steel")
+size = Vector3(0.1100, 0.1900, 0.1100)
+
+[sub_resource type="BoxMesh" id="Box35"]
+material = SubResource("Steel")
+size = Vector3(0.1100, 0.2200, 0.1100)
+
+[sub_resource type="BoxMesh" id="Box36"]
+material = SubResource("Steel")
+size = Vector3(0.1100, 0.1600, 0.1100)
+
+[sub_resource type="BoxMesh" id="Box37"]
+material = SubResource("Teal")
+size = Vector3(0.1100, 0.1900, 0.1100)
+
+[sub_resource type="BoxMesh" id="Box38"]
+material = SubResource("Teal")
+size = Vector3(0.1100, 0.2200, 0.1100)
+
+[sub_resource type="CylinderMesh" id="Box42"]
+material = SubResource("Steel")
+top_radius = 0.13
+bottom_radius = 0.31
+height = 1.02
+radial_segments = 24
+
+[sub_resource type="CylinderMesh" id="Box43"]
+material = SubResource("Wood")
+top_radius = 0.90
+bottom_radius = 0.90
+height = 0.14
+radial_segments = 48
+
+[sub_resource type="CylinderShape3D" id="Box43Shape"]
+radius = 0.90
+height = 0.14
+
+[sub_resource type="BoxMesh" id="Box45"]
+material = SubResource("Amber")
+size = Vector3(0.1600, 0.0160, 0.1600)
+
+[sub_resource type="BoxMesh" id="EntranceSidelightMesh"]
+material = SubResource("Steel")
+size = Vector3(0.64, 3, 0.288)
+
+[sub_resource type="BoxShape3D" id="EntranceSidelightShape"]
+size = Vector3(0.64, 3, 0.288)
+
+[node name="BarEnvironment" type="Node3D"]
+
+[node name="Architecture" type="Node3D" parent="."]
+
+[node name="BarCounter" type="Node3D" parent="."]
+
+[node name="Booths" type="Node3D" parent="."]
+
+[node name="SofaSeats" type="Node3D" parent="."]
+
+[node name="Tables" type="Node3D" parent="."]
+
+[node name="TerminalColumn" parent="." instance=ExtResource("terminal_column")]
+position = Vector3(10.36, 0, -3.6)
+
+[node name="SouthLounge" parent="." instance=ExtResource("south_lounge")]
+
+[node name="Lighting" type="Node3D" parent="."]
+
+[node name="Floor" type="StaticBody3D" parent="Architecture"]
+position = Vector3(9.1800, -0.1800, -3.2300)
+
+[node name="Mesh" type="MeshInstance3D" parent="Architecture/Floor"]
+mesh = SubResource("Box7")
+
+[node name="Collision" type="CollisionShape3D" parent="Architecture/Floor"]
+shape = SubResource("Box7Shape")
+
+[node name="NorthWall" type="StaticBody3D" parent="Architecture"]
+position = Vector3(9.1800, 1.5000, -14.2100)
+
+[node name="Mesh" type="MeshInstance3D" parent="Architecture/NorthWall" groups=["camera_fadeable"]]
+mesh = SubResource("Box9")
+
+[node name="Collision" type="CollisionShape3D" parent="Architecture/NorthWall"]
+shape = SubResource("Box9Shape")
+
+[node name="EastWall" type="StaticBody3D" parent="Architecture"]
+position = Vector3(25.3800, 1.5000, -3.1580)
+
+[node name="Mesh" type="MeshInstance3D" parent="Architecture/EastWall" groups=["camera_fadeable"]]
+mesh = SubResource("Box11")
+
+[node name="Collision" type="CollisionShape3D" parent="Architecture/EastWall"]
+shape = SubResource("Box11Shape")
+
+[node name="WestWallNorth" type="StaticBody3D" parent="Architecture"]
+position = Vector3(-7.0200, 1.5000, -11.6000)
+
+[node name="Mesh" type="MeshInstance3D" parent="Architecture/WestWallNorth" groups=["camera_fadeable"]]
+mesh = SubResource("Box13")
+
+[node name="Collision" type="CollisionShape3D" parent="Architecture/WestWallNorth"]
+shape = SubResource("Box13Shape")
+
+[node name="WestWallSouth" type="StaticBody3D" parent="Architecture"]
+position = Vector3(-7.0200, 1.5000, 0.2890)
+
+[node name="Mesh" type="MeshInstance3D" parent="Architecture/WestWallSouth" groups=["camera_fadeable"]]
+mesh = SubResource("Box15")
+
+[node name="Collision" type="CollisionShape3D" parent="Architecture/WestWallSouth"]
+shape = SubResource("Box15Shape")
+
+[node name="SouthWallLeft" type="StaticBody3D" parent="Architecture"]
+position = Vector3(-4.68, 1.5, 7.75)
+
+[node name="Mesh" type="MeshInstance3D" parent="Architecture/SouthWallLeft" groups=["camera_fadeable"]]
+mesh = SubResource("Box17")
+
+[node name="Collision" type="CollisionShape3D" parent="Architecture/SouthWallLeft"]
+shape = SubResource("Box17Shape")
+
+[node name="SouthWallRight" type="StaticBody3D" parent="Architecture"]
+position = Vector3(13.86, 1.5, 7.75)
+
+[node name="Mesh" type="MeshInstance3D" parent="Architecture/SouthWallRight" groups=["camera_fadeable"]]
+mesh = SubResource("Box19")
+
+[node name="Collision" type="CollisionShape3D" parent="Architecture/SouthWallRight"]
+shape = SubResource("Box19Shape")
+
+[node name="EntranceLeftPanel" type="StaticBody3D" parent="Architecture"]
+position = Vector3(-2.025, 1.5, 7.75)
+
+[node name="Mesh" type="MeshInstance3D" parent="Architecture/EntranceLeftPanel" groups=["camera_fadeable"]]
+mesh = SubResource("EntranceSidelightMesh")
+
+[node name="Collision" type="CollisionShape3D" parent="Architecture/EntranceLeftPanel"]
+shape = SubResource("EntranceSidelightShape")
+
+[node name="EntranceRightPanel" type="StaticBody3D" parent="Architecture"]
+position = Vector3(2.025, 1.5, 7.75)
+
+[node name="Mesh" type="MeshInstance3D" parent="Architecture/EntranceRightPanel" groups=["camera_fadeable"]]
+mesh = SubResource("EntranceSidelightMesh")
+
+[node name="Collision" type="CollisionShape3D" parent="Architecture/EntranceRightPanel"]
+shape = SubResource("EntranceSidelightShape")
+
+[node name="StaffDoor" type="StaticBody3D" parent="Architecture"]
+position = Vector3(-7.0200, 1.2000, -8.1530)
+
+[node name="Mesh" type="MeshInstance3D" parent="Architecture/StaffDoor" groups=["camera_fadeable"]]
+mesh = SubResource("Box21")
+
+[node name="Collision" type="CollisionShape3D" parent="Architecture/StaffDoor"]
+shape = SubResource("Box21Shape")
+
+[node name="StaffDoorTrim" type="MeshInstance3D" parent="Architecture"]
+position = Vector3(-6.8490, 2.3700, -8.1530)
+mesh = SubResource("Box23")
+
+[node name="NorthTrim" type="MeshInstance3D" parent="Architecture"]
+position = Vector3(9.0900, 2.4500, -14.0300)
+mesh = SubResource("Box24")
+
+[node name="Long" type="StaticBody3D" parent="BarCounter"]
+position = Vector3(-3.1050, 0.5000, -2.9150)
+
+[node name="Mesh" type="MeshInstance3D" parent="BarCounter/Long"]
+mesh = SubResource("Box25")
+
+[node name="Collision" type="CollisionShape3D" parent="BarCounter/Long"]
+shape = SubResource("Box25Shape")
+
+[node name="LongTop" type="MeshInstance3D" parent="BarCounter"]
+position = Vector3(-3.1050, 1.0250, -2.9150)
+mesh = SubResource("Box27")
+
+[node name="Return" type="StaticBody3D" parent="BarCounter"]
+position = Vector3(-5.0130, 0.5000, 1.1800)
+
+[node name="Mesh" type="MeshInstance3D" parent="BarCounter/Return"]
+mesh = SubResource("Box28")
+
+[node name="Collision" type="CollisionShape3D" parent="BarCounter/Return"]
+shape = SubResource("Box28Shape")
+
+[node name="ReturnTop" type="MeshInstance3D" parent="BarCounter"]
+position = Vector3(-5.0130, 1.0250, 1.1800)
+mesh = SubResource("Box30")
+
+[node name="BarStrip" type="MeshInstance3D" parent="BarCounter"]
+position = Vector3(-2.6820, 0.8000, -2.9240)
+mesh = SubResource("Box31")
+
+[node name="Shelf1" type="MeshInstance3D" parent="BarCounter"]
+position = Vector3(-6.6600, 1.2400, -3.3920)
+mesh = SubResource("Box32")
+
+[node name="Bottle1_1" type="MeshInstance3D" parent="BarCounter"]
+position = Vector3(-6.6060, 1.3800, -6.7400)
+mesh = SubResource("Box33")
+
+[node name="Bottle1_2" type="MeshInstance3D" parent="BarCounter"]
+position = Vector3(-6.6060, 1.3800, -5.9480)
+mesh = SubResource("Box34")
+
+[node name="Bottle1_3" type="MeshInstance3D" parent="BarCounter"]
+position = Vector3(-6.6060, 1.3800, -5.1560)
+mesh = SubResource("Box35")
+
+[node name="Bottle1_4" type="MeshInstance3D" parent="BarCounter"]
+position = Vector3(-6.6060, 1.3800, -4.3640)
+mesh = SubResource("Box36")
+
+[node name="Bottle1_5" type="MeshInstance3D" parent="BarCounter"]
+position = Vector3(-6.6060, 1.3800, -3.5720)
+mesh = SubResource("Box37")
+
+[node name="Bottle1_6" type="MeshInstance3D" parent="BarCounter"]
+position = Vector3(-6.6060, 1.3800, -2.7800)
+mesh = SubResource("Box35")
+
+[node name="Bottle1_7" type="MeshInstance3D" parent="BarCounter"]
+position = Vector3(-6.6060, 1.3800, -1.9880)
+mesh = SubResource("Box36")
+
+[node name="Bottle1_8" type="MeshInstance3D" parent="BarCounter"]
+position = Vector3(-6.6060, 1.3800, -1.1960)
+mesh = SubResource("Box34")
+
+[node name="Bottle1_9" type="MeshInstance3D" parent="BarCounter"]
+position = Vector3(-6.6060, 1.3800, -0.4040)
+mesh = SubResource("Box38")
+
+[node name="Shelf2" type="MeshInstance3D" parent="BarCounter"]
+position = Vector3(-6.6600, 1.6200, -3.3920)
+mesh = SubResource("Box32")
+
+[node name="Bottle2_1" type="MeshInstance3D" parent="BarCounter"]
+position = Vector3(-6.6060, 1.7600, -6.7400)
+mesh = SubResource("Box36")
+
+[node name="Bottle2_2" type="MeshInstance3D" parent="BarCounter"]
+position = Vector3(-6.6060, 1.7600, -5.9480)
+mesh = SubResource("Box34")
+
+[node name="Bottle2_3" type="MeshInstance3D" parent="BarCounter"]
+position = Vector3(-6.6060, 1.7600, -5.1560)
+mesh = SubResource("Box35")
+
+[node name="Bottle2_4" type="MeshInstance3D" parent="BarCounter"]
+position = Vector3(-6.6060, 1.7600, -4.3640)
+mesh = SubResource("Box33")
+
+[node name="Bottle2_5" type="MeshInstance3D" parent="BarCounter"]
+position = Vector3(-6.6060, 1.7600, -3.5720)
+mesh = SubResource("Box34")
+
+[node name="Bottle2_6" type="MeshInstance3D" parent="BarCounter"]
+position = Vector3(-6.6060, 1.7600, -2.7800)
+mesh = SubResource("Box35")
+
+[node name="Bottle2_7" type="MeshInstance3D" parent="BarCounter"]
+position = Vector3(-6.6060, 1.7600, -1.9880)
+mesh = SubResource("Box36")
+
+[node name="Bottle2_8" type="MeshInstance3D" parent="BarCounter"]
+position = Vector3(-6.6060, 1.7600, -1.1960)
+mesh = SubResource("Box37")
+
+[node name="Bottle2_9" type="MeshInstance3D" parent="BarCounter"]
+position = Vector3(-6.6060, 1.7600, -0.4040)
+mesh = SubResource("Box35")
+
+[node name="Shelf3" type="MeshInstance3D" parent="BarCounter"]
+position = Vector3(-6.6600, 2.0000, -3.3920)
+mesh = SubResource("Box32")
+
+[node name="Bottle3_1" type="MeshInstance3D" parent="BarCounter"]
+position = Vector3(-6.6060, 2.1400, -6.7400)
+mesh = SubResource("Box36")
+
+[node name="Bottle3_2" type="MeshInstance3D" parent="BarCounter"]
+position = Vector3(-6.6060, 2.1400, -5.9480)
+mesh = SubResource("Box34")
+
+[node name="Bottle3_3" type="MeshInstance3D" parent="BarCounter"]
+position = Vector3(-6.6060, 2.1400, -5.1560)
+mesh = SubResource("Box38")
+
+[node name="Bottle3_4" type="MeshInstance3D" parent="BarCounter"]
+position = Vector3(-6.6060, 2.1400, -4.3640)
+mesh = SubResource("Box36")
+
+[node name="Bottle3_5" type="MeshInstance3D" parent="BarCounter"]
+position = Vector3(-6.6060, 2.1400, -3.5720)
+mesh = SubResource("Box34")
+
+[node name="Bottle3_6" type="MeshInstance3D" parent="BarCounter"]
+position = Vector3(-6.6060, 2.1400, -2.7800)
+mesh = SubResource("Box35")
+
+[node name="Bottle3_7" type="MeshInstance3D" parent="BarCounter"]
+position = Vector3(-6.6060, 2.1400, -1.9880)
+mesh = SubResource("Box33")
+
+[node name="Bottle3_8" type="MeshInstance3D" parent="BarCounter"]
+position = Vector3(-6.6060, 2.1400, -1.1960)
+mesh = SubResource("Box34")
+
+[node name="Bottle3_9" type="MeshInstance3D" parent="BarCounter"]
+position = Vector3(-6.6060, 2.1400, -0.4040)
+mesh = SubResource("Box35")
+
+[node name="Stool1" parent="BarCounter" instance=ExtResource("stool")]
+position = Vector3(-1.8900, 0, -6.3800)
+scale = Vector3(1.12, 1.12, 1.12)
+
+[node name="Stool2" parent="BarCounter" instance=ExtResource("stool")]
+position = Vector3(-1.8900, 0, -5.1200)
+scale = Vector3(1.12, 1.12, 1.12)
+
+[node name="Stool3" parent="BarCounter" instance=ExtResource("stool")]
+position = Vector3(-1.8900, 0, -3.8600)
+scale = Vector3(1.12, 1.12, 1.12)
+
+[node name="Stool4" parent="BarCounter" instance=ExtResource("stool")]
+position = Vector3(-1.8900, 0, -2.6000)
+scale = Vector3(1.12, 1.12, 1.12)
+
+[node name="Stool5" parent="BarCounter" instance=ExtResource("stool")]
+position = Vector3(-1.8900, 0, -1.3400)
+scale = Vector3(1.12, 1.12, 1.12)
+
+[node name="Stool6" parent="BarCounter" instance=ExtResource("stool")]
+position = Vector3(-1.8900, 0, -0.0800)
+scale = Vector3(1.12, 1.12, 1.12)
+
+[node name="Stool7" parent="BarCounter" instance=ExtResource("stool")]
+position = Vector3(-1.8900, 0, 1.1800)
+scale = Vector3(1.12, 1.12, 1.12)
+
+[node name="Bartender" parent="BarCounter" instance=ExtResource("bartender")]
+position = Vector3(-5.25, 0, -3.25)
+
+[node name="Booth1" parent="Booths" instance=ExtResource("booth")]
+position = Vector3(-3.9150, 0.0000, -11.6000)
+rotation_degrees = Vector3(0.0000, 0.0000, 0.0000)
+
+[node name="Booth2" parent="Booths" instance=ExtResource("booth")]
+position = Vector3(0.8550, 0.0000, -11.6000)
+rotation_degrees = Vector3(0.0000, 0.0000, 0.0000)
+
+[node name="Booth3" parent="Booths" instance=ExtResource("booth")]
+position = Vector3(5.6250, 0.0000, -11.6000)
+rotation_degrees = Vector3(0.0000, 0.0000, 0.0000)
+
+[node name="Booth4" parent="Booths" instance=ExtResource("curtained_booth")]
+position = Vector3(22.1850, 0.0000, -11.6000)
+rotation_degrees = Vector3(0.0000, 0.0000, 0.0000)
+
+[node name="Booth5" parent="Booths" instance=ExtResource("booth")]
+position = Vector3(22.1850, 0.0000, 0.7660)
+rotation_degrees = Vector3(0.0000, -90.0000, 0.0000)
+
+[node name="Booth6" parent="Booths" instance=ExtResource("booth")]
+position = Vector3(22.1850, 0.0000, 5.2300)
+rotation_degrees = Vector3(0.0000, -90.0000, 0.0000)
+
+[node name="Sofa1" parent="SofaSeats" instance=ExtResource("seat")]
+position = Vector3(11.4300, 0.0000, -12.9500)
+rotation_degrees = Vector3(0.0000, 0.0000, 0.0000)
+
+[node name="Sofa2" parent="SofaSeats" instance=ExtResource("seat")]
+position = Vector3(16.3800, 0.0000, -12.9500)
+rotation_degrees = Vector3(0.0000, 0.0000, 0.0000)
+
+[node name="Sofa3" parent="SofaSeats" instance=ExtResource("seat")]
+position = Vector3(23.7600, 0.0000, -7.0000)
+rotation_degrees = Vector3(0.0000, -90.0000, 0.0000)
+
+[node name="Sofa4" parent="SofaSeats" instance=ExtResource("seat")]
+position = Vector3(23.7600, 0.0000, -3.2900)
+rotation_degrees = Vector3(0.0000, -90.0000, 0.0000)
+
+[node name="Sofa5" parent="SofaSeats" instance=ExtResource("seat")]
+position = Vector3(4.7520, 0.0000, 6.7960)
+rotation_degrees = Vector3(0.0000, 180.0000, 0.0000)
+
+[node name="Sofa6" parent="SofaSeats" instance=ExtResource("seat")]
+position = Vector3(10.1520, 0.0000, 6.7960)
+rotation_degrees = Vector3(0.0000, 180.0000, 0.0000)
+
+[node name="Sofa7" parent="SofaSeats" instance=ExtResource("seat")]
+position = Vector3(15.5520, 0.0000, 6.7960)
+rotation_degrees = Vector3(0.0000, 180.0000, 0.0000)
+
+[node name="Table1" type="Node3D" parent="Tables"]
+position = Vector3(3.9600, 0.0000, -6.3800)
+
+[node name="Pedestal" type="MeshInstance3D" parent="Tables/Table1"]
+position = Vector3(0, 0.51, 0)
+mesh = SubResource("Box42")
+
+[node name="Top" type="StaticBody3D" parent="Tables/Table1"]
+position = Vector3(0, 1.06, 0)
+
+[node name="Mesh" type="MeshInstance3D" parent="Tables/Table1/Top"]
+mesh = SubResource("Box43")
+
+[node name="Collision" type="CollisionShape3D" parent="Tables/Table1/Top"]
+shape = SubResource("Box43Shape")
+
+[node name="Inlay" type="MeshInstance3D" parent="Tables/Table1"]
+position = Vector3(0, 1.136, 0)
+mesh = SubResource("Box45")
+
+[node name="Seats" type="Node3D" parent="Tables/Table1"]
+
+[node name="West" parent="Tables/Table1/Seats" instance=ExtResource("stool")]
+position = Vector3(-1.5400, 0.0000, 0.0000)
+scale = Vector3(1.32, 1.32, 1.32)
+
+[node name="East" parent="Tables/Table1/Seats" instance=ExtResource("stool")]
+position = Vector3(1.5400, 0.0000, 0.0000)
+scale = Vector3(1.32, 1.32, 1.32)
+
+[node name="North" parent="Tables/Table1/Seats" instance=ExtResource("stool")]
+position = Vector3(0.0000, 0.0000, -1.5400)
+scale = Vector3(1.32, 1.32, 1.32)
+
+[node name="South" parent="Tables/Table1/Seats" instance=ExtResource("stool")]
+position = Vector3(0.0000, 0.0000, 1.5400)
+scale = Vector3(1.32, 1.32, 1.32)
+
+[node name="Table3" type="Node3D" parent="Tables"]
+position = Vector3(15.5700, 0.0000, -5.8400)
+
+[node name="Pedestal" type="MeshInstance3D" parent="Tables/Table3"]
+position = Vector3(0, 0.51, 0)
+mesh = SubResource("Box42")
+
+[node name="Top" type="StaticBody3D" parent="Tables/Table3"]
+position = Vector3(0, 1.06, 0)
+
+[node name="Mesh" type="MeshInstance3D" parent="Tables/Table3/Top"]
+mesh = SubResource("Box43")
+
+[node name="Collision" type="CollisionShape3D" parent="Tables/Table3/Top"]
+shape = SubResource("Box43Shape")
+
+[node name="Inlay" type="MeshInstance3D" parent="Tables/Table3"]
+position = Vector3(0, 1.136, 0)
+mesh = SubResource("Box45")
+
+[node name="Seats" type="Node3D" parent="Tables/Table3"]
+
+[node name="West" parent="Tables/Table3/Seats" instance=ExtResource("stool")]
+position = Vector3(-1.5400, 0.0000, 0.0000)
+scale = Vector3(1.32, 1.32, 1.32)
+
+[node name="East" parent="Tables/Table3/Seats" instance=ExtResource("stool")]
+position = Vector3(1.5400, 0.0000, 0.0000)
+scale = Vector3(1.32, 1.32, 1.32)
+
+[node name="North" parent="Tables/Table3/Seats" instance=ExtResource("stool")]
+position = Vector3(0.0000, 0.0000, -1.5400)
+scale = Vector3(1.32, 1.32, 1.32)
+
+[node name="South" parent="Tables/Table3/Seats" instance=ExtResource("stool")]
+position = Vector3(0.0000, 0.0000, 1.5400)
+scale = Vector3(1.32, 1.32, 1.32)
+
+[node name="Counter" type="OmniLight3D" parent="Lighting"]
+position = Vector3(-3.4200, 3.0000, -2.9600)
+light_color = Color(1, 0.51, 0.27, 1)
+light_energy = 1.45
+omni_range = 8.0
+
+[node name="Entrance" type="OmniLight3D" parent="Lighting"]
+position = Vector3(0.0000, 3.0000, 5.8600)
+light_color = Color(1, 0.63, 0.37, 1)
+light_energy = 1.45
+omni_range = 8.0
+
+[node name="Hall" type="OmniLight3D" parent="Lighting"]
+position = Vector3(10.4400, 3.0000, -3.5000)
+light_color = Color(0.30, 0.72, 0.78, 1)
+light_energy = 1.45
+omni_range = 8.0

@@ -36,10 +36,10 @@ func run_checks() -> void:
 	check(_text(board, "Panel/Margin/Content/Title") == "战斗奖励 · 三选一", "标题文字正确")
 	check(_button_text(board, "Panel/Margin/Content/Buttons/FirstAid/Button") == "急救包", "急救包按钮文字正确")
 	check(_button_text(board, "Panel/Margin/Content/Buttons/Ammo/Button") == "弹药补给", "弹药补给按钮文字正确")
-	check(_button_text(board, "Panel/Margin/Content/Buttons/SystemProgress/Button") == "系统进度", "系统进度按钮文字正确")
+	check(_button_text(board, "Panel/Margin/Content/Buttons/FlagProduct/Button") == "思维接入装置", "思维接入装置按钮文字正确")
 	check(_label_text(board, "Panel/Margin/Content/Buttons/FirstAid/Description") == "恢复 35 点生命", "急救包说明正确")
 	check(_label_text(board, "Panel/Margin/Content/Buttons/Ammo/Description") == "补满弹匣与备弹", "弹药补给说明正确")
-	check(_label_text(board, "Panel/Margin/Content/Buttons/SystemProgress/Description") == "任务进度 +20", "系统进度说明正确")
+	check(_label_text(board, "Panel/Margin/Content/Buttons/FlagProduct/Description") == "获得思维接入装置", "思维接入装置说明正确")
 
 	var selected: Array[StringName] = []
 	board.reward_selected.connect(func(id: StringName) -> void: selected.append(id))

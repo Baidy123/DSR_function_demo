@@ -7,7 +7,7 @@ const CatalogScript := preload("res://scripts/shop/shop_catalog.gd")
 const ItemScript := preload("res://scripts/shop/shop_item_definition.gd")
 const Catalog := preload("res://resources/shop/shop_catalog.tres")
 
-const EXPECTED_CHECKS := 30
+const EXPECTED_CHECKS := 39
 
 var failures := 0
 var checks_run := 0
@@ -33,15 +33,16 @@ func _run() -> void:
 	var ids: Array[StringName] = []
 	for item in items:
 		ids.append(item.id)
-	check(ids == [&"first_aid", &"ammo", &"system_progress"], "initial catalog keeps its product order")
+	check(ids == [&"first_aid", &"ammo", &"mind_access_device"], "initial catalog keeps its product order")
 
 	var first: ShopItemDefinition = Catalog.item_by_id(&"first_aid")
 	check(first != null, "first aid is addressable by ID")
 	if first != null:
 		check(first.price == 40, "first aid price is 40")
 		check(first.unlock_level == 0, "first aid is unlocked at level 0")
-		check(first.effect == ItemScript.Effect.HEAL, "first aid uses HEAL")
-		check(first.amount == 35, "first aid heals 35")
+		check(first.effect == ItemScript.Effect.ADD_MEDKIT, "first aid adds medical inventory")
+		check(first.amount == 1, "first aid grants one medkit per purchase")
+		check(first.medkit_data == load("res://resources/player/default_medkit.tres"), "first aid references the existing medical resource")
 		check(not first.one_time, "first aid is repeatable")
 
 	var ammo := Catalog.item_by_id(&"ammo")
@@ -53,29 +54,56 @@ func _run() -> void:
 		check(ammo.amount == 0, "ammo has no configured amount")
 		check(not ammo.one_time, "ammo is repeatable")
 
-	var progress := Catalog.item_by_id(&"system_progress")
-	check(progress != null, "system progress is addressable by ID")
-	if progress != null:
-		check(progress.price == 50, "system progress price is 50")
-		check(progress.unlock_level == 0, "system progress is unlocked at level 0")
-		check(progress.effect == ItemScript.Effect.SYSTEM_PROGRESS, "system progress uses SYSTEM_PROGRESS")
-		check(progress.amount == 20, "system progress adds 20")
-		check(not progress.one_time, "system progress is repeatable")
+	var device := Catalog.item_by_id(&"mind_access_device")
+	check(device != null, "flag product is addressable by ID")
+	if device != null:
+		check(device.price == 500, "flag product costs 500 in one payment")
+		check(device.unlock_level == 0, "flag product is unlocked at level 0")
+		check(device.effect == ItemScript.Effect.SET_FLAG, "flag product uses SET_FLAG")
+		check(device.flag_key == &"has_mind_access_device", "device grants its configured ownership flag")
+		check(device.one_time, "flag product is a one-time product")
 
-	var zero_heal := ItemScript.new()
-	zero_heal.id = &"zero_heal"
-	zero_heal.display_name = "Zero heal"
-	zero_heal.price = 10
-	zero_heal.effect = ItemScript.Effect.HEAL
-	zero_heal.amount = 0
-	check(not zero_heal.is_valid(), "healing products require a positive amount")
-	var zero_progress := ItemScript.new()
-	zero_progress.id = &"zero_progress"
-	zero_progress.display_name = "Zero progress"
-	zero_progress.price = 10
-	zero_progress.effect = ItemScript.Effect.SYSTEM_PROGRESS
-	zero_progress.amount = 0
-	check(not zero_progress.is_valid(), "progress products require a positive amount")
+	var zero_medkit := ItemScript.new()
+	zero_medkit.id = &"zero_medkit"
+	zero_medkit.display_name = "Medkit product"
+	zero_medkit.price = 10
+	zero_medkit.effect = ItemScript.Effect.ADD_MEDKIT
+	zero_medkit.medkit_data = load("res://resources/player/default_medkit.tres")
+	zero_medkit.amount = 0
+	check(not zero_medkit.is_valid(), "medkit products require a positive count")
+	zero_medkit.amount = 1
+	zero_medkit.medkit_data = null
+	check(not zero_medkit.is_valid(), "medkit products require a medical resource")
+	zero_medkit.medkit_data = MedkitData.new()
+	zero_medkit.medkit_data.use_seconds = 0.0
+	check(not zero_medkit.is_valid(), "invalid medical resource settings are rejected")
+	zero_medkit.medkit_data = load("res://resources/player/default_medkit.tres")
+	check(_visible(zero_medkit, &"medkit_data") and _visible(zero_medkit, &"amount")
+		and not _visible(zero_medkit, &"weapon_data") and not _visible(zero_medkit, &"flag_key"),
+		"medical products show only medical resource and quantity fields")
+	zero_medkit.effect = ItemScript.Effect.WEAPON
+	check(_visible(zero_medkit, &"weapon_data") and not _visible(zero_medkit, &"medkit_data")
+		and not _visible(zero_medkit, &"amount") and not _visible(zero_medkit, &"flag_key"),
+		"weapon products expose the WeaponData drag slot without medical fields")
+	zero_medkit.effect = ItemScript.Effect.SET_FLAG
+	check(_visible(zero_medkit, &"flag_key") and not _visible(zero_medkit, &"weapon_data")
+		and not _visible(zero_medkit, &"medkit_data"), "flag products show only the flag configuration")
+	zero_medkit.effect = ItemScript.Effect.REFILL_AMMO
+	check(not _visible(zero_medkit, &"medkit_data") and not _visible(zero_medkit, &"weapon_data")
+		and not _visible(zero_medkit, &"flag_key") and not _visible(zero_medkit, &"amount"),
+		"ammo refill hides unrelated resource and quantity fields")
+	check(zero_medkit.medkit_data == load("res://resources/player/default_medkit.tres"),
+		"switching effects hides the drag slot without discarding its resource")
+	var invalid_flag := ItemScript.new()
+	invalid_flag.id = &"invalid_flag"
+	invalid_flag.display_name = "Flag product"
+	invalid_flag.price = 500
+	invalid_flag.effect = ItemScript.Effect.SET_FLAG
+	invalid_flag.one_time = true
+	check(not invalid_flag.is_valid(), "flag products require a nonempty flag key")
+	invalid_flag.flag_key = &"has_mind_access_device"
+	invalid_flag.one_time = false
+	check(not invalid_flag.is_valid(), "flag products require one-time purchase tracking")
 
 	check(Catalog.item_by_id(&"first_aid") == items[0], "lookup returns the first valid product")
 	check(Catalog.item_by_id(&"missing") == null, "unknown product ID returns null")
@@ -115,3 +143,10 @@ func _run() -> void:
 	else:
 		print("shop catalog checks: %d failed" % failures)
 	quit(1 if failures > 0 else 0)
+
+
+func _visible(item: Resource, key: StringName) -> bool:
+	for property in item.get_property_list():
+		if StringName(property.name) == key:
+			return (int(property.usage) & PROPERTY_USAGE_EDITOR) != 0
+	return false

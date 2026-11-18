@@ -42,6 +42,9 @@ func _run() -> void:
 	if portal == null:
 		await _finish(scene)
 		return
+	_check(portal.get_node("Body").visible and portal.get_node("Frame").visible,
+		"未接任务时仍显示酒馆实体门")
+	_check(not portal.get_node("Name").visible, "未接任务时隐藏关卡编号")
 
 	player.global_position = portal.global_position + Vector3(0.0, 0.0, -0.9)
 	for _frame in range(4):
@@ -52,6 +55,7 @@ func _run() -> void:
 	state.help_choice = "accepted"
 	await _wait_for_status(quests, QuestControllerScript.Status.IN_PROGRESS)
 	await process_frame
+	_check(portal.get_node("Name").visible, "接取任务后显示关卡编号")
 	_check(portal.prompt.text == "E 进入 关卡1", "接取任务后传送门显示进入提示")
 	_check(portal.interact(player), "接取任务后可以进入传送门")
 	var loaded: Node = await _wait_for_scene(LEVEL_ONE)

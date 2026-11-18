@@ -65,6 +65,8 @@ class Events extends Node:
 	func complete_synchronously() -> void:
 		calls.append("synchronous")
 		action_finished.emit()
+	func cancel_wait() -> void:
+		pass
 	func start_wait() -> void:
 		calls.append("started")
 	func record_default(label: String = "default") -> void:
@@ -215,7 +217,7 @@ func _fixture(rules: Array = [], guide: Node = null, extra: Dictionary = {}) -> 
 	var view := ResultView.new()
 	var director = Director.new()
 	director.name = "SceneDirector"
-	var bindings := {"health": health, "result_view": view, "rules": rules}
+	var bindings := {"health": health, "result_view": view, "rules": rules, "scene_root": scene}
 	if guide != null: bindings.guide = guide
 	bindings.merge(extra, true)
 	director.configure(host, bindings)
@@ -314,7 +316,7 @@ func _test_return_to_tavern_from_death() -> void:
 	game_state.money = 100
 	game_state.rewarded_task_ids = {&"task_a": true}
 	game_state.purchased_shop_item_ids = {}
-	game_state.system_progress = 20
+	game_state.set_flag(&"has_mind_access_device", false)
 	game_state.level_entry_player_state = level_entry_paid.duplicate(true)
 	game_state.record_campaign_checkpoint(2, checkpoint_snapshot)
 	game_state.completed_level = 3
@@ -322,7 +324,7 @@ func _test_return_to_tavern_from_death() -> void:
 	game_state.money = 35
 	game_state.rewarded_task_ids = {&"task_a": true, &"task_level_2": true}
 	game_state.purchased_shop_item_ids = {&"shop_shotgun": true}
-	game_state.system_progress = 40
+	game_state.grant_shop_flag(&"has_mind_access_device")
 	game_state.pending_player_state = {}
 
 	var calls: Array[Dictionary] = []
@@ -336,12 +338,12 @@ func _test_return_to_tavern_from_death() -> void:
 	await process_frame
 	check(calls.size() == 1 and calls[0].path == flow.next_scene_path() and not calls[0].reload,
 		"Death offers one non-reload transition to the level adapter's tavern path")
-	check(game_state.completed_level == 2 and game_state.available_level == 2
-			and game_state.money == 100
-			and game_state.rewarded_task_ids == {&"task_a": true}
-			and game_state.purchased_shop_item_ids.is_empty()
-			and game_state.pending_player_state == checkpoint_snapshot,
-		"Hotel return restores the last completion checkpoint before loading")
+	check(game_state.completed_level == 3 and game_state.available_level == 4
+			and game_state.money == 35
+			and game_state.rewarded_task_ids == {&"task_a": true, &"task_level_2": true}
+			and game_state.purchased_shop_item_ids == {&"shop_shotgun": true}
+			and game_state.get_flag(&"has_mind_access_device") and game_state.pending_player_state.is_empty(),
+		"Failed hotel return leaves checkpoint restoration uncommitted")
 	check(f.director.state == &"dead" and paused and f.view.errors == 1,
 		"Failed hotel return keeps death pause and reports a retryable load error")
 	f.view.restart_requested.emit()
@@ -353,16 +355,22 @@ func _test_return_to_tavern_from_death() -> void:
 			and game_state.money == 35
 			and game_state.rewarded_task_ids == {&"task_a": true, &"task_level_2": true}
 			and game_state.purchased_shop_item_ids == {&"shop_shotgun": true}
-			and game_state.system_progress == 40,
-		"Current-level retry after hotel failure rolls non-transactional checkpoint state back")
-	check(game_state.pending_player_state == level_entry_paid,
-		"Current-level retry after hotel failure stages the level-entry paid weapon snapshot")
+			and game_state.get_flag(&"has_mind_access_device"),
+		"Failed current-level retry preserves the original paid campaign state")
+	check(game_state.pending_player_state.is_empty() and game_state.level_entry_player_state == level_entry_paid,
+		"Failed current-level retry does not publish the pending level-entry snapshot")
+	f.director.scene_loader = func(_path: String, _reload: bool) -> Error: return OK
+	f.view.restart_requested.emit()
+	await process_frame
+	await process_frame
+	check(game_state.pending_player_state == level_entry_paid and game_state.money == 35,
+		"Accepted current-level retry commits the paid level-entry snapshot")
 	game_state.completed_level = 0
 	game_state.available_level = 1
 	game_state.money = 0
 	game_state.rewarded_task_ids = {}
 	game_state.purchased_shop_item_ids = {}
-	game_state.system_progress = 0
+	game_state.set_flag(&"has_mind_access_device", false)
 	game_state.pending_player_state = {}
 	game_state.level_entry_player_state = {}
 	game_state.campaign_checkpoint = {}
@@ -399,7 +407,7 @@ func _test_health_binding_identity() -> void:
 	await _ready_fixture(f)
 	var duplicate = Director.new()
 	var duplicate_view := ResultView.new()
-	duplicate.configure(f.host, {"health": f.health, "result_view": duplicate_view})
+	duplicate.configure(f.host, {"health": f.health, "result_view": duplicate_view, "scene_root": f.scene})
 	f.scene.add_child(duplicate)
 	await process_frame
 	await process_frame
@@ -409,7 +417,7 @@ func _test_health_binding_identity() -> void:
 	f.director.free()
 	var replacement = Director.new()
 	var replacement_view := ResultView.new()
-	replacement.configure(f.host, {"health": f.health, "result_view": replacement_view})
+	replacement.configure(f.host, {"health": f.health, "result_view": replacement_view, "scene_root": f.scene})
 	f.host.add_child(replacement)
 	f.director = replacement
 	f.view = replacement_view
@@ -536,7 +544,7 @@ func _test_real_health_without_level_flow() -> void:
 	var message: Label = health.get_node("DeathScreen/Center/Panel/Content/Message")
 	check(not tavern.visible, "A flow-less scene hides its unusable hotel button")
 	body.receive_hit(25.0)
-	check(message.text.contains("重新挑战") and not message.text.contains("酒店"),
+	check(message.text.contains("重新挑战") and not message.text.contains("酒馆"),
 		"Flow-less death text describes only the available current-level retry")
 	await _dispose(f)
 
@@ -644,6 +652,7 @@ func _test_synchronous_completion() -> void:
 	invoke.target_path = ^"../Events"
 	invoke.method = &"complete_synchronously"
 	invoke.completed_trigger = _trigger(&"action_finished")
+	invoke.cancel_method = &"cancel_wait"
 	var f := _fixture([_rule(_trigger(&"fired"), [invoke, _record("after")])])
 	await _ready_fixture(f)
 	f.events.fired.emit()
@@ -672,6 +681,7 @@ func _test_region_scope_and_stale_callbacks() -> void:
 	invoke.target_path = ^"../Events"
 	invoke.method = &"start_wait"
 	invoke.completed_trigger = _trigger(&"action_finished")
+	invoke.cancel_method = &"cancel_wait"
 	f = _fixture([_rule(_trigger(&"fired"), [invoke, _record("after")], true)])
 	await _ready_fixture(f)
 	f.events.fired.emit()
@@ -713,6 +723,7 @@ func _test_lost_event_source() -> void:
 	invoke.target_path = ^"../Events"
 	invoke.method = &"start_wait"
 	invoke.completed_trigger = _trigger(&"action_finished")
+	invoke.cancel_method = &"cancel_wait"
 	f = _fixture([_rule(_trigger(&"fired"), [invoke, _record("unexpected")])])
 	await _ready_fixture(f)
 	f.events.fired.emit()
