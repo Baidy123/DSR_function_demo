@@ -58,6 +58,20 @@ public:
     bool SegmentBlocked(const Vec3& from, const Vec3& to, float& hitT) const;
 
     /**
+     * @brief 带半径的线段检测：把包围盒向外扩张后求交。
+     *
+     * 用于子弹：即使弹道贴着箱子边缘擦过，也会被判为命中，避免出现
+     * “子弹穿过障碍物”的视觉错觉。
+     * @param [IN] from 起点。
+     * @param [IN] to 终点。
+     * @param [IN] dilation 扩张量（米）。
+     * @param [OUT] hitT 命中参数（0–1）。
+     * @return 命中返回 true。
+     */
+    bool SegmentBlockedDilated(const Vec3& from, const Vec3& to,
+                               float dilation, float& hitT) const;
+
+    /**
      * @brief 线段是否被遮挡（忽略高度为 0 的薄片）。
      * @param [IN] from 起点。
      * @param [IN] to 终点。

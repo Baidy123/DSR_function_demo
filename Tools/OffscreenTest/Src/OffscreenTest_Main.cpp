@@ -58,6 +58,7 @@ struct Options {
     std::string ui = "none";
     std::string output;
     std::string meshes = offscreen::DEFAULT_MESH_DIR;
+    std::string pose = "none";
     int frames = offscreen::DEFAULT_FRAMES;
     bool endingWait = false;
     bool flow = false;
@@ -90,6 +91,8 @@ Options ParseOptions(int argc, char** argv)
             options.output = argv[++i];
         } else if (arg == "--meshes" && i + 1 < argc) {
             options.meshes = argv[++i];
+        } else if (arg == "--pose" && i + 1 < argc) {
+            options.pose = argv[++i];
         } else if (arg == "--frames" && i + 1 < argc) {
             ParseInt(argv[++i], options.frames);
         } else if (arg == "--choice" && i + 1 < argc) {
@@ -294,6 +297,13 @@ int main(int argc, char** argv)
     }
 
     ApplyView(app, options);
+    if (options.pose == "aim") {
+        app.DebugSetAimPose(true);
+    } else if (options.pose == "melee") {
+        app.DebugSetMeleePose(true);
+    } else if (options.pose == "walk") {
+        app.DebugSetWalkPose(true);
+    }
     app.SetCaptureMode(true);
     for (int frame = 0; frame < options.frames; ++frame) {
         app.Update(1.0f / 60.0f);

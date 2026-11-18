@@ -20,10 +20,14 @@ enum class SceneId : std::uint8_t {
 
 /**
  * @brief 敌人类型。
+ *
+ * `SCAVENGER` 远程拾荒者、`THUG` 近战打手、`AGENT` 公司特工。
+ * 三者的移动、攻击节奏与威胁方式均不同。
  */
 enum class EnemyType : std::uint8_t {
     SCAVENGER = 0,
-    AGENT = 1
+    AGENT = 1,
+    THUG = 2
 };
 
 /**
@@ -33,7 +37,8 @@ struct RoomBlock {
     Vec3 center;
     Vec3 half;
     Color color{0.5f, 0.5f, 0.5f, 1.0f};
-    int pattern = 0;
+    int pattern = 0;      ///< 程序化图案（见 `SurfacePattern`）。
+    int material = 0;     ///< 表面材质（见 `SurfaceMaterial`）。
     bool solid = true;
 };
 

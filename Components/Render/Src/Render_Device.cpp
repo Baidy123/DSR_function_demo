@@ -43,15 +43,17 @@ struct VSInput
     float3 normal : NORMAL;
     float3 color : COLOR0;
     float pattern : TEXCOORD0;
+    float material : TEXCOORD1;
 };
 
 struct VSOutput
 {
     float4 position : SV_POSITION;
-    float3 world : TEXCOORD1;
+    float3 world : TEXCOORD2;
     float3 normal : NORMAL;
     float3 color : COLOR0;
     float pattern : TEXCOORD0;
+    float material : TEXCOORD1;
 };
 
 VSOutput VSMain(VSInput input)
@@ -63,6 +65,7 @@ VSOutput VSMain(VSInput input)
     output.normal = mul(float4(input.normal, 0.0), uWorld).xyz;
     output.color = input.color;
     output.pattern = input.pattern;
+    output.material = input.material;
     return output;
 }
 
@@ -87,12 +90,13 @@ float Noise2(float2 p)
 
 float3 ApplyPattern(float3 base, float2 uv, float pattern)
 {
-    if (pattern < 0.5 || pattern > 7.5)
+    if (pattern < 0.5)
     {
         return base;
     }
     if (pattern < 1.5)
     {
+        // 砖墙：交错砖缝 + 颗粒明暗。
         float2 g = uv * float2(2.4, 4.2);
         float row = floor(g.y);
         g.x += frac(row * 0.5);
@@ -103,18 +107,23 @@ float3 ApplyPattern(float3 base, float2 uv, float pattern)
     }
     if (pattern < 2.5)
     {
+        // 木材：竖向拼板缝与沿纹理的细纹。
         float2 g = uv * float2(1.4, 6.5);
         float seam = step(frac(g.y), 0.06);
         float grain = 0.9 + 0.1 * sin(uv.x * 26.0 + Noise2(uv * 3.0) * 6.0);
-        return base * grain * (1.0 - 0.42 * seam);
+        float knot = smoothstep(0.72, 0.95, Noise2(uv * 5.0)) * 0.18;
+        return base * grain * (1.0 - 0.42 * seam) * (1.0 - knot);
     }
     if (pattern < 3.5)
     {
+        // 金属加强筋与横向拉丝。
         float rib = 0.86 + 0.14 * step(0.5, frac(uv.x * 9.0));
-        return base * rib * (0.94 + 0.06 * Noise2(uv * 6.0));
+        float brush = 0.96 + 0.04 * sin(uv.y * 220.0);
+        return base * rib * brush * (0.94 + 0.06 * Noise2(uv * 6.0));
     }
     if (pattern < 4.5)
     {
+        // 锈蚀：斑块混入锈色。
         float n = Noise2(uv * 4.5) * 0.65 + Noise2(uv * 13.0) * 0.35;
         float patch = smoothstep(0.52, 0.82, n);
         float3 rust = float3(0.34, 0.15, 0.07);
@@ -122,11 +131,154 @@ float3 ApplyPattern(float3 base, float2 uv, float pattern)
     }
     if (pattern < 5.5)
     {
+        // 布料：细密织纹。
         float weave = 0.93 + 0.07 * sin(uv.x * 70.0) * sin(uv.y * 70.0);
         return base * weave;
     }
-    float n = Noise2(uv * 2.6) * 0.62 + Noise2(uv * 9.0) * 0.38;
-    return base * (0.84 + 0.24 * n);
+    if (pattern < 6.5)
+    {
+        // 混凝土：大小两层颗粒。
+        float n = Noise2(uv * 2.6) * 0.62 + Noise2(uv * 9.0) * 0.38;
+        return base * (0.86 + 0.22 * n);
+    }
+    if (pattern < 7.5)
+    {
+        // 纸箱：褶皱、瓦楞压痕与一条封箱胶带。
+        float wrinkle = Noise2(uv * 9.0) * 0.6 + Noise2(uv * 26.0) * 0.4;
+        float ridge = smoothstep(0.44, 0.5, wrinkle) -
+                      smoothstep(0.5, 0.56, wrinkle);
+        float3 c = base * (0.84 + 0.26 * wrinkle);
+        c *= (1.0 - 0.20 * saturate(ridge));
+        float band = frac(uv.y * 1.7);
+        float tape = step(0.44, band) * step(band, 0.56);
+        c = lerp(c, base * 1.18 + 0.03, tape * 0.45);
+        return c;
+    }
+    if (pattern < 8.5)
+    {
+        // 纸张/海报：纤维与印刷网点。
+        float fiber = Noise2(uv * 90.0) * 0.3 + Noise2(uv * 24.0) * 0.7;
+        float dots = step(0.42, frac(uv.x * 110.0) * frac(uv.y * 110.0));
+        return base * (0.9 + 0.14 * fiber) * (1.0 - 0.10 * dots);
+    }
+    if (pattern < 9.5)
+    {
+        // 玻璃：竖向反光条纹与污渍。
+        float streak = 0.9 + 0.12 * sin(uv.x * 34.0 +
+                                        Noise2(uv * 4.0) * 12.0);
+        float smudge = Noise2(uv * 7.0);
+        return base * streak * (0.94 + 0.12 * smudge);
+    }
+    if (pattern < 10.5)
+    {
+        // 瓷砖：方格接缝 + 局部高光。
+        float2 g = uv * 5.0;
+        float2 f = frac(g);
+        float seam = step(f.x, 0.045) + step(f.y, 0.045);
+        float gloss = smoothstep(0.55, 1.0, Noise2(uv * 3.0));
+        return base * (0.9 + 0.16 * gloss) * (1.0 - 0.34 * saturate(seam));
+    }
+    if (pattern < 11.5)
+    {
+        // 棋盘地面。
+        float2 cell = floor(uv * 4.0);
+        float odd = fmod(cell.x + cell.y, 2.0);
+        float wear = 0.94 + 0.06 * Noise2(uv * 12.0);
+        return lerp(base * 0.78, base * 1.6, odd) * wear;
+    }
+    if (pattern < 12.5)
+    {
+        // 皮革：细密毛孔与折痕。
+        float pores = Noise2(uv * 70.0);
+        float creaseNoise = Noise2(uv * 9.0);
+        float crease = smoothstep(0.46, 0.5, creaseNoise) -
+                       smoothstep(0.5, 0.55, creaseNoise);
+        return base * (0.9 + 0.14 * pores) * (1.0 - 0.24 * saturate(crease));
+    }
+    if (pattern < 13.5)
+    {
+        // 橡胶/沥青：细颗粒。
+        return base * (0.9 + 0.1 * Noise2(uv * 42.0));
+    }
+    return base;
+}
+
+/**
+ * @brief 表面材质参数：高光锐度、高光强度、金属感、漫反射比例与环境反射。
+ */
+struct SurfaceParams
+{
+    float power;
+    float specular;
+    float metalness;
+    float diffuse;
+    float env;
+};
+
+SurfaceParams GetSurface(float material)
+{
+    SurfaceParams s;
+    if (material < 0.5)          // 灰泥/混凝土
+    {
+        s.power = 8.0;   s.specular = 0.02; s.metalness = 0.0;
+        s.diffuse = 1.00; s.env = 0.02;
+    }
+    else if (material < 1.5)     // 木材
+    {
+        s.power = 18.0;  s.specular = 0.08; s.metalness = 0.0;
+        s.diffuse = 1.00; s.env = 0.05;
+    }
+    else if (material < 2.5)     // 哑光金属
+    {
+        s.power = 26.0;  s.specular = 0.34; s.metalness = 0.55;
+        s.diffuse = 0.92; s.env = 0.34;
+    }
+    else if (material < 3.5)     // 抛光金属（黄铜/镀铬）
+    {
+        s.power = 96.0;  s.specular = 1.10; s.metalness = 0.92;
+        s.diffuse = 0.80; s.env = 0.85;
+    }
+    else if (material < 4.5)     // 玻璃
+    {
+        s.power = 150.0; s.specular = 1.35; s.metalness = 0.0;
+        s.diffuse = 0.22; s.env = 0.90;
+    }
+    else if (material < 5.5)     // 塑料
+    {
+        s.power = 44.0;  s.specular = 0.30; s.metalness = 0.0;
+        s.diffuse = 1.00; s.env = 0.18;
+    }
+    else if (material < 6.5)     // 纸板
+    {
+        s.power = 6.0;   s.specular = 0.01; s.metalness = 0.0;
+        s.diffuse = 1.00; s.env = 0.03;
+    }
+    else if (material < 7.5)     // 布料
+    {
+        s.power = 5.0;   s.specular = 0.015; s.metalness = 0.0;
+        s.diffuse = 1.00; s.env = 0.04;
+    }
+    else if (material < 8.5)     // 陶瓷/搪瓷
+    {
+        s.power = 64.0;  s.specular = 0.48; s.metalness = 0.0;
+        s.diffuse = 1.00; s.env = 0.20;
+    }
+    else if (material < 9.5)     // 橡胶/沥青
+    {
+        s.power = 6.0;   s.specular = 0.02; s.metalness = 0.0;
+        s.diffuse = 1.00; s.env = 0.03;
+    }
+    else if (material < 10.5)    // 液体/积水
+    {
+        s.power = 240.0; s.specular = 1.60; s.metalness = 0.0;
+        s.diffuse = 0.12; s.env = 1.10;
+    }
+    else                         // 自发光
+    {
+        s.power = 10.0;  s.specular = 0.05; s.metalness = 0.0;
+        s.diffuse = 1.00; s.env = 0.05;
+    }
+    return s;
 }
 
 float4 PSMain(VSOutput input) : SV_TARGET
@@ -150,8 +302,14 @@ float4 PSMain(VSOutput input) : SV_TARGET
     }
 
     float3 albedo = ApplyPattern(input.color * uTint.rgb, uv * 0.5, input.pattern);
+    const SurfaceParams surface = GetSurface(input.material);
+
     float3 ambient = uAmbient.rgb * (0.72 + 0.28 * saturate(N.y * 0.5 + 0.5));
-    float3 color = albedo * ambient;
+    float3 color = albedo * ambient * surface.diffuse;
+
+    float ndv = saturate(dot(N, V));
+    float fresnel = pow(1.0 - ndv, 5.0);
+    float3 specTint = lerp(float3(1.0, 1.0, 1.0), albedo, surface.metalness);
 
     int count = (int)uLightCount.x;
     [loop]
@@ -175,16 +333,29 @@ float4 PSMain(VSOutput input) : SV_TARGET
         float ndl = saturate(dot(N, L) * 0.5 + 0.5);
         float3 lightColor = uLightColorIntensity[i].rgb;
         float intensity = uLightColorIntensity[i].a;
-        color += albedo * lightColor * intensity * atten * ndl;
+        float energy = intensity * atten;
+
+        color += albedo * surface.diffuse * lightColor * energy * ndl;
+
+        // Blinn-Phong 高光：不同材质的高光宽度与强度差别明显。
+        float3 H = normalize(L + V);
+        float spec = pow(saturate(dot(N, H)), surface.power) * surface.specular;
+        color += specTint * lightColor * energy * spec * ndl;
     }
 
-    float rim = pow(1.0 - saturate(dot(N, V)), 3.0);
-    color += rim * uAmbient.rgb * 1.05;
+    // 环境反射：金属与玻璃靠这一项与哑光表面区分开。
+    float3 refl = reflect(-V, N);
+    float3 envColor = lerp(uFogColor.rgb * 1.5, uAmbient.rgb * 2.8,
+                           saturate(refl.y * 0.5 + 0.5));
+    color += envColor * surface.env * (0.35 + 0.65 * fresnel) * specTint;
 
-    // 材质编号 8 及以上表示自发光表面（霓虹、屏幕、灯罩）。
-    float emissive = input.pattern > 7.5 ? 1.6 : 0.0;
+    float rim = pow(1.0 - ndv, 3.0);
+    color += rim * uAmbient.rgb * 0.45;
+
+    // 图案 14 与材质 11 表示自发光表面（霓虹、屏幕、灯罩）。
+    float emissive = (input.pattern > 13.5 || input.material > 10.5) ? 0.85 : 0.0;
     color += albedo * emissive;
-    color += uEmission.rgb * (0.55 + 0.45 * saturate(dot(N, V)));
+    color += uEmission.rgb * (0.55 + 0.45 * ndv);
 
     float dist = length(uCameraPos.xyz - input.world);
     float fog = saturate((dist - uFogParams.x) / max(uFogParams.y - uFogParams.x, 0.001));
@@ -518,8 +689,10 @@ bool RenderDevice::CreateShaders()
         {"COLOR", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 24,
          D3D11_INPUT_PER_VERTEX_DATA, 0},
         {"TEXCOORD", 0, DXGI_FORMAT_R32_FLOAT, 0, 36,
+         D3D11_INPUT_PER_VERTEX_DATA, 0},
+        {"TEXCOORD", 1, DXGI_FORMAT_R32_FLOAT, 0, 40,
          D3D11_INPUT_PER_VERTEX_DATA, 0}};
-    if (FAILED(m_device->CreateInputLayout(layout, 4,
+    if (FAILED(m_device->CreateInputLayout(layout, 5,
                                            vsBlob->GetBufferPointer(),
                                            vsBlob->GetBufferSize(),
                                            m_sceneLayout.GetAddressOf()))) {

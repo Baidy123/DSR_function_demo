@@ -1,19 +1,26 @@
-# 通用道具：箱子、桶、门框、水洼、吊灯、托盘
-# 单位：米，原点在底座中心，+Y 向上。
-# 材质编号：0 平涂 / 1 砖 / 2 木纹 / 3 金属肋 / 4 锈 / 5 布纹 / 6 混凝土 / 8+ 自发光
+# 通用道具：木箱、纸箱、桶、托盘、积水、门框、吊灯、卷帘门、零件、家具。
+# 单位：米；原点在底座中心，Y 向上。
+# pattern 0 平涂 / 1 砖 / 2 木纹 / 3 金属筋 / 4 锈 / 5 布纹 / 6 混凝土 /
+#         7 纸箱 / 8 纸张 / 9 玻璃 / 10 瓷砖 / 11 棋盘 / 12 皮革 / 13 橡胶 / 14 自发光
+# surface 决定反射模型（plaster/wood/metal/chrome/glass/plastic/cardboard/
+#         cloth/ceramic/rubber/liquid/emissive）。
 
 mesh PROP_CRATE_S
 part body pivot 0 0 0
 mat 0x6B4C2E
 pattern 2
+surface wood
 box 0 0.3 0 0.6 0.6 0.6
 mat 0x8A6538
 pattern 2
+surface wood
 box 0 0.62 0 0.62 0.05 0.62
 mat 0x2A1F16
 pattern 0
+surface metal
 box 0 0.3 0 0.62 0.04 0.05
 box 0 0.3 0 0.05 0.62 0.05
+box 0.3 0.3 0 0.04 0.6 0.06
 endpart
 endmesh
 
@@ -21,17 +28,38 @@ mesh PROP_CRATE_L
 part body pivot 0 0 0
 mat 0x5E4630
 pattern 2
+surface wood
 box 0 0.5 0 1.2 1.0 1.0
 mat 0x7A5A38
 pattern 2
+surface wood
 box 0 1.02 0 1.24 0.06 1.04
 mat 0x2A1F16
 pattern 0
+surface metal
 box 0 0.5 0.51 1.24 0.05 0.04
 box 0 0.5 -0.51 1.24 0.05 0.04
-mat 0xC08A34
-pattern 0
-box 0.4 0.62 0.52 0.28 0.16 0.02
+mat 0xC9AE84
+pattern 8
+surface paper
+box 0.34 0.7 0.52 0.3 0.18 0.01
+endpart
+endmesh
+
+mesh PROP_BOX
+part body pivot 0 0 0
+mat 0x9A7A52
+pattern 7
+surface cardboard
+box 0 0.22 0 0.52 0.44 0.44
+mat 0xA8895E
+pattern 7
+surface cardboard
+box 0 0.45 0 0.54 0.02 0.46
+mat 0xC9AE84
+pattern 7
+surface cardboard
+box 0 0.45 0 0.12 0.03 0.47
 endpart
 endmesh
 
@@ -39,14 +67,89 @@ mesh PROP_BARREL
 part body pivot 0 0 0
 mat 0x704428
 pattern 4
+surface metal
 cyl 0 0 0 0.3 0.3 0.9 10
 mat 0x2C2A28
 pattern 3
+surface metal
 cyl 0 0.16 0 0.31 0.31 0.06 10
 cyl 0 0.68 0 0.31 0.31 0.06 10
 mat 0x8A5A32
 pattern 4
+surface metal
 cyl 0 0.9 0 0.3 0.28 0.05 10
+endpart
+endmesh
+
+mesh PROP_KEG
+part body pivot 0 0 0
+mat 0x8A8F94
+pattern 3
+surface metal
+cyl 0 0.03 0 0.2 0.22 0.5 12
+mat 0x6E7378
+pattern 3
+surface metal
+cyl 0 0.52 0 0.22 0.16 0.05 12
+mat 0xB0B6BB
+pattern 3
+surface chrome
+cyl 0 0.57 0 0.05 0.05 0.06 8
+mat 0x3A3E42
+pattern 0
+surface rubber
+cyl 0 0 0 0.19 0.19 0.03 12
+endpart
+endmesh
+
+mesh PROP_BOTTLE
+part body pivot 0 0 0
+mat 0x2E4A44
+pattern 9
+surface glass
+cyl 0 0 0 0.055 0.05 0.16 8
+mat 0x3A5C56
+pattern 9
+surface glass
+cyl 0 0.16 0 0.022 0.02 0.09 8
+mat 0xC9A24A
+pattern 8
+surface paper
+cyl 0 0.14 0 0.056 0.052 0.04 8
+mat 0x8A3A2A
+pattern 0
+surface chrome
+cyl 0 0.25 0 0.024 0.024 0.02 8
+endpart
+endmesh
+
+mesh PROP_GLASS
+part body pivot 0 0 0
+mat 0x9AB6BE
+pattern 9
+surface glass
+cyl 0 0 0 0.04 0.055 0.1 8
+mat 0xC9AE84
+pattern 9
+surface glass
+cyl 0 0.1 0 0.055 0.045 0.03 8
+endpart
+endmesh
+
+mesh PROP_ASHTRAY
+part body pivot 0 0 0
+mat 0x3A3E42
+pattern 0
+surface ceramic
+cyl 0 0 0 0.09 0.1 0.03 10
+mat 0xD8D2C6
+pattern 0
+surface ceramic
+cyl 0 0.03 0 0.085 0.085 0.01 10
+mat 0x2A2A2A
+pattern 0
+surface rubber
+cyl 0.02 0.04 0.02 0.012 0.012 0.06 6
 endpart
 endmesh
 
@@ -54,9 +157,11 @@ mesh PROP_PALLET
 part body pivot 0 0 0
 mat 0x6A4E32
 pattern 2
+surface wood
 box 0 0.08 0 1.6 0.16 1.2
 mat 0x4A3624
 pattern 2
+surface wood
 box 0 0.02 0 1.6 0.04 0.12
 box 0 0.02 0.5 1.6 0.04 0.12
 box 0 0.02 -0.5 1.6 0.04 0.12
@@ -67,12 +172,15 @@ mesh PROP_PUDDLE
 part body pivot 0 0 0
 mat 0x121C26
 pattern 0
+surface liquid
 plane 0 0.012 0 1.2 0.8
 mat 0x1E3540
 pattern 0
+surface liquid
 plane 0 0.016 0 0.7 0.45
-mat 0x2E5A64
-pattern 8
+mat 0x8FB6C2
+pattern 0
+surface liquid
 plane 0 0.02 -0.05 0.18 0.1
 endpart
 endmesh
@@ -81,17 +189,21 @@ mesh PROP_DOOR_FRAME
 part body pivot 0 0 0
 mat 0x2A1C18
 pattern 2
+surface wood
 box -0.95 1.2 0 0.18 2.4 0.22
 box 0.95 1.2 0 0.18 2.4 0.22
 box 0 2.32 0 2.1 0.18 0.22
 mat 0x3A2A22
 pattern 2
+surface wood
 box 0 1.12 0 1.7 2.24 0.08
 mat 0x7A5A2E
 pattern 0
+surface chrome
 box 0 2.42 0 2.3 0.05 0.3
 mat 0x8E6A34
 pattern 3
+surface chrome
 box 0 1.02 -0.06 0.06 0.06 0.06
 endpart
 endmesh
@@ -100,16 +212,38 @@ mesh PROP_LAMP_HANG
 part body pivot 0 0 0
 mat 0x1A1C1E
 pattern 3
+surface metal
 cyl 0 0 0 0.02 0.02 0.32 6
 mat 0x2A2C2E
 pattern 3
+surface metal
 cyl 0 0.32 0 0.26 0.09 0.18 10
 mat 0xFFC178
-pattern 8
+pattern 14
+surface emissive
 cyl 0 0.5 0 0.08 0.08 0.02 8
 mat 0x3A3C3E
 pattern 3
+surface metal
 cyl 0 0.52 0 0.1 0.1 0.04 8
+endpart
+endmesh
+
+mesh PROP_TABLE_LAMP
+part body pivot 0 0 0
+mat 0xC79A4A
+pattern 0
+surface chrome
+cyl 0 0 0 0.07 0.06 0.03 10
+cyl 0 0.03 0 0.015 0.015 0.26 8
+mat 0xE8C9A0
+pattern 5
+surface cloth
+cyl 0 0.28 0 0.14 0.1 0.16 10
+mat 0xFFD8A0
+pattern 14
+surface emissive
+cyl 0 0.27 0 0.1 0.09 0.08 10
 endpart
 endmesh
 
@@ -117,13 +251,16 @@ mesh PROP_ROLLER_DOOR
 part body pivot 0 0 0
 mat 0x3A4046
 pattern 3
+surface metal
 box 0 2.0 0 5.0 4.0 0.16
 mat 0x8A7430
 pattern 0
+surface plastic
 box 0 1.1 0.1 4.6 0.12 0.02
 box 0 2.1 0.1 4.6 0.12 0.02
 mat 0x22262A
 pattern 3
+surface metal
 box 0 4.12 0 5.2 0.2 0.24
 endpart
 endmesh
@@ -132,18 +269,246 @@ mesh PROP_PART
 part body pivot 0 0 0
 mat 0x6E7276
 pattern 3
+surface metal
 box 0 0.06 0 0.34 0.06 0.26
 mat 0x9AA0A4
 pattern 3
+surface chrome
 box 0 0.14 0 0.24 0.1 0.18
 mat 0xC79A4A
 pattern 0
+surface chrome
 box 0 0.2 0 0.1 0.04 0.12
 mat 0x39E0D0
-pattern 8
+pattern 14
+surface emissive
 box 0.08 0.14 0.1 0.05 0.05 0.02
 mat 0x8A3A2A
 pattern 4
+surface metal
 box -0.09 0.12 -0.06 0.03 0.05 0.05
+endpart
+endmesh
+
+mesh PROP_CHAIR
+part body pivot 0 0 0
+mat 0x6B4C2E
+pattern 2
+surface wood
+box 0 0.44 0 0.42 0.05 0.42
+box 0 0.72 -0.19 0.42 0.5 0.05
+mat 0x543A22
+pattern 2
+surface wood
+box -0.17 0.22 0.17 0.05 0.44 0.05
+box 0.17 0.22 0.17 0.05 0.44 0.05
+box -0.17 0.22 -0.17 0.05 0.44 0.05
+box 0.17 0.22 -0.17 0.05 0.44 0.05
+mat 0x2E4A44
+pattern 5
+surface cloth
+box 0 0.47 0 0.36 0.03 0.36
+endpart
+endmesh
+
+mesh PROP_CRATE_PLASTIC
+part body pivot 0 0 0
+mat 0x2E5E7A
+pattern 0
+surface plastic
+box 0 0.16 0 0.5 0.32 0.34
+mat 0x244C63
+pattern 0
+surface plastic
+box 0 0.32 0 0.52 0.03 0.36
+mat 0x1E3E52
+pattern 0
+surface plastic
+box 0 0.16 0.17 0.46 0.2 0.02
+endpart
+endmesh
+
+mesh PROP_TARP
+part body pivot 0 0 0
+mat 0x2F3A33
+pattern 5
+surface cloth
+box 0 0.08 0 0.9 0.16 0.7
+mat 0x3A473E
+pattern 5
+surface cloth
+box 0.05 0.19 0.02 0.7 0.1 0.55
+mat 0x25302A
+pattern 5
+surface cloth
+box -0.1 0.05 0.3 0.5 0.1 0.2
+endpart
+endmesh
+
+mesh PROP_AC
+part body pivot 0 0 0
+mat 0x8A9096
+pattern 0
+surface metal
+box 0 0.25 0 0.8 0.5 0.3
+mat 0x6E747A
+pattern 3
+surface metal
+box 0.05 0.25 0.16 0.62 0.34 0.02
+mat 0x2A2E32
+pattern 0
+surface metal
+box 0.28 0.1 0.17 0.3 0.16 0.02
+endpart
+endmesh
+
+mesh PROP_PIPE
+part body pivot 0 0 0
+mat 0x5A6068
+pattern 3
+surface metal
+cyl 0 0 0 0.07 0.07 2.2 8
+mat 0x767C84
+pattern 3
+surface metal
+cyl 0 0.5 0 0.09 0.09 0.06 8
+cyl 0 1.5 0 0.09 0.09 0.06 8
+endpart
+endmesh
+
+mesh PROP_FIRE_EXT
+part body pivot 0 0 0
+mat 0x9A2A26
+pattern 0
+surface plastic
+cyl 0 0 0 0.1 0.1 0.5 10
+mat 0x7A1E1C
+pattern 0
+surface plastic
+cyl 0 0.5 0 0.1 0.06 0.05 10
+mat 0x2A2A2A
+pattern 0
+surface rubber
+cyl 0 0.55 0 0.03 0.03 0.1 6
+mat 0xC9B24A
+pattern 8
+surface paper
+box 0 0.3 0.1 0.13 0.14 0.01
+endpart
+endmesh
+
+mesh PROP_PLANT
+part body pivot 0 0 0
+mat 0x3A2A22
+pattern 2
+surface ceramic
+cyl 0 0 0 0.16 0.19 0.28 10
+mat 0x24301F
+pattern 5
+surface cloth
+box 0 0.42 0 0.34 0.28 0.3
+box 0.1 0.56 0.06 0.2 0.2 0.18
+box -0.12 0.5 -0.04 0.18 0.24 0.2
+endpart
+endmesh
+
+mesh PROP_SIGN_PANEL
+part body pivot 0 0 0
+mat 0x2A2E32
+pattern 0
+surface metal
+box 0 0.6 0 0.9 1.2 0.06
+mat 0xC9BFA4
+pattern 8
+surface cardboard
+box 0 0.6 0.04 0.8 1.1 0.01
+mat 0x8A3A2A
+pattern 8
+surface paper
+box 0 0.85 0.05 0.6 0.12 0.01
+mat 0x2E4A44
+pattern 8
+surface paper
+box 0 0.45 0.05 0.66 0.3 0.01
+endpart
+endmesh
+
+mesh PROP_MENU_BOARD
+part body pivot 0 0 0
+mat 0x2A2622
+pattern 2
+surface wood
+box 0 1.0 0 0.9 1.6 0.06
+mat 0x1E2422
+pattern 0
+surface ceramic
+box 0 1.0 0.04 0.78 1.44 0.01
+mat 0xD9E2DC
+pattern 8
+surface paper
+box 0 1.45 0.05 0.5 0.1 0.01
+box 0 1.2 0.05 0.56 0.05 0.01
+box 0 1.02 0.05 0.6 0.05 0.01
+box 0 0.85 0.05 0.5 0.05 0.01
+box 0 0.68 0.05 0.58 0.05 0.01
+endpart
+endmesh
+
+mesh PROP_COAT_RACK
+part body pivot 0 0 0
+mat 0x3A2A1E
+pattern 2
+surface wood
+cyl 0 0 0 0.18 0.16 0.05 8
+cyl 0 0 0 0.03 0.03 1.75 8
+mat 0x2A1E14
+pattern 2
+surface wood
+box 0 1.7 0 0.5 0.05 0.05
+box 0 1.55 0.2 0.05 0.3 0.05
+mat 0x4A3A2A
+pattern 5
+surface cloth
+box 0 1.35 0.12 0.42 0.5 0.16
+endpart
+endmesh
+
+mesh PROP_FRIDGE
+part body pivot 0 0 0
+mat 0x8A9096
+pattern 3
+surface metal
+box 0 0.9 0 0.9 1.8 0.7
+mat 0x1E2730
+pattern 9
+surface glass
+box 0 1.1 0.36 0.76 1.2 0.02
+mat 0x66E0D0
+pattern 14
+surface emissive
+box 0 1.72 0.36 0.7 0.06 0.02
+mat 0xB0B6BB
+pattern 3
+surface chrome
+box 0 0.9 0.37 0.06 1.2 0.03
+endpart
+endmesh
+
+mesh PROP_WINE_CRATE
+part body pivot 0 0 0
+mat 0x5E4630
+pattern 2
+surface wood
+box 0 0.2 0 0.6 0.4 0.4
+mat 0x7A5A38
+pattern 2
+surface wood
+box 0 0.41 0 0.62 0.03 0.42
+mat 0x2A3A34
+pattern 9
+surface glass
+cyl 0 0.43 0.1 0.035 0.035 0.26 8
+cyl 0 0.43 -0.1 0.035 0.035 0.26 8
+cyl 0.18 0.43 0 0.035 0.035 0.26 8
 endpart
 endmesh

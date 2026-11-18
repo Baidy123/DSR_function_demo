@@ -1,26 +1,32 @@
 #ifndef __GAME_CHARACTERS_HPP__
 #define __GAME_CHARACTERS_HPP__
 
-#include "Render_Device.hpp"
 #include "Render_Mesh.hpp"
 #include "Shared_Types.hpp"
 
 #include <cstdint>
 #include <string>
+#include <vector>
 
 namespace fc {
 
+class RenderDevice;
+
 /**
- * @brief 角色类型。
+ * @brief 可用的角色形象。
  */
 enum class CharacterId : std::uint8_t {
     PLAYER = 0,
-    BIGSISTER,
-    MERCHANT,
-    BARTENDER,
-    SCAVENGER,
-    AGENT
+    BIGSISTER = 1,
+    MERCHANT = 2,
+    BARTENDER = 3,
+    SCAVENGER = 4,
+    AGENT = 5,
+    THUG = 6
 };
+
+/** @brief 角色数量（含近战打手）。 */
+constexpr int CHARACTER_COUNT = 7;
 
 /**
  * @brief 角色持有的武器类型。
@@ -80,13 +86,18 @@ struct CharacterAnim {
     float walkPhase = 0.0f;   ///< 步行相位（弧度）。
     float walkAmp = 0.0f;     ///< 步行幅度（0 站立，1 全速）。
     float time = 0.0f;        ///< 累计时间（呼吸与微动作）。
+    bool running = false;     ///< 是否奔跑（影响前倾与摆臂）。
     bool aiming = false;      ///< 是否举枪。
     float aimOffset = 0.0f;   ///< 上半身相对身体的偏航（弧度）。
     float aimPitch = 0.0f;    ///< 俯仰（-1 下，1 上）。
     float recoil = 0.0f;      ///< 后坐力（0–1）。
+    float reloadProgress = -1.0f; ///< 换弹进度（0–1，负值表示未换弹）。
+    float meleeProgress = -1.0f;  ///< 近战挥击进度（0–1，负值表示未攻击）。
     float hitFlash = 0.0f;    ///< 受击闪红（0–1）。
     float alpha = 1.0f;       ///< 透明度。
     float deathLean = 0.0f;   ///< 死亡倒地程度（0–1）。
+    WeaponKind weapon = WeaponKind::NONE; ///< 手上的武器类型。
+    bool showWeapon = true;   ///< 是否绘制手中武器（空手时隐藏）。
 };
 
 /**
@@ -95,7 +106,7 @@ struct CharacterAnim {
 class CharacterLibrary {
 public:
     /**
-     * @brief 构建六名角色的网格。
+     * @brief 构建全部角色的网格。
      * @param [IN/OUT] meshes 网格库。
      */
     void Build(MeshLibrary& meshes);
@@ -126,9 +137,8 @@ public:
     const CharacterStyle& Style(CharacterId id) const;
 
 private:
-    CharacterStyle m_styles[6];
-    const Mesh* m_meshes[6] = {nullptr, nullptr, nullptr, nullptr, nullptr,
-                               nullptr};
+    CharacterStyle m_styles[CHARACTER_COUNT];
+    const Mesh* m_meshes[CHARACTER_COUNT] = {};
 };
 
 /**

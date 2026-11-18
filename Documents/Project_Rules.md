@@ -136,6 +136,9 @@ bool WorldToScreen(const CameraRuntime& camera, const Vec3& world, Vec2& screen)
 4. 图形接口固定 D3D11；着色器运行时由 `d3dcompiler_47.dll` 编译（Windows 系统组件）。
 5. 资源通过 `windres` 以 RCDATA 内嵌；exe 不得依赖外部资产路径。
 6. 保持 `-Wall`，不得用关闭告警的方式掩盖问题。
+7. **构建输出名**：`Target.exe` 是交付产物。若它正在被运行/测试，构建时必须用
+   `make release TARGET_FILE_NAME=TargetDev` 等手段输出到另一个文件名，避免覆盖
+   或锁住正在使用的二进制。自动化验证统一走独立产物名。
 
 ---
 
@@ -147,7 +150,9 @@ bool WorldToScreen(const CameraRuntime& camera, const Vec3& world, Vec2& screen)
 4. 三维美术来自三处，均可用文本审阅与 diff：
    - 代码内几何：`Components/World`（房间、墙、台面等体块）、`Components/Game/Game_Characters`（角色骨架）；
    - 文本网格 `.fcm`：`Resources/Meshes/Props/*.fcm`；
-   - 着色器程序化图案：`Render_Device` 中的 `ApplyPattern`。
+   - 着色器程序化图案与材质：`Render_Device` 中的 `ApplyPattern` 与 `GetSurface`。
+5. 每个几何体都必须同时指定 **图案**（`SurfacePattern`）与 **材质**（`SurfaceMaterial`）：
+   图案负责细节纹理，材质负责高光/金属感/环境反射。不得让木头、玻璃、金属共用同一套反射参数。
 5. 资产命名 ASCII 大写下划线：`PROP_LAMPPOST`、`PROP_CARGO`、`PORTRAIT_PLAYER`。
 6. 禁止把机器绝对路径、用户名、密钥写入任何入库文件；文档路径以 `./` 或相对路径表示。
 7. 外部素材只能先放 `Temp/`，确认授权与必要性后再决定是否以文本形式转写进仓库。
@@ -189,8 +194,8 @@ user.email = <>
 ```
 
 2. 禁止修改全局 Git 配置；本工作区额外设置（仅本地）：`core.autocrlf = false`、`core.eol = lf`。
-3. **只做本地提交，禁止推送**；不修改、不重建任何远端分支。
-4. 阶段性成果才提交；一次提交对应一个可说明的阶段，不提交半成品或临时文件。
+3. 阶段性成果才提交；一次提交对应一个可说明的阶段，不提交半成品或临时文件。
+4. 提交由作者决定何时推送到远端；推送前先确认远端分支状态，不擅自改写他人分支。
 5. 提交信息用简洁中文，说明“改了什么 + 为什么”；多行信息写入 `Temp/` 的 UTF-8 文件，用 `git commit -F` 提交。
 6. 提交前检查 `git status`：`Build/`、`Temp/`、`*.o`、`*.exe` 不得入库。
 7. 发现提交含敏感信息或隐私路径，立即在下一提交中移除并登记。

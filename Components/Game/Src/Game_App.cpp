@@ -478,13 +478,29 @@ void GameApp::UpdatePlaying(float dt)
     m_player.aimYaw = m_player.yaw;
     m_player.aimPitch = 0.0f;
     // 只在开火或主动瞄准后短时间内举枪，否则安静站立。
-    if (input.MouseDown(0)) {
+    if (input.MouseDown(0) && m_player.slot == WeaponSlot::PISTOL) {
         m_player.aimTimer = AIM_HOLD_TIME;
     }
     m_player.aimTimer = std::max(0.0f, m_player.aimTimer - dt);
-    m_player.aiming = m_player.aimTimer > 0.0f || m_player.reloading ||
-                      m_player.usingMedkit;
     m_player.time += dt;
+
+    // 武器槽：没有装备时只能是空手；否则滚轮在空手与手枪之间切换。
+    if (!m_inventory.hasGear) {
+        m_player.slot = WeaponSlot::FISTS;
+    }
+    const int wheel = input.WheelDelta();
+    if (wheel != 0 && !m_player.reloading && !m_player.usingMedkit) {
+        if (m_player.slot == WeaponSlot::PISTOL) {
+            m_player.slot = WeaponSlot::FISTS;
+            AddToast("空手：左键近战", DIM);
+        } else if (m_inventory.hasGear) {
+            m_player.slot = WeaponSlot::PISTOL;
+            AddToast("手枪：左键射击，R 换弹", BONE);
+        }
+    }
+    m_player.aiming = m_player.slot == WeaponSlot::PISTOL &&
+                      (m_player.aimTimer > 0.0f || m_player.reloading ||
+                       m_player.usingMedkit);
 
     Vec3 forward = NormalizeXZ(m_camera.current.target - m_camera.current.eye);
     Vec3 right(forward.z, 0.0f, -forward.x);
@@ -530,6 +546,8 @@ void GameApp::UpdatePlaying(float dt)
     }
 
     m_player.fireCooldown = std::max(0.0f, m_player.fireCooldown - dt);
+    m_player.meleeTimer = std::max(0.0f, m_player.meleeTimer - dt);
+    m_player.meleeCooldown = std::max(0.0f, m_player.meleeCooldown - dt);
     m_player.invulnerableTimer = std::max(0.0f, m_player.invulnerableTimer - dt);
     m_player.hitFlash = std::max(0.0f, m_player.hitFlash - dt * 3.0f);
 
@@ -585,6 +603,16 @@ void GameApp::UpdatePlaying(float dt)
         // 无头验证时让角色原地"走"，方便检查骨骼摆动。
         m_player.walkAmp = 1.0f;
         m_player.walkPhase += dt * 7.5f;
+    }
+    if (m_debugAimPose) {
+        m_player.slot = WeaponSlot::PISTOL;
+        m_player.aimTimer = AIM_HOLD_TIME;
+        m_player.aiming = true;
+    }
+    if (m_debugMeleePose) {
+        m_player.slot = WeaponSlot::FISTS;
+        m_player.aiming = false;
+        m_player.meleeTimer = MELEE_SWING_TIME * 0.45f;
     }
 
     bool alerted = m_alarm;
@@ -865,6 +893,8 @@ void GameApp::UpdateEnemies(float dt)
         enemy.time += dt;
         enemy.shootTimer = std::max(0.0f, enemy.shootTimer - dt);
         enemy.muzzleTimer = std::max(0.0f, enemy.muzzleTimer - dt);
+        enemy.meleeTimer = std::max(0.0f, enemy.meleeTimer - dt);
+        enemy.meleeCooldown = std::max(0.0f, enemy.meleeCooldown - dt);
         enemy.hitFlash = std::max(0.0f, enemy.hitFlash - dt * 4.0f);
 
         const Vec3 eye = enemy.position + Vec3(0.0f, 1.3f, 0.0f);
@@ -886,17 +916,41 @@ void GameApp::UpdateEnemies(float dt)
 
         const Vec3 toPlayer = NormalizeXZ(m_player.position - enemy.position);
         enemy.yaw = YawFromDirection(toPlayer);
-        enemy.aiming = los && distance < 16.0f;
+
+        // 三类敌人的行为差异：
+        // - SCAVENGER：远程，保持 6–7 米，左右游走。
+        // - AGENT：远程，保持更远，压枪点射更密集。
+        // - THUG：近战，直接冲脸，进入距离后挥棒。
+        const bool meleeUnit = enemy.type == EnemyType::THUG;
+        enemy.aiming = !meleeUnit && los && distance < 16.0f;
 
         Vec3 desired;
-        if (distance > 6.5f) {
-            desired = toPlayer;
-        } else if (distance < 2.6f) {
-            desired = toPlayer * -1.0f;
+        if (meleeUnit) {
+            if (distance > 1.25f) {
+                desired = toPlayer;
+            } else {
+                desired = toPlayer * -0.35f;
+            }
+        } else if (enemy.type == EnemyType::AGENT) {
+            if (distance > 8.5f) {
+                desired = toPlayer;
+            } else if (distance < 4.0f) {
+                desired = toPlayer * -1.0f;
+            } else {
+                const Vec3 side(toPlayer.z, 0.0f, -toPlayer.x);
+                desired = side * 0.75f;
+            }
         } else {
-            const Vec3 side(toPlayer.z, 0.0f, -toPlayer.x);
-            desired = side * 0.6f;
+            if (distance > 6.5f) {
+                desired = toPlayer;
+            } else if (distance < 2.6f) {
+                desired = toPlayer * -1.0f;
+            } else {
+                const Vec3 side(toPlayer.z, 0.0f, -toPlayer.x);
+                desired = side * 0.6f;
+            }
         }
+
         if (Length(desired) > 0.001f) {
             desired = NormalizeXZ(desired);
             const Vec3 before = enemy.position;
@@ -912,13 +966,13 @@ void GameApp::UpdateEnemies(float dt)
             enemy.position = next;
             enemy.moving = DistanceXZ(before, enemy.position) > 0.01f;
             if (enemy.moving) {
-                enemy.walkPhase += dt * 7.0f;
+                enemy.walkPhase += dt * (meleeUnit ? 9.0f : 7.0f);
             }
         } else {
             enemy.moving = false;
         }
         enemy.walkAmp = MoveTowards(enemy.walkAmp,
-                                    enemy.moving ? 0.9f : 0.0f, dt * 5.0f);
+                                    enemy.moving ? 0.95f : 0.0f, dt * 5.0f);
 
         // 互相分离，避免叠在一起
         for (const Enemy& other : m_enemies) {
@@ -936,10 +990,31 @@ void GameApp::UpdateEnemies(float dt)
             }
         }
 
-        if (los && distance < 15.0f && enemy.shootTimer <= 0.0f &&
-            m_player.hp > 0) {
+        if (m_player.hp <= 0) {
+            continue;
+        }
+
+        if (meleeUnit) {
+            // 挥棒：起手 0.18 秒命中判定，命中后给一段冷却。
+            if (enemy.meleeTimer > 0.0f && !enemy.meleeHit &&
+                enemy.meleeTimer < MELEE_SWING_TIME - 0.16f) {
+                enemy.meleeHit = true;
+                if (distance < 1.5f + enemy.radius) {
+                    DamagePlayer(14);
+                    TriggerShake(0.05f, 0.16f);
+                    m_audio.PlaySfx(SfxId::HIT);
+                }
+            }
+            if (enemy.meleeTimer <= 0.0f && enemy.meleeCooldown <= 0.0f &&
+                distance < 1.45f + enemy.radius && los) {
+                enemy.meleeTimer = MELEE_SWING_TIME;
+                enemy.meleeCooldown = 1.15f;
+                enemy.meleeHit = false;
+            }
+        } else if (los && distance < 15.0f && enemy.shootTimer <= 0.0f) {
             FireEnemyWeapon(enemy);
-            enemy.shootTimer = enemy.type == EnemyType::AGENT ? 0.85f : 1.35f;
+            enemy.shootTimer =
+                enemy.type == EnemyType::AGENT ? 0.62f : 1.25f;
         }
     }
 
@@ -961,7 +1036,7 @@ void GameApp::UpdateBullets(float dt)
         const Vec3 to = from + bullet.direction * (bullet.speed * dt);
 
         float wallT = 1.0f;
-        if (m_collision.SegmentBlocked(from, to, wallT)) {
+        if (m_collision.SegmentBlockedDilated(from, to, bullet.radius, wallT)) {
             const Vec3 hit = from + (to - from) * wallT;
             SpawnSparks(hit, Rgba(255, 190, 110));
             bullet.active = false;
@@ -1448,19 +1523,35 @@ void GameApp::SpawnEnemy(EnemyType type, Vec3 position, float yawDegrees,
 {
     Enemy enemy;
     enemy.type = type;
-    enemy.character = type == EnemyType::AGENT ? CharacterId::AGENT
-                                               : CharacterId::SCAVENGER;
-    enemy.position = position;
-    enemy.yaw = yawDegrees * PI / 180.0f;
-    if (type == EnemyType::AGENT) {
+    switch (type) {
+    case EnemyType::AGENT:
+        enemy.character = CharacterId::AGENT;
         enemy.hp = 70.0f;
         enemy.maxHp = 70.0f;
-        enemy.speed = 2.7f;
-    } else {
+        enemy.speed = 2.9f;
+        enemy.radius = 0.32f;
+        enemy.melee = false;
+        break;
+    case EnemyType::THUG:
+        enemy.character = CharacterId::THUG;
+        enemy.hp = 85.0f;
+        enemy.maxHp = 85.0f;
+        enemy.speed = 3.3f;
+        enemy.radius = 0.34f;
+        enemy.melee = true;
+        break;
+    case EnemyType::SCAVENGER:
+    default:
+        enemy.character = CharacterId::SCAVENGER;
         enemy.hp = 45.0f;
         enemy.maxHp = 45.0f;
         enemy.speed = 2.0f;
+        enemy.radius = 0.30f;
+        enemy.melee = false;
+        break;
     }
+    enemy.position = position;
+    enemy.yaw = yawDegrees * PI / 180.0f;
     enemy.alerted = alerted;
     enemy.shootTimer = m_rng.Float(0.3f, 1.1f);
     m_enemies.push_back(enemy);
@@ -1513,6 +1604,10 @@ void GameApp::RespawnAfterDeath()
 
 void GameApp::FirePlayerWeapon()
 {
+    if (m_player.slot == WeaponSlot::FISTS) {
+        MeleeAttack();
+        return;
+    }
     if (m_player.fireCooldown > 0.0f || m_player.reloading ||
         m_player.usingMedkit) {
         return;
@@ -1540,7 +1635,8 @@ void GameApp::FirePlayerWeapon()
     m_player.aimTimer = AIM_HOLD_TIME;
     const Vec3 forward(std::sin(m_player.yaw), 0.0f, std::cos(m_player.yaw));
     Bullet bullet;
-    bullet.position = m_player.position + Vec3(0.0f, 1.32f, 0.0f) +
+    // 枪口高度与胸部齐平，避开头部上方的高弹道，也能被矮掩体拦住。
+    bullet.position = m_player.position + Vec3(0.0f, 1.16f, 0.0f) +
                       forward * 0.55f;
     bullet.direction = forward;
     bullet.speed = PLAYER_BULLET_SPEED;
@@ -1557,9 +1653,58 @@ void GameApp::FirePlayerWeapon()
     SpawnSparks(bullet.position, Rgba(255, 210, 130));
 }
 
+/**
+ * @brief 徒手近战：向正前方的一段扇形内造成伤害与击退。
+ */
+void GameApp::MeleeAttack()
+{
+    if (m_player.meleeCooldown > 0.0f || m_player.usingMedkit) {
+        return;
+    }
+    m_player.meleeCooldown = MELEE_COOLDOWN;
+    m_player.meleeTimer = MELEE_SWING_TIME;
+    m_audio.PlaySfx(SfxId::HIT);
+    TriggerShake(0.008f, 0.06f);
+
+    const Vec3 forward(std::sin(m_player.yaw), 0.0f, std::cos(m_player.yaw));
+    const Vec3 origin = m_player.position + Vec3(0.0f, 1.1f, 0.0f);
+    bool hitAny = false;
+    for (size_t i = 0; i < m_enemies.size(); ++i) {
+        Enemy& enemy = m_enemies[i];
+        if (enemy.dead) {
+            continue;
+        }
+        const Vec3 toEnemy = enemy.position - m_player.position;
+        const float distance = DistanceXZ(enemy.position, m_player.position);
+        if (distance > MELEE_RANGE + enemy.radius) {
+            continue;
+        }
+        const Vec3 dir = NormalizeXZ(toEnemy);
+        if (Dot(dir, forward) < 0.35f) {
+            continue;
+        }
+        DamageEnemy(i, MELEE_DAMAGE);
+        hitAny = true;
+        // 击退：沿朝向推一小段，避免被墙挤进几何体。
+        Vec3 push = enemy.position + dir * 0.45f;
+        if (!m_collision.Blocked(push, enemy.radius)) {
+            enemy.position = push;
+        }
+        enemy.hitFlash = 1.0f;
+        SpawnSparks(enemy.position + Vec3(0.0f, 1.1f, 0.0f),
+                    Rgba(255, 190, 150));
+    }
+    if (hitAny) {
+        m_audio.PlaySfx(SfxId::HIT);
+    } else {
+        SpawnSparks(origin + forward * 0.9f, Rgba(150, 160, 170));
+    }
+    WakeEnemies(10.0f);
+}
+
 void GameApp::FireEnemyWeapon(Enemy& enemy)
 {
-    const Vec3 muzzle = enemy.position + Vec3(0.0f, 1.28f, 0.0f) +
+    const Vec3 muzzle = enemy.position + Vec3(0.0f, 1.18f, 0.0f) +
                         DirectionFromYaw(enemy.yaw) * 0.5f;
     Vec3 target = m_player.position + Vec3(0.0f, 1.15f, 0.0f);
     const float spread = enemy.type == EnemyType::AGENT ? 0.06f : 0.12f;
@@ -1581,6 +1726,9 @@ void GameApp::FireEnemyWeapon(Enemy& enemy)
 void GameApp::StartReload()
 {
     if (m_player.reloading || m_player.usingMedkit) {
+        return;
+    }
+    if (m_player.slot != WeaponSlot::PISTOL) {
         return;
     }
     if (m_inventory.ammoMag >= WEAPON_MAGAZINE_SIZE) {

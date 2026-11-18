@@ -82,6 +82,7 @@ make -C Tools clean
 | `--scene` | `title` / `street` / `bar` / `harbor` | 载入指定场景 |
 | `--ui` | `none` / `dialogue` / `shop` / `journal` / `ending` / `death` / `pause` | 切换到指定界面 |
 | `--choice` | `accept` / `wait` | 结局分支（配合 `--ui ending`） |
+| `--pose` | `none` / `aim` / `melee` / `walk` | 角色姿态：举枪、近战出拳或原地行走 |
 | `--frames` | 正整数 | 推进帧数，默认 150 |
 | `--out` | 路径 | 截图输出，默认 `Temp/Screenshots/<scene>_<ui>.bmp` |
 | `--meshes` | 目录 | 文本网格目录，默认 `Resources/Meshes/Props` |
@@ -97,4 +98,5 @@ make -C Tools clean
 2. 截图一律写 `Temp/`，不允许写进 `Tools/` 或仓库根目录。
 3. 新增工具时：建 `Inc/` + `Src/`，在 `Tools/Makefile` 里加目标，并同步更新本文件与 `Documents/Test_Plan.md`。
 4. 工具里可以用 `GameApp` 的 `Debug*` 钩子，但正式玩法路径不得依赖这些钩子。
-5. 修改渲染相关代码后，至少跑一次 `--scene bar --ui dialogue` 与 `--flow`，确认 UI 与流程不回归。
+5. 修改渲染相关代码后，至少跑一次 `--scene bar --ui dialogue`、`--scene street --pose aim`
+   与 `--flow`，确认 UI、角色姿态与流程不回归。

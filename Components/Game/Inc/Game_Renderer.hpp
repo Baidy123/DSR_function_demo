@@ -150,7 +150,7 @@ private:
     const Mesh* m_sphere = nullptr;
 
     std::vector<PropInstance> m_props;
-    RenderTarget m_portraits[6];
+    RenderTarget m_portraits[CHARACTER_COUNT];
     bool m_portraitsReady = false;
 };
 

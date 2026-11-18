@@ -261,10 +261,24 @@ void GameUI::DrawHUD(const Player& player, const Inventory& inventory,
     Text("×" + std::to_string(inventory.medkits), 170.0f, 231.0f, 10, 40,
          BONE);
 
+    // 武器槽：显示当前手里拿的是什么，并提示滚轮切换。
+    {
+        const bool armed = player.slot == WeaponSlot::PISTOL;
+        Panel(RectF(232.0f, 226.0f, 108.0f, 24.0f), PANEL_FILL,
+              armed ? PANEL_BORDER : Rgba(120, 130, 140, 70));
+        DrawIcon(0, 238.0f, 231.0f, 14.0f,
+                 armed ? Rgba(230, 190, 100) : Rgba(120, 130, 140));
+        Text(armed ? "手枪" : "空手", 258.0f, 231.0f, 10, 40,
+             armed ? BONE : DIM);
+        Text("滚轮", 300.0f, 232.0f, 8, 32, DIM);
+    }
+
     if (player.reloading) {
         Text("装填中……", 70.0f, 248.0f, 9, 120, AMBER);
     } else if (player.usingMedkit) {
         Text("使用医疗包……", 70.0f, 248.0f, 9, 120, AMBER);
+    } else if (inventory.hasGear && player.slot == WeaponSlot::FISTS) {
+        Text("空手：左键近战（滚轮切枪）", 70.0f, 248.0f, 9, 150, DIM);
     } else if (!inventory.hasGear) {
         Text("尚未装备武器", 70.0f, 248.0f, 9, 120, DIM);
     } else if (hpRatio < 0.3f) {

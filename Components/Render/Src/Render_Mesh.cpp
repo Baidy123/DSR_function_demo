@@ -69,6 +69,11 @@ void MeshBuilder::SetPattern(int pattern)
     m_pattern = static_cast<float>(pattern);
 }
 
+void MeshBuilder::SetMaterial(int material)
+{
+    m_material = static_cast<float>(material);
+}
+
 void MeshBuilder::ExpandBounds(const Vec3& p)
 {
     if (m_data.vertexCount == 0) {
@@ -92,6 +97,7 @@ void MeshBuilder::AppendVertex(const Vec3& position, const Vec3& normal)
     vertex.normal = normal;
     vertex.color = m_color;
     vertex.pattern = m_pattern;
+    vertex.material = m_material;
     part->vertices.push_back(vertex);
     ++m_data.vertexCount;
     ExpandBounds(position);
@@ -315,6 +321,45 @@ bool ParseColorToken(const std::string& token, Color& out)
     return false;
 }
 
+/**
+ * @brief 把材质名称解析为 `SurfaceMaterial` 编号。
+ * @param [IN] key 已转为小写的名称。
+ * @param [OUT] material 材质编号。
+ * @return 识别成功返回 true。
+ */
+bool ParseSurfaceName(const std::string& key, int& material)
+{
+    using M = SurfaceMaterial;
+    if (key == "plaster" || key == "concrete") {
+        material = static_cast<int>(M::PLASTER);
+    } else if (key == "wood") {
+        material = static_cast<int>(M::WOOD);
+    } else if (key == "metal" || key == "steel") {
+        material = static_cast<int>(M::METAL_MATTE);
+    } else if (key == "chrome" || key == "brass") {
+        material = static_cast<int>(M::METAL_POLISHED);
+    } else if (key == "glass") {
+        material = static_cast<int>(M::GLASS);
+    } else if (key == "plastic") {
+        material = static_cast<int>(M::PLASTIC);
+    } else if (key == "cardboard" || key == "paper") {
+        material = static_cast<int>(M::CARDBOARD);
+    } else if (key == "cloth" || key == "fabric") {
+        material = static_cast<int>(M::FABRIC);
+    } else if (key == "ceramic" || key == "enamel") {
+        material = static_cast<int>(M::CERAMIC);
+    } else if (key == "rubber" || key == "asphalt") {
+        material = static_cast<int>(M::RUBBER);
+    } else if (key == "liquid" || key == "water") {
+        material = static_cast<int>(M::LIQUID);
+    } else if (key == "emissive" || key == "lamp") {
+        material = static_cast<int>(M::EMISSIVE);
+    } else {
+        return false;
+    }
+    return true;
+}
+
 } // namespace
 
 int ParseMeshText(const std::string& text, std::vector<MeshData>& out)
@@ -397,6 +442,18 @@ int ParseMeshText(const std::string& text, std::vector<MeshData>& out)
             int pattern = 0;
             tokens >> pattern;
             builder.SetPattern(pattern);
+            continue;
+        }
+        if (command == "surface" || command == "material") {
+            // 支持数字与名称两种写法：`surface 3` / `surface glass`。
+            std::string token;
+            tokens >> token;
+            const std::string key = Lower(token);
+            int material = 0;
+            if (!ParseSurfaceName(key, material)) {
+                material = std::atoi(token.c_str());
+            }
+            builder.SetMaterial(material);
             continue;
         }
         if (command == "box") {

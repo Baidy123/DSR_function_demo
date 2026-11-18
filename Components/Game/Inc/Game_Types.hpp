@@ -57,10 +57,32 @@ constexpr float CAMERA_TARGET_BIAS = 0.55f;
 constexpr float AIM_HOLD_TIME = 1.35f;
 
 /** @brief 按住 Ctrl 进入对话快进所需的时间（秒）。 */
-constexpr float SKIP_HOLD_TIME = 2.0f;
+constexpr float SKIP_HOLD_TIME = 0.8f;
 
 /** @brief 快进时每个对话节点的停留时间（秒）。 */
 constexpr float SKIP_STEP_TIME = 0.09f;
+
+/** @brief 徒手近战的出手时间（秒）。 */
+constexpr float MELEE_SWING_TIME = 0.36f;
+
+/** @brief 徒手近战的冷却（秒）。 */
+constexpr float MELEE_COOLDOWN = 0.46f;
+
+/** @brief 徒手近战的伤害。 */
+constexpr int MELEE_DAMAGE = 24;
+
+/** @brief 徒手近战的有效距离（米）。 */
+constexpr float MELEE_RANGE = 1.65f;
+
+/**
+ * @brief 玩家武器槽。
+ *
+ * 通过鼠标滚轮在空手与手枪之间切换；空手可以近战。
+ */
+enum class WeaponSlot : std::uint8_t {
+    FISTS = 0,
+    PISTOL = 1
+};
 
 /**
  * @brief 游戏模式。
@@ -129,6 +151,9 @@ struct Player {
     float time = 0.0f;
     float recoil = 0.0f;
     float aimTimer = 0.0f;    ///< 举枪保持时间（秒）。
+    float meleeTimer = 0.0f;  ///< 近战挥击剩余时间（秒）。
+    float meleeCooldown = 0.0f; ///< 近战冷却（秒）。
+    WeaponSlot slot = WeaponSlot::PISTOL; ///< 当前武器槽。
     bool reloading = false;
     bool usingMedkit = false;
     bool moving = false;
@@ -156,6 +181,10 @@ struct Enemy {
     float deathTimer = 0.0f;
     float muzzleTimer = 0.0f;
     float aimPitch = 0.0f;
+    float meleeTimer = 0.0f;     ///< 近战挥击剩余时间（秒）。
+    float meleeCooldown = 0.0f;  ///< 近战冷却（秒）。
+    bool melee = false;          ///< 是否为近战单位。
+    bool meleeHit = false;       ///< 本次挥击是否已结算伤害。
     bool alerted = false;
     bool dead = false;
     bool moving = false;
@@ -171,6 +200,7 @@ struct Bullet {
     float speed = PLAYER_BULLET_SPEED;
     float damage = 0.0f;
     float life = 0.0f;
+    float radius = 0.03f;   ///< 碰撞用半径，让子弹更容易被细小障碍拦住。
     bool hostile = false;
     bool active = true;
 };

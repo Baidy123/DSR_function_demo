@@ -62,6 +62,27 @@ bool CollisionWorld::SegmentBlocked(const Vec3& from, const Vec3& to,
     return hit;
 }
 
+bool CollisionWorld::SegmentBlockedDilated(const Vec3& from, const Vec3& to,
+                                          float dilation, float& hitT) const
+{
+    bool hit = false;
+    float best = 1.0f;
+    for (const AABB& box : m_boxes) {
+        const AABB expanded(
+            Vec3(box.min.x - dilation, box.min.y - dilation,
+                 box.min.z - dilation),
+            Vec3(box.max.x + dilation, box.max.y + dilation,
+                 box.max.z + dilation));
+        float t = 0.0f;
+        if (SegmentAABB(from, to, expanded, t) && t < best) {
+            best = t;
+            hit = true;
+        }
+    }
+    hitT = best;
+    return hit;
+}
+
 bool CollisionWorld::LineBlocked(const Vec3& from, const Vec3& to) const
 {
     float t = 1.0f;

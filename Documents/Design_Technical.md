@@ -52,16 +52,39 @@ flowchart LR
 1. `m_currentTarget` 记录当前渲染目标；`BeginScene3D` 按其尺寸设置视口（头像 RT 依赖这一点）。
 2. `SpriteBatch::Flush` 每次绑定：输入布局、顶点/索引缓冲、VS/PS、常量缓冲、SRV、采样器、混合状态、光栅状态、**禁用深度的深度模板状态**。缺一不可。
 3. 后处理在独立的 `m_capture` RT 上进行；`CaptureOffscreen` 读回该 RT 并写 BMP。
-4. 所有尺寸以 `INTERNAL_WIDTH/HEIGHT` 为准；界面坐标空间固定 480×270。
+4. 所有尺寸以 `INTERNAL_WIDTH/HEIGHT`（720×405）为准；UI 逻辑坐标固定 480×270，
+   但字符纹理与精灵按窗口像素密度重建，因此界面是高清的、场景是低清的。
 
 ---
 
-## 4. 场景与几何生成
+## 4. 场景、几何与材质
 
-- `World_Scenes` 用 `Block(center, half, color, pattern, solid)` 描述房间与家具体块；`half` 是半长。
-- `GameRenderer::DrawScene` 在场景加载时把体块合成为一份网格（`SCENE_ROOM_<id>` → 部件），之后每帧只提交一次索引绘制。
-- 静态道具来自 `.fcm`，按 `Prop` 的位置与朝向实例化；`hidden` 的道具可在运行时隐藏（如被搬走的货、被拾取的零件）。
-- 角色由 `Game_Characters` 按骨架生成网格，动画在 CPU 侧按部件计算变换，逐部件提交。
+- `World_Scenes` 用 `Block(center, half, color, pattern, solid, material)` 描述房间与家具体块；`half` 是半长。
+  只给 `pattern` 时，材质由图案推导（砖/混凝土→灰泥、木→木材、金属筋→哑光金属…），
+  特例（台面黄铜、窗玻璃）再显式指定。
+- `GameRenderer::DrawScene` 在场景加载时把体块合成为一份网格（`SCENE_ROOM_<id>`），之后每帧只提交一次索引绘制。
+- 静态道具来自 `.fcm`，按 `Prop` 的位置与朝向实例化；`hidden` 的道具可在运行时隐藏。
+- 角色由 `Game_Characters` 按 16 段骨骼生成网格，动画在 CPU 侧按骨骼链计算变换，逐部件提交。
+
+### 顶点格式
+
+```text
+MeshVertex { Vec3 position; Vec3 normal; Color color; float pattern; float material; }
+```
+
+| 语义 | 格式 | 偏移 |
+| --- | --- | --- |
+| POSITION | R32G32B32_FLOAT | 0 |
+| NORMAL | R32G32B32_FLOAT | 12 |
+| COLOR | R32G32B32_FLOAT | 24 |
+| TEXCOORD0（pattern） | R32_FLOAT | 36 |
+| TEXCOORD1（material） | R32_FLOAT | 40 |
+
+### 材质着色
+
+像素着色器先按 `pattern` 生成细节 albedo，再用 `material` 查表得到
+`{高光宽度, 高光强度, 金属感, 漫反射比例, 环境反射}`，逐灯做 Blinn-Phong，
+并在最后叠加一层用反射方向构造的假环境色。金属与塑料的差异主要来自这一项。
 
 ---
 

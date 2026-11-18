@@ -112,6 +112,8 @@ public:
     void DebugKillEnemies();
     void DebugSetTitleMode();
     void DebugSetWalkPose(bool enabled) { m_debugWalkPose = enabled; }
+    void DebugSetAimPose(bool enabled) { m_debugAimPose = enabled; }
+    void DebugSetMeleePose(bool enabled) { m_debugMeleePose = enabled; }
 
     MainStage DebugMainStage() const { return m_quest.main; }
     SideStage DebugSideStage() const { return m_quest.side; }
@@ -151,6 +153,7 @@ private:
     void UpdatePrompt();
 
     void FirePlayerWeapon();
+    void MeleeAttack();
     void FireEnemyWeapon(Enemy& enemy);
     void StartReload();
     void StartMedkit();
@@ -246,6 +249,8 @@ private:
     bool m_hasScene = false;
     bool m_hidePlayer = false;
     bool m_debugWalkPose = false;
+    bool m_debugAimPose = false;
+    bool m_debugMeleePose = false;
 
     int m_noGearToastCooldown = 0;
     Rng m_rng{0x51EEDu};

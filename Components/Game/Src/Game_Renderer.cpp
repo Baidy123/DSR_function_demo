@@ -87,6 +87,7 @@ bool GameRenderer::LoadScene(const SceneDef& scene, CollisionWorld& collision)
     for (const RoomBlock& block : scene.blocks) {
         builder.SetColor(block.color);
         builder.SetPattern(block.pattern);
+        builder.SetMaterial(block.material);
         builder.AddBox(block.center, block.half);
         if (block.solid) {
             collision.AddBox(
@@ -154,7 +155,8 @@ void GameRenderer::DrawShadow(const Vec3& position, float radius, float alpha)
     const Mat4 world = Mat4::Scale(Vec3(radius, 1.0f, radius)) *
                        Mat4::Translation(Vec3(position.x, 0.021f, position.z));
     m_device->DrawMesh(*m_shadowMesh, world,
-                       Color(1.0f, 1.0f, 1.0f, alpha), Color(), true);
+                       Color(1.0f, 1.0f, 1.0f, alpha),
+                       Color(0.0f, 0.0f, 0.0f, 0.0f), true);
 }
 
 void GameRenderer::DrawScene(const SceneDef& scene, const Player& player,
@@ -205,15 +207,15 @@ void GameRenderer::DrawScene(const SceneDef& scene, const Player& player,
 
     m_device->DrawMesh(*m_roomMesh, Mat4::Identity(), WHITE);
 
-    DrawShadow(player.position, 0.42f, 0.55f);
+    DrawShadow(player.position, 0.42f, 0.60f);
     for (const NpcInstance& npc : npcs) {
         if (npc.visible) {
-            DrawShadow(npc.position, 0.4f, 0.5f);
+            DrawShadow(npc.position, 0.4f, 0.55f);
         }
     }
     for (const Enemy& enemy : enemies) {
         if (!enemy.dead) {
-            DrawShadow(enemy.position, 0.38f, 0.45f);
+            DrawShadow(enemy.position, 0.38f, 0.5f);
         }
     }
 
@@ -240,6 +242,8 @@ void GameRenderer::DrawScene(const SceneDef& scene, const Player& player,
         anim.time = time;
         anim.walkAmp = 0.0f;
         anim.aiming = false;
+        anim.weapon = m_characters->Style(npc.id).weapon;
+        anim.showWeapon = true;
         const float height = m_characters->Style(npc.id).height;
         const Mat4 base = Mat4::Scale(Vec3(height, height, height)) *
                           Mat4::RotationY(npc.yaw) *
@@ -258,9 +262,16 @@ void GameRenderer::DrawScene(const SceneDef& scene, const Player& player,
         anim.time = enemy.time;
         anim.walkPhase = enemy.walkPhase;
         anim.walkAmp = enemy.walkAmp;
+        anim.running = enemy.melee && enemy.moving;
         anim.aiming = enemy.aiming && !enemy.dead;
         anim.aimPitch = enemy.aimPitch;
         anim.hitFlash = enemy.hitFlash;
+        anim.weapon = m_characters->Style(enemy.character).weapon;
+        anim.showWeapon = true;
+        if (enemy.meleeTimer > 0.0f) {
+            anim.meleeProgress = 1.0f - Clamp(enemy.meleeTimer / MELEE_SWING_TIME,
+                                              0.0f, 1.0f);
+        }
         if (enemy.dead) {
             anim.deathLean = 1.0f - Clamp(enemy.deathTimer / 0.6f, 0.0f, 1.0f);
         }
@@ -279,11 +290,23 @@ void GameRenderer::DrawScene(const SceneDef& scene, const Player& player,
             anim.time = player.time;
             anim.walkPhase = player.walkPhase;
             anim.walkAmp = player.walkAmp;
+            anim.running = player.running;
             anim.aiming = player.aiming;
             anim.aimOffset = WrapAngle(player.yaw - player.facing);
             anim.aimPitch = player.aimPitch;
             anim.recoil = player.recoil;
             anim.hitFlash = player.hitFlash;
+            const bool armed = player.slot == WeaponSlot::PISTOL;
+            anim.weapon = armed ? WeaponKind::PISTOL : WeaponKind::NONE;
+            anim.showWeapon = armed;
+            if (player.reloading) {
+                anim.reloadProgress =
+                    1.0f - Clamp(player.reloadTimer / RELOAD_TIME, 0.0f, 1.0f);
+            }
+            if (player.meleeTimer > 0.0f) {
+                anim.meleeProgress =
+                    1.0f - Clamp(player.meleeTimer / MELEE_SWING_TIME, 0.0f, 1.0f);
+            }
             const float height = m_characters->Style(CharacterId::PLAYER).height;
             const Mat4 base = Mat4::Scale(Vec3(height, height, height)) *
                               Mat4::RotationY(player.facing) *
@@ -322,7 +345,7 @@ void GameRenderer::DrawScene(const SceneDef& scene, const Player& player,
 Vec3 GameRenderer::MuzzlePosition(const Player& player) const
 {
     const Vec3 forward(std::sin(player.aimYaw), 0.0f, std::cos(player.aimYaw));
-    return player.position + Vec3(0.0f, 1.32f, 0.0f) + forward * 0.62f;
+    return player.position + Vec3(0.0f, 1.16f, 0.0f) + forward * 0.62f;
 }
 
 void GameRenderer::DrawBullet(const Bullet& bullet) const
@@ -411,7 +434,7 @@ void GameRenderer::DrawLightGlows(const CameraRuntime& camera,
         const float size = Clamp(light.range * 26.0f / std::max(distance, 0.6f),
                                  8.0f, 120.0f);
         Color color(light.color.r, light.color.g, light.color.b,
-                    Clamp(strength * 0.22f, 0.0f, 0.6f));
+                    Clamp(strength * 0.16f, 0.0f, 0.45f));
         batch.DrawTexture(glow, screen.x - size * 0.5f, screen.y - size * 0.5f,
                           size, size, color, true, false);
     }
@@ -448,7 +471,7 @@ bool GameRenderer::BuildPortraits()
     camera.current.fovDegrees = 38.0f;
     UpdateCameraMatrices(camera, 1.0f);
 
-    for (int i = 0; i < 6; ++i) {
+    for (int i = 0; i < CHARACTER_COUNT; ++i) {
         if (!m_device->CreateRenderTarget(80, 80, true, m_portraits[i])) {
             return false;
         }
@@ -494,7 +517,7 @@ bool GameRenderer::BuildPortraits()
 const Texture* GameRenderer::Portrait(CharacterId id) const
 {
     const int index = static_cast<int>(id);
-    if (!m_portraitsReady || index < 0 || index >= 6) {
+    if (!m_portraitsReady || index < 0 || index >= CHARACTER_COUNT) {
         return nullptr;
     }
     return &m_portraits[index].colorView;

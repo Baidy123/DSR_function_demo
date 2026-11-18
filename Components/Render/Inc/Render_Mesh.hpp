@@ -17,16 +17,17 @@
 namespace fc {
 
 /**
- * @brief 网格顶点：位置、法线、颜色与程序化材质编号。
+ * @brief 网格顶点：位置、法线、颜色、程序化图案与表面材质编号。
  *
- * 材质编号在像素着色器中用于生成砖缝、木纹、锈迹等程序化图案，
- * 因此不需要任何贴图文件。
+ * 图案编号决定表面的细节纹理，材质编号决定反射模型（见 `Shared_Types.hpp`
+ * 的 `SurfacePattern` 与 `SurfaceMaterial`）。
  */
 struct MeshVertex {
     Vec3 position;
     Vec3 normal;
     Color color;
     float pattern = 0.0f;
+    float material = 0.0f;
 };
 
 /**
@@ -70,10 +71,16 @@ public:
     void SetColor(const Color& color);
 
     /**
-     * @brief 设置后续面片的程序化材质编号。
-     * @param [IN] pattern 编号（0 平涂，1 砖，2 木纹，3 金属肋，4 锈，5 布纹，6 混凝土）。
+     * @brief 设置后续面片的程序化材质图案编号。
+     * @param [IN] pattern 编号，见 `SurfacePattern`。
      */
     void SetPattern(int pattern);
+
+    /**
+     * @brief 设置后续面片的表面材质编号（反射模型）。
+     * @param [IN] material 编号，见 `SurfaceMaterial`。
+     */
+    void SetMaterial(int material);
 
     /**
      * @brief 添加三角形（自动平面法线）。
@@ -189,6 +196,7 @@ private:
     MeshPartData* m_part = nullptr;
     Color m_color{0.7f, 0.7f, 0.7f, 1.0f};
     float m_pattern = 0.0f;
+    float m_material = 0.0f;
     MeshData m_scratch;
 };
 
