@@ -30,20 +30,20 @@ radial_segments = 24
 rings = 8
 
 [sub_resource type="CylinderMesh" id="TableTop"]
-top_radius = 0.40
-bottom_radius = 0.40
+top_radius = 0.44
+bottom_radius = 0.44
 height = 0.13
 radial_segments = 32
 
 [sub_resource type="CylinderMesh" id="TableRim"]
-top_radius = 0.42
-bottom_radius = 0.42
+top_radius = 0.46
+bottom_radius = 0.46
 height = 0.045
 radial_segments = 32
 
 [sub_resource type="CylinderShape3D" id="TableShape"]
-radius = 0.42
-height = 0.78
+radius = 0.46
+height = 0.98
 
 [node name="BoothUnit" type="Node3D"]
 
@@ -113,7 +113,7 @@ mesh = SubResource("Box")
 material_override = SubResource("Brass")
 
 [node name="Table" type="StaticBody3D" parent="."]
-position = Vector3(0, 0.39, 1.85)
+position = Vector3(0, 0.49, 1.85)
 [node name="Top" type="MeshInstance3D" parent="Table"]
 position = Vector3(0, 0.34, 0)
 mesh = SubResource("TableTop")
@@ -123,11 +123,11 @@ position = Vector3(0, 0.415, 0)
 mesh = SubResource("TableRim")
 material_override = SubResource("Brass")
 [node name="Pedestal" type="MeshInstance3D" parent="Table"]
-transform = Transform3D(0.14, 0, 0, 0, 0.68, 0, 0, 0, 0.14, 0, -0.05, 0)
+transform = Transform3D(0.14, 0, 0, 0, 0.78, 0, 0, 0, 0.14, 0, -0.1, 0)
 mesh = SubResource("Box")
 material_override = SubResource("Brass")
 [node name="Foot" type="MeshInstance3D" parent="Table"]
-transform = Transform3D(0.72, 0, 0, 0, 0.08, 0, 0, 0, 0.72, 0, -0.35, 0)
+transform = Transform3D(0.72, 0, 0, 0, 0.08, 0, 0, 0, 0.72, 0, -0.45, 0)
 mesh = SubResource("Box")
 material_override = SubResource("Brass")
 [node name="Collision" type="CollisionShape3D" parent="Table"]

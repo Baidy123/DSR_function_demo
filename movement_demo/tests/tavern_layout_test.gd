@@ -76,10 +76,11 @@ func _run() -> void:
 		func(setting: Node) -> bool:
 			return setting.has_node("NorthSofa/Backrest") and setting.has_node("SouthSofa/Backrest")
 	), "three lounge tables each have a pair of single-sided sofas")
-	player.global_position = Vector3(12.08, 0.0, 1.0)
-	await physics_frame
-	check(player.move_and_collide(Vector3(0, 0, 2.0)) == null,
-		"the player can enter the lounge through the northern opening")
+	for entrance_x in [7.81, 12.91]:
+		player.global_position = Vector3(entrance_x, 0.0, 1.0)
+		await physics_frame
+		check(player.move_and_collide(Vector3(0, 0, 4.8)) == null,
+			"the player can cross the lounge through the opening at x = %s" % entrance_x)
 	player.global_position = Vector3(12.08, 0.0, 7.2)
 	await physics_frame
 	check(player.move_and_collide(Vector3(0, 0, -1.5)) != null,
