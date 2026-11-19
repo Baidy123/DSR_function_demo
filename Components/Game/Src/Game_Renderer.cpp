@@ -31,8 +31,9 @@ void UpdateCameraMatrices(CameraRuntime& camera, float aspect)
 {
     camera.view = Mat4::LookAt(camera.current.eye, camera.current.target,
                                camera.current.up);
+    // 近平面不要贴得太近：0.08/90 的深度比会让远处大平面在掠射角下抖动。
     camera.projection = Mat4::Perspective(
-        camera.current.fovDegrees * PI / 180.0f, aspect, 0.08f, 90.0f);
+        camera.current.fovDegrees * PI / 180.0f, aspect, 0.22f, 75.0f);
     camera.viewProjection = camera.view * camera.projection;
 }
 
@@ -80,10 +81,13 @@ bool GameRenderer::Initialize(RenderDevice* device, MeshLibrary* meshes,
 bool GameRenderer::LoadScene(const SceneDef& scene, CollisionWorld& collision)
 {
     m_props.clear();
+    m_transparentProps.clear();
     collision.Clear();
 
     MeshBuilder builder;
     builder.BeginPart("room", Vec3());
+    // 房间体块用世界坐标做 UV，半密度可以保持砖墙与地砖的实际尺寸。
+    builder.SetUvScale(0.5f);
     for (const RoomBlock& block : scene.blocks) {
         builder.SetColor(block.color);
         builder.SetPattern(block.pattern);
@@ -136,6 +140,7 @@ bool GameRenderer::LoadScene(const SceneDef& scene, CollisionWorld& collision)
                             Vec3(0.0f, colliderHalf.y, 0.0f);
         prop.bounds = MakeAABB(center, colliderHalf);
         prop.solid = def.solid;
+        prop.transparent = def.transparent;
         if (def.solid) {
             collision.AddBox(prop.bounds);
         }
@@ -144,6 +149,13 @@ bool GameRenderer::LoadScene(const SceneDef& scene, CollisionWorld& collision)
     LogInfo("Scene '%s' loaded: %zu props, %zu colliders",
             scene.displayName.c_str(), m_props.size(),
             static_cast<size_t>(collision.Count()));
+
+    m_transparentProps.clear();
+    for (const PropInstance& prop : m_props) {
+        if (prop.transparent && !prop.hidden) {
+            m_transparentProps.push_back(&prop);
+        }
+    }
     return true;
 }
 
@@ -220,7 +232,7 @@ void GameRenderer::DrawScene(const SceneDef& scene, const Player& player,
     }
 
     for (const PropInstance& prop : m_props) {
-        if (prop.mesh == nullptr || prop.hidden) {
+        if (prop.mesh == nullptr || prop.hidden || prop.transparent) {
             continue;
         }
         const Mat4 world = Mat4::Scale(Vec3(prop.scale, prop.scale, prop.scale)) *
@@ -306,6 +318,7 @@ void GameRenderer::DrawScene(const SceneDef& scene, const Player& player,
             if (player.meleeTimer > 0.0f) {
                 anim.meleeProgress =
                     1.0f - Clamp(player.meleeTimer / MELEE_SWING_TIME, 0.0f, 1.0f);
+                anim.meleeCombo = player.meleeCombo;
             }
             const float height = m_characters->Style(CharacterId::PLAYER).height;
             const Mat4 base = Mat4::Scale(Vec3(height, height, height)) *
@@ -336,6 +349,26 @@ void GameRenderer::DrawScene(const SceneDef& scene, const Player& player,
     for (const Particle& particle : particles) {
         if (particle.life > 0.0f) {
             DrawParticle(particle);
+        }
+    }
+
+    // 透明道具（玻璃窗）最后绘制：按到相机的距离由远到近，避免互相遮挡。
+    if (!m_transparentProps.empty()) {
+        const Vec3 eye = camera.current.eye;
+        std::sort(m_transparentProps.begin(), m_transparentProps.end(),
+                  [&eye](const PropInstance* a, const PropInstance* b) {
+                      return Distance(eye, a->position) >
+                             Distance(eye, b->position);
+                  });
+        for (const PropInstance* prop : m_transparentProps) {
+            if (prop->hidden) {
+                continue;
+            }
+            const Mat4 world =
+                Mat4::Scale(Vec3(prop->scale, prop->scale, prop->scale)) *
+                Mat4::RotationY(prop->yaw) * Mat4::Translation(prop->position);
+            m_device->DrawMesh(*prop->mesh, world, prop->tint,
+                               Color(0.0f, 0.0f, 0.0f, 0.0f), true);
         }
     }
 

@@ -309,6 +309,7 @@ private:
     ComPtr<ID3D11BlendState> m_additiveBlend;
     ComPtr<ID3D11DepthStencilState> m_depthState;
     ComPtr<ID3D11DepthStencilState> m_depthDisabled;
+    ComPtr<ID3D11DepthStencilState> m_depthReadOnly;
     ComPtr<ID3D11RasterizerState> m_rasterizer;
     ComPtr<ID3D11RasterizerState> m_rasterizerNoCull;
 

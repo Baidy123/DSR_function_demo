@@ -84,7 +84,15 @@ enum class SurfacePattern : int {
     CHECKER = 11,   ///< 黑白棋盘地面。
     LEATHER = 12,   ///< 皮革：细密颗粒与折痕。
     RUBBER = 13,    ///< 橡胶：哑光颗粒。
-    EMISSIVE = 14   ///< 自发光（霓虹、屏幕、灯罩）。
+    EMISSIVE = 14,  ///< 自发光（霓虹、屏幕、灯罩）。
+    CORRUGATED = 15,///< 集装箱瓦楞：梯形波纹 + 板缝。
+    PANEL_SEAM = 16,///< 金属拼板：接缝 + 铆钉。
+    STAVES = 17,    ///< 木桶竖板与铁箍。
+    CARPET = 18,    ///< 地毯：短绒与边缘磨损。
+    HAZARD = 19,    ///< 警示斜条。
+    RIVETS = 20,    ///< 装甲板倒角与螺栓。
+    CURTAIN = 21,   ///< 帘布竖向褶皱。
+    STONE = 22      ///< 粗石砌块。
 };
 
 /**

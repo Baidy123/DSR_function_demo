@@ -5,6 +5,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cmath>
 #include <cstdlib>
 #include <cstring>
 #include <sstream>
@@ -74,6 +75,11 @@ void MeshBuilder::SetMaterial(int material)
     m_material = static_cast<float>(material);
 }
 
+void MeshBuilder::SetUvScale(float scale)
+{
+    m_uvScale = scale > 0.001f ? scale : 1.0f;
+}
+
 void MeshBuilder::ExpandBounds(const Vec3& p)
 {
     if (m_data.vertexCount == 0) {
@@ -98,6 +104,19 @@ void MeshBuilder::AppendVertex(const Vec3& position, const Vec3& normal)
     vertex.color = m_color;
     vertex.pattern = m_pattern;
     vertex.material = m_material;
+    // 按法线主轴做三向投影，得到沿表面展开的局部 UV，避免拉伸。
+    const float ax = std::fabs(normal.x);
+    const float ay = std::fabs(normal.y);
+    const float az = std::fabs(normal.z);
+    if (ay >= ax && ay >= az) {
+        vertex.uv = Vec2(position.x, position.z);
+    } else if (ax >= az) {
+        vertex.uv = Vec2(position.z, position.y);
+    } else {
+        vertex.uv = Vec2(position.x, position.y);
+    }
+    vertex.uv.x *= m_uvScale;
+    vertex.uv.y *= m_uvScale;
     part->vertices.push_back(vertex);
     ++m_data.vertexCount;
     ExpandBounds(position);
@@ -442,6 +461,12 @@ int ParseMeshText(const std::string& text, std::vector<MeshData>& out)
             int pattern = 0;
             tokens >> pattern;
             builder.SetPattern(pattern);
+            continue;
+        }
+        if (command == "uvscale") {
+            float scale = 1.0f;
+            tokens >> scale;
+            builder.SetUvScale(scale);
             continue;
         }
         if (command == "surface" || command == "material") {

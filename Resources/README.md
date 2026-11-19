@@ -1,7 +1,9 @@
 # Resources 目录说明
 
-> 本目录存放美术资产生成器、可审阅的 PNG 资产、运行时二进制包与资源脚本。
-> 最终 exe 通过 `windres` 把 `ArtPack.bin` 以 RCDATA 嵌入，不依赖任何外部文件。
+> 本目录存放**可审阅、可 diff 的文本资产**与 `windres` 资源脚本。
+> 仓库中没有任何图片、音频或字体文件：所有画面与声音都由几何、程序化图案、
+> 着色器与代码合成产生。最终 exe 通过 `windres` 把网格库以 `RCDATA` 内嵌，
+> 运行时不读取任何外部文件。
 
 ---
 
@@ -9,96 +11,144 @@
 
 ```text
 Resources/
-├─ ArtGen/
-│  └─ ArtGen_Main.cpp     # 像素美术生成器（C++17，仅标准库）
-├─ Art/
-│  ├─ *.png               # 1:1 像素资产，供人工审阅
-│  ├─ _ContactSheet.png   # 全资产接触表（自动生成）
-│  ├─ _CharacterPreview.png
-│  ├─ _PortraitPreview.png
-│  └─ _TitlePreview.png
-├─ ArtPack.bin            # FCPK v1 运行时资产包（BGRA8）
-├─ Resources.rc           # windres 资源脚本
-└─ README.md              # 本文件
+├─ Meshes/
+│  └─ Props/
+│     ├─ common.fcm      # 通用件：门框、灯、积水、纸箱、油布、软管等
+│     ├─ street.fcm      # 街道道具：霓虹招牌、车、垃圾桶、路灯、锥桶…
+│     ├─ bar.fcm         # 酒馆道具：吧台、卡座、酒架、龙头、冰箱、啤酒桶…
+│     └─ harbor.fcm      # 仓库道具：集装箱、托盘、油桶、叉车、货架、警示栏…
+├─ Resources.rc          # 把四个 .fcm 以 RCDATA 嵌入 exe
+└─ README.md             # 本文件
 ```
+
+构建关联：根 `Makefile` 的资源规则把 `Resources/Meshes/Props/*.fcm` 作为依赖，
+因此**改动任何 `.fcm` 后重新 `make` 即可生效**，不需要改代码。
 
 ---
 
-## 2. 生成流程
+## 2. 为什么用文本网格
 
-本机可能没有 Python/PIL，因此生成器使用 C++ 编写，只依赖标准库。
-
-```powershell
-# 1. 编译生成器（不进入根 Makefile）
-g++ -std=c++17 -O2 Resources\ArtGen\ArtGen_Main.cpp -o Temp\ArtGen.exe
-
-# 2. 生成资产（从项目根目录运行）
-.\Temp\ArtGen.exe Resources
-```
-
-产物：
-
-- `Resources/Art/*.png`：RGBA8，PNG（无压缩 Deflate，体积较大但无依赖）。
-- `Resources/ArtPack.bin`：运行时包，格式见下。
-- 预览图：`Resources/Art/_*.png`，不进入运行时包。
-
-> 生成器使用固定随机种子，重复运行结果一致。
-> 修改生成器后必须重新生成，并更新 `Documents/Art_Manifest.md` 与 `Documents/Agent_Mem.md`。
+1. **可审阅**：`.fcm` 是纯文本，能 `git diff`，也能直接读出不合理的尺寸或材质。
+2. **零二进制**：没有 `.obj/.gltf/.png`，避免仓库体积膨胀与无法审查的二进制资产。
+3. **低清多面体**：所有造型由少量平面构成，靠色块与光照建立体积，符合美术方向。
+4. **程序化材质**：表面细节由着色器按图案编号生成，不依赖贴图，缩放不失真。
 
 ---
 
-## 3. FCPK v1 资产包格式
+## 3. `.fcm` 格式
+
+一条命令一行，`#` 开头为注释。坐标单位为**米**，物件原点位于底面中心。
 
 ```text
-Header (8 bytes):
-  char[4] magic = "FCPK"
-  uint16  version = 1
-  uint16  count
-Entry (44 bytes each):
-  char[32] name        // ASCII 大写，0 填充
-  uint16   width
-  uint16   height
-  uint32   dataOffset  // 从文件起始
-  uint32   dataSize    // width * height * 4
-Data:
-  BGRA8，straight alpha，行优先
+mesh <网格名>                       # 开始一个网格（全局唯一，供 Prop 引用）
+part <部件名> pivot <x> <y> <z>     # 开始一个部件；pivot 为骨骼旋转支点
+mat 0xRRGGBB                        # 后续面片的基色
+pattern <编号>                      # 表面图案（见第 4 节）
+surface <材质名>                     # 反射模型（见第 5 节）
+uvscale <倍率>                       # 纹理密度：每米重复多少次图案，默认 1.0
+box    <cx> <cy> <cz> <hx> <hy> <hz> [yaw]     # 盒体：中心 + 半长
+bevel  <cx> <cy> <cz> <hx> <hy> <hz> <bevel> [yaw]
+cyl    <bx> <by> <bz> <rBottom> <rTop> <height> <segments>
+cone   <bx> <by> <bz> <radius> <height> <segments>
+sphere <cx> <cy> <cz> <radius> <segments> <rings>
+plane  <cx> <cy> <cz> <halfX> <halfZ>
+wall   <cx> <cy> <cz> <halfWidth> <halfHeight> <yawDegrees>  # 双面薄墙
+quad   <x0> <y0> <z0> <x1> <y1> <z1> <x2> <y2> <z2> <x3> <y3> <z3>
+tri    <x0> <y0> <z0> <x1> <y1> <z1> <x2> <y2> <z2>
+endpart
+endmesh
 ```
 
-- 小端序。
-- 名称以 `_` 开头的资产只写出 PNG，不进入包（预览图）。
-- 运行时缺失资产时使用 1×1 洋红占位并写日志。
+说明：
+
+- `box` 的 `h*` 是**半长**，例如 `box 0 0.5 0 1.0 0.5 1.0` 得到 2×1×2 米的方块。
+- `bevel` 用于柔化硬边，是低多边形的主要造型手段。
+- `uvscale` 会按物体自身局部坐标烘焙 UV，因此大墙面与小桌面各有合适的纹理密度，
+  不会出现“所有东西都是同一块水泥砖”的问题。
+- 同一网格里可以为不同部件设置不同 `mat / pattern / surface / uvscale`。
 
 ---
 
-## 4. 资产命名
+## 4. 表面图案（`pattern`）
 
-| 前缀 | 含义 | 示例 |
+图案由像素着色器按世界/局部 UV 生成，编号对应 `SurfacePattern`：
+
+| 编号 | 名称 | 用途 |
 | --- | --- | --- |
-| `TILE_` | 16×16 瓷砖 | `TILE_BAR_FLOOR_A` |
-| `PROP_` | 场景道具 | `PROP_BOOTH`、`PROP_CARGO` |
-| `CHAR_` | 角色精灵 | `CHAR_PLAYER_S_0` |
-| `PORTRAIT_` | 48×48 头像 | `PORTRAIT_BIGSISTER` |
-| `UI_` | 界面资源/图标 | `UI_ICON_AMMO`、`UI_TITLE_LOGO` |
-| `FX_` | 特效 | `FX_MUZZLE_0`、`FX_GLOW` |
-
-角色帧命名：`CHAR_<角色>_<方向>_<帧>`；方向为 `S/N/E/W`；帧为 `0..3`，`IDLE` 为待机帧。
+| 0 | 平涂 | 素色金属、台面 |
+| 1 | 砖缝 | 外立面砖墙 |
+| 2 | 木纹 | 地板、吧台、货箱 |
+| 3 | 金属加强筋 | 铁皮、屋顶桁架 |
+| 4 | 锈蚀 | 老旧钢构件 |
+| 5 | 织物 | 沙发、油布、窗帘 |
+| 6 | 混凝土 | 地面、墙体 |
+| 7 | 纸箱 | 纸板压痕、褶皱与胶带 |
+| 8 | 纸张 | 海报、标签、涂装 |
+| 9 | 玻璃 | 窗玻璃反光条纹与污渍 |
+| 10 | 瓷砖 | 吧台前瓷砖带 |
+| 11 | 棋盘 | 装饰地面 |
+| 12 | 皮革 | 卡座坐垫 |
+| 13 | 橡胶 | 轮胎、地垫 |
+| 14 | 自发光 | 霓虹、屏幕、灯罩 |
+| 15 | 瓦楞 | 集装箱竖向波纹 |
+| 16 | 金属拼板 | 接缝 + 铆钉 |
+| 17 | 木桶竖板 | 油桶/酒桶板缝与铁箍 |
+| 18 | 地毯 | 短绒与边缘磨损 |
+| 19 | 警示斜条 | 危险区域标识 |
+| 20 | 装甲板 | 倒角 + 螺栓 |
+| 21 | 帘布褶皱 | 门帘、幕布 |
+| 22 | 粗石 | 石砌基础 |
 
 ---
 
-## 5. 审阅与替换
+## 5. 表面材质（`surface`）
 
-1. 打开 `Resources/Art/_ContactSheet.png` 总览全部资产。
-2. 角色与头像查看 `_CharacterPreview.png`、`_PortraitPreview.png`。
-3. 标题画面查看 `_TitlePreview.png`。
-4. 场景整体效果通过 `Tools/OffscreenTest` 的隐藏窗口截图验证。
-5. 若只想替换单张 PNG，而不改生成器：替换后需要重新生成 `ArtPack.bin` 才能进入游戏；
-   建议始终以生成器为唯一事实来源。
+材质决定高光宽度、强度与金属感，编号对应 `SurfaceMaterial`：
+
+| 名称 | 编号 | 表现 |
+| --- | --- | --- |
+| `plaster` | 0 | 完全漫反射（灰泥/混凝土） |
+| `wood` | 1 | 低高光，带一点清漆 |
+| `metal` | 2 | 哑光金属，反射偏灰 |
+| `polished` | 3 | 抛光金属，窄而亮的强高光 |
+| `glass` | 4 | 低漫反射 + 强菲涅尔，走透明队列 |
+| `plastic` | 5 | 中等高光，纯介质反射 |
+| `cardboard` | 6 | 极低高光 |
+| `cloth` | 7 | 几乎无高光 |
+| `ceramic` | 8 | 宽高光（搪瓷灯罩、瓷杯） |
+| `rubber` | 9 | 微粗糙 |
+| `liquid` | 10 | 镜面反射（积水） |
+| `emissive` | 11 | 自发光表面 |
+
+玻璃类道具在 `World_Scenes` 中以 `transparent = true` 注册，渲染器会把它排到
+不透明几何之后绘制，并关闭深度写入，因此能透过玻璃看到室内。
 
 ---
 
-## 6. 约束
+## 6. 当前资产清单
 
-- 禁止在 RC、生成器、资产名中出现真机绝对路径或用户名。
-- 资产名一律 ASCII 大写 + 下划线。
-- PNG 与 `ArtPack.bin` 必须同时更新；两者不一致会导致游戏画面与审阅图不符。
-- 不把 `Temp/ArtGen.exe` 或临时截图提交到仓库。
+| 文件 | 主要内容 |
+| --- | --- |
+| `common.fcm` | 门框、吊灯、壁灯、积水、纸箱、木箱、油布、软管、消防栓、塑料箱 |
+| `street.fcm` | 霓虹招牌、汽车、垃圾桶、路灯、锥桶、自动售货机、垃圾桶、店铺招牌 |
+| `bar.fcm` | 吧台、卡座、酒架、酒瓶架、龙头、收银机、酒杯、烟灰缸、冰箱、水槽、啤酒桶 |
+| `harbor.fcm` | 集装箱、托盘、货物、油桶、货架、警示栏、线轴、吊钩、工作台、纸板堆 |
+
+新增道具的流程：
+
+1. 在对应的 `.fcm` 里追加 `mesh PROP_XXX ... endmesh`；
+2. 在 `Components/World/Src/World_Scenes.cpp` 里用 `Prop("PROP_XXX", ...)` 放置；
+3. 重新 `make`；如需肉眼检查，用 `Tools/OffscreenTest` 截对应场景的图。
+
+---
+
+## 7. 约束
+
+1. **不入库任何二进制素材**：`.png/.jpg/.wav/.ttf/.obj/.bin` 一律不允许。
+   截图与临时导出只写 `Temp/`（已被 `.gitignore` 忽略）。
+2. 文件名与网格名使用 ASCII 大写 + 下划线，例如 `PROP_BOTTLE_RACK`。
+3. 文本文件统一 **UTF-8（无 BOM）+ LF**，由 `.gitattributes` 锁定。
+4. 不写机器绝对路径、用户名或密钥。
+5. 新增图案或材质时必须同步更新：`Shared_Types.hpp` 枚举、着色器实现、
+   本文件第 4/5 节的表格。
+6. 造型优先“少面 + 明确色块”；单个道具建议不超过 200 个三角形。

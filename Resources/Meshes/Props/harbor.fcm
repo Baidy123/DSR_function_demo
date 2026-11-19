@@ -3,34 +3,52 @@
 
 mesh PROP_CONTAINER
 part body pivot 0 0 0
-mat 0x5A3A2E
-pattern 4
+# 箱体：标准 2.6 米高集装箱，竖向瓦楞。高度必须低于相机视高，
+# 否则顶面会以掠射角呈现，产生深度闪烁。
+mat 0x6E4A38
+pattern 15
 surface metal
-box 0 1.3 0 6.0 2.6 2.4
-mat 0x6E4634
-pattern 3
+uvscale 0.55
+box 0 1.28 0 6.0 1.26 2.4
+# 侧板与门面略微外凸，避免与箱体共面产生深度闪烁。
+mat 0x7A5138
+pattern 15
 surface metal
-box 0 1.3 1.21 5.8 2.4 0.04
-box 0 1.3 -1.21 5.8 2.4 0.04
-mat 0x2A201A
-pattern 3
+uvscale 0.55
+box 0 1.28 1.215 5.86 1.22 0.05
+box 0 1.28 -1.215 5.86 1.22 0.05
+# 角柱
+mat 0x4A382C
+pattern 16
 surface metal
-box 0 0.08 0 6.1 0.16 2.5
-box 0 2.55 0 6.1 0.1 2.5
+uvscale 1.2
+box 2.96 1.28 1.18 0.09 1.24 0.09
+box -2.96 1.28 1.18 0.09 1.24 0.09
+box 2.96 1.28 -1.18 0.09 1.24 0.09
+box -2.96 1.28 -1.18 0.09 1.24 0.09
+# 顶盖与底边：顶盖外挑并完全盖住箱体上表面，形成单一面，
+# 不与箱体顶面共面，避免深度测试抖动。
+mat 0x2E2622
+pattern 16
+surface metal
+uvscale 1.1
+box 0 2.58 0 6.08 0.06 2.46
+box 0 0.05 0 6.08 0.05 2.46
+# 门闩竖杆
+mat 0x9AA6AE
+pattern 16
+surface metal
+uvscale 1.4
+box 3.03 1.28 0.62 0.045 1.16 0.045
+box 3.03 1.28 -0.62 0.045 1.16 0.045
+box 3.03 1.28 0 0.045 0.06 1.3
+# 涂装标识与锈迹
 mat 0xC08A34
 pattern 8
 surface paper
-box -2.2 2.1 1.24 0.5 0.18 0.02
-box 2.2 1.9 1.24 0.34 0.12 0.02
-mat 0x8A9AA2
-pattern 3
-surface metal
-box 3.02 1.3 0 0.04 2.3 2.3
-mat 0x3A3E42
-pattern 3
-surface metal
-box 3.06 1.3 0 0.04 0.1 2.34
-box 3.06 1.3 0 0.04 2.34 0.08
+uvscale 1.6
+box -2.2 2.05 1.245 0.5 0.18 0.02
+box 2.2 1.85 1.245 0.34 0.12 0.02
 endpart
 endmesh
 
@@ -109,23 +127,30 @@ endmesh
 
 mesh PROP_DRUM
 part body pivot 0 0 0
+# 金属油桶：桶身钣金拼缝 + 两道加强筋 + 顶盖。
 mat 0x2E5E4A
-pattern 3
+pattern 16
 surface metal
-cyl 0 0 0 0.29 0.29 0.86 12
+uvscale 1.6
+cyl 0 0 0 0.29 0.29 0.84 14
 mat 0x264E3E
-pattern 3
+pattern 16
 surface metal
-cyl 0 0.24 0 0.3 0.3 0.05 12
-cyl 0 0.6 0 0.3 0.3 0.05 12
+uvscale 1.6
+cyl 0 0.22 0 0.302 0.302 0.06 14
+cyl 0 0.58 0 0.302 0.302 0.06 14
+# 顶盖：半径略小且上移，避免与桶身顶面共面。
+cyl 0 0.845 0 0.288 0.29 0.045 14
 mat 0xC9B24A
 pattern 8
 surface paper
-box 0 0.45 0.29 0.24 0.16 0.01
+uvscale 2.0
+box 0 0.44 0.295 0.24 0.16 0.01
 mat 0x8A2020
 pattern 4
 surface metal
-cyl 0 0.86 0 0.28 0.24 0.04 12
+uvscale 2.0
+box 0.14 0.82 0.24 0.1 0.12 0.06
 endpart
 endmesh
 
@@ -157,19 +182,18 @@ part body pivot 0 0 0
 mat 0x2A2E32
 pattern 13
 surface rubber
+uvscale 1.2
 box 0 0.05 0 1.0 0.1 0.3
+# 警示斜条：黄黑相间的塑料护栏。
 mat 0xE0B22A
-pattern 0
+pattern 19
 surface plastic
+uvscale 0.9
 box 0 0.55 0 0.9 0.22 0.08
 mat 0x2A2E32
 pattern 0
 surface plastic
-box 0 0.55 0.1 0.5 0.1 0.02
-box -0.22 0.55 0.1 0.22 0.1 0.02
-mat 0x3E444A
-pattern 3
-surface metal
+uvscale 1.0
 box -0.42 0.28 0 0.06 0.5 0.06
 box 0.42 0.28 0 0.06 0.5 0.06
 endpart
@@ -180,15 +204,18 @@ part body pivot 0 0 0
 mat 0x6A4E32
 pattern 2
 surface wood
+uvscale 1.4
 cyl 0 0 0 0.45 0.45 0.1 12
 cyl 0 0.8 0 0.45 0.45 0.1 12
 mat 0x2A2622
 pattern 13
 surface rubber
+uvscale 2.2
 cyl 0 0.1 0 0.36 0.36 0.7 12
 mat 0x8A5A32
 pattern 2
 surface wood
+uvscale 1.4
 cyl 0 0.1 0 0.05 0.05 0.8 8
 endpart
 endmesh

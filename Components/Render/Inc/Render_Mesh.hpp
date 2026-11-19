@@ -17,10 +17,11 @@
 namespace fc {
 
 /**
- * @brief 网格顶点：位置、法线、颜色、程序化图案与表面材质编号。
+ * @brief 网格顶点：位置、法线、颜色、程序化图案、表面材质与局部 UV。
  *
  * 图案编号决定表面的细节纹理，材质编号决定反射模型（见 `Shared_Types.hpp`
- * 的 `SurfacePattern` 与 `SurfaceMaterial`）。
+ * 的 `SurfacePattern` 与 `SurfaceMaterial`）。`uv` 在建模时按局部坐标烘焙，
+ * 因此每个物件拥有自己的纹理密度，不会和地面共用同一套网格。
  */
 struct MeshVertex {
     Vec3 position;
@@ -28,6 +29,7 @@ struct MeshVertex {
     Color color;
     float pattern = 0.0f;
     float material = 0.0f;
+    Vec2 uv;
 };
 
 /**
@@ -81,6 +83,12 @@ public:
      * @param [IN] material 编号，见 `SurfaceMaterial`。
      */
     void SetMaterial(int material);
+
+    /**
+     * @brief 设置后续面片的纹理密度（每米重复次数）。
+     * @param [IN] scale 密度倍率；1 表示一米重复一次图案。
+     */
+    void SetUvScale(float scale);
 
     /**
      * @brief 添加三角形（自动平面法线）。
@@ -197,6 +205,7 @@ private:
     Color m_color{0.7f, 0.7f, 0.7f, 1.0f};
     float m_pattern = 0.0f;
     float m_material = 0.0f;
+    float m_uvScale = 1.0f;
     MeshData m_scratch;
 };
 

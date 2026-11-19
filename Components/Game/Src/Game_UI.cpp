@@ -193,30 +193,51 @@ void GameUI::DrawHUD(const Player& player, const Inventory& inventory,
                      const std::vector<Enemy>& enemies,
                      const CameraRuntime& camera, const GameRenderer& renderer)
 {
+    SpriteBatch& batch = m_device->Batch();
+    const Texture& white = m_device->White();
+
+    // ---- 左上：目标条（细长，不遮挡画面）----
     const std::string mainObjective = MainObjective(quest);
     const std::string sideObjective = SideObjective(quest);
-    const int mainHeight = TextHeight(mainObjective, 11, 268);
+    const int mainHeight = TextHeight(mainObjective, 10, 250);
     const int sideHeight =
-        sideObjective.empty() ? 0 : TextHeight(sideObjective, 10, 268);
-    const float panelHeight = 16.0f + static_cast<float>(mainHeight) +
-                              (sideHeight > 0 ? 15.0f + sideHeight : 0.0f) +
-                              8.0f;
-    Panel(RectF(6.0f, 6.0f, 292.0f, panelHeight), PANEL_FILL, PANEL_BORDER);
-    Text("当前目标", 14.0f, 9.0f, 9, 200, AMBER);
-    Text(mainObjective, 14.0f, 21.0f, 11, 268, BONE);
+        sideObjective.empty() ? 0 : TextHeight(sideObjective, 8, 250);
+    const int mainWidth = TextWidth(mainObjective, 10, 250);
+    const int sideWidth =
+        sideObjective.empty() ? 0 : TextWidth(sideObjective, 8, 250);
+    const float panelHeight = 10.0f + static_cast<float>(mainHeight) +
+                              (sideHeight > 0 ? 11.0f + sideHeight : 0.0f) +
+                              5.0f;
+    const float panelWidth =
+        static_cast<float>(std::max(mainWidth, sideWidth)) + 16.0f;
+    Panel(RectF(6.0f, 6.0f, panelWidth, panelHeight),
+          Color(0.02f, 0.04f, 0.055f, 0.62f),
+          Color(CYAN.r, CYAN.g, CYAN.b, 0.42f));
+    // 左侧竖条表示这是主线目标
+    batch.DrawTexture(white, 8.0f, 9.0f, 2.0f, panelHeight - 6.0f,
+                      Color(AMBER.r, AMBER.g, AMBER.b, 0.9f));
+    Text(mainObjective, 15.0f, 8.0f, 10, 240, BONE);
     if (!sideObjective.empty()) {
-        const float sideY = 23.0f + static_cast<float>(mainHeight);
-        Text("支线", 14.0f, sideY, 9, 200, CYAN);
-        Text(sideObjective, 14.0f, sideY + 10.0f, 10, 268,
-             Rgba(150, 210, 205));
+        const float sideY = 11.0f + static_cast<float>(mainHeight);
+        batch.DrawTexture(white, 8.0f, sideY + 2.0f, 2.0f,
+                          static_cast<float>(sideHeight) , 
+                          Color(CYAN.r, CYAN.g, CYAN.b, 0.7f));
+        Text(sideObjective, 15.0f, sideY, 8, 240, Rgba(150, 214, 208));
     }
 
-    Panel(RectF(372.0f, 6.0f, 102.0f, 22.0f), PANEL_FILL, PANEL_BORDER);
-    DrawIcon(4, 378.0f, 10.0f, 14.0f, Rgba(240, 205, 120));
-    Text(std::to_string(inventory.money), 394.0f, 9.0f, 11, 80,
+    // ---- 右上：信用点 ----
+    const std::string money = std::to_string(inventory.money);
+    const int moneyWidth = TextWidth(money, 11, 200);
+    Panel(RectF(474.0f - 30.0f - static_cast<float>(moneyWidth), 6.0f,
+                24.0f + static_cast<float>(moneyWidth), 19.0f),
+          Color(0.02f, 0.04f, 0.055f, 0.62f),
+          Color(CYAN.r, CYAN.g, CYAN.b, 0.42f));
+    DrawIcon(4, 474.0f - 24.0f - static_cast<float>(moneyWidth), 10.0f, 12.0f,
+             Rgba(240, 205, 120));
+    Text(money, 474.0f - 8.0f - static_cast<float>(moneyWidth), 9.0f, 11, 200,
          Rgba(240, 205, 120));
 
-    // 敌人血条
+    // ---- 敌人血条（只在视野内、且已受伤/警戒时出现）----
     for (const Enemy& enemy : enemies) {
         if (enemy.dead || (!enemy.alerted && enemy.hp >= enemy.maxHp)) {
             continue;
@@ -229,70 +250,109 @@ void GameUI::DrawHUD(const Player& player, const Inventory& inventory,
         }
         const float ratio = Clamp(enemy.hp / std::max(1.0f, enemy.maxHp), 0.0f,
                                   1.0f);
-        SpriteBatch& batch = m_device->Batch();
-        batch.DrawTexture(m_device->White(), screen.x - 14.0f, screen.y, 28.0f,
-                          3.0f, Color(0.05f, 0.05f, 0.06f, 0.9f));
+        batch.DrawTexture(white, screen.x - 11.0f, screen.y, 22.0f, 2.0f,
+                          Color(0.03f, 0.03f, 0.04f, 0.85f));
         const Color barColor = enemy.type == EnemyType::AGENT
                                    ? Color(CYAN.r, CYAN.g, CYAN.b, 0.95f)
-                                   : Color(0.85f, 0.4f, 0.25f, 0.95f);
-        batch.DrawTexture(m_device->White(), screen.x - 13.0f, screen.y + 1.0f,
-                          26.0f * ratio, 1.0f, barColor);
+                                   : (enemy.melee
+                                          ? Color(0.92f, 0.62f, 0.25f, 0.95f)
+                                          : Color(0.85f, 0.4f, 0.25f, 0.95f));
+        batch.DrawTexture(white, screen.x - 10.0f, screen.y + 0.5f,
+                          20.0f * ratio, 1.0f, barColor);
     }
 
-    Panel(RectF(6.0f, 200.0f, 220.0f, 66.0f), PANEL_FILL, PANEL_BORDER);
-    DrawPortrait("PORTRAIT_PLAYER", 10.0f, 206.0f, 54.0f, renderer);
-    Text("小明", 70.0f, 204.0f, 10, 80, Rgba(127, 216, 207));
-    SpriteBatch& batch = m_device->Batch();
-    batch.DrawTexture(m_device->White(), 70.0f, 219.0f, 140.0f, 6.0f,
-                      Rgba(26, 32, 38, 230));
+    // ---- 左下：头像 + 生命 ----
+    const float cardX = 6.0f;
+    const float cardY = 232.0f;
+    Panel(RectF(cardX, cardY, 152.0f, 32.0f),
+          Color(0.02f, 0.04f, 0.055f, 0.70f),
+          Color(CYAN.r, CYAN.g, CYAN.b, 0.42f));
+    DrawPortrait("PORTRAIT_PLAYER", cardX + 4.0f, cardY + 4.0f, 24.0f,
+                 renderer);
+    Text("小明", cardX + 33.0f, cardY + 2.0f, 9, 60, Rgba(127, 216, 207));
     const float hpRatio = Clamp(static_cast<float>(player.hp) /
                                     static_cast<float>(PLAYER_MAX_HP),
                                 0.0f, 1.0f);
+    const float hpBarX = cardX + 33.0f;
+    const float hpBarW = 112.0f;
+    batch.DrawTexture(white, hpBarX, cardY + 15.0f, hpBarW, 5.0f,
+                      Rgba(18, 24, 30, 225));
     const Color hpColor = hpRatio < 0.3f ? RED : Rgba(70, 200, 160);
-    batch.DrawTexture(m_device->White(), 71.0f, 220.0f, 138.0f * hpRatio, 4.0f,
-                      hpColor);
-    Text(std::to_string(player.hp) + "/" + std::to_string(PLAYER_MAX_HP),
-         214.0f, 214.0f, 9, 40, DIM);
-    DrawIcon(0, 70.0f, 232.0f, 14.0f, Rgba(230, 190, 100));
+    batch.DrawTexture(white, hpBarX + 0.5f, cardY + 15.5f,
+                      (hpBarW - 1.0f) * hpRatio, 4.0f, hpColor);
+    // 生命条上的百分比刻度
+    for (int i = 1; i < 4; ++i) {
+        batch.DrawTexture(white, hpBarX + hpBarW * (static_cast<float>(i) / 4.0f),
+                          cardY + 15.0f, 1.0f, 5.0f,
+                          Color(0.02f, 0.04f, 0.06f, 0.55f));
+    }
+    Text(std::to_string(player.hp) + " / " +
+             std::to_string(PLAYER_MAX_HP),
+         hpBarX, cardY + 21.0f, 8, 120, DIM);
+
+    // ---- 左下（右）：弹药与医疗包 ----
+    Panel(RectF(162.0f, cardY, 92.0f, 32.0f),
+          Color(0.02f, 0.04f, 0.055f, 0.70f),
+          Color(CYAN.r, CYAN.g, CYAN.b, 0.42f));
+    DrawIcon(0, 166.0f, cardY + 3.0f, 12.0f, Rgba(230, 190, 100));
     Text(std::to_string(inventory.ammoMag) + " / " +
              std::to_string(inventory.ammoReserve),
-         88.0f, 231.0f, 10, 80, BONE);
-    DrawIcon(1, 152.0f, 232.0f, 14.0f, Rgba(230, 235, 220));
-    Text("×" + std::to_string(inventory.medkits), 170.0f, 231.0f, 10, 40,
+         182.0f, cardY + 3.0f, 10, 70, BONE);
+    DrawIcon(1, 166.0f, cardY + 18.0f, 12.0f, Rgba(230, 235, 220));
+    Text("×" + std::to_string(inventory.medkits), 182.0f, cardY + 18.0f, 10, 70,
          BONE);
 
-    // 武器槽：显示当前手里拿的是什么，并提示滚轮切换。
-    {
-        const bool armed = player.slot == WeaponSlot::PISTOL;
-        Panel(RectF(232.0f, 226.0f, 108.0f, 24.0f), PANEL_FILL,
-              armed ? PANEL_BORDER : Rgba(120, 130, 140, 70));
-        DrawIcon(0, 238.0f, 231.0f, 14.0f,
-                 armed ? Rgba(230, 190, 100) : Rgba(120, 130, 140));
-        Text(armed ? "手枪" : "空手", 258.0f, 231.0f, 10, 40,
-             armed ? BONE : DIM);
-        Text("滚轮", 300.0f, 232.0f, 8, 32, DIM);
-    }
+    // ---- 右下：武器槽 ----
+    const bool armed = player.slot == WeaponSlot::PISTOL;
+    Panel(RectF(386.0f, cardY + 8.0f, 88.0f, 24.0f),
+          Color(0.02f, 0.04f, 0.055f, 0.70f),
+          armed ? Color(CYAN.r, CYAN.g, CYAN.b, 0.55f)
+                : Color(0.42f, 0.46f, 0.50f, 0.35f));
+    DrawIcon(0, 392.0f, cardY + 12.0f, 12.0f,
+             armed ? Rgba(230, 190, 100) : Rgba(120, 130, 140));
+    Text(armed ? "手枪" : "空手", 408.0f, cardY + 12.0f, 10, 40,
+         armed ? BONE : DIM);
+    Text("滚轮", 444.0f, cardY + 13.0f, 8, 32, DIM);
 
+    // ---- 状态提示（单行，放在卡片上方）----
+    std::string status;
+    Color statusColor = AMBER;
     if (player.reloading) {
-        Text("装填中……", 70.0f, 248.0f, 9, 120, AMBER);
+        status = "装填中……";
     } else if (player.usingMedkit) {
-        Text("使用医疗包……", 70.0f, 248.0f, 9, 120, AMBER);
-    } else if (inventory.hasGear && player.slot == WeaponSlot::FISTS) {
-        Text("空手：左键近战（滚轮切枪）", 70.0f, 248.0f, 9, 150, DIM);
-    } else if (!inventory.hasGear) {
-        Text("尚未装备武器", 70.0f, 248.0f, 9, 120, DIM);
+        status = "使用医疗包……";
     } else if (hpRatio < 0.3f) {
-        Text("生命危险", 70.0f, 248.0f, 9, 120, RED);
+        status = "生命危险";
+        statusColor = RED;
+    } else if (inventory.hasGear && player.slot == WeaponSlot::FISTS) {
+        status = "空手：左键近战（滚轮切枪）";
+        statusColor = DIM;
+    } else if (!inventory.hasGear) {
+        status = "尚未装备武器";
+        statusColor = DIM;
+    }
+    if (!status.empty()) {
+        Text(status, 8.0f, cardY - 11.0f, 9, 300, statusColor);
+    }
+    if (player.reloading) {
+        const float progress = 1.0f - Clamp(player.reloadTimer / RELOAD_TIME,
+                                            0.0f, 1.0f);
+        batch.DrawTexture(white, cardX, cardY - 2.0f, 152.0f, 1.5f,
+                          Rgba(255, 179, 71, 120));
+        batch.DrawTexture(white, cardX, cardY - 2.0f, 152.0f * progress, 1.5f,
+                          AMBER);
     }
 
+    // ---- 交互提示 ----
     if (!prompt.empty()) {
-        const int width = TextWidth(prompt, 10, 200) + 16;
+        const int width = TextWidth(prompt, 9, 200) + 14;
         float x = promptScreen.x - static_cast<float>(width) * 0.5f;
         x = Clamp(x, 4.0f, 476.0f - static_cast<float>(width));
-        const float y = Clamp(promptScreen.y - 26.0f, 6.0f, 226.0f);
-        Panel(RectF(x, y, static_cast<float>(width), 20.0f),
-              Rgba(5, 9, 12, 226), Rgba(255, 179, 71, 120));
-        Text(prompt, x + 8.0f, y + 4.0f, 10, 200, AMBER);
+        const float y = Clamp(promptScreen.y - 24.0f, 6.0f, 220.0f);
+        batch.DrawTexture(white, x, y, static_cast<float>(width), 17.0f,
+                          Rgba(5, 9, 12, 200));
+        batch.DrawTexture(white, x, y, 2.0f, 17.0f, AMBER);
+        Text(prompt, x + 7.0f, y + 3.0f, 9, 200, AMBER);
     }
 
     DrawCrosshair(mouse, !prompt.empty());

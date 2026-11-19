@@ -45,11 +45,22 @@ int DefaultMaterialForPattern(int pattern)
     case 11:
         return Mat(M::CERAMIC);
     case 12:
-        return Mat(M::PLASTIC);
+        return Mat(M::FABRIC);
     case 13:
         return Mat(M::RUBBER);
     case 14:
         return Mat(M::EMISSIVE);
+    case 15:
+    case 16:
+    case 20:
+        return Mat(M::METAL_MATTE);
+    case 17:
+        return Mat(M::WOOD);
+    case 18:
+    case 21:
+        return Mat(M::FABRIC);
+    case 19:
+        return Mat(M::PLASTIC);
     default:
         return Mat(M::PLASTER);
     }
@@ -70,7 +81,8 @@ RoomBlock Block(const Vec3& center, const Vec3& half, unsigned int rgb,
 }
 
 PropDef Prop(const char* mesh, const Vec3& position, float yawDegrees,
-             float scale = 1.0f, unsigned int tint = 0xFFFFFF, bool solid = true)
+             float scale = 1.0f, unsigned int tint = 0xFFFFFF, bool solid = true,
+             bool transparent = false)
 {
     PropDef prop;
     prop.mesh = mesh;
@@ -79,6 +91,7 @@ PropDef Prop(const char* mesh, const Vec3& position, float yawDegrees,
     prop.scale = scale;
     prop.tint = ColorFromHex(tint);
     prop.solid = solid;
+    prop.transparent = transparent;
     return prop;
 }
 
@@ -153,13 +166,55 @@ SceneDef BuildExterior()
     scene.blocks.push_back(Block(Vec3(0.0f, 0.06f, 2.0f),
                                  Vec3(7.0f, 0.05f, 0.07f), 0x4C525A, 6, false));
 
-    // ---- 酒吧外墙：砖墙 + 石质墙裙 + 门洞 ----
-    scene.blocks.push_back(Block(Vec3(-3.95f, 2.6f, -0.2f),
-                                 Vec3(3.05f, 2.6f, 0.25f), 0x2A2422, 1));
-    scene.blocks.push_back(Block(Vec3(4.55f, 2.6f, -0.2f),
-                                 Vec3(2.45f, 2.6f, 0.25f), 0x2A2422, 1));
-    scene.blocks.push_back(Block(Vec3(0.6f, 3.4f, -0.2f),
-                                 Vec3(1.5f, 0.8f, 0.25f), 0x241E1C, 1));
+    // ---- 酒吧外墙：砖墙 + 石质墙裙 + 门洞 + 两扇临街橱窗 ----
+    // 墙体被门洞与窗洞切开，窗洞里放「窗内景 + 玻璃」，从街上能看见吧台暖光。
+    const float facadeZ = -0.2f;
+    const float facadeHalfZ = 0.25f;
+    scene.blocks.push_back(Block(Vec3(-6.625f, 2.6f, facadeZ),
+                                 Vec3(0.375f, 2.6f, facadeHalfZ), 0x2A2422, 1));
+    scene.blocks.push_back(Block(Vec3(-2.225f, 2.6f, facadeZ),
+                                 Vec3(1.325f, 2.6f, facadeHalfZ), 0x2A2422, 1));
+    scene.blocks.push_back(Block(Vec3(0.6f, 3.9f, facadeZ),
+                                 Vec3(1.5f, 1.3f, facadeHalfZ), 0x241E1C, 1));
+    scene.blocks.push_back(Block(Vec3(3.2f, 2.6f, facadeZ),
+                                 Vec3(1.1f, 2.6f, facadeHalfZ), 0x2A2422, 1));
+    scene.blocks.push_back(Block(Vec3(6.75f, 2.6f, facadeZ),
+                                 Vec3(0.25f, 2.6f, facadeHalfZ), 0x2A2422, 1));
+    // 两扇窗的窗台与窗楣
+    for (int i = 0; i < 2; ++i) {
+        const float cx = i == 0 ? -4.9f : 5.4f;
+        const float halfX = i == 0 ? 1.35f : 1.1f;
+        scene.blocks.push_back(Block(Vec3(cx, 0.525f, facadeZ),
+                                     Vec3(halfX, 0.525f, facadeHalfZ),
+                                     0x2A2422, 1));
+        scene.blocks.push_back(Block(Vec3(cx, 3.975f, facadeZ),
+                                     Vec3(halfX, 1.225f, facadeHalfZ),
+                                     0x2A2422, 1));
+        // 石质窗台板，稍微外挑
+        scene.blocks.push_back(Block(Vec3(cx, 1.03f, 0.02f),
+                                     Vec3(halfX + 0.1f, 0.045f, 0.16f),
+                                     0x50545C, 6, false,
+                                     Mat(SurfaceMaterial::PLASTER)));
+        // 窗框 + 玻璃（玻璃走透明队列，在场景绘制最后统一混合）
+        scene.props.push_back(Prop("PROP_WINDOW_FRAME",
+                                   Vec3(cx, 1.9f, 0.03f), 0.0f,
+                                   i == 0 ? 1.05f : 0.86f));
+        scene.props.push_back(Prop("PROP_WINDOW_GLASS",
+                                   Vec3(cx, 1.9f, 0.12f), 0.0f,
+                                   i == 0 ? 1.1f : 0.9f, 0xFFFFFF, false,
+                                   true));
+        // 窗内景：暖光背板 + 吧台剪影，让玻璃后面有内容
+        scene.blocks.push_back(Block(Vec3(cx, 1.9f, -0.44f),
+                                     Vec3(halfX - 0.02f, 0.85f, 0.03f),
+                                     0x5A3A20, 0, false,
+                                     Mat(SurfaceMaterial::EMISSIVE)));
+        scene.props.push_back(Prop("PROP_WINDOW_LIT",
+                                   Vec3(cx, 0.5f, -0.18f), 0.0f,
+                                   i == 0 ? 1.0f : 0.82f, 0xFFFFFF, false,
+                                   false));
+        scene.lights.push_back(Light(Vec3(cx, 2.25f, -0.22f), 0xE8A860,
+                                     1.5f, 4.2f, 0.06f));
+    }
     scene.blocks.push_back(Block(Vec3(0.0f, 0.42f, -0.02f),
                                  Vec3(7.0f, 0.42f, 0.06f), 0x3A3A40, 6));
     // 门两侧壁柱
@@ -167,17 +222,6 @@ SceneDef BuildExterior()
                                  Vec3(0.16f, 2.1f, 0.14f), 0x35302E, 1));
     scene.blocks.push_back(Block(Vec3(2.15f, 2.1f, 0.02f),
                                  Vec3(0.16f, 2.1f, 0.14f), 0x35302E, 1));
-    // 酒吧橱窗：玻璃 + 室内暖光
-    scene.blocks.push_back(Block(Vec3(-4.9f, 1.9f, 0.0f),
-                                 Vec3(1.35f, 0.85f, 0.05f), 0x2A3A42, 9));
-    scene.blocks.push_back(Block(Vec3(5.4f, 1.9f, 0.0f),
-                                 Vec3(1.1f, 0.85f, 0.05f), 0x2A3A42, 9));
-    scene.blocks.push_back(Block(Vec3(-4.9f, 1.9f, 0.05f),
-                                 Vec3(1.2f, 0.7f, 0.02f), 0xC98A4A, 14,
-                                 false));
-    scene.blocks.push_back(Block(Vec3(5.4f, 1.9f, 0.05f),
-                                 Vec3(0.95f, 0.7f, 0.02f), 0xC98A4A, 14,
-                                 false));
 
     // ---- 两侧老楼立面 ----
     scene.blocks.push_back(Block(Vec3(-7.2f, 3.2f, 7.0f),
@@ -342,12 +386,63 @@ SceneDef BuildInterior()
                                  Vec3(0.25f, 1.8f, 5.2f), 0x2C2420, 1));
     scene.blocks.push_back(Block(Vec3(7.2f, 1.7f, 0.0f),
                                  Vec3(0.25f, 1.8f, 5.2f), 0x2C2420, 1));
-    scene.blocks.push_back(Block(Vec3(-3.2f, 1.7f, 5.2f),
-                                 Vec3(4.0f, 1.8f, 0.25f), 0x2C2420, 1));
-    scene.blocks.push_back(Block(Vec3(4.6f, 1.7f, 5.2f),
-                                 Vec3(2.6f, 1.8f, 0.25f), 0x2C2420, 1));
-    scene.blocks.push_back(Block(Vec3(0.6f, 2.75f, 5.2f),
-                                 Vec3(1.0f, 0.75f, 0.25f), 0x241D1B, 1));
+
+    // 临街前墙留出两处窗洞，与外观立面的窗户位置对应；
+    // 窗洞内嵌玻璃，从街上能看到吧台暖光，从室内能看到街景反光。
+    struct FrontWindow {
+        float centerX;
+        float halfWidth;
+    };
+    const FrontWindow frontWindows[2] = {{-4.9f, 0.55f}, {5.4f, 0.5f}};
+    const float windowBottom = 1.02f;
+    const float windowTop = 2.72f;
+
+    // 先铺整段前墙，再按窗洞切成左右上下的片段。
+    auto addFrontWall = [&](float minX, float maxX, float minY, float maxY) {
+        scene.blocks.push_back(Block(
+            Vec3((minX + maxX) * 0.5f, (minY + maxY) * 0.5f, 5.2f),
+            Vec3((maxX - minX) * 0.5f, (maxY - minY) * 0.5f, 0.25f),
+            0x2C2420, 1));
+    };
+    // 左段：西墙到第一扇窗。
+    addFrontWall(-7.2f, frontWindows[0].centerX - frontWindows[0].halfWidth,
+                 0.0f, 3.5f);
+    // 中段左：第一扇窗到门洞。
+    addFrontWall(frontWindows[0].centerX + frontWindows[0].halfWidth, -0.35f,
+                 0.0f, 3.5f);
+    // 中段右：门洞到第二扇窗。
+    addFrontWall(1.55f, frontWindows[1].centerX - frontWindows[1].halfWidth,
+                 0.0f, 3.5f);
+    // 右段：第二扇窗到东墙。
+    addFrontWall(frontWindows[1].centerX + frontWindows[1].halfWidth, 7.2f,
+                 0.0f, 3.5f);
+    // 门上方门楣。
+    addFrontWall(-0.35f, 1.55f, 2.0f, 3.5f);
+    for (const FrontWindow& window : frontWindows) {
+        addFrontWall(window.centerX - window.halfWidth,
+                     window.centerX + window.halfWidth, 0.0f, windowBottom);
+        addFrontWall(window.centerX - window.halfWidth,
+                     window.centerX + window.halfWidth, windowTop, 3.5f);
+        // 窗框木框 + 玻璃
+        scene.props.push_back(Prop("PROP_WINDOW_FRAME",
+                                   Vec3(window.centerX, 1.87f, 5.06f), 180.0f,
+                                   window.halfWidth * 2.0f + 0.12f, 0xFFFFFF,
+                                   false));
+        scene.props.push_back(Prop("PROP_WINDOW_GLASS",
+                                   Vec3(window.centerX, 1.87f, 5.0f), 180.0f,
+                                   window.halfWidth * 2.0f + 0.1f, 0xFFFFFF,
+                                   false, true));
+        // 窗台板
+        scene.blocks.push_back(Block(
+            Vec3(window.centerX, windowBottom - 0.03f, 5.02f),
+            Vec3(window.halfWidth + 0.08f, 0.05f, 0.14f), 0x4A4038, 0, false,
+            Mat(SurfaceMaterial::PLASTIC)));
+    }
+    // 门洞上方的装饰横梁。
+    scene.blocks.push_back(Block(Vec3(0.6f, 2.02f, 4.9f),
+                                 Vec3(1.06f, 0.06f, 0.07f), 0x241D1B, 1,
+                                 false, Mat(SurfaceMaterial::WOOD)));
+
 
     // ---- 天花板横梁与踢脚线 ----
     for (int i = -1; i <= 1; ++i) {
@@ -473,7 +568,7 @@ SceneDef BuildInterior()
     scene.props.push_back(Prop("PROP_WALL_LAMP", Vec3(6.95f, 2.2f, -2.6f), -90.0f, 1.0f, 0xFFFFFF, false));
     scene.props.push_back(Prop("PROP_WALL_LAMP", Vec3(0.6f, 2.55f, 5.05f), 180.0f, 1.0f, 0xFFFFFF, false));
     scene.props.push_back(Prop("PROP_CEILING_FAN", Vec3(0.2f, 3.34f, 2.4f), 0.0f, 1.0f, 0xFFFFFF, false));
-    scene.props.push_back(Prop("PROP_DOOR_FRAME", Vec3(0.6f, 0.0f, 5.05f), 180.0f, 1.0f, 0xFFFFFF, false));
+    scene.props.push_back(Prop("PROP_DOOR_FRAME", Vec3(0.6f, 0.0f, 4.9f), 180.0f, 1.0f, 0xFFFFFF, false));
 
     scene.lights.push_back(Light(Vec3(-1.8f, 2.55f, -2.35f), 0xFFA04C, 3.2f, 9.0f));
     scene.lights.push_back(Light(Vec3(-0.2f, 2.55f, -2.35f), 0xFFB262, 2.2f, 7.0f));

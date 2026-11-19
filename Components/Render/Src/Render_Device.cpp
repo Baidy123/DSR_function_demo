@@ -44,6 +44,7 @@ struct VSInput
     float3 color : COLOR0;
     float pattern : TEXCOORD0;
     float material : TEXCOORD1;
+    float2 uv : TEXCOORD2;
 };
 
 struct VSOutput
@@ -54,6 +55,7 @@ struct VSOutput
     float3 color : COLOR0;
     float pattern : TEXCOORD0;
     float material : TEXCOORD1;
+    float2 uv : TEXCOORD3;
 };
 
 VSOutput VSMain(VSInput input)
@@ -66,6 +68,7 @@ VSOutput VSMain(VSInput input)
     output.color = input.color;
     output.pattern = input.pattern;
     output.material = input.material;
+    output.uv = input.uv;
     return output;
 }
 
@@ -139,7 +142,7 @@ float3 ApplyPattern(float3 base, float2 uv, float pattern)
     {
         // 混凝土：大小两层颗粒。
         float n = Noise2(uv * 2.6) * 0.62 + Noise2(uv * 9.0) * 0.38;
-        return base * (0.86 + 0.22 * n);
+        return base * (0.90 + 0.14 * n);
     }
     if (pattern < 7.5)
     {
@@ -200,7 +203,241 @@ float3 ApplyPattern(float3 base, float2 uv, float pattern)
         // 橡胶/沥青：细颗粒。
         return base * (0.9 + 0.1 * Noise2(uv * 42.0));
     }
+    if (pattern < 14.5)
+    {
+        // 自发光面（霓虹、屏幕、灯罩）：保留平涂，由自发光项抬亮。
+        return base;
+    }
+    if (pattern < 15.5)
+    {
+        // 集装箱瓦楞：竖向梯形波纹 + 横向板缝 + 顶部锈污。
+        float rib = frac(uv.x * 7.0);
+        float wave = smoothstep(0.16, 0.32, rib) - smoothstep(0.68, 0.84, rib);
+        float3 c = base * (0.74 + 0.42 * wave);
+        c *= 0.92 + 0.08 * Noise2(uv * 3.0);
+        float seam = step(frac(uv.y * 0.8), 0.03);
+        c *= 1.0 - 0.26 * seam;
+        float grime = smoothstep(0.55, 0.9, Noise2(uv * 2.2));
+        c = lerp(c, c * float3(0.82, 0.7, 0.6), grime * 0.45);
+        return c;
+    }
+    if (pattern < 16.5)
+    {
+        // 金属板拼缝 + 铆钉。
+        float2 g = uv * 1.6;
+        float2 d = min(frac(g), 1.0 - frac(g));
+        float seam = smoothstep(0.06, 0.0, min(d.x, d.y));
+        float2 rivetCell = abs(frac(uv * 4.0) - 0.5);
+        float rivet = 1.0 - smoothstep(0.055, 0.10, length(rivetCell));
+        float3 c = base * (0.86 + 0.14 * Noise2(uv * 5.0));
+        c *= 1.0 - 0.30 * seam;
+        c += base * rivet * 0.40;
+        return c;
+    }
+    if (pattern < 17.5)
+    {
+        // 木桶竖板与铁箍。
+        float stave = frac(uv.x * 6.0);
+        float gap = smoothstep(0.0, 0.05, stave) * smoothstep(0.0, 0.05, 1.0 - stave);
+        float grain = 0.92 + 0.08 * sin(uv.y * 38.0 + stave * 6.0);
+        float3 c = base * lerp(0.52, 1.0, gap) * grain;
+        float hoop = step(frac(uv.y * 2.2), 0.07);
+        c = lerp(c, base * 1.35 + 0.05, hoop * 0.8);
+        return c;
+    }
+    if (pattern < 18.5)
+    {
+        // 地毯：短绒 + 边缘磨损。
+        float pile = Noise2(uv * 58.0) * 0.5 + Noise2(uv * 19.0) * 0.5;
+        float edge = step(frac(uv.x * 0.5), 0.05) + step(frac(uv.y * 0.5), 0.05);
+        return base * (0.84 + 0.22 * pile) * (1.0 - 0.22 * saturate(edge));
+    }
+    if (pattern < 19.5)
+    {
+        // 警示斜条。
+        float band = step(0.5, frac((uv.x + uv.y) * 2.6));
+        float3 c = lerp(base, base * 2.3 + 0.08, band);
+        return c * (0.86 + 0.14 * Noise2(uv * 16.0));
+    }
+    if (pattern < 20.5)
+    {
+        // 装甲板：倒角边框 + 四角螺栓。
+        float2 g = uv * 1.2;
+        float2 f = frac(g);
+        float edge = min(min(f.x, 1.0 - f.x), min(f.y, 1.0 - f.y));
+        float plate = smoothstep(0.0, 0.06, edge);
+        float2 bolt = abs(frac(g * 2.0) - 0.5);
+        float boltMask = 1.0 - smoothstep(0.05, 0.10, length(bolt));
+        float3 c = base * (0.76 + 0.28 * plate);
+        c += base * boltMask * 0.55;
+        return c;
+    }
+    if (pattern < 21.5)
+    {
+        // 帘布：竖向褶皱。
+        float fold = sin(uv.x * 21.0 + Noise2(uv * 3.0) * 3.0) * 0.5 + 0.5;
+        return base * (0.70 + 0.44 * fold);
+    }
+    if (pattern < 22.5)
+    {
+        // 粗石墙：不规则砌块。
+        float2 g = uv * float2(1.9, 2.8);
+        float row = floor(g.y);
+        g.x += frac(row * 0.37);
+        float2 f = frac(g);
+        float mortar = step(f.x, 0.05) + step(f.y, 0.09);
+        float n = Noise2(uv * 11.0) * 0.6 + Noise2(uv * 31.0) * 0.4;
+        return base * (0.72 + 0.44 * n) * (1.0 - 0.44 * saturate(mortar));
+    }
     return base;
+}
+
+/**
+ * @brief 由图案推出高度场，用于凹凸光照。
+ * @param [IN] uv 表面 UV。
+ * @param [IN] pattern 图案编号。
+ * @return 相对高度（0–1，0.5 为基准面）。
+ */
+float PatternHeight(float2 uv, float pattern)
+{
+    if (pattern < 1.5)
+    {
+        float2 g = uv * float2(2.4, 4.2);
+        float row = floor(g.y);
+        g.x += frac(row * 0.5);
+        float2 f = frac(g);
+        float mortar = step(f.x, 0.07) + step(f.y, 0.14);
+        return 0.5 - 0.5 * saturate(mortar);
+    }
+    if (pattern < 2.5)
+    {
+        float seam = step(frac(uv.y * 6.5), 0.06);
+        return 0.5 - 0.42 * seam;
+    }
+    if (pattern < 3.5)
+    {
+        return 0.5 + 0.42 * step(0.5, frac(uv.x * 9.0));
+    }
+    if (pattern < 4.5)
+    {
+        return 0.5 + 0.18 * Noise2(uv * 9.0);
+    }
+    if (pattern < 7.5)
+    {
+        // 布料 / 混凝土 / 纸箱：只有很浅的起伏。
+        return 0.5 + 0.3 * (Noise2(uv * 9.0) - 0.5);
+    }
+    if (pattern < 10.5)
+    {
+        float2 f = frac(uv * 5.0);
+        float seam = step(f.x, 0.045) + step(f.y, 0.045);
+        return 0.5 - 0.48 * saturate(seam);
+    }
+    if (pattern < 15.5)
+    {
+        return 0.5 + 0.12 * (Noise2(uv * 22.0) - 0.5);
+    }
+    if (pattern < 16.5)
+    {
+        float rib = frac(uv.x * 7.0);
+        return 0.18 + 0.72 * smoothstep(0.16, 0.34, rib) *
+                            smoothstep(0.86, 0.66, rib);
+    }
+    if (pattern < 17.5)
+    {
+        float2 d = min(frac(uv * 1.6), 1.0 - frac(uv * 1.6));
+        return 0.5 - 0.4 * smoothstep(0.06, 0.0, min(d.x, d.y));
+    }
+    if (pattern < 18.5)
+    {
+        float stave = frac(uv.x * 6.0);
+        return 0.2 + 0.7 * smoothstep(0.0, 0.06, stave) *
+                            smoothstep(0.0, 0.06, 1.0 - stave);
+    }
+    if (pattern < 19.5)
+    {
+        return 0.5 + 0.14 * (Noise2(uv * 30.0) - 0.5);
+    }
+    if (pattern < 21.5)
+    {
+        float2 g = uv * 1.2;
+        float2 f = frac(g);
+        float edge = min(min(f.x, 1.0 - f.x), min(f.y, 1.0 - f.y));
+        return 0.30 + 0.5 * smoothstep(0.0, 0.07, edge);
+    }
+    if (pattern < 22.5)
+    {
+        float2 g = uv * float2(1.9, 2.8);
+        float row = floor(g.y);
+        g.x += frac(row * 0.37);
+        float2 f = frac(g);
+        float mortar = step(f.x, 0.05) + step(f.y, 0.09);
+        return 0.5 + 0.34 * (Noise2(uv * 11.0) - 0.5) - 0.42 * saturate(mortar);
+    }
+    return 0.5;
+}
+
+/**
+ * @brief 用高度场的屏幕导数扰动法线，得到低成本的凹凸光照。
+ * @param [IN] N 原始法线。
+ * @param [IN] uv 表面 UV。
+ * @param [IN] pattern 图案编号。
+ * @param [IN] strength 强度。
+ * @return 扰动后的法线。
+ */
+float3 BumpNormal(float3 N, float2 uv, float pattern, float strength)
+{
+    const float e = 0.035;
+    const float h0 = PatternHeight(uv, pattern);
+    const float hu = PatternHeight(uv + float2(e, 0.0), pattern);
+    const float hv = PatternHeight(uv + float2(0.0, e), pattern);
+    const float dU = (hu - h0) / e;
+    const float dV = (hv - h0) / e;
+
+    // 与建模时一致的三向投影切线基。
+    const float ax = abs(N.x);
+    const float ay = abs(N.y);
+    const float az = abs(N.z);
+    float3 T;
+    float3 B;
+    if (ay >= ax && ay >= az)
+    {
+        T = float3(1.0, 0.0, 0.0);
+        B = float3(0.0, 0.0, 1.0);
+    }
+    else if (ax >= az)
+    {
+        T = float3(0.0, 0.0, 1.0);
+        B = float3(0.0, 1.0, 0.0);
+    }
+    else
+    {
+        T = float3(1.0, 0.0, 0.0);
+        B = float3(0.0, 1.0, 0.0);
+    }
+    float3 n = N - (T * dU + B * dV) * strength;
+    return normalize(n);
+}
+
+/**
+ * @brief 不同材质对凹凸的敏感度（玻璃与液体不参与）。
+ * @param [IN] material 材质编号。
+ * @return 强度（0–1）。
+ */
+float MaterialBump(float material)
+{
+    if (material < 0.5) return 0.16;
+    if (material < 1.5) return 0.52;
+    if (material < 2.5) return 0.60;
+    if (material < 3.5) return 0.34;
+    if (material < 4.5) return 0.0;
+    if (material < 5.5) return 0.26;
+    if (material < 6.5) return 0.46;
+    if (material < 7.5) return 0.36;
+    if (material < 8.5) return 0.16;
+    if (material < 9.5) return 0.30;
+    if (material < 10.5) return 0.05;
+    return 0.0;
 }
 
 /**
@@ -240,8 +477,8 @@ SurfaceParams GetSurface(float material)
     }
     else if (material < 4.5)     // 玻璃
     {
-        s.power = 150.0; s.specular = 1.35; s.metalness = 0.0;
-        s.diffuse = 0.22; s.env = 0.90;
+        s.power = 120.0; s.specular = 0.85; s.metalness = 0.0;
+        s.diffuse = 0.16; s.env = 0.42;
     }
     else if (material < 5.5)     // 塑料
     {
@@ -270,8 +507,10 @@ SurfaceParams GetSurface(float material)
     }
     else if (material < 10.5)    // 液体/积水
     {
-        s.power = 240.0; s.specular = 1.60; s.metalness = 0.0;
-        s.diffuse = 0.12; s.env = 1.10;
+        // 积水是一层薄膜：保留大部分底色（否则会变成一块黑洞），
+        // 再用锐利高光与环境反射表现“湿”。
+        s.power = 260.0; s.specular = 1.50; s.metalness = 0.0;
+        s.diffuse = 0.62; s.env = 0.45;
     }
     else                         // 自发光
     {
@@ -286,23 +525,24 @@ float4 PSMain(VSOutput input) : SV_TARGET
     float3 N = normalize(input.normal);
     float3 V = normalize(uCameraPos.xyz - input.world);
 
-    float3 axis = abs(N);
-    float2 uv;
-    if (axis.y > 0.6)
-    {
-        uv = input.world.xz;
-    }
-    else if (axis.x > axis.z)
-    {
-        uv = input.world.zy;
-    }
-    else
-    {
-        uv = input.world.xy;
-    }
+    const float2 uv = input.uv;
 
-    float3 albedo = ApplyPattern(input.color * uTint.rgb, uv * 0.5, input.pattern);
+    // 细节 LOD：掠射角或远景下高频条纹会剧烈闪烁，按像素脚印淡出细节。
+    const float2 footprint = fwidth(uv);
+    const float detail = saturate(1.0 - max(footprint.x, footprint.y) * 4.0);
+
+    const float3 baseColor = input.color * uTint.rgb;
+    const float3 patternColor = ApplyPattern(baseColor, uv, input.pattern);
+    const float3 albedo = lerp(baseColor, patternColor, detail);
+
     const SurfaceParams surface = GetSurface(input.material);
+
+    // 凹凸：让瓦楞、砖缝、木板、褶皱真正随光照起伏。
+    const float bump = MaterialBump(input.material) * detail;
+    if (bump > 0.001 && input.pattern > 0.5)
+    {
+        N = BumpNormal(N, uv, input.pattern, bump);
+    }
 
     float3 ambient = uAmbient.rgb * (0.72 + 0.28 * saturate(N.y * 0.5 + 0.5));
     float3 color = albedo * ambient * surface.diffuse;
@@ -361,7 +601,14 @@ float4 PSMain(VSOutput input) : SV_TARGET
     float fog = saturate((dist - uFogParams.x) / max(uFogParams.y - uFogParams.x, 0.001));
     color = lerp(color, uFogColor.rgb, fog * uFogParams.z);
 
-    return float4(saturate(color), uTint.a);
+    // 玻璃：菲涅尔越强越不透明，正面几乎全透，边缘留下明显的反光。
+    float alpha = uTint.a;
+    if (input.material > 3.5 && input.material < 4.5)
+    {
+        alpha *= lerp(0.10, 0.48, fresnel);
+        color = lerp(color, uAmbient.rgb * 1.6, fresnel * 0.30);
+    }
+    return float4(saturate(color), saturate(alpha));
 }
 )";
 
@@ -681,18 +928,22 @@ bool RenderDevice::CreateShaders()
         return false;
     }
 
+    // 偏移必须与 `MeshVertex` 的内存布局严格一致：
+    // position(12) normal(12) color(16) pattern(4) material(4) uv(8) = 56 字节。
     const D3D11_INPUT_ELEMENT_DESC layout[] = {
         {"POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0,
          D3D11_INPUT_PER_VERTEX_DATA, 0},
         {"NORMAL", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 12,
          D3D11_INPUT_PER_VERTEX_DATA, 0},
-        {"COLOR", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 24,
+        {"COLOR", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 24,
          D3D11_INPUT_PER_VERTEX_DATA, 0},
-        {"TEXCOORD", 0, DXGI_FORMAT_R32_FLOAT, 0, 36,
+        {"TEXCOORD", 0, DXGI_FORMAT_R32_FLOAT, 0, 40,
          D3D11_INPUT_PER_VERTEX_DATA, 0},
-        {"TEXCOORD", 1, DXGI_FORMAT_R32_FLOAT, 0, 40,
+        {"TEXCOORD", 1, DXGI_FORMAT_R32_FLOAT, 0, 44,
+         D3D11_INPUT_PER_VERTEX_DATA, 0},
+        {"TEXCOORD", 2, DXGI_FORMAT_R32G32_FLOAT, 0, 48,
          D3D11_INPUT_PER_VERTEX_DATA, 0}};
-    if (FAILED(m_device->CreateInputLayout(layout, 5,
+    if (FAILED(m_device->CreateInputLayout(layout, 6,
                                            vsBlob->GetBufferPointer(),
                                            vsBlob->GetBufferSize(),
                                            m_sceneLayout.GetAddressOf()))) {
@@ -847,6 +1098,17 @@ bool RenderDevice::CreateStates()
     noDepthDesc.StencilEnable = FALSE;
     if (FAILED(m_device->CreateDepthStencilState(
             &noDepthDesc, m_depthDisabled.GetAddressOf()))) {
+        return false;
+    }
+
+    // 透明物体：测试深度但不写深度，避免后面的玻璃被自己的面片遮挡。
+    D3D11_DEPTH_STENCIL_DESC readOnlyDesc = {};
+    readOnlyDesc.DepthEnable = TRUE;
+    readOnlyDesc.DepthWriteMask = D3D11_DEPTH_WRITE_MASK_ZERO;
+    readOnlyDesc.DepthFunc = D3D11_COMPARISON_LESS_EQUAL;
+    readOnlyDesc.StencilEnable = FALSE;
+    if (FAILED(m_device->CreateDepthStencilState(
+            &readOnlyDesc, m_depthReadOnly.GetAddressOf()))) {
         return false;
     }
 
@@ -1113,9 +1375,13 @@ void RenderDevice::DrawMesh(const Mesh& mesh, const Mat4& world,
     if (alphaBlend) {
         const float blendFactor[4] = {0.0f, 0.0f, 0.0f, 0.0f};
         m_context->OMSetBlendState(m_alphaBlend.Get(), blendFactor, 0xFFFFFFFF);
+        m_context->OMSetDepthStencilState(m_depthReadOnly.Get(), 0);
     }
     for (const MeshPart& part : mesh.parts) {
         DrawMeshPart(part, world, tint, emission);
+    }
+    if (alphaBlend) {
+        m_context->OMSetDepthStencilState(m_depthState.Get(), 0);
     }
 }
 
@@ -1316,14 +1582,29 @@ bool RenderDevice::Resize(int width, int height)
 
 void RenderDevice::UpdateLetterbox()
 {
+    // 截图目标仍按整数倍放大，保证像素对齐。
     const int scaleX = m_windowWidth / INTERNAL_WIDTH;
     const int scaleY = m_windowHeight / INTERNAL_HEIGHT;
     m_scale = scaleX < scaleY ? scaleX : scaleY;
     if (m_scale < 1) {
         m_scale = 1;
     }
-    const float drawW = static_cast<float>(INTERNAL_WIDTH * m_scale);
-    const float drawH = static_cast<float>(INTERNAL_HEIGHT * m_scale);
+
+    // 窗口按比例铺满：只在宽高比不一致时于单个方向留边，
+    // 避免最大化/全屏后四周出现黑框。
+    const float windowAspect =
+        static_cast<float>(m_windowWidth) / static_cast<float>(m_windowHeight);
+    const float internalAspect =
+        static_cast<float>(INTERNAL_WIDTH) / static_cast<float>(INTERNAL_HEIGHT);
+    float drawW = 0.0f;
+    float drawH = 0.0f;
+    if (windowAspect > internalAspect) {
+        drawH = static_cast<float>(m_windowHeight);
+        drawW = drawH * internalAspect;
+    } else {
+        drawW = static_cast<float>(m_windowWidth);
+        drawH = drawW / internalAspect;
+    }
     m_letterbox.x = (static_cast<float>(m_windowWidth) - drawW) * 0.5f;
     m_letterbox.y = (static_cast<float>(m_windowHeight) - drawH) * 0.5f;
     m_letterbox.w = drawW;
@@ -1409,6 +1690,8 @@ void RenderDevice::Shutdown()
     m_rasterizerNoCull.Reset();
     m_rasterizer.Reset();
     m_depthState.Reset();
+    m_depthDisabled.Reset();
+    m_depthReadOnly.Reset();
     m_additiveBlend.Reset();
     m_alphaBlend.Reset();
     m_linearSampler.Reset();

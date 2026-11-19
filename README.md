@@ -71,7 +71,7 @@ make release -j4 TARGET_FILE_NAME=TargetDev   # 产出 Build/Release/TargetDev.e
 | `R` | 换弹 |
 | `E` | 交互 / 推进对话 / 确认选项 |
 | `W` / `S`（对话中） | 切换选项 |
-| 按住 `Ctrl` 0.8 秒 | 快进对话（松开立即取消） |
+| 按住 `Ctrl` 0.4 秒 | 快进对话（松开立即取消） |
 | `F` | 医疗包 |
 | `Tab` | 任务日志 |
 | `Esc` | 暂停 |

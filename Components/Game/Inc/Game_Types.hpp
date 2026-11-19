@@ -57,16 +57,19 @@ constexpr float CAMERA_TARGET_BIAS = 0.55f;
 constexpr float AIM_HOLD_TIME = 1.35f;
 
 /** @brief 按住 Ctrl 进入对话快进所需的时间（秒）。 */
-constexpr float SKIP_HOLD_TIME = 0.8f;
+constexpr float SKIP_HOLD_TIME = 0.4f;
 
 /** @brief 快进时每个对话节点的停留时间（秒）。 */
 constexpr float SKIP_STEP_TIME = 0.09f;
 
 /** @brief 徒手近战的出手时间（秒）。 */
-constexpr float MELEE_SWING_TIME = 0.36f;
+constexpr float MELEE_SWING_TIME = 0.30f;
 
-/** @brief 徒手近战的冷却（秒）。 */
-constexpr float MELEE_COOLDOWN = 0.46f;
+/** @brief 徒手近战的冷却（秒）；连招节奏更紧凑。 */
+constexpr float MELEE_COOLDOWN = 0.26f;
+
+/** @brief 连招的有效连接窗口（秒）：超过后从第一段重新开始。 */
+constexpr float MELEE_CHAIN_WINDOW = 0.55f;
 
 /** @brief 徒手近战的伤害。 */
 constexpr int MELEE_DAMAGE = 24;
@@ -140,6 +143,7 @@ struct Player {
     float facing = 0.0f;      ///< 身体朝向（跟移动方向）。
     float aimYaw = 0.0f;
     float aimPitch = 0.0f;
+    Vec3 aimPoint;            ///< 鼠标在地面上的落点（用于弹道与射击方向）。
     int hp = PLAYER_MAX_HP;
     float fireCooldown = 0.0f;
     float reloadTimer = 0.0f;
@@ -153,6 +157,8 @@ struct Player {
     float aimTimer = 0.0f;    ///< 举枪保持时间（秒）。
     float meleeTimer = 0.0f;  ///< 近战挥击剩余时间（秒）。
     float meleeCooldown = 0.0f; ///< 近战冷却（秒）。
+    int meleeCombo = 0;         ///< 当前连招段数（0 直拳 / 1 摆拳 / 2 上勾拳）。
+    float meleeChainTimer = 0.0f; ///< 连招连接窗口剩余时间（秒）。
     WeaponSlot slot = WeaponSlot::PISTOL; ///< 当前武器槽。
     bool reloading = false;
     bool usingMedkit = false;
@@ -183,6 +189,8 @@ struct Enemy {
     float aimPitch = 0.0f;
     float meleeTimer = 0.0f;     ///< 近战挥击剩余时间（秒）。
     float meleeCooldown = 0.0f;  ///< 近战冷却（秒）。
+    int burst = 0;               ///< 剩余连发次数（特工三连点射）。
+    float repositionTimer = 0.0f;///< 换位/撤退剩余时间（秒）。
     bool melee = false;          ///< 是否为近战单位。
     bool meleeHit = false;       ///< 本次挥击是否已结算伤害。
     bool alerted = false;

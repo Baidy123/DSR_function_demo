@@ -93,6 +93,7 @@ struct CharacterAnim {
     float recoil = 0.0f;      ///< 后坐力（0–1）。
     float reloadProgress = -1.0f; ///< 换弹进度（0–1，负值表示未换弹）。
     float meleeProgress = -1.0f;  ///< 近战挥击进度（0–1，负值表示未攻击）。
+    int meleeCombo = 0;       ///< 连招序号：0 直拳 / 1 摆拳 / 2 上勾拳。
     float hitFlash = 0.0f;    ///< 受击闪红（0–1）。
     float alpha = 1.0f;       ///< 透明度。
     float deathLean = 0.0f;   ///< 死亡倒地程度（0–1）。

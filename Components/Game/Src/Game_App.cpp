@@ -473,6 +473,7 @@ void GameApp::UpdatePlaying(float dt)
 
     const Vec2 mouse = m_device.ScreenToInternal(input.MousePosition());
     const Vec3 aimPoint = AimPointFromMouse(mouse);
+    m_player.aimPoint = aimPoint;
     const Vec3 toAim = aimPoint - m_player.position;
     m_player.yaw = YawFromDirection(toAim);
     m_player.aimYaw = m_player.yaw;
@@ -548,6 +549,7 @@ void GameApp::UpdatePlaying(float dt)
     m_player.fireCooldown = std::max(0.0f, m_player.fireCooldown - dt);
     m_player.meleeTimer = std::max(0.0f, m_player.meleeTimer - dt);
     m_player.meleeCooldown = std::max(0.0f, m_player.meleeCooldown - dt);
+    m_player.meleeChainTimer = std::max(0.0f, m_player.meleeChainTimer - dt);
     m_player.invulnerableTimer = std::max(0.0f, m_player.invulnerableTimer - dt);
     m_player.hitFlash = std::max(0.0f, m_player.hitFlash - dt * 3.0f);
 
@@ -1638,7 +1640,14 @@ void GameApp::FirePlayerWeapon()
     // 枪口高度与胸部齐平，避开头部上方的高弹道，也能被矮掩体拦住。
     bullet.position = m_player.position + Vec3(0.0f, 1.16f, 0.0f) +
                       forward * 0.55f;
-    bullet.direction = forward;
+    // 弹道指向鼠标落点上方一点（相当于瞄准对方躯干），而不是永远水平：
+    // 这样打地面/矮箱时会真的被挡住，打远处目标也会有正确的下压角。
+    Vec3 aimTarget = m_player.aimPoint + Vec3(0.0f, 0.9f, 0.0f);
+    Vec3 toTarget = aimTarget - bullet.position;
+    if (Length(Vec3(toTarget.x, 0.0f, toTarget.z)) < 0.6f) {
+        toTarget = forward;
+    }
+    bullet.direction = Normalize(toTarget);
     bullet.speed = PLAYER_BULLET_SPEED;
     bullet.damage = static_cast<float>(PLAYER_BULLET_DAMAGE);
     bullet.life = 1.1f;
@@ -1661,10 +1670,21 @@ void GameApp::MeleeAttack()
     if (m_player.meleeCooldown > 0.0f || m_player.usingMedkit) {
         return;
     }
+    // 连招：超过连接窗口就回到第一段，否则依次推进。
+    if (m_player.meleeChainTimer <= 0.0f) {
+        m_player.meleeCombo = 0;
+    } else {
+        m_player.meleeCombo = (m_player.meleeCombo + 1) % 3;
+    }
+    m_player.meleeChainTimer = MELEE_CHAIN_WINDOW;
     m_player.meleeCooldown = MELEE_COOLDOWN;
     m_player.meleeTimer = MELEE_SWING_TIME;
+    // 第三段上勾拳伤害更高、击退更远。
+    const bool heavy = m_player.meleeCombo == 2;
+    const int damage = heavy ? MELEE_DAMAGE + 10 : MELEE_DAMAGE;
+    const float knockback = heavy ? 0.7f : 0.45f;
     m_audio.PlaySfx(SfxId::HIT);
-    TriggerShake(0.008f, 0.06f);
+    TriggerShake(heavy ? 0.014f : 0.008f, 0.07f);
 
     const Vec3 forward(std::sin(m_player.yaw), 0.0f, std::cos(m_player.yaw));
     const Vec3 origin = m_player.position + Vec3(0.0f, 1.1f, 0.0f);
@@ -1683,10 +1703,10 @@ void GameApp::MeleeAttack()
         if (Dot(dir, forward) < 0.35f) {
             continue;
         }
-        DamageEnemy(i, MELEE_DAMAGE);
+        DamageEnemy(i, damage);
         hitAny = true;
         // 击退：沿朝向推一小段，避免被墙挤进几何体。
-        Vec3 push = enemy.position + dir * 0.45f;
+        Vec3 push = enemy.position + dir * knockback;
         if (!m_collision.Blocked(push, enemy.radius)) {
             enemy.position = push;
         }

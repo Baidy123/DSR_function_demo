@@ -746,23 +746,50 @@ Pose MakePose(const CharacterAnim& anim)
     // ---- 举枪 / 近战姿态 ----
     const bool melee = anim.meleeProgress >= 0.0f;
     if (melee) {
-        // 徒手格斗式：双拳护在胸前，出拳时前手直击。
+        // 徒手格斗：三段连招循环（直拳 → 摆拳 → 上勾拳）。
         const float p = Clamp(anim.meleeProgress, 0.0f, 1.0f);
         const float wind = Segment(p, 0.0f, 0.22f);
         const float punch = Segment(p, 0.22f, 0.45f) - Segment(p, 0.55f, 1.0f);
         const float back = 1.0f - wind * 0.5f;
         pose.armOutL = 0.30f;
         pose.armOutR = -0.26f;
-        pose.armR = -0.62f * back - 1.25f * punch;
-        pose.foreR = -1.85f * back + 1.55f * punch;
         pose.handR = 0.10f;
-        pose.armL = -0.50f - 0.25f * punch;
-        pose.foreL = -1.75f;
         pose.handL = -0.05f;
-        pose.torsoYaw = anim.aimOffset * 0.5f - 0.32f * wind + 0.55f * punch;
-        pose.headYaw = anim.aimOffset * 0.4f;
         pose.torsoPitch = 0.08f + 0.10f * punch;
         pose.handRRoll = 0.0f;
+
+        if (anim.meleeCombo == 2) {
+            // 上勾拳：先下沉蓄力，再从下往上挑，躯干随之拧转。
+            const float dip = Segment(p, 0.0f, 0.24f) * (1.0f - Segment(p, 0.30f, 0.55f));
+            pose.armR = -0.35f - 1.55f * punch + dip * 0.55f;
+            pose.foreR = -1.60f + 0.95f * punch - dip * 0.25f;
+            pose.armL = -0.35f - 0.10f * punch;
+            pose.foreL = -1.30f;
+            pose.torsoYaw = anim.aimOffset * 0.5f + 0.30f * punch;
+            pose.headYaw = anim.aimOffset * 0.4f;
+            pose.torsoPitch = 0.16f - 0.30f * punch + dip * 0.14f;
+            pose.hipOffsetY -= dip * 0.05f;
+            pose.hipRoll += 0.10f * punch;
+        } else if (anim.meleeCombo == 1) {
+            // 摆拳：从外侧划弧，肩部打开。
+            pose.armOutR = -0.95f * punch - 0.20f * back;
+            pose.armR = -1.05f * back - 1.05f * punch;
+            pose.foreR = -1.35f * back + 0.55f * punch;
+            pose.armL = -0.55f + 0.35f * punch;
+            pose.foreL = -1.55f;
+            pose.torsoYaw = anim.aimOffset * 0.5f - 0.55f * punch;
+            pose.headYaw = anim.aimOffset * 0.4f - 0.12f * punch;
+            pose.torsoRoll += 0.10f * punch;
+            pose.hipRoll -= 0.06f * punch;
+        } else {
+            // 直拳：前手快速直击。
+            pose.armR = -0.62f * back - 1.25f * punch;
+            pose.foreR = -1.85f * back + 1.55f * punch;
+            pose.armL = -0.50f - 0.25f * punch;
+            pose.foreL = -1.75f;
+            pose.torsoYaw = anim.aimOffset * 0.5f - 0.32f * wind + 0.55f * punch;
+            pose.headYaw = anim.aimOffset * 0.4f;
+        }
         return pose;
     }
 

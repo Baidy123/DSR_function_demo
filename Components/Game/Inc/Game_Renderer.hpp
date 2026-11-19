@@ -24,6 +24,7 @@ struct PropInstance {
     AABB bounds;
     bool solid = false;
     bool hidden = false;
+    bool transparent = false;  ///< 玻璃等需要透明排序的道具。
 };
 
 /**
@@ -150,6 +151,7 @@ private:
     const Mesh* m_sphere = nullptr;
 
     std::vector<PropInstance> m_props;
+    std::vector<const PropInstance*> m_transparentProps;
     RenderTarget m_portraits[CHARACTER_COUNT];
     bool m_portraitsReady = false;
 };

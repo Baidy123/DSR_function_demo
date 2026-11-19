@@ -54,6 +54,7 @@ struct PropDef {
     bool solid = true;
     Vec3 colliderHalf;   ///< 为零时按网格包围盒推导。
     Vec3 colliderOffset; ///< 相对于道具位置的碰撞盒中心偏移。
+    bool transparent = false; ///< 玻璃等需要透明排序的道具。
 };
 
 /**
