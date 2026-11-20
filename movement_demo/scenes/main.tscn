@@ -255,6 +255,21 @@ material = SubResource("StandardMaterial3D_reward_npc")
 radius = 0.35
 height = 1.75
 
+[sub_resource type="BoxMesh" id="CounterPartitionPanel"]
+material = SubResource("env_Wood")
+size = Vector3(3.62, 2.55, 0.24)
+
+[sub_resource type="BoxShape3D" id="CounterPartitionShape"]
+size = Vector3(3.62, 2.55, 0.24)
+
+[sub_resource type="BoxMesh" id="CounterPartitionBase"]
+material = SubResource("env_Steel")
+size = Vector3(3.64, 0.22, 0.28)
+
+[sub_resource type="BoxMesh" id="CounterPartitionRail"]
+material = SubResource("env_Amber")
+size = Vector3(3.62, 0.036, 0.26)
+
 [node name="Main" type="Node3D" unique_id=1975287300]
 
 [node name="DialogueUI" parent="." unique_id=36702053 instance=ExtResource("1_7mycd")]
@@ -271,6 +286,23 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 6.5)
 [node name="Architecture" type="Node3D" parent="BarEnvironment"]
 
 [node name="BarCounter" type="Node3D" parent="BarEnvironment"]
+
+[node name="NorthPartition" type="StaticBody3D" parent="BarEnvironment/BarCounter"]
+position = Vector3(-5.21, 1.275, -7.295)
+
+[node name="Panel" type="MeshInstance3D" parent="BarEnvironment/BarCounter/NorthPartition" groups=["camera_fadeable"]]
+mesh = SubResource("CounterPartitionPanel")
+
+[node name="Collision" type="CollisionShape3D" parent="BarEnvironment/BarCounter/NorthPartition"]
+shape = SubResource("CounterPartitionShape")
+
+[node name="Base" type="MeshInstance3D" parent="BarEnvironment/BarCounter/NorthPartition" groups=["camera_fadeable"]]
+position = Vector3(0, -1.165, 0)
+mesh = SubResource("CounterPartitionBase")
+
+[node name="Trim" type="MeshInstance3D" parent="BarEnvironment/BarCounter/NorthPartition" groups=["camera_fadeable"]]
+position = Vector3(0, 0.98, 0)
+mesh = SubResource("CounterPartitionRail")
 
 [node name="Booths" type="Node3D" parent="BarEnvironment"]
 
@@ -536,30 +568,37 @@ mesh = SubResource("env_Box35")
 
 [node name="Stool1" parent="BarEnvironment/BarCounter" instance=ExtResource("env_stool")]
 position = Vector3(-1.8900, 0, -6.3800)
+rotation_degrees = Vector3(0, 90, 0)
 scale = Vector3(1.12, 1.12, 1.12)
 
 [node name="Stool2" parent="BarEnvironment/BarCounter" instance=ExtResource("env_stool")]
 position = Vector3(-1.8900, 0, -5.1200)
+rotation_degrees = Vector3(0, 90, 0)
 scale = Vector3(1.12, 1.12, 1.12)
 
 [node name="Stool3" parent="BarEnvironment/BarCounter" instance=ExtResource("env_stool")]
 position = Vector3(-1.8900, 0, -3.8600)
+rotation_degrees = Vector3(0, 90, 0)
 scale = Vector3(1.12, 1.12, 1.12)
 
 [node name="Stool4" parent="BarEnvironment/BarCounter" instance=ExtResource("env_stool")]
 position = Vector3(-1.8900, 0, -2.6000)
+rotation_degrees = Vector3(0, 90, 0)
 scale = Vector3(1.12, 1.12, 1.12)
 
 [node name="Stool5" parent="BarEnvironment/BarCounter" instance=ExtResource("env_stool")]
 position = Vector3(-1.8900, 0, -1.3400)
+rotation_degrees = Vector3(0, 90, 0)
 scale = Vector3(1.12, 1.12, 1.12)
 
 [node name="Stool6" parent="BarEnvironment/BarCounter" instance=ExtResource("env_stool")]
 position = Vector3(-1.8900, 0, -0.0800)
+rotation_degrees = Vector3(0, 90, 0)
 scale = Vector3(1.12, 1.12, 1.12)
 
 [node name="Stool7" parent="BarEnvironment/BarCounter" instance=ExtResource("env_stool")]
 position = Vector3(-1.8900, 0, 1.1800)
+rotation_degrees = Vector3(0, 90, 0)
 scale = Vector3(1.12, 1.12, 1.12)
 
 [node name="Bartender" parent="BarEnvironment/BarCounter" instance=ExtResource("env_bartender")]
@@ -641,14 +680,17 @@ mesh = SubResource("env_Box45")
 
 [node name="West" parent="BarEnvironment/Tables/Table1/Seats" instance=ExtResource("env_stool")]
 position = Vector3(-1.5400, 0.0000, 0.0000)
+rotation_degrees = Vector3(0, -90, 0)
 scale = Vector3(1.32, 1.32, 1.32)
 
 [node name="East" parent="BarEnvironment/Tables/Table1/Seats" instance=ExtResource("env_stool")]
 position = Vector3(1.5400, 0.0000, 0.0000)
+rotation_degrees = Vector3(0, 90, 0)
 scale = Vector3(1.32, 1.32, 1.32)
 
 [node name="North" parent="BarEnvironment/Tables/Table1/Seats" instance=ExtResource("env_stool")]
 position = Vector3(0.0000, 0.0000, -1.5400)
+rotation_degrees = Vector3(0, 180, 0)
 scale = Vector3(1.32, 1.32, 1.32)
 
 [node name="South" parent="BarEnvironment/Tables/Table1/Seats" instance=ExtResource("env_stool")]
@@ -679,14 +721,17 @@ mesh = SubResource("env_Box45")
 
 [node name="West" parent="BarEnvironment/Tables/Table3/Seats" instance=ExtResource("env_stool")]
 position = Vector3(-1.5400, 0.0000, 0.0000)
+rotation_degrees = Vector3(0, -90, 0)
 scale = Vector3(1.32, 1.32, 1.32)
 
 [node name="East" parent="BarEnvironment/Tables/Table3/Seats" instance=ExtResource("env_stool")]
 position = Vector3(1.5400, 0.0000, 0.0000)
+rotation_degrees = Vector3(0, 90, 0)
 scale = Vector3(1.32, 1.32, 1.32)
 
 [node name="North" parent="BarEnvironment/Tables/Table3/Seats" instance=ExtResource("env_stool")]
 position = Vector3(0.0000, 0.0000, -1.5400)
+rotation_degrees = Vector3(0, 180, 0)
 scale = Vector3(1.32, 1.32, 1.32)
 
 [node name="South" parent="BarEnvironment/Tables/Table3/Seats" instance=ExtResource("env_stool")]
@@ -893,6 +938,29 @@ shop_board_path = NodePath("../ShopBoard")
 [node name="CameraOcclusionDemo" parent="." unique_id=1093836274 instance=ExtResource("camera_occlusion_demo")]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 35, 0, 12)
 
+[node name="East1" parent="BarEnvironment/TerminalColumn/Stools" index="0"]
+rotation_degrees = Vector3(0, 90, 0)
+
+[node name="East2" parent="BarEnvironment/TerminalColumn/Stools" index="1"]
+rotation_degrees = Vector3(0, 90, 0)
+
+[node name="East3" parent="BarEnvironment/TerminalColumn/Stools" index="2"]
+rotation_degrees = Vector3(0, 90, 0)
+
+[node name="West1" parent="BarEnvironment/TerminalColumn/Stools" index="3"]
+rotation_degrees = Vector3(0, -90, 0)
+
+[node name="West2" parent="BarEnvironment/TerminalColumn/Stools" index="4"]
+rotation_degrees = Vector3(0, -90, 0)
+
+[node name="West3" parent="BarEnvironment/TerminalColumn/Stools" index="5"]
+rotation_degrees = Vector3(0, -90, 0)
+
+[node name="North" parent="BarEnvironment/TerminalColumn/Stools" index="6"]
+rotation_degrees = Vector3(0, 180, 0)
+
+[editable path="BarEnvironment/TerminalColumn"]
+
 [editable path="Player"]
 
 [editable path="Camera3D"]
@@ -1075,33 +1143,27 @@ initial_occupant_path = NodePath("../../../../../../../RewardNPC")
 
 [node name="SeatPoint" parent="BarEnvironment/BarCounter/Stool1" index="6"]
 initial_occupant_path = NodePath("../../../../CounterPatron")
-rotation_degrees = Vector3(0, 90, 0)
 
 [node name="SeatPoint" parent="BarEnvironment/BarCounter/Stool5" index="6"]
 initial_occupant_path = NodePath("../../../../CounterRegular")
-rotation_degrees = Vector3(0, 90, 0)
 
 [node name="Center" parent="BarEnvironment/SouthLounge/Tables/Setting2/NorthSofa/Seats" index="1"]
 initial_occupant_path = NodePath("../../../../../../../LoungePatron")
 
 [node name="SeatPoint" parent="BarEnvironment/Tables/Table1/Seats/East" index="6"]
 initial_occupant_path = NodePath("../../../../../../HallReader")
-rotation_degrees = Vector3(0, 90, 0)
 
 [node name="SeatPoint" parent="BarEnvironment/Tables/Table1/Seats/South" index="6"]
 initial_occupant_path = NodePath("../../../../../../HallGuest")
-rotation_degrees = Vector3(0, 0, 0)
 
 [node name="SeatPoint" parent="BarEnvironment/Tables/Table3/Seats/East" index="6"]
 initial_occupant_path = NodePath("../../../../../../EastGuest")
-rotation_degrees = Vector3(0, 90, 0)
 
 [node name="Left" parent="BarEnvironment/SouthLounge/Tables/Setting3/NorthSofa/Seats" index="0"]
 initial_occupant_path = NodePath("../../../../../../../LoungeGuest")
 
 [node name="SeatPoint" parent="BarEnvironment/BarCounter/Stool7" index="6"]
 initial_occupant_path = NodePath("../../../../CounterGuest")
-rotation_degrees = Vector3(0, 90, 0)
 
 [node name="RunnerDeliveryPoint" type="Marker3D" parent="BarEnvironment/SouthLounge/Tables/Setting1/Table"]
 position = Vector3(1.5, -0.71, 0)

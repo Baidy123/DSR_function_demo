@@ -75,6 +75,10 @@ func _run() -> void:
 		"last": player.global_position, "steps": 0, "largest_step": 0.0,
 		"walking_animation": false, "lowering_animation": false,
 	}
+	var exit_samples := {
+		Opening.Phase.COMMISSIONER: {"steps": 0, "largest_step": 0.0, "rising": false, "walking": false},
+		Opening.Phase.DELIVERY: {"steps": 0, "largest_step": 0.0, "rising": false, "walking": false},
+	}
 	var sample_seat_motion := func() -> void:
 		if not is_instance_valid(player) or not is_instance_valid(ui):
 			return
@@ -87,6 +91,14 @@ func _run() -> void:
 			seat_motion.walking_animation = seat_motion.walking_animation or base == &"move"
 			seat_motion.lowering_animation = seat_motion.lowering_animation \
 				or (base == &"crouch_enter" and player.crouch_amount > 0.05 and player.crouch_amount < 0.95)
+		if exit_samples.has(opening.phase) and not seated_cues.is_empty() and not ui.dialogue_panel.visible:
+			var sample: Dictionary = exit_samples[opening.phase]
+			var step: float = position.distance_to(seat_motion.last)
+			sample.steps += int(step > 0.001)
+			sample.largest_step = maxf(sample.largest_step, step)
+			var base: StringName = presentation.state.base_state()
+			sample.rising = sample.rising or base == &"crouch_exit"
+			sample.walking = sample.walking or (sample.rising and base == &"move")
 		seat_motion.last = position
 	physics_frame.connect(sample_seat_motion)
 	ui.scripted_seat_assigned.connect(func(cue: String) -> void:
@@ -170,6 +182,10 @@ func _run() -> void:
 	check(await _wait_for(func(): return ui.dialogue_panel.visible), "speaking from inside opens the commission")
 	check(await _dialogue(ui, ["你想去那个仓库", "去过，但", "为什么找我", "可我现在没钱", "你怎么知道", "有这么多人"]),
 		"commissioner dialogue reaches agreement with optional branches")
+	check(await _wait_for(func(): return opening.phase == Opening.Phase.MERCHANT), "commissioner exit finishes before the next phase")
+	var commissioner_exit: Dictionary = exit_samples[Opening.Phase.COMMISSIONER]
+	check(commissioner_exit.steps >= 8 and commissioner_exit.largest_step <= 0.16 and commissioner_exit.walking,
+		"player stands and walks away from the commissioner over consecutive physics frames")
 	check(state.get_flag("FUNDING_DISCLOSED") and state.get_flag("ASKED_ACCESS_PATTERN")
 		and state.get_flag("ASKED_ACCESS_SOCIAL"), "commissioner choices update funding and access flags")
 	check(cameras == ["booth", "merchant"], "commissioner guidance triggers the merchant camera during the dialogue")
@@ -222,6 +238,9 @@ func _run() -> void:
 	check(state.get_flag("ASKED_MERCHANT_SUPPLY"), "price follow-up records the supply explanation")
 	check(await _wait_for(func(): return opening.phase == Opening.Phase.DEPART), "delivery restores free exploration")
 	check(player.current_seat() == null, "delivery finishes by releasing the scripted seat")
+	var merchant_exit: Dictionary = exit_samples[Opening.Phase.DELIVERY]
+	check(merchant_exit.steps >= 8 and merchant_exit.largest_step <= 0.16 and merchant_exit.walking,
+		"player stands and walks away from the merchant over consecutive physics frames")
 	physics_frame.disconnect(sample_seat_motion)
 	var loadout: Dictionary = player.get_node("Equipment").campaign_snapshot()
 	check(state.get_flag("opening_complete") and not player.is_in_dialogue

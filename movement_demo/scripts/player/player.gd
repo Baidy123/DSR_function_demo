@@ -531,6 +531,7 @@ func stand_from_seat(point: Vector3) -> void:
 	global_position = point
 	_camera_ground_height = point.y
 	reset_physics_interpolation()
+	_posture_presentation_transition = &""
 	if not manual_crouch:
 		crouch_amount = 0.0
 		_apply_body_posture()

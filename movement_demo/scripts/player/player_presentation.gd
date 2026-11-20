@@ -38,7 +38,7 @@ func _sync() -> void:
 	state.sprinting = actor.is_sprinting and state.local_velocity.length() > 0.02
 	var posture: Dictionary = actor.get_posture_presentation_state()
 	state.crouch_amount = posture.amount
-	state.sitting = actor.current_seat() != null
+	state.sitting = actor.current_seat() != null and not state.scripted_seat_motion
 	state.posture_transition = posture.transition
 	state.vaulting = posture.vaulting
 	state.vault_progress = posture.vault_progress

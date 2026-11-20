@@ -23,6 +23,8 @@ var _entry_position: Vector3
 var _approach_origin: Vector3
 var _initial_posture: float
 var _sliding_onto_seat := false
+var _rising_from_seat := false
+var _return_route: Array[Vector3] = []
 
 
 func _ready() -> void:
@@ -42,6 +44,12 @@ func exit_position_for(actor: TavernNPC) -> Vector3:
 
 
 func begin_scene_action(request: SceneRequest) -> void:
+	if request.parent_id != 0 and request.parameters.get("npc_seat", false):
+		if request.is_current() and _seat_arriving_npc(request.node(&"source") as TavernNPC):
+			request.complete()
+		else:
+			request.fail("seat_blocked")
+		return
 	var actor := request.node(&"player") as CharacterBody3D
 	var scripted: bool = request.parent_id != 0 and request.parameters.get("scripted", false)
 	if not request.is_current() or actor == null or (actor.is_in_dialogue and not scripted) or actor.is_dead() or actor.is_vaulting():
@@ -49,7 +57,7 @@ func begin_scene_action(request: SceneRequest) -> void:
 		return
 	var success: bool
 	if request.parameters.get("leave", false):
-		success = try_leave(actor)
+		success = await _leave_scripted(request, actor) if scripted else try_leave(actor)
 	elif scripted:
 		success = await _assign_scripted(request, actor)
 	else:
@@ -65,6 +73,19 @@ func begin_scene_action(request: SceneRequest) -> void:
 func cancel_scene_action(request: SceneRequest, _reason: StringName) -> void:
 	if request == _seat_request:
 		_end_seat_motion(request.node(&"player") as CharacterBody3D, false)
+
+
+func _seat_arriving_npc(actor: TavernNPC) -> bool:
+	if actor == null or not actor.visible:
+		return false
+	var offset := global_position - actor.global_position
+	if offset.slide(Vector3.UP).length() > reach or absf(offset.y) > 1.4:
+		return false
+	var ray := PhysicsRayQueryParameters3D.create(actor.global_position + Vector3.UP * 0.90,
+		global_position + Vector3.UP * 0.60, actor.collision_mask, _excluded_rids(actor))
+	if not actor.get_world_3d().direct_space_state.intersect_ray(ray).is_empty():
+		return false
+	return claim(actor, actor.global_position)
 
 
 func _assign_scripted(request: SceneRequest, actor: CharacterBody3D) -> bool:
@@ -87,8 +108,45 @@ func _assign_scripted(request: SceneRequest, actor: CharacterBody3D) -> bool:
 		return false
 	if success:
 		success = claim(actor, return_position)
+		if success:
+			_return_route = route
 	_end_seat_motion(actor, success)
 	return success
+
+
+func _leave_scripted(request: SceneRequest, actor: CharacterBody3D) -> bool:
+	if actor != occupant() or _seat_request != null:
+		return false
+	var origin := _return_position
+	var route := _return_route.duplicate()
+	if route.is_empty():
+		origin = _ground_point(actor, origin)
+	var standing: Vector2 = actor.seat_body_dimensions(false)
+	if route.is_empty() or not Geometry.can_occupy(actor, route.back(), standing.y, standing.x):
+		route = _approach_route(actor, origin)
+	if route.is_empty():
+		return false
+	var entry: Vector3 = route.pop_back()
+
+	_seat_request = request
+	_rising_from_seat = true
+	actor.set_scripted_seat_motion(true)
+	var posture := 1.0 if actor.manual_crouch else 0.0
+	var offset := entry - actor.global_position
+	var heading := atan2(-offset.x, -offset.z)
+	var left := await _move_seat_pose(request, actor, entry, heading, posture, SIT_SECONDS)
+	if _seat_request != request:
+		return false
+	if left:
+		_rising_from_seat = false
+		release(actor)
+		actor.stand_from_seat(actor.global_position)
+		route.reverse()
+		route.append(origin)
+		await _walk_seat_route(request, actor, route, posture)
+	if _seat_request == request:
+		_end_seat_motion(actor, left)
+	return left
 
 
 func _approach_route(actor: CharacterBody3D, start: Vector3) -> Array[Vector3]:
@@ -133,13 +191,8 @@ func _ground_point(actor: CharacterBody3D, point: Vector3) -> Vector3:
 
 
 func _approach_and_sit(request: SceneRequest, actor: CharacterBody3D, route: Array[Vector3]) -> bool:
-	for point in route:
-		var offset := point - actor.global_position
-		if offset.length() > 0.04:
-			var walk_heading := atan2(-offset.x, -offset.z)
-			if not await _move_seat_pose(request, actor, point, walk_heading, _initial_posture,
-					maxf(0.16, offset.length() / WALK_SPEED)):
-				return false
+	if not await _walk_seat_route(request, actor, route, _initial_posture):
+		return false
 	var facing := -global_basis.z
 	var heading := atan2(-facing.x, -facing.z)
 	if not await _move_seat_pose(request, actor, actor.global_position, heading, _initial_posture, TURN_SECONDS):
@@ -148,6 +201,17 @@ func _approach_and_sit(request: SceneRequest, actor: CharacterBody3D, route: Arr
 	if is_instance_valid(_furniture):
 		actor.add_collision_exception_with(_furniture)
 	return await _move_seat_pose(request, actor, global_position, heading, 1.0, SIT_SECONDS)
+
+
+func _walk_seat_route(request: SceneRequest, actor: CharacterBody3D, route: Array[Vector3], posture: float) -> bool:
+	for point in route:
+		var offset := point - actor.global_position
+		if offset.length() > 0.04:
+			var walk_heading := atan2(-offset.x, -offset.z)
+			if not await _move_seat_pose(request, actor, point, walk_heading, posture,
+					maxf(0.16, offset.length() / WALK_SPEED)):
+				return false
+	return true
 
 
 func _move_seat_pose(request: SceneRequest, actor: CharacterBody3D, point: Vector3, heading: float,
@@ -176,8 +240,12 @@ func _end_seat_motion(actor: CharacterBody3D, seated: bool) -> void:
 	if is_instance_valid(actor) and actor.is_inside_tree():
 		if not seated and _sliding_onto_seat:
 			_recover_interrupted_slide(actor)
+		elif _rising_from_seat and actor == occupant():
+			var facing := -global_basis.z
+			actor.sit_at_seat(self, global_position, atan2(-facing.x, -facing.z))
 		actor.set_scripted_seat_motion(false)
 	_sliding_onto_seat = false
+	_rising_from_seat = false
 	_seat_request = null
 
 
@@ -277,6 +345,7 @@ func release(actor: CharacterBody3D) -> void:
 	if is_instance_valid(_furniture):
 		actor.remove_collision_exception_with(_furniture)
 	_occupant = null
+	_return_route.clear()
 
 
 func _on_actor_exiting() -> void:

@@ -212,7 +212,8 @@ func cancel_scene_action(_request_to_cancel: SceneRequest, _reason: StringName) 
 		_motion.kill()
 		_motion = null
 	if not exterior and is_instance_valid(_curtain):
-		if is_instance_valid(_scripted_seat) and is_instance_valid(player) and not player.is_dead():
+		if is_instance_valid(_scripted_seat) and is_instance_valid(player) \
+				and not player.is_dead() and not player.is_scripted_seat_moving():
 			_scripted_seat.try_leave(player)
 		_scripted_seat = null
 		_curtain.set_open(false)

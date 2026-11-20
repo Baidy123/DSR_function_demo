@@ -45,6 +45,7 @@ var _patrolling := false
 var _vanish_at_end := false
 var _loop_wait := 0.0
 var _route_gate: TavernStaffDoor
+var _route_finish_action: Dictionary = {}
 var _floor_plane := Plane(Vector3.UP, 0.0)
 var _detour_blocked_time := 0.0
 
@@ -222,17 +223,24 @@ func begin_scene_action(request: SceneRequest) -> void:
 	if points.is_empty():
 		request.fail("route_empty")
 		return
+	var authored: TavernRoute = null if request.parameters.has("points") else _authored_route()
+	var mode := authored.finish_mode if authored != null else TavernRoute.Finish.STAY
+	var patrolling: bool = request.parameters.get("patrol", mode == TavernRoute.Finish.LOOP)
+	var vanish: bool = not patrolling and request.parameters.get("vanish_at_end", mode == TavernRoute.Finish.DESPAWN)
+	var finish_action := authored.finish_action() if authored != null and not patrolling and not vanish else {}
+	if not finish_action.is_empty() and not is_instance_valid(finish_action.target):
+		request.fail("route_finish_target_missing")
+		return
 	if current_seat() != null and not _seat.try_leave(self):
 		request.fail("actor_seat_exit_blocked")
 		return
 	_request = request
-	var authored: TavernRoute = null if request.parameters.has("points") else _authored_route()
-	var mode := authored.finish_mode if authored != null else TavernRoute.Finish.STAY
-	_patrolling = request.parameters.get("patrol", mode == TavernRoute.Finish.LOOP)
+	_patrolling = patrolling
 	_loop_wait = authored.loop_interval if authored != null else waypoint_pause
-	_vanish_at_end = not _patrolling and request.parameters.get("vanish_at_end", mode == TavernRoute.Finish.DESPAWN)
+	_vanish_at_end = vanish
 	_points = points
 	_route_gate = authored.exit_gate() if authored != null and _vanish_at_end else null
+	_route_finish_action = finish_action
 	_detour.clear()
 	_index = 0
 	_delay = 0
@@ -326,16 +334,40 @@ func _open_gate_on_last_leg() -> void:
 
 func _finish() -> void:
 	var finished := _request
+	set_physics_process(false)
 	if _vanish_at_end:
 		set_physical_presence(false)
+	var failure := ""
+	if not _route_finish_action.is_empty():
+		failure = await _run_route_finish_action(finished)
+	if _request != finished or not finished.is_current():
+		return
 	_stop()
-	finished.complete()
+	if failure.is_empty():
+		finished.complete()
+	else:
+		finished.fail(failure)
+
+
+func _run_route_finish_action(parent: SceneRequest) -> String:
+	var director = Director.for_node(self)
+	if director == null or not is_instance_valid(_route_finish_action.target):
+		return "route_finish_target_missing"
+	var context := _route_finish_action.duplicate()
+	context["source"] = self
+	var child: SceneRequest = director.request_child(parent, &"script", context)
+	var result := await child.wait_result()
+	if result.status == &"completed":
+		return ""
+	var reason := String(result.reason)
+	return reason if not reason.is_empty() else "route_finish_action_failed"
 
 
 func _stop() -> void:
 	if is_instance_valid(_route_gate):
 		_route_gate.close_for(self)
 	_route_gate = null
+	_route_finish_action.clear()
 	set_physics_process(false)
 	_request = null
 	_detour.clear()
