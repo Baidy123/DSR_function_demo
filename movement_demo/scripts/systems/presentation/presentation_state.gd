@@ -4,6 +4,7 @@ var local_velocity: Vector3 = Vector3.ZERO
 var sprinting: bool = false
 var aiming: bool = false
 var in_dialogue: bool = false
+var scripted_seat_motion: bool = false
 var sitting: bool = false
 var dead: bool = false
 var reloading: bool = false
@@ -24,7 +25,7 @@ var vault_falling: bool = false
 func base_state() -> StringName:
 	if dead: return &"dead"
 	if sitting: return &"crouch"
-	if in_dialogue: return &"dialogue"
+	if in_dialogue and not scripted_seat_motion: return &"dialogue"
 	if vaulting: return &"vault_fall" if vault_falling else &"vault"
 	if melee_active: return &"melee"
 	if posture_transition in [&"crouch_enter", &"crouch_exit"]: return posture_transition

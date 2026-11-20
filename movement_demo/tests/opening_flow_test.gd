@@ -69,7 +69,34 @@ func _run() -> void:
 	var merchant := current_scene.get_node("RewardNPC") as Node3D
 	var merchant_seat := current_scene.get_node("BarEnvironment/SouthLounge/Tables/Setting1/NorthSofa/Seats/Center") as TavernSeat
 	var seated_cues: Array[String] = []
+	var presentation := player.get_node("PlayerPresentation")
+	var seat_motion := {
+		"last": player.global_position, "steps": 0, "largest_step": 0.0,
+		"walking_animation": false, "lowering_animation": false,
+	}
+	var sample_seat_motion := func() -> void:
+		if not is_instance_valid(player) or not is_instance_valid(ui):
+			return
+		var position: Vector3 = player.global_position
+		if ui.is_loading and ui.dialogue_line != null and not ui.dialogue_line.get_tag_value("sit").is_empty():
+			var step: float = position.distance_to(seat_motion.last)
+			seat_motion.steps += int(step > 0.001)
+			seat_motion.largest_step = maxf(seat_motion.largest_step, step)
+			var base: StringName = presentation.state.base_state()
+			seat_motion.walking_animation = seat_motion.walking_animation or base == &"move"
+			seat_motion.lowering_animation = seat_motion.lowering_animation \
+				or (base == &"crouch_enter" and player.crouch_amount > 0.05 and player.crouch_amount < 0.95)
+		seat_motion.last = position
+	physics_frame.connect(sample_seat_motion)
 	ui.scripted_seat_assigned.connect(func(cue: String) -> void:
+		sample_seat_motion.call()
+		check(seat_motion.steps >= 8 and seat_motion.largest_step <= 0.16
+			and seat_motion.walking_animation and seat_motion.lowering_animation,
+			"dialogue seating travels and lowers over consecutive physics frames for " + cue)
+		seat_motion.steps = 0
+		seat_motion.largest_step = 0.0
+		seat_motion.walking_animation = false
+		seat_motion.lowering_animation = false
 		var seat: TavernSeat = player.current_seat()
 		var actor_facing: Vector3 = -player.global_basis.z
 		var seat_facing: Vector3 = -seat.global_basis.z
@@ -176,6 +203,7 @@ func _run() -> void:
 	check(state.get_flag("ASKED_MERCHANT_SUPPLY"), "price follow-up records the supply explanation")
 	check(await _wait_for(func(): return opening.phase == Opening.Phase.DEPART), "delivery restores free exploration")
 	check(player.current_seat() == null, "delivery finishes by releasing the scripted seat")
+	physics_frame.disconnect(sample_seat_motion)
 	var loadout: Dictionary = player.get_node("Equipment").campaign_snapshot()
 	check(state.get_flag("opening_complete") and not player.is_in_dialogue
 		and loadout.primary_weapon != null and loadout.secondary_weapon == null

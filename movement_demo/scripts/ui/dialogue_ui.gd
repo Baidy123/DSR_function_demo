@@ -201,9 +201,9 @@ func _show_page() -> void:
 
 
 func _refresh_replies() -> void:
-	choices.visible = not _presenting_camera and _page == _pages.size() - 1 and not dialogue_line.responses.is_empty()
+	choices.visible = not is_loading and not _presenting_camera and _page == _pages.size() - 1 and not dialogue_line.responses.is_empty()
 	skip_followup.visible = choices.visible and not _skip_followup.is_empty()
-	page_hint.visible = not _presenting_camera and not choices.visible
+	page_hint.visible = not is_loading and not _presenting_camera and not choices.visible
 	page_hint.text = "左键 / E  继续"
 	if _pages.size() > 1:
 		page_hint.text += "    %d / %d" % [_page + 1, _pages.size()]

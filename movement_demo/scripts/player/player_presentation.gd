@@ -34,6 +34,7 @@ func _sync() -> void:
 	if presentation == null: return
 	state.dead = actor.is_dead()
 	state.in_dialogue = actor.is_in_dialogue
+	state.scripted_seat_motion = actor.is_scripted_seat_moving()
 	state.sprinting = actor.is_sprinting and state.local_velocity.length() > 0.02
 	var posture: Dictionary = actor.get_posture_presentation_state()
 	state.crouch_amount = posture.amount

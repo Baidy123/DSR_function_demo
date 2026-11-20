@@ -100,6 +100,7 @@ var npc_direction: Vector3 = Vector3.ZERO
 var current_speed: float = 0.0
 var is_in_dialogue: bool = false
 var _seat: TavernSeat
+var _scripted_seat_motion := false
 var _melee_push_velocity := Vector3.ZERO
 var _melee_push_remaining := 0.0
 var _melee_push_duration := 0.0
@@ -146,7 +147,7 @@ func _unhandled_input(event: InputEvent) -> void:
 		get_viewport().set_input_as_handled()
 
 func _physics_process(delta: float) -> void:
-	if is_dead() or get_tree().paused:
+	if is_dead() or get_tree().paused or _scripted_seat_motion:
 		return
 	if current_seat() != null:
 		_update_stamina(delta)
@@ -480,6 +481,31 @@ func seat_body_dimensions(crouched: bool) -> Vector2:
 	return Vector2(_body_radius(), get_posture_body_height(crouched))
 
 
+func set_scripted_seat_motion(active: bool) -> void:
+	_scripted_seat_motion = active
+	is_facing_npc = false
+	current_speed = 0.0
+	velocity = Vector3.ZERO
+	if not active:
+		_posture_presentation_transition = &""
+
+
+func is_scripted_seat_moving() -> bool:
+	return _scripted_seat_motion
+
+
+func get_seat_motion_heading() -> float:
+	return visual.global_rotation.y
+
+
+func apply_seat_motion_pose(heading: float, amount: float) -> void:
+	visual.global_rotation.y = heading
+	if not is_equal_approx(crouch_amount, amount):
+		_posture_presentation_transition = &"crouch_enter" if amount > crouch_amount else &"crouch_exit"
+		crouch_amount = amount
+		_apply_body_posture()
+
+
 func sit_at_seat(seat: TavernSeat, point: Vector3, heading: float) -> void:
 	_seat = seat
 	if combat != null:
@@ -493,6 +519,7 @@ func sit_at_seat(seat: TavernSeat, point: Vector3, heading: float) -> void:
 	velocity = Vector3.ZERO
 	global_position = point
 	global_rotation.y = heading
+	visual.global_rotation.y = heading
 	crouch_amount = 1.0
 	_posture_presentation_transition = &""
 	_apply_body_posture()
