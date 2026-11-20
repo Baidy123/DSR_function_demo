@@ -15,7 +15,7 @@ func _initialize() -> void:
 
 
 func _run() -> void:
-	create_timer(38.0, true, false, true).timeout.connect(func() -> void:
+	create_timer(55.0, true, false, true).timeout.connect(func() -> void:
 		push_error("Opening watchdog expired")
 		quit(1))
 	check(ProjectSettings.get_setting("application/run/main_scene") == EXTERIOR, "F5 launches the exterior")
@@ -30,12 +30,17 @@ func _run() -> void:
 	var opening := scene.get_node("Opening")
 	var player := scene.get_node("Player")
 	var ui := scene.get_node("DialogueUI")
+	var cameras: Array[String] = []
 	var state := root.get_node("GameState")
 	check(await _wait_for(func(): return ui.dialogue_panel.visible), "the arrival dialogue opens on load")
+	check(ui.has_node("DialoguePanel/MarginContainer/Content/Transcript/History") and ui.has_node("Portrait"),
+		"the scrollable transcript and the external portrait are separate nodes")
 	check(Director.for_node(player) != null and player.is_in_dialogue
 		and player.get_node("Equipment").active_slot == -1, "outdoor director locks the unarmed player")
 	await _capture("arrival")
 	check(await _dialogue(ui), "arrival dialogue finishes by clicking")
+	check(ui.history.get_child_count() >= 9 and ui.history.get_child(0).get_child_count() == 1,
+		"transcript preserves earlier text and omits the narration speaker label")
 	check(await _wait_for(func(): return opening.phase == Opening.Phase.ENTER), "car exit and entrance camera finish")
 	check(not player.is_in_dialogue and player.get_node("Visual").visible, "arrival restores movement")
 	await _capture("exterior")
@@ -51,6 +56,7 @@ func _run() -> void:
 	opening = current_scene.get_node("Opening")
 	player = current_scene.get_node("Player")
 	ui = current_scene.get_node("DialogueUI")
+	ui.camera_cue_started.connect(func(cue: String) -> void: cameras.append(cue))
 	var portal := current_scene.get_node("Interactables/LevelPortal") as Interactable
 	var curtain := current_scene.get_node("BarEnvironment/Booths/Booth4/Curtain") as Node3D
 	var commissioner := current_scene.get_node("NPC") as Node3D
@@ -59,33 +65,56 @@ func _run() -> void:
 	check(Director.for_node(player) != null, "tavern has its own director")
 	check(curtain.to_local(commissioner.global_position).z < -1.0, "commissioner sits behind the northeast curtain")
 	check(merchant.global_position.distance_to(merchant_seat.global_position) < 0.4, "merchant occupies the left lounge seat")
+	var authored := (load("res://scenes/main.tscn") as PackedScene).instantiate()
+	check(authored.get_node("NPC").position.is_equal_approx(commissioner.position)
+		and authored.get_node("RewardNPC").position.is_equal_approx(merchant.position),
+		"fixed seats keep the same position from scene file to gameplay")
+	authored.free()
 	check(not portal.enabled, "warehouse exit stays closed before delivery")
-	var walker := current_scene.get_node("TavernCast/Walker") as Node3D
+	check(not curtain.get_node("SolidCurtain/CollisionShape3D").disabled,
+		"the curtain starts as an active physical barrier")
+	var walker := current_scene.get_node("Walker") as CharacterBody3D
 	var previous := walker.position
 	await create_timer(0.3).timeout
 	check(not walker.position.is_equal_approx(previous), "director starts tavern background activity")
+	check(walker.collision_layer == 1 and walker.get_node("CollisionShape3D").shape is CapsuleShape3D,
+		"main scene patrol actor has a solid capsule")
+	await _go_to(walker.floor_position(Vector3(1.8, 0, -4.8)))
+	check(await _wait_for(func(): return absf(walker.position.x - 1.8) > 0.4),
+		"walker detours around the player blocking the route")
+	check(await _wait_for(func(): return absf(walker.position.x - 1.8) < 0.2 and walker.position.z > -4.2),
+		"walker rejoins the original route after the detour")
 
 	await _go_to(opening._target)
 	_interact()
 	await _conversation(ui, "bartender", ["你这里是不是", "这么明显", "她好说话吗"])
 	check(opening.phase == Opening.Phase.VISITOR, "bartender points to the curtain")
+	check(cameras == ["booth"], "bartender guidance triggers the booth camera during the dialogue")
 	await _go_to(opening._target)
-	await _conversation(ui, "departing visitor", ["她怎么个轴法"])
-	check(await _wait_for(func(): return opening.phase == Opening.Phase.CURTAIN), "visitor walks away")
-	check(state.get_flag("KNOWS_BIG_SIS_PRINCIPLE"), "visitor follow-up records her principle")
+	await _conversation(ui, "departing visitor", ["她把你赶出来了？"])
+	var visitor := current_scene.get_node("Visitor") as CharacterBody3D
+	check(opening.phase == Opening.Phase.CURTAIN and visitor.visible,
+		"visitor remains visible while walking towards the exit")
+	check(not curtain.passage_authorized and not curtain.get_node("SolidCurtain/CollisionShape3D").disabled,
+		"the visitor's scripted exit leaves the curtain locked again")
+	check(not state.get_flag("KNOWS_BIG_SIS_PRINCIPLE"), "the authored visitor replies do not reveal her principles")
 	_interact()
 	await _conversation(ui, "knocking at the curtain")
 	check(await _wait_for(func(): return opening.phase == Opening.Phase.COMMISSIONER), "player crosses the curtain")
 	_interact()
 	check(await _wait_for(func(): return ui.dialogue_panel.visible), "speaking from inside opens the commission")
-	await _capture("commissioner")
 	check(await _dialogue(ui, ["你想去那个仓库", "去过，但", "为什么找我", "可我现在没钱", "你怎么知道", "有这么多人"]),
 		"commissioner dialogue reaches agreement with optional branches")
 	check(state.get_flag("FUNDING_DISCLOSED") and state.get_flag("ASKED_ACCESS_PATTERN")
 		and state.get_flag("ASKED_ACCESS_SOCIAL"), "commissioner choices update funding and access flags")
+	check(cameras == ["booth", "merchant"], "commissioner guidance triggers the merchant camera during the dialogue")
 	check(state.help_choice == "accepted" and state.available_level == 1 and not portal.enabled,
 		"commission registers the task while the door waits for gear")
 	check(_verified_page_turn, "clicking a long line shows its next page before choices or a new line")
+	Input.action_press("move_down")
+	var left_booth := await _wait_for(func(): return curtain.to_local(player.global_position).z > 0.8)
+	Input.action_release("move_down")
+	check(left_booth, "player can walk out through the curtain after its scripted entry")
 
 	var approach: Vector3 = opening._target
 	var rail: Node3D = current_scene.get_node("BarEnvironment/SouthLounge/Enclosure/NorthWest")
@@ -116,6 +145,9 @@ func _run() -> void:
 		and loadout.reserve_ammo.get(&"smg", 0) == 60 and loadout.medkit_count == 1,
 		"delivery grants exactly one weapon, reserve ammunition and a medkit")
 	check(portal.enabled and portal.conditions_met(), "delivery unlocks the campaign portal")
+	check(await _wait_for(func(): return not visitor.visible, 950)
+		and visitor.global_position.distance_to(visitor.floor_position(Vector3(0.15, 0, 7.06))) < 0.2,
+		"visitor disappears only after reaching the exit")
 
 	await _go_to(Vector3(0, 0, 6.9))
 	check(await _wait_for(func(): return portal.get_overlapping_bodies().has(player)), "door interaction area detects the player")
@@ -173,6 +205,11 @@ func _dialogue(ui: Node, options: Array[String] = []) -> bool:
 		if not ui.dialogue_panel.visible:
 			return remaining.is_empty()
 		if ui.choices.visible:
+			if ui.dialogue_line.character == "{大姐头名字}" and ui.dialogue_line.text.begins_with("出去右转"):
+				check(ui.history.get_child_count() > 10 and ui.transcript.get_v_scroll_bar().visible
+					and not ui.dialogue_panel.get_global_rect().intersects(ui.portrait.get_global_rect()),
+					"long transcript can scroll and the portrait is outside the panel")
+				await _capture("commissioner")
 			var pick: Button
 			for button: Button in ui.choices.get_children():
 				if button.disabled:
@@ -197,8 +234,8 @@ func _dialogue(ui: Node, options: Array[String] = []) -> bool:
 	return false
 
 
-func _wait_for(condition: Callable) -> bool:
-	for tick in 420:
+func _wait_for(condition: Callable, frames := 420) -> bool:
+	for tick in frames:
 		if condition.call():
 			return true
 		await physics_frame

@@ -8,6 +8,10 @@ const StarterMedkit = preload("res://resources/player/default_medkit.tres")
 const ACTIVE := &"opening_active"
 const COMPLETE := &"opening_complete"
 const BOOTH_APPROACH := Vector3(-0.42, 0, -1.03)
+const CAMERA_CUES := {
+	"booth": ^"../BarEnvironment/Booths/Booth4/Curtain",
+	"merchant": ^"../RewardNPC",
+}
 
 enum Phase { ARRIVAL, ENTER, BARTENDER, VISITOR, CURTAIN, COMMISSIONER, MERCHANT, CATALOG, DELIVERY, DEPART }
 
@@ -27,8 +31,8 @@ var _curtain: Node3D
 var _commissioner: Node3D
 var _merchant: Node3D
 var _lounge_rail: Node3D
-var _visitor: Node3D
-var _runner: Node3D
+var _visitor: TavernNPC
+var _runner: TavernNPC
 var _visitor_start: Vector3
 var _runner_start: Vector3
 var _portal: Interactable
@@ -54,15 +58,16 @@ func _ready() -> void:
 		_commissioner = scene.get_node("NPC")
 		_merchant = scene.get_node("RewardNPC")
 		_lounge_rail = scene.get_node("BarEnvironment/SouthLounge/Enclosure/NorthWest")
-		_visitor = scene.get_node("TavernCast/Visitor")
-		_runner = scene.get_node("TavernCast/Runner")
+		_curtain.story_managed = true
+		_visitor = scene.get_node("Visitor")
+		_runner = scene.get_node("Runner")
 		_visitor_start = _visitor.global_position
 		_runner_start = _runner.global_position
 		_portal = scene.get_node("Interactables/LevelPortal")
 		_portal.enabled = false
 		_commissioner.set_process_unhandled_input(false)
 		_merchant.set_process_unhandled_input(false)
-		_visitor.show()
+		_visitor.set_physical_presence(true)
 		_clear_equipment()
 		phase = Phase.BARTENDER
 	_create_objective()
@@ -145,13 +150,15 @@ func begin_scene_action(request: SceneRequest) -> void:
 		Phase.CURTAIN:
 			completed = await _say(request, _commissioner, "knock")
 			if completed:
-				_curtain.set_open(true)
+				_curtain.authorize_passage()
+				await get_tree().physics_frame
+				if not request.is_current():
+					return
 				await _walk(request, player, [
-					_curtain.to_global(Vector3(BOOTH_APPROACH.x, 0, 0.56)),
+					_curtain.to_global(Vector3(0, 0, 0.56)),
+					_curtain.to_global(Vector3(0, 0, -0.63)),
 					_curtain.to_global(BOOTH_APPROACH),
 				])
-				if request.is_current():
-					_curtain.set_open(false)
 		Phase.COMMISSIONER:
 			completed = await _say(request, _commissioner, "commissioner")
 			if completed and request.is_current():
@@ -189,7 +196,7 @@ func cancel_scene_action(_request_to_cancel: SceneRequest, _reason: StringName) 
 		if phase == Phase.VISITOR:
 			_visitor.global_position = _visitor_start
 		elif phase == Phase.DELIVERY:
-			_runner.hide()
+			_runner.set_physical_presence(false)
 			_runner.global_position = _runner_start
 
 
@@ -211,22 +218,26 @@ func _arrival(request: SceneRequest) -> bool:
 
 func _visitor_sequence(request: SceneRequest) -> bool:
 	_curtain.set_open(true, true)
-	var camera: SceneRequest = Director.for_node(self).request_child(request, &"presentation", {
+	var director = Director.for_node(self)
+	var camera: SceneRequest = director.request_child(request, &"presentation", {
 		"source": self, "target": _curtain,
 		"parameters": {"size": 8.0, "move_seconds": 0.45, "hold_seconds": 0.78, "return_seconds": 0.45},
 	})
-	await _walk(request, _visitor, [_curtain.to_global(Vector3(0.6, 0, 0.7))], true)
+	var side := 0.68 if _curtain.to_local(player.global_position).x <= 0.0 else -0.68
+	await _walk(request, _visitor, [
+		_curtain.to_global(Vector3(side, 0, -0.57)),
+		_curtain.to_global(Vector3(side, 0, 0.92)),
+	], true)
 	await camera.wait_result()
 	if not request.is_current():
 		return false
 	if not await _say(request, _visitor, "visitor"):
 		return false
-	await _walk(request, _visitor, [_curtain.to_global(Vector3(-1.05, 0, 1.5)),
-		_curtain.to_global(Vector3(-4.15, 0, 1.5))])
-	if not request.is_current():
-		return false
-	_visitor.hide()
 	_curtain.set_open(false)
+	director.request_action(&"script", {
+		"source": self, "target": _visitor, "dedupe_key": &"visitor_departure",
+		"parameters": {"vanish_at_end": true},
+	})
 	return true
 
 
@@ -243,13 +254,13 @@ func _browse(request: SceneRequest) -> bool:
 func _deliver(request: SceneRequest) -> bool:
 	if not await _say(request, _merchant, "prices"):
 		return false
-	_runner.show()
-	await _walk(request, _runner, [Vector3(7.8, 0, _target.z), _target + Vector3(0.35, 0, 0.18)])
+	_runner.set_physical_presence(true)
+	await _walk(request, _runner, [Vector3(7.8, 0, _target.z), _target + Vector3(0.85, 0, 0.18)])
 	if not request.is_current():
 		return false
 	if not await _say(request, _merchant, "delivery"):
 		return false
-	_runner.hide()
+	_runner.set_physical_presence(false)
 	var equipment := player.get_node("Equipment")
 	equipment.apply_campaign_snapshot({
 		"primary_weapon": StarterWeapon,
@@ -271,7 +282,8 @@ func _say(request: SceneRequest, source: Node, cue: String) -> bool:
 	var director = Director.for_node(self)
 	var action: SceneRequest = director.request_child(request, &"dialogue", {
 		"source": source, "target": ui, "player": player,
-		"parameters": {"resource": Dialogue, "start": cue, "face_source": cue != "arrival"},
+		"parameters": {"resource": Dialogue, "start": cue, "face_source": cue != "arrival",
+			"camera_cues": CAMERA_CUES},
 	})
 	var result := await action.wait_result()
 	return request.is_current() and result.status == &"completed"
@@ -291,7 +303,8 @@ func _walk(request: SceneRequest, actor: Node3D, points: Array[Vector3], during_
 	if during_camera:
 		_motion.set_pause_mode(Tween.TWEEN_PAUSE_PROCESS)
 	var previous := actor.global_position
-	for point in points:
+	for position in points:
+		var point := position if exterior else _visitor.floor_position(position)
 		_motion.tween_property(actor, "global_position", point,
 			maxf(0.2, previous.distance_to(point) / 4.0))
 		previous = point

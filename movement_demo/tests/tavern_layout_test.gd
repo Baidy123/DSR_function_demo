@@ -76,9 +76,13 @@ func _run() -> void:
 		and terminal.has_node("Projections/West/Panel3"),
 		"the terminal wall has wraparound seating and projections on both faces")
 	for aisle_x in [7.0, 13.18]:
-		player.global_position = Vector3(aisle_x, 0, -7.4)
+		# Sweep above the floor contact margin so this assertion measures walls and furniture.
+		var walker := scene.get_node("Walker") as TavernNPC
+		var start := walker.floor_position(Vector3(aisle_x, 0, -7.4))
+		var finish := walker.floor_position(Vector3(aisle_x, 0, 0.3))
+		player.global_position = start + Vector3.UP * 0.025
 		await physics_frame
-		check(player.move_and_collide(Vector3(0, 0, 7.7)) == null,
+		check(player.move_and_collide(finish - start) == null,
 			"the aisle beside the terminal stays clear at x = %s" % aisle_x)
 	var bartender := bar.get_node_or_null("BarCounter/Bartender/Body") as MeshInstance3D
 	check(bartender != null and bartender.mesh is CapsuleMesh
@@ -95,9 +99,12 @@ func _run() -> void:
 			return setting.has_node("NorthSofa/Backrest") and setting.has_node("SouthSofa/Backrest")
 	), "three lounge tables each have a pair of single-sided sofas")
 	for entrance_x in [7.81, 12.91]:
-		player.global_position = Vector3(entrance_x, 0.0, 1.0)
+		var walker := scene.get_node("Walker") as TavernNPC
+		var start := walker.floor_position(Vector3(entrance_x, 0, 1.0))
+		var finish := walker.floor_position(Vector3(entrance_x, 0, 5.8))
+		player.global_position = start + Vector3.UP * 0.025
 		await physics_frame
-		check(player.move_and_collide(Vector3(0, 0, 4.8)) == null,
+		check(player.move_and_collide(finish - start) == null,
 			"the player can cross the lounge through the opening at x = %s" % entrance_x)
 	player.global_position = Vector3(12.08, 0.0, 7.2)
 	await physics_frame
@@ -118,7 +125,15 @@ func _run() -> void:
 		await physics_frame
 		await physics_frame
 		await create_timer(0.35).timeout
-		check(panel.scale.x < 0.2, "booth curtain opens while the player crosses")
+		var blocker := curtain.get_node("SolidCurtain/CollisionShape3D") as CollisionShape3D
+		check(is_equal_approx(panel.scale.x, 1.0) and not blocker.disabled,
+			"approaching the curtain keeps it closed and blocking")
+		var interact := InputEventAction.new()
+		interact.action = &"interact"
+		interact.pressed = true
+		root.push_input(interact)
+		await create_timer(0.35).timeout
+		check(panel.scale.x < 0.2 and blocker.disabled, "interacting opens the booth curtain and clears the passage")
 		player.global_position = curtain.global_position + inward * 1.26
 		await create_timer(0.35).timeout
 		check(is_equal_approx(panel.scale.x, 1.0), "booth curtain closes with the player inside")

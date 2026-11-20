@@ -1,0 +1,36 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://scripts/world/tavern_npc.gd" id="npc"]
+
+[sub_resource type="CapsuleMesh" id="Visual"]
+radius = 0.3
+height = 1.38
+
+[sub_resource type="CapsuleShape3D" id="Body"]
+radius = 0.25
+height = 1.38
+
+[sub_resource type="StandardMaterial3D" id="CrateMaterial"]
+albedo_color = Color(0.48, 0.36, 0.21, 1)
+roughness = 0.86
+
+[sub_resource type="BoxMesh" id="Crate"]
+size = Vector3(0.53, 0.34, 0.37)
+material = SubResource("CrateMaterial")
+
+[node name="TavernNPC" type="CharacterBody3D"]
+motion_mode = 1
+script = ExtResource("npc")
+
+[node name="Body" type="MeshInstance3D" parent="."]
+position = Vector3(0, 0.69, 0)
+mesh = SubResource("Visual")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="."]
+position = Vector3(0, 0.72, 0)
+shape = SubResource("Body")
+
+[node name="Crate" type="MeshInstance3D" parent="."]
+visible = false
+position = Vector3(0.32, 0.75, -0.21)
+mesh = SubResource("Crate")

@@ -510,8 +510,8 @@ position = Vector3(16.3800, 0.0000, -12.9500)
 rotation_degrees = Vector3(0.0000, 0.0000, 0.0000)
 
 [node name="Sofa3" parent="SofaSeats" instance=ExtResource("seat")]
-position = Vector3(23.7600, 0.0000, -7.0000)
-rotation_degrees = Vector3(0.0000, -90.0000, 0.0000)
+position = Vector3(18.4000, 0.0000, -9.2500)
+rotation_degrees = Vector3(0.0000, 0.0000, 0.0000)
 
 [node name="Sofa4" parent="SofaSeats" instance=ExtResource("seat")]
 position = Vector3(23.7600, 0.0000, -3.2900)

@@ -18,7 +18,7 @@ movement_demo/
 ├── scenes/
 │   ├── main.tscn          酒馆主场景，也是五关共用返程场景；可 F6 直接试玩任务、商店和竞技场
 │   ├── arena.tscn         战斗区域与敌人实例
-│   ├── access_denied/hub/ 酒吧外景、酒馆建筑与家具、灯光、顾客与开场演员
+│   ├── access_denied/hub/ 酒吧外景、酒馆建筑与家具、灯光、单个酒馆 NPC 的实例模板
 │   ├── enemy/             公共 enemy.tscn，types/兵种继承场景，levels/lvl_N/关卡预设
 │   ├── player/            独立 player.tscn、player_camera_rig.tscn 与战斗／生命／装备子场景
 │   ├── world/             掩体、训练区域、墙体、交互物与场景入口
@@ -38,7 +38,7 @@ movement_demo/
 │   ├── shop/              商品定义、目录与货币商店控制器
 │   ├── world/             掩体、训练靶、区域、门、NPC、交互物与屏障
 │   │   ├── opening_sequence.gd   开场分段、交互条件、导演子请求与初始装备发放
-│   │   ├── tavern_ambient.gd     经导演受理的顾客动作与短路线循环
+│   │   ├── tavern_npc.gd         有碰撞的酒馆 NPC，坐席、巡游、局部绕行和出口离场
 │   │   ├── quest_portal.gd       按任务与 A 解锁进度进入对应关卡
 │   │   ├── tavern_return_portal.gd 记录关卡完成、玩家快照与酒馆检查点并返回酒馆
 │   │   └── interactions/  交互效果基类、注入上下文与各效果实现

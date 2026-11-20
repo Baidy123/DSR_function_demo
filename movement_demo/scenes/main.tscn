@@ -1,6 +1,6 @@
 [gd_scene format=3 uid="uid://dmglkk0768iby"]
 [ext_resource type="PackedScene" path="res://scenes/world/scene_director.tscn" id="director_authority"]
-[ext_resource type="PackedScene" path="res://scenes/access_denied/hub/tavern_cast.tscn" id="tavern_cast"]
+[ext_resource type="PackedScene" path="res://scenes/access_denied/hub/tavern_npc.tscn" id="tavern_npc"]
 [ext_resource type="Script" path="res://scripts/world/opening_sequence.gd" id="opening"]
 
 [ext_resource type="PackedScene" path="res://scenes/player/player.tscn" id="player_prefab"]
@@ -105,11 +105,10 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 6.5)
 max_health = 100.0
 
 [node name="NPC" type="StaticBody3D" parent="." unique_id=226967711]
-position = Vector3(0.8820, 0.0000, -7.6500)
+position = Vector3(23.965, 0.1, -12.38)
 script = ExtResource("2")
 npc_id = &"npc_a"
-seat_path = NodePath("../BarEnvironment/Booths/Booth4")
-seat_offset = Vector3(1.78, 0.1, -0.78)
+keep_authored_position = true
 dialogue_resource = ExtResource("4_5vw27")
 
 [node name="Body" type="MeshInstance3D" parent="NPC" unique_id=973626900]
@@ -178,11 +177,10 @@ script = ExtResource("npc_presentation")
 script = ExtResource("impact_receiver")
 
 [node name="RewardNPC" type="StaticBody3D" parent="."]
-position = Vector3(-0.4500, 0.0000, -5.8940)
+position = Vector3(5.22, 0.12, 2.94)
 script = ExtResource("5_reward_npc")
 npc_id = &"reward_npc"
-seat_path = NodePath("../BarEnvironment/SouthLounge/Tables/Setting1/NorthSofa")
-seat_offset = Vector3(0, 0.12, 0.15)
+keep_authored_position = true
 dialogue_resource = ExtResource("6_reward_dialogue")
 shop_controller_path = NodePath("../ShopController")
 
@@ -281,7 +279,40 @@ complete_when_all_waves_cleared = false
 result_view_path = NodePath("")
 guide_path = NodePath("")
 
-[node name="TavernCast" parent="." instance=ExtResource("tavern_cast")]
+[node name="CounterPatron" parent="." unique_id=2095448387 instance=ExtResource("tavern_npc")]
+position = Vector3(-1.89, 0.27, -6.38)
+tint = Color(0.38, 0.23, 0.19, 1)
+seated = true
+
+[node name="CounterRegular" parent="." unique_id=1240024744 instance=ExtResource("tavern_npc")]
+position = Vector3(-1.89, 0.27, -1.907)
+tint = Color(0.25, 0.36, 0.38, 1)
+seated = true
+
+[node name="LoungePatron" parent="." unique_id=1419440411 instance=ExtResource("tavern_npc")]
+position = Vector3(10.36, 0, 5.69)
+tint = Color(0.53, 0.36, 0.30, 1)
+seated = true
+
+[node name="Walker" parent="." unique_id=1408712109 instance=ExtResource("tavern_npc")]
+position = Vector3(1.8, 0, -6.5)
+tint = Color(0.34, 0.4, 0.32, 1)
+patrol_on_ready = true
+route = Array[Vector3]([Vector3(1.8, 0, -3.65), Vector3(1.8, 0, -1.25), Vector3(3, 0, -1.25), Vector3(3, 0, -6.25), Vector3(1.8, 0, -6.5)])
+
+[node name="Visitor" parent="." unique_id=1119212857 instance=ExtResource("tavern_npc")]
+position = Vector3(22.65, 0, -10.03)
+tint = Color(0.59, 0.40, 0.27, 1)
+starts_hidden = true
+walk_speed = 2.75
+route = Array[Vector3]([Vector3(21.45, 0, -6.9), Vector3(15.7, 0, -3.65), Vector3(13.45, 0, -4.4), Vector3(13.18, 0, 0.6), Vector3(0.65, 0, 0.9), Vector3(0.15, 0, 7.06)])
+
+[node name="Runner" parent="." unique_id=999946868 instance=ExtResource("tavern_npc")]
+position = Vector3(7.78, 0, 0.65)
+tint = Color(0.32, 0.42, 0.53, 1)
+starts_hidden = true
+carry_crate = true
+walk_speed = 2.5
 
 [node name="Opening" type="Node" parent="."]
 script = ExtResource("opening")

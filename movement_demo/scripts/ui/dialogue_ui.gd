@@ -8,21 +8,24 @@ var _scene_request: Request
 
 signal dialogue_started(source: Node)
 signal dialogue_ended(source: Node)
+signal camera_cue_started(cue: String)
 
 var dialogue_player = null
 var dialogue_resource: DialogueResource
 var dialogue_line: DialogueLine
+var dialogue_text: Label
 var is_loading: bool = false
 var dialogue_source: Node
 var _session: int = 0
 var _announced: bool = false
 var _pages: PackedStringArray
 var _page := 0
+var _skip_followup := ""
 
 const PORTRAIT_COLORS := {
 	"主角": Color("#657d83"),
 	"酒保": Color("#aa7954"),
-	"大姐头": Color("#9b605b"),
+	"{大姐头名字}": Color("#9b605b"),
 	"委托人": Color("#987e59"),
 	"商人": Color("#577c99"),
 	"A": Color("#9b605b"),
@@ -31,11 +34,12 @@ const PORTRAIT_COLORS := {
 const PAGE_LENGTH := 52
 
 @onready var dialogue_panel: PanelContainer = $DialoguePanel
-@onready var dialogue_text: Label = $DialoguePanel/MarginContainer/Content/DialogueText
+@onready var transcript: ScrollContainer = $DialoguePanel/MarginContainer/Content/Transcript
+@onready var history: VBoxContainer = $DialoguePanel/MarginContainer/Content/Transcript/History
 @onready var choices: VBoxContainer = $DialoguePanel/MarginContainer/Content/Choices
-@onready var speaker: Label = $DialoguePanel/MarginContainer/Content/Speaker/Name
-@onready var portrait: SubViewportContainer = $DialoguePanel/MarginContainer/Content/Speaker/Portrait
+@onready var portrait: SubViewportContainer = $Portrait
 @onready var page_hint: Label = $DialoguePanel/MarginContainer/Content/PageHint
+@onready var skip_followup: Button = $DialoguePanel/MarginContainer/Content/SkipFollowup
 
 
 func _ready() -> void:
@@ -45,11 +49,15 @@ func _ready() -> void:
 	get_viewport().size_changed.connect(_fit_panel)
 	_fit_panel()
 	dialogue_panel.hide()
+	portrait.hide()
+	skip_followup.pressed.connect(_skip_optional_followup)
 
 
 func _fit_panel() -> void:
 	var width := get_viewport().get_visible_rect().size.x
-	dialogue_panel.offset_left = -minf(width - 28.0, clampf(width * 0.38, 310.0, 530.0)) - 14.0
+	dialogue_panel.offset_left = -minf(width - 116.0, clampf(width * 0.38, 300.0, 530.0)) - 14.0
+	portrait.offset_right = dialogue_panel.offset_left - 10.0
+	portrait.offset_left = portrait.offset_right - 76.0
 
 
 func open_dialogue(player, resource: DialogueResource, start: String, source: Node = null) -> void:
@@ -68,6 +76,11 @@ func begin_scene_action(request: Request) -> void:
 		return
 	_scene_request = request
 	_session += 1
+	_skip_followup = ""
+	dialogue_text = null
+	for row in history.get_children():
+		history.remove_child(row)
+		row.queue_free()
 	dialogue_source = request.node(&"source")
 	dialogue_player = request.node(&"player")
 	dialogue_resource = request.parameters.resource
@@ -95,11 +108,14 @@ func _input(event: InputEvent) -> void:
 		var hovered: Control = get_viewport().gui_get_hovered_control()
 		if hovered is BaseButton and not dialogue_panel.is_ancestor_of(hovered):
 			return
+		var scroll_bar := transcript.get_v_scroll_bar()
+		if scroll_bar.visible and scroll_bar.get_global_rect().has_point(event.position):
+			return
 	if not interact_pressed and not left_click:
 		return
 
 	# 出现选项后，把鼠标事件留给按钮；E 仍不能跳过分支。
-	if not is_loading and dialogue_line != null and _page == _pages.size() - 1 and not dialogue_line.responses.is_empty():
+	if dialogue_line != null and _page == _pages.size() - 1 and not dialogue_line.responses.is_empty():
 		if interact_pressed:
 			get_viewport().set_input_as_handled()
 		return
@@ -137,12 +153,9 @@ func _show_line(next_id: String) -> void:
 		_close_dialogue()
 		return
 
-	var character := dialogue_line.character
-	speaker.text = character if not character.is_empty() else "主角"
-	portrait.visible = character != "旁白"
-	var figure := portrait.get_node("Viewport/Capsule") as MeshInstance3D
-	var material := figure.material_override as StandardMaterial3D
-	material.albedo_color = PORTRAIT_COLORS.get(character, Color("#657d83"))
+	var skip := dialogue_line.get_tag_value("skip_followup")
+	if not skip.is_empty():
+		_skip_followup = skip
 	_pages = _paginate(dialogue_line.text)
 	_page = 0
 
@@ -153,19 +166,30 @@ func _show_line(next_id: String) -> void:
 		button.add_theme_font_size_override("font_size", 17)
 		button.alignment = HORIZONTAL_ALIGNMENT_LEFT
 		button.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		button.pressed.connect(_show_line.bind(response.next_id))
+		button.pressed.connect(_choose_reply.bind(response.text, response.next_id))
 		choices.add_child(button)
 
 	dialogue_panel.show()
-	is_loading = false
 	_show_page()
 	if not _announced:
 		_announced = true
 		dialogue_started.emit(dialogue_source)
+	await _present_dialogue_cue(dialogue_line.get_tag_value("camera"))
+	if session == _session:
+		is_loading = false
+
+
 func _show_page() -> void:
-	dialogue_text.text = _pages[_page]
-	dialogue_text.visible = not dialogue_text.text.is_empty()
+	var character := dialogue_line.character
+	var narration := dialogue_line.has_tag("narration") or character == "旁白" or character.is_empty()
+	if not _pages[_page].is_empty():
+		_append_history(character if not narration and _page == 0 else "", _pages[_page], narration)
+		portrait.visible = not narration
+		if not narration:
+			var figure := portrait.get_node("Viewport/Capsule") as MeshInstance3D
+			figure.material_override.albedo_color = PORTRAIT_COLORS.get(character, Color("#657d83"))
 	choices.visible = _page == _pages.size() - 1 and not dialogue_line.responses.is_empty()
+	skip_followup.visible = choices.visible and not _skip_followup.is_empty()
 	page_hint.visible = not choices.visible
 	page_hint.text = "左键 / E  继续"
 	if _pages.size() > 1:
@@ -176,6 +200,70 @@ func _show_page() -> void:
 		if not button.disabled:
 			button.grab_focus()
 			break
+
+
+func _choose_reply(text: String, next_id: String) -> void:
+	if is_loading:
+		return
+	_skip_followup = ""
+	_append_history("主角", text, false, true)
+	_show_line(next_id)
+
+
+func _skip_optional_followup() -> void:
+	if is_loading or _skip_followup.is_empty():
+		return
+	var next_id := _skip_followup
+	_skip_followup = ""
+	_show_line(next_id)
+
+
+func _append_history(character: String, text: String, narration: bool, reply := false) -> void:
+	var row := VBoxContainer.new()
+	row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	history.add_child(row)
+	if not character.is_empty():
+		var name_label := Label.new()
+		name_label.text = character
+		name_label.add_theme_font_size_override("font_size", 15)
+		name_label.add_theme_color_override("font_color", Color("#d2a875"))
+		row.add_child(name_label)
+	var body := Label.new()
+	body.text = text
+	body.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	body.add_theme_constant_override("line_spacing", 5)
+	if narration:
+		body.add_theme_color_override("font_color", Color("#b0a9a2"))
+	elif reply:
+		body.add_theme_color_override("font_color", Color("#d9b1a1"))
+	row.add_child(body)
+	dialogue_text = body
+	_scroll_to_latest.call_deferred(_session)
+
+
+func _scroll_to_latest(session: int) -> void:
+	await get_tree().process_frame
+	if session == _session:
+		transcript.scroll_vertical = int(ceilf(transcript.get_v_scroll_bar().max_value))
+
+
+func _present_dialogue_cue(cue: String) -> void:
+	if cue.is_empty() or _scene_request == null:
+		return
+	var paths: Dictionary = _scene_request.parameters.get("camera_cues", {})
+	if not paths.has(cue):
+		return
+	var target := get_node_or_null(paths[cue]) as Node3D
+	var director = Director.for_node(self)
+	if target == null or director == null:
+		return
+	var camera: Request = director.request_child(_scene_request, &"presentation", {
+		"source": self, "target": target,
+		"parameters": {"size": 10.0, "move_seconds": 0.6, "hold_seconds": 0.85, "return_seconds": 0.55},
+	})
+	if camera.has_started():
+		camera_cue_started.emit(cue)
+	await camera.wait_result()
 
 
 func _paginate(text: String) -> PackedStringArray:
@@ -211,6 +299,7 @@ func _close_authorized(result: StringName) -> void:
 		_announced = false
 		dialogue_ended.emit(source if is_instance_valid(source) else null)
 	dialogue_panel.hide()
+	portrait.hide()
 	dialogue_player = null
 	dialogue_line = null
 	dialogue_resource = null

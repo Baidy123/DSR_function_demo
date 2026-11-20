@@ -17,7 +17,10 @@ material = SubResource("Rail")
 size = Vector3(2.0800, 0.1200, 0.2200)
 
 [sub_resource type="BoxShape3D" id="Threshold"]
-size = Vector3(2.02, 2, 1.58)
+size = Vector3(2.02, 2, 0.98)
+
+[sub_resource type="BoxShape3D" id="SolidCurtain"]
+size = Vector3(2.08, 2.2, 0.16)
 
 [sub_resource type="BoxMesh" id="Box14"]
 material = SubResource("Cloth")
@@ -41,6 +44,12 @@ script = ExtResource("curtain")
 [node name="Threshold" type="CollisionShape3D" parent="Curtain"]
 position = Vector3(0, 1, 0)
 shape = SubResource("Threshold")
+
+[node name="SolidCurtain" type="StaticBody3D" parent="Curtain"]
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="Curtain/SolidCurtain"]
+position = Vector3(0, 1.1, 0)
+shape = SubResource("SolidCurtain")
 
 [node name="Left" type="Node3D" parent="Curtain"]
 position = Vector3(-1.0350, 0.0000, 0.0000)

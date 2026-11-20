@@ -22,9 +22,13 @@
 
 ## 开场接线
 
-`Opening` 节点负责阶段、交互范围与目标提示，文本由 `resources/dialogue/opening.dialogue` 提供。靠近目标或按 E 只提交前台 `script` 请求。导演受理后，脚本通过同一请求的子动作安排 `dialogue`、`presentation`、`shop` 和 `transition`，并通过导演持有玩家控制，直到该段结束。访客、伙计、过帘与下车的移动由演出脚本执行。普通顾客及门帘的感应动作使用后台 `script` 请求。
+`Opening` 节点负责阶段、交互范围与目标提示，文本由 `resources/dialogue/opening.dialogue` 提供。靠近目标或按 E 提交前台 `script` 请求，导演通过子动作安排对话、演出、商店和切场。对话行的 `[#camera=booth]` 和 `[#camera=merchant]` 标签通过 `camera_cues` 映射选择镜头目标，镜头作为当前对话请求的子动作播放。旁白行标为 `[#narration]`，用无姓名的文字入栏。可选追问使用界面继续按钮，已选择的原稿回复会追加到当前会话记录。
 
-`shop` 请求传入 `browse_only = true` 时，面板禁用购买按钮，`ShopController.purchase()` 同时拒绝交易。目录关闭后继续价格对话和交付。装备通过现有装备快照一次性发放，仓库门沿用 QuestPortal 以及导演的跨关装备搬运。大姐头和商人使用 NPC 的 `seat_path`、`seat_offset` 绑定家具，状态面板也使用绑定后的坐标。
+门帘默认有物理阻挡。开场敲隔断后，导演授权玩家穿过门帘，之后可双向感应开合。访客出卡座由演出短暂开帘，随后用后台移动请求沿路线走到酒馆正门再隐藏。直接 F6 运行酒馆时可在门帘前按 E 授权通行。
+
+顾客、访客和伙计是 `tavern_npc.tscn` 的独立实例，直接在 `main.tscn` 调整位置。坐席勾选 `seated`，巡游客勾选 `patrol_on_ready` 并填写按顺序经过的世界坐标 `route`。脚本用 `floor_path` 沿场景地板修正行走高度，遇到玩家或其他带碰撞的对象会尝试从旁边经过并回到原路线。旁路也被堵住时会重新尝试。
+
+`shop` 请求传入 `browse_only = true` 时，面板禁用购买按钮，`ShopController.purchase()` 同时拒绝交易。目录关闭后继续价格对话和交付。装备通过现有装备快照一次性发放，仓库门沿用 QuestPortal 以及导演的跨关装备搬运。大姐头和商人的位置直接保存在主场景，`keep_authored_position` 使阶段刷新继续使用保存的位置。
 
 两场通过 GameState 的 `opening_active` / `opening_complete` 交接。直接 F6 运行酒馆或完成开场后返程，使用酒馆的常规任务和商店入口。首次流程的付款、人物原则、接入制度和供应信息旗标由对应选项设置，活跃于本次运行。
 

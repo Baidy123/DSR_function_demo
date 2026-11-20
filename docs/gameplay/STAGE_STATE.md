@@ -41,7 +41,7 @@
    - 条件：`stage_index`（0 表示不限）、`phase`（-1 表示不限）、`quest_id` + `quest_status`
      （`not_started`／`in_progress`／`refused`／`completed`／`missed`）、`required_flags`、`required_items`。
    - 目标：`target_npc` 填 NPC 的 `npc_id`，留空表示应用到全部 NPC。
-   - 状态：`present`、`position_set` + `position`、`facing_set` + `facing`、`dialogue`。
+   - 状态：`present`、`position_set` + `position`、`facing_set` + `facing`、`dialogue`。主场景的固定坐席 NPC 开启 `keep_authored_position` 后，位置以场景保存值为准。
 7. 想新增一个任务阶段时，复制整份 `.tres`，改阶段序号、任务 id 与规则，再把新表赋给
    `StageStateController.stage_table`（多份表的分发规则见[待办](../TODO.md)）。
 

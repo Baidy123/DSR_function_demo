@@ -53,50 +53,15 @@ theme_override_constants/margin_bottom = 20
 layout_mode = 2
 theme_override_constants/separation = 14
 
-[node name="Speaker" type="HBoxContainer" parent="DialoguePanel/MarginContainer/Content"]
+[node name="Transcript" type="ScrollContainer" parent="DialoguePanel/MarginContainer/Content"]
 layout_mode = 2
-theme_override_constants/separation = 14
+size_flags_vertical = 3
+horizontal_scroll_mode = 0
 
-[node name="Portrait" type="SubViewportContainer" parent="DialoguePanel/MarginContainer/Content/Speaker"]
-custom_minimum_size = Vector2(66, 66)
+[node name="History" type="VBoxContainer" parent="DialoguePanel/MarginContainer/Content/Transcript"]
 layout_mode = 2
-mouse_filter = 2
-stretch = true
-
-[node name="Viewport" type="SubViewport" parent="DialoguePanel/MarginContainer/Content/Speaker/Portrait"]
-own_world_3d = true
-size = Vector2i(66, 66)
-render_target_update_mode = 2
-
-[node name="Camera" type="Camera3D" parent="DialoguePanel/MarginContainer/Content/Speaker/Portrait/Viewport"]
-position = Vector3(0, 0, 3)
-environment = SubResource("PortraitEnvironment")
-projection = 1
-size = 2.2
-current = true
-
-[node name="KeyLight" type="DirectionalLight3D" parent="DialoguePanel/MarginContainer/Content/Speaker/Portrait/Viewport"]
-rotation_degrees = Vector3(-26, -22, -14)
-light_color = Color(1, 0.85, 0.67, 1)
-light_energy = 1.0
-
-[node name="Capsule" type="MeshInstance3D" parent="DialoguePanel/MarginContainer/Content/Speaker/Portrait/Viewport"]
-rotation_degrees = Vector3(0, 0, -10)
-material_override = SubResource("PortraitMaterial")
-mesh = SubResource("PortraitMesh")
-
-[node name="Name" type="Label" parent="DialoguePanel/MarginContainer/Content/Speaker"]
-layout_mode = 2
-theme_override_colors/font_color = Color(0.91, 0.73, 0.48, 1)
-theme_override_font_sizes/font_size = 24
-
-[node name="Separator" type="HSeparator" parent="DialoguePanel/MarginContainer/Content"]
-layout_mode = 2
-
-[node name="DialogueText" type="Label" parent="DialoguePanel/MarginContainer/Content" unique_id=1540565324]
-layout_mode = 2
-theme_override_constants/line_spacing = 6
-autowrap_mode = 3
+size_flags_horizontal = 3
+theme_override_constants/separation = 13
 
 [node name="Choices" type="VBoxContainer" parent="DialoguePanel/MarginContainer/Content" unique_id=80425648]
 layout_mode = 2
@@ -107,3 +72,42 @@ layout_mode = 2
 size_flags_vertical = 10
 theme_override_colors/font_color = Color(0.70, 0.63, 0.54, 1)
 theme_override_font_sizes/font_size = 15
+
+[node name="SkipFollowup" type="Button" parent="DialoguePanel/MarginContainer/Content"]
+visible = false
+layout_mode = 2
+alignment = 0
+text = "继续"
+
+[node name="Portrait" type="SubViewportContainer" parent="."]
+visible = false
+anchor_left = 1.0
+anchor_right = 1.0
+anchor_top = 0.08
+anchor_bottom = 0.08
+offset_top = 24.0
+offset_bottom = 100.0
+mouse_filter = 2
+stretch = true
+
+[node name="Viewport" type="SubViewport" parent="Portrait"]
+own_world_3d = true
+size = Vector2i(66, 66)
+render_target_update_mode = 2
+
+[node name="Camera" type="Camera3D" parent="Portrait/Viewport"]
+position = Vector3(0, 0, 3)
+environment = SubResource("PortraitEnvironment")
+projection = 1
+size = 2.2
+current = true
+
+[node name="KeyLight" type="DirectionalLight3D" parent="Portrait/Viewport"]
+rotation_degrees = Vector3(-26, -22, -14)
+light_color = Color(1, 0.85, 0.67, 1)
+light_energy = 1.0
+
+[node name="Capsule" type="MeshInstance3D" parent="Portrait/Viewport"]
+rotation_degrees = Vector3(0, 0, -10)
+material_override = SubResource("PortraitMaterial")
+mesh = SubResource("PortraitMesh")
