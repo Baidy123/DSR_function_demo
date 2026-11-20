@@ -32,7 +32,7 @@
 
 对白的 `sit` 标签向 SceneDirector 提交以座位为目标的 `script` 子请求。座位负责路线检查、行走、转身、落座和取消收尾。商人对话绑定其正对面的座位。布景、座位和路线的编辑步骤见[酒馆编辑与调试](TAVERN_AUTHORING.md)。
 
-`shop` 请求传入 `browse_only = true` 时，面板禁用购买按钮，`ShopController.purchase()` 同时拒绝交易。目录关闭后继续价格对话和交付。装备通过现有装备快照一次性发放，仓库门沿用 QuestPortal 以及导演的跨关装备搬运。大姐头和商人的位置直接保存在主场景，`keep_authored_position` 使阶段刷新继续使用保存的位置。
+`shop` 请求传入 `browse_only = true` 时，面板禁用购买按钮，`ShopController.purchase()` 同时拒绝交易。目录关闭后继续价格对话和交付。伙计以 `script` 子请求到桌前，放下箱子后立即提交后台离场请求，商人继续交付对白。装备通过现有装备快照一次性发放，仓库门沿用 QuestPortal 以及导演的跨关装备搬运。大姐头和商人的位置直接保存在主场景，`keep_authored_position` 使阶段刷新继续使用保存的位置。
 
 两场通过 GameState 的 `opening_active` / `opening_complete` 交接。直接 F6 运行酒馆或完成开场后返程，使用酒馆的常规任务和商店入口。首次流程的付款、人物原则、接入制度和供应信息旗标由对应选项设置，活跃于本次运行。
 

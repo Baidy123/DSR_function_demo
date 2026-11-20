@@ -205,6 +205,19 @@ func _run() -> void:
 	await _capture("catalog")
 	board.close_button.pressed.emit()
 	await _conversation(ui, "price reaction", ["到底为什么这么贵"])
+	var runner := current_scene.get_node("Runner") as TavernNPC
+	var merchant_table := current_scene.get_node("BarEnvironment/SouthLounge/Tables/Setting1/Table") as Node3D
+	var tabletop := merchant_table.get_node("Collision").shape as BoxShape3D
+	var delivery_open: bool = await _wait_for(func(): return ui.dialogue_panel.visible)
+	var delivery_offset := merchant_table.to_local(runner.global_position)
+	var runner_at_table := runner.global_position
+	var delivered_crate := merchant_table.get_node_or_null("DeliveredCrate") as MeshInstance3D
+	check(delivery_open and runner.visible and delivered_crate != null and delivered_crate.visible
+		and not runner.get_node("Crate").visible
+		and delivery_offset.x > tabletop.size.x * 0.5 and delivery_offset.x < tabletop.size.x * 0.5 + 0.8
+		and absf(delivery_offset.z) < 0.16, "runner brings the crate to the front end of the merchant's table")
+	check(await _wait_for(func(): return runner.global_position.distance_to(runner_at_table) > 0.4, 90)
+		and ui.dialogue_panel.visible, "runner walks away while the delivery dialogue is still open")
 	await _conversation(ui, "gear delivery")
 	check(state.get_flag("ASKED_MERCHANT_SUPPLY"), "price follow-up records the supply explanation")
 	check(await _wait_for(func(): return opening.phase == Opening.Phase.DEPART), "delivery restores free exploration")
@@ -216,7 +229,6 @@ func _run() -> void:
 		and loadout.reserve_ammo.get(&"smg", 0) == 60 and loadout.medkit_count == 1,
 		"delivery grants exactly one weapon, reserve ammunition and a medkit")
 	check(portal.enabled and portal.conditions_met(), "delivery unlocks the campaign portal")
-	var runner := current_scene.get_node("Runner") as TavernNPC
 	check(runner.visible and not runner.get_node("Crate").visible, "the runner leaves without the delivered crate")
 	check(await _wait_for(func(): return not visitor.visible, 950)
 		and visitor.global_position.distance_to(visitor.floor_position(Vector3(0.15, 0, 7.06))) < 0.2,

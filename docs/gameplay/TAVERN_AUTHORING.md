@@ -21,6 +21,7 @@
 3. 在 NPC 的 **Route Path** 拖入该路线节点。勾选 **Patrol On Ready** 可让 NPC 入场自行提交路线请求。剧情角色可以保留此项关闭，等 Scene Director 的 `script` 请求启动。
 4. 在路线节点选 **Finish Mode**。**Stay** 到终点后停留，**Loop** 到终点后等待 **Loop Interval** 秒再从第一个点重走，**Despawn** 到终点才离场。NPC 上的 **Waypoint Pause** 控制循环途中停留，**Walk Speed** 控制速度。拖拉时预留足够的过道，运行时 NPC 会尝试绕过临时挡路的角色。
 5. 员工门路线的 **Exit Gate Path** 指向 `BarEnvironment/Architecture/StaffDoor`。最后两点分别放在门前与门后。伙计路线是 `RunnerToStaffDoor`，访客从正门离开的路线是 `VisitorToEntrance`。
+6. 伙计的送货点是 `BarEnvironment/SouthLounge/Tables/Setting1/Table/RunnerDeliveryPoint`。点位沿桌面短边居中，标记的本地 **-Z** 指向桌子。伙计经 `RunnerToStaffDoor/Point01` 进入，在桌前放下箱子，然后立即原路走出桌边过道并继续去员工门。商人交付对白和伙计离场同时进行。主角在对白结束且伙计走出桌边过道后才起身，给双方留出通行空间。
 
 ## 货币和以后新增掉落
 

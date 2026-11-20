@@ -38,6 +38,8 @@ var _merchant: Node3D
 var _lounge_rail: Node3D
 var _visitor: TavernNPC
 var _runner: TavernNPC
+var _runner_departure: SceneRequest
+var _delivery_crate: MeshInstance3D
 var _visitor_start: Vector3
 var _runner_start: Vector3
 var _portal: Interactable
@@ -217,8 +219,7 @@ func cancel_scene_action(_request_to_cancel: SceneRequest, _reason: StringName) 
 		if phase == Phase.VISITOR:
 			_visitor.global_position = _visitor_start
 		elif phase == Phase.DELIVERY:
-			_runner.set_physical_presence(false)
-			_runner.global_position = _runner_start
+			_reset_delivery()
 
 
 func _on_step_finished(_finished: SceneRequest) -> void:
@@ -275,18 +276,43 @@ func _deliver(request: SceneRequest) -> bool:
 	if not await _say(request, _merchant, "prices"):
 		return false
 	_runner.set_physical_presence(true)
-	await _walk(request, _runner, [Vector3(7.8, 0, _target.z), _target + Vector3(0.85, 0, 0.18)])
+	var aisle: Marker3D = scene.get_node("TavernRoutes/RunnerToStaffDoor/Point01")
+	var delivery_point: Marker3D = scene.get_node(
+		"BarEnvironment/SouthLounge/Tables/Setting1/Table/RunnerDeliveryPoint")
+	var director = Director.for_node(self)
+	var arrival: SceneRequest = director.request_child(request, &"script", {
+		"source": self, "target": _runner,
+		"parameters": {"points": [aisle.global_position, delivery_point.global_position]},
+	})
+	var result := await arrival.wait_result()
 	if not request.is_current():
 		return false
+	if result.status != &"completed":
+		_reset_delivery()
+		return false
+	var facing := -delivery_point.global_basis.z
+	_runner.rotation.y = atan2(-facing.x, -facing.z)
+	_set_down_delivery_crate(delivery_point.get_parent() as Node3D)
+	var clear_table: SceneRequest = director.request_action(&"script", {
+		"source": self, "target": _runner, "dedupe_key": &"runner_clear_table",
+		"parameters": {"points": [aisle.global_position]},
+	})
+	_runner_departure = clear_table
+	clear_table.finished.connect(_continue_runner_departure)
 	if not await _say(request, _merchant, "delivery"):
+		if request.is_current():
+			_reset_delivery()
+		return false
+	var cleared := await clear_table.wait_result()
+	if not request.is_current():
+		return false
+	if cleared.status != &"completed":
+		_reset_delivery()
 		return false
 	await _release_scripted_seat(request)
 	if not request.is_current():
 		return false
-	_runner.drop_crate()
-	Director.for_node(self).request_action(&"script", {
-		"source": self, "target": _runner, "dedupe_key": &"runner_departure",
-	})
+	_clear_delivery_crate()
 	var equipment := player.get_node("Equipment")
 	equipment.apply_campaign_snapshot({
 		"primary_weapon": StarterWeapon,
@@ -302,6 +328,40 @@ func _deliver(request: SceneRequest) -> bool:
 	_commissioner.set_process_unhandled_input(true)
 	_merchant.set_process_unhandled_input(true)
 	return true
+
+
+func _continue_runner_departure(cleared_table: SceneRequest) -> void:
+	if _runner_departure == cleared_table and cleared_table.status == &"completed":
+		_runner_departure = Director.for_node(self).request_action(&"script", {
+			"source": self, "target": _runner, "dedupe_key": &"runner_departure",
+		})
+
+
+func _set_down_delivery_crate(table: Node3D) -> void:
+	var carried := _runner.get_node("Crate") as MeshInstance3D
+	var tabletop := table.get_node("Collision").shape as BoxShape3D
+	_delivery_crate = carried.duplicate() as MeshInstance3D
+	_delivery_crate.name = "DeliveredCrate"
+	table.add_child(_delivery_crate)
+	_delivery_crate.transform = Transform3D(Basis.IDENTITY,
+		Vector3(tabletop.size.x * 0.3, (tabletop.size.y + carried.get_aabb().size.y) * 0.5, 0.0))
+	_runner.drop_crate()
+
+
+func _clear_delivery_crate() -> void:
+	if is_instance_valid(_delivery_crate):
+		_delivery_crate.queue_free()
+		_delivery_crate = null
+
+
+func _reset_delivery() -> void:
+	if _runner_departure != null and not _runner_departure.is_terminal():
+		Director.for_node(self).cancel_request(_runner_departure.id, &"delivery_interrupted")
+	_runner_departure = null
+	_clear_delivery_crate()
+	_runner.get_node("Crate").show()
+	_runner.set_physical_presence(false)
+	_runner.global_position = _runner_start
 
 
 func _say(request: SceneRequest, source: Node, cue: String) -> bool:

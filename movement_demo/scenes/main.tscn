@@ -1103,6 +1103,10 @@ initial_occupant_path = NodePath("../../../../../../../LoungeGuest")
 initial_occupant_path = NodePath("../../../../CounterGuest")
 rotation_degrees = Vector3(0, 90, 0)
 
+[node name="RunnerDeliveryPoint" type="Marker3D" parent="BarEnvironment/SouthLounge/Tables/Setting1/Table"]
+position = Vector3(1.5, -0.71, 0)
+rotation_degrees = Vector3(0, 90, 0)
+
 [editable path="BarEnvironment/BarCounter/Stool1"]
 
 [editable path="BarEnvironment/BarCounter/Stool5"]
