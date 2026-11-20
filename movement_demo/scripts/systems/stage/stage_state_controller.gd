@@ -92,10 +92,12 @@ func get_snapshot() -> Dictionary:
 ## 按配置表解析每个 NPC 当前应有的状态；后面的规则覆盖前面的，未命中的字段保留上一结果。
 func resolve_npc_states() -> Dictionary:
 	var resolved: Dictionary = {}
+	var actors: Dictionary = {}
 	for npc in _npcs():
 		var npc_id := _npc_id(npc)
 		if npc_id == &"":
 			continue
+		actors[npc_id] = npc
 		resolved[npc_id] = {
 			"present": bool(npc.visible),
 			"position": _npc_position(npc),
@@ -115,7 +117,8 @@ func resolve_npc_states() -> Dictionary:
 			var entry: Dictionary = resolved[npc_id]
 			entry["present"] = rule.present
 			if rule.position_set:
-				entry["position"] = rule.position
+				var actor: Node = actors[npc_id]
+				entry["position"] = actor.resolve_stage_position(rule.position) if actor.has_method(&"resolve_stage_position") else rule.position
 			if rule.facing_set:
 				entry["facing"] = rule.facing
 			if rule.dialogue != null:

@@ -127,6 +127,8 @@ func _rebuild() -> void:
 		balance_label.text = balance_text()
 	if result_label != null:
 		result_label.text = "" if _visible_count > 0 else "暂无商品"
+		if not _items.is_empty() and _items[0].get("browse_only", false):
+			result_label.text = "首次到访 · 仅浏览目录"
 
 
 func _build_row(item: Dictionary) -> Control:

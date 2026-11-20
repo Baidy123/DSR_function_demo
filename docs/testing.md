@@ -4,6 +4,10 @@
 
 ## 当前五关定向记录
 
+2026-11-20 开场专项 `opening_flow_test.gd` 在当前工程真实 OpenGL 渲染下 37/37，只包含本次改动的暂存副本在 headless 下也为 37/37。覆盖 F5 入口、对话分页、可选访谈旗标、门帘与镜头后的控制权、只读目录、围栏交互范围、装备发放及实际进入第1关。脚本把玩家放到各交互点，另用玩家胶囊与场景碰撞形状核对六段路线的连通性。使用 `Godot_v4.7.2-stable_win64_console.exe --path movement_demo --script res://tests/opening_flow_test.gd -- --capture` 可在真实渲染下运行并在 `logs/opening-capture/` 保存截图。
+
+当前工程的 `scene_interaction_test` 为 22/22。暂存副本的 `tavern_layout_test`、`shop_flow_test` 均通过。带已有本地资源修改的工作区中，布局旧断言仍有 1 项未通过，检查条件为普通沙发容器下每个节点都有左右坐垫。商店旧断言有 3 项未通过，检查条件为解锁及购买前后的商品行数，当前本地目录额外已有一条一级解锁枪械。上述失败只反映这些断言与当前资源的差异。
+
 2026-11-14 Esc 暂停菜单：`pause_menu_test` 最终真实 OpenGL 渲染 52/52、headless 50/50，覆盖酒馆与五关无自动说明、Esc／按钮导航、设置和说明保持暂停、其他暂停拥有者／对话／死亡优先、打开菜单时卸载、640×480 布局，以及真实第一关按住瞄准时恢复鼠标捕获、清除 GUI 焦点且继续按钮不误开火。headless 后端不支持真实鼠标捕获，两条捕获断言仅在真实渲染下执行，瞄准／焦点／弹药断言仍在两种模式验证。`-- --confirm-exit` 独立进程确认退出前仍运行、实际点击确认后以 0 退出。截图与日志在本地 `logs/pause-menu-capture/`、`logs/pause-menu-rendered-final.log` 和 `logs/pause-menu-exit.log`，不提交。
 
 相关定向回归：`scene_director_test` 151/151、`level_flow_test` 97/97、`shop_flow_test` 通过；登记检查为 `Catalog OK`。关卡专项只按新需求调整入场／重开不弹说明、手动打开和返回设置的断言，原清场、返酒馆、A 解锁、恢复点及独立教程合同保留。商店的故意缺少面板／目录夹具仍输出预期警告，没有脚本／资源错误。未运行全量回归，未据此重判旧记录中的其他失败。

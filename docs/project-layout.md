@@ -14,11 +14,11 @@
 
 ```text
 movement_demo/
-├── project.godot                 工程与输入配置，主入口为 scenes/main.tscn
+├── project.godot                 工程与输入配置，F5 入口为 scenes/access_denied/hub/tavern_exterior.tscn
 ├── scenes/
-│   ├── main.tscn          酒馆主场景，F5 入口；含任务、商店 NPC（RewardNPC）、竞技场与关卡传送门
+│   ├── main.tscn          酒馆主场景，也是五关共用返程场景；可 F6 直接试玩任务、商店和竞技场
 │   ├── arena.tscn         战斗区域与敌人实例
-│   ├── access_denied/hub/ 酒馆建筑、家具、碰撞与灯光；不拥有任务、货币或商店状态
+│   ├── access_denied/hub/ 酒吧外景、酒馆建筑与家具、灯光、顾客与开场演员
 │   ├── enemy/             公共 enemy.tscn，types/兵种继承场景，levels/lvl_N/关卡预设
 │   ├── player/            独立 player.tscn、player_camera_rig.tscn 与战斗／生命／装备子场景
 │   ├── world/             掩体、训练区域、墙体、交互物与场景入口
@@ -37,6 +37,8 @@ movement_demo/
 │   ├── rewards/           关卡、选项与奖励表资源脚本
 │   ├── shop/              商品定义、目录与货币商店控制器
 │   ├── world/             掩体、训练靶、区域、门、NPC、交互物与屏障
+│   │   ├── opening_sequence.gd   开场分段、交互条件、导演子请求与初始装备发放
+│   │   ├── tavern_ambient.gd     经导演受理的顾客动作与短路线循环
 │   │   ├── quest_portal.gd       按任务与 A 解锁进度进入对应关卡
 │   │   ├── tavern_return_portal.gd 记录关卡完成、玩家快照与酒馆检查点并返回酒馆
 │   │   └── interactions/  交互效果基类、注入上下文与各效果实现

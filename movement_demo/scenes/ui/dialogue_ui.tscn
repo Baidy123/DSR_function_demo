@@ -1,19 +1,46 @@
 [gd_scene format=3 uid="uid://cu2oxep7ag6wm"]
 
 [ext_resource type="Script" uid="uid://doo4y67dq2weh" path="res://scripts/ui/dialogue_ui.gd" id="1_njptv"]
+[ext_resource type="FontFile" path="res://resources/fonts/NotoSansSC-Medium.ttf" id="2_font"]
+
+[sub_resource type="Theme" id="DialogueTheme"]
+default_font = ExtResource("2_font")
+default_font_size = 19
+
+[sub_resource type="StyleBoxFlat" id="DialogueStyle"]
+bg_color = Color(0.055, 0.063, 0.076, 0.96)
+border_width_left = 2
+border_color = Color(0.70, 0.48, 0.27, 1)
+
+[sub_resource type="Environment" id="PortraitEnvironment"]
+background_mode = 1
+background_color = Color(0.11, 0.13, 0.16, 1)
+ambient_light_source = 3
+ambient_light_color = Color(0.68, 0.75, 0.84, 1)
+ambient_light_energy = 0.55
+
+[sub_resource type="CapsuleMesh" id="PortraitMesh"]
+radius = 0.47
+height = 1.72
+
+[sub_resource type="StandardMaterial3D" id="PortraitMaterial"]
+resource_local_to_scene = true
+albedo_color = Color(0.40, 0.49, 0.51, 1)
+roughness = 0.65
 
 [node name="DialogueUI" type="CanvasLayer" unique_id=36702053]
+layer = 12
 script = ExtResource("1_njptv")
 
 [node name="DialoguePanel" type="PanelContainer" parent="." unique_id=601539736]
-anchors_preset = 12
-anchor_top = 1.0
+anchor_left = 1.0
+anchor_top = 0.08
 anchor_right = 1.0
-anchor_bottom = 1.0
-offset_left = 60.0
-offset_top = -310.0
-offset_right = -60.0
-offset_bottom = -30.0
+anchor_bottom = 0.91
+offset_left = -480.0
+offset_right = -14.0
+theme = SubResource("DialogueTheme")
+theme_override_styles/panel = SubResource("DialogueStyle")
 
 [node name="MarginContainer" type="MarginContainer" parent="DialoguePanel" unique_id=1333209130]
 layout_mode = 2
@@ -24,12 +51,59 @@ theme_override_constants/margin_bottom = 20
 
 [node name="Content" type="VBoxContainer" parent="DialoguePanel/MarginContainer" unique_id=1035170300]
 layout_mode = 2
+theme_override_constants/separation = 14
+
+[node name="Speaker" type="HBoxContainer" parent="DialoguePanel/MarginContainer/Content"]
+layout_mode = 2
+theme_override_constants/separation = 14
+
+[node name="Portrait" type="SubViewportContainer" parent="DialoguePanel/MarginContainer/Content/Speaker"]
+custom_minimum_size = Vector2(66, 66)
+layout_mode = 2
+mouse_filter = 2
+stretch = true
+
+[node name="Viewport" type="SubViewport" parent="DialoguePanel/MarginContainer/Content/Speaker/Portrait"]
+own_world_3d = true
+size = Vector2i(66, 66)
+render_target_update_mode = 2
+
+[node name="Camera" type="Camera3D" parent="DialoguePanel/MarginContainer/Content/Speaker/Portrait/Viewport"]
+position = Vector3(0, 0, 3)
+environment = SubResource("PortraitEnvironment")
+projection = 1
+size = 2.2
+current = true
+
+[node name="KeyLight" type="DirectionalLight3D" parent="DialoguePanel/MarginContainer/Content/Speaker/Portrait/Viewport"]
+rotation_degrees = Vector3(-26, -22, -14)
+light_color = Color(1, 0.85, 0.67, 1)
+light_energy = 1.0
+
+[node name="Capsule" type="MeshInstance3D" parent="DialoguePanel/MarginContainer/Content/Speaker/Portrait/Viewport"]
+rotation_degrees = Vector3(0, 0, -10)
+material_override = SubResource("PortraitMaterial")
+mesh = SubResource("PortraitMesh")
+
+[node name="Name" type="Label" parent="DialoguePanel/MarginContainer/Content/Speaker"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.91, 0.73, 0.48, 1)
+theme_override_font_sizes/font_size = 24
+
+[node name="Separator" type="HSeparator" parent="DialoguePanel/MarginContainer/Content"]
+layout_mode = 2
 
 [node name="DialogueText" type="Label" parent="DialoguePanel/MarginContainer/Content" unique_id=1540565324]
 layout_mode = 2
-theme_override_font_sizes/font_size = 24
-text = "test text"
+theme_override_constants/line_spacing = 6
 autowrap_mode = 3
 
 [node name="Choices" type="VBoxContainer" parent="DialoguePanel/MarginContainer/Content" unique_id=80425648]
 layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="PageHint" type="Label" parent="DialoguePanel/MarginContainer/Content"]
+layout_mode = 2
+size_flags_vertical = 10
+theme_override_colors/font_color = Color(0.70, 0.63, 0.54, 1)
+theme_override_font_sizes/font_size = 15

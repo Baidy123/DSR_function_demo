@@ -1,0 +1,104 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://scripts/world/tavern_ambient.gd" id="1"]
+
+[sub_resource type="CapsuleMesh" id="Capsule"]
+radius = 0.32
+height = 1.38
+
+[sub_resource type="CapsuleMesh" id="Seated"]
+radius = 0.34
+height = 0.95
+
+[sub_resource type="BoxMesh" id="Crate"]
+size = Vector3(0.53, 0.34, 0.37)
+
+[sub_resource type="StandardMaterial3D" id="crate"]
+albedo_color = Color(0.48, 0.36, 0.21, 1)
+roughness = 0.85
+
+[sub_resource type="StandardMaterial3D" id="matCounterPatron"]
+albedo_color = Color(0.38, 0.23, 0.19, 1)
+roughness = 0.86
+
+[sub_resource type="StandardMaterial3D" id="matCounterRegular"]
+albedo_color = Color(0.25, 0.36, 0.38, 1)
+roughness = 0.86
+
+[sub_resource type="StandardMaterial3D" id="matLoungePatron"]
+albedo_color = Color(0.53, 0.36, 0.30, 1)
+roughness = 0.86
+
+[sub_resource type="StandardMaterial3D" id="matWalker"]
+albedo_color = Color(0.34, 0.4, 0.32, 1)
+roughness = 0.86
+
+[sub_resource type="StandardMaterial3D" id="matVisitor"]
+albedo_color = Color(0.59, 0.40, 0.27, 1)
+roughness = 0.86
+
+[sub_resource type="StandardMaterial3D" id="matRunner"]
+albedo_color = Color(0.32, 0.42, 0.53, 1)
+roughness = 0.86
+
+[node name="TavernCast" type="Node3D"]
+
+[node name="CounterPatron" type="Node3D" parent="."]
+position = Vector3(-1.89, 0, -6.38)
+script = ExtResource("1")
+
+[node name="Body" type="MeshInstance3D" parent="CounterPatron"]
+position = Vector3(0, 1.28, 0)
+mesh = SubResource("Seated")
+material_override = SubResource("matCounterPatron")
+
+[node name="CounterRegular" type="Node3D" parent="."]
+position = Vector3(-1.89, 0, -1.907)
+script = ExtResource("1")
+
+[node name="Body" type="MeshInstance3D" parent="CounterRegular"]
+position = Vector3(0, 1.28, 0)
+mesh = SubResource("Seated")
+material_override = SubResource("matCounterRegular")
+
+[node name="LoungePatron" type="Node3D" parent="."]
+position = Vector3(10.36, 0, 5.69)
+script = ExtResource("1")
+
+[node name="Body" type="MeshInstance3D" parent="LoungePatron"]
+position = Vector3(0, 0.91, 0)
+mesh = SubResource("Seated")
+material_override = SubResource("matLoungePatron")
+
+[node name="Walker" type="Node3D" parent="."]
+position = Vector3(1.8, 0, -6.5)
+script = ExtResource("1")
+route = Array[Vector3]([Vector3(1.8, 0, -6.5), Vector3(1.8, 0, -3.5), Vector3(3, 0, -2.6), Vector3(3, 0, -6.5)])
+
+[node name="Body" type="MeshInstance3D" parent="Walker"]
+position = Vector3(0, 0.69, 0)
+mesh = SubResource("Capsule")
+material_override = SubResource("matWalker")
+
+[node name="Visitor" type="Node3D" parent="."]
+position = Vector3(23.45, 0, -11)
+visible = false
+
+[node name="Body" type="MeshInstance3D" parent="Visitor"]
+position = Vector3(0, 0.69, 0)
+mesh = SubResource("Capsule")
+material_override = SubResource("matVisitor")
+
+[node name="Runner" type="Node3D" parent="."]
+position = Vector3(8, 0, 0.8)
+visible = false
+
+[node name="Body" type="MeshInstance3D" parent="Runner"]
+position = Vector3(0, 0.69, 0)
+mesh = SubResource("Capsule")
+material_override = SubResource("matRunner")
+
+[node name="Crate" type="MeshInstance3D" parent="Runner"]
+position = Vector3(0.37, 0.75, -0.18)
+mesh = SubResource("Crate")
+material_override = SubResource("crate")

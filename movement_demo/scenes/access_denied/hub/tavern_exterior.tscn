@@ -1,0 +1,442 @@
+[gd_scene format=3]
+
+[ext_resource type="PackedScene" path="res://scenes/player/player.tscn" id="player"]
+[ext_resource type="PackedScene" path="res://scenes/player/player_camera_rig.tscn" id="camera"]
+[ext_resource type="PackedScene" path="res://scenes/ui/dialogue_ui.tscn" id="dialogue"]
+[ext_resource type="PackedScene" path="res://scenes/world/scene_director.tscn" id="director"]
+[ext_resource type="Script" path="res://scripts/world/opening_sequence.gd" id="opening"]
+
+[sub_resource type="Environment" id="night"]
+background_mode = 1
+background_color = Color(0.02, 0.031, 0.047, 1)
+ambient_light_source = 3
+ambient_light_color = Color(0.47, 0.59, 0.77, 1)
+ambient_light_energy = 0.5
+
+[sub_resource type="StandardMaterial3D" id="asphalt"]
+albedo_color = Color(0.097, 0.12, 0.15, 1)
+roughness = 0.68
+
+[sub_resource type="StandardMaterial3D" id="concrete"]
+albedo_color = Color(0.25, 0.28, 0.3, 1)
+roughness = 0.9
+
+[sub_resource type="StandardMaterial3D" id="brick"]
+albedo_color = Color(0.21, 0.125, 0.125, 1)
+roughness = 0.92
+
+[sub_resource type="StandardMaterial3D" id="trim"]
+albedo_color = Color(0.061, 0.076, 0.094, 1)
+roughness = 0.8
+
+[sub_resource type="StandardMaterial3D" id="glass"]
+albedo_color = Color(0.16, 0.12, 0.105, 1)
+roughness = 0.25
+emission_enabled = true
+emission = Color(0.52, 0.24, 0.095, 1)
+
+[sub_resource type="StandardMaterial3D" id="cyan"]
+albedo_color = Color(0.055, 0.15, 0.16, 1)
+roughness = 0.48
+emission_enabled = true
+emission = Color(0.11, 0.49, 0.53, 1)
+
+[sub_resource type="StandardMaterial3D" id="amber"]
+albedo_color = Color(0.35, 0.20, 0.09, 1)
+roughness = 0.58
+emission_enabled = true
+emission = Color(0.92, 0.44, 0.15, 1)
+
+[sub_resource type="StandardMaterial3D" id="stripe"]
+albedo_color = Color(0.53, 0.42, 0.25, 1)
+roughness = 0.86
+
+[sub_resource type="StandardMaterial3D" id="car"]
+albedo_color = Color(0.15, 0.29, 0.30, 1)
+roughness = 0.29
+
+[sub_resource type="StandardMaterial3D" id="carGlass"]
+albedo_color = Color(0.065, 0.115, 0.15, 1)
+roughness = 0.21
+
+[sub_resource type="StandardMaterial3D" id="rubber"]
+albedo_color = Color(0.027, 0.028, 0.034, 1)
+roughness = 0.95
+
+[sub_resource type="StandardMaterial3D" id="rust"]
+albedo_color = Color(0.36, 0.19, 0.11, 1)
+roughness = 0.86
+
+[sub_resource type="StandardMaterial3D" id="red"]
+albedo_color = Color(0.4, 0.05, 0.03, 1)
+roughness = 0.42
+emission_enabled = true
+emission = Color(0.73, 0.06, 0.036, 1)
+
+[node name="TavernExterior" type="Node3D"]
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="."]
+environment = SubResource("night")
+
+[node name="Moon" type="DirectionalLight3D" parent="."]
+rotation_degrees = Vector3(-52, -28, 0)
+light_color = Color(0.53, 0.65, 0.92, 1)
+light_energy = 0.42
+shadow_enabled = true
+
+[node name="Street" type="CSGBox3D" parent="."]
+position = Vector3(0, -0.23, 1.5)
+size = Vector3(24, 0.44, 15)
+material = SubResource("asphalt")
+use_collision = true
+
+[node name="Sidewalk" type="CSGBox3D" parent="."]
+position = Vector3(0, -0.1, -4)
+size = Vector3(24, 0.2, 3.7)
+material = SubResource("concrete")
+use_collision = true
+
+[node name="Curb" type="CSGBox3D" parent="."]
+position = Vector3(0, -0.01, -2.14)
+size = Vector3(24, 0.045, 0.11)
+material = SubResource("trim")
+
+[node name="Facade" type="CSGBox3D" parent="."]
+position = Vector3(0, 1.78, -6.5)
+size = Vector3(24, 3.56, 1.45)
+material = SubResource("brick")
+use_collision = true
+
+[node name="Foundation" type="CSGBox3D" parent="."]
+position = Vector3(0, 0.32, -5.72)
+size = Vector3(23.9, 0.64, 0.15)
+material = SubResource("trim")
+
+[node name="Roofline" type="CSGBox3D" parent="."]
+position = Vector3(0, 3.64, -6.52)
+size = Vector3(24, 0.22, 1.62)
+material = SubResource("trim")
+
+[node name="Recess" type="CSGBox3D" parent="."]
+position = Vector3(1, 1.25, -5.67)
+size = Vector3(2.7, 2.5, 0.21)
+material = SubResource("trim")
+
+[node name="Door" type="CSGBox3D" parent="."]
+position = Vector3(1, 1.06, -5.53)
+size = Vector3(1.72, 2.12, 0.11)
+material = SubResource("carGlass")
+
+[node name="DoorGlass" type="CSGBox3D" parent="."]
+position = Vector3(1, 1.56, -5.46)
+size = Vector3(1.42, 0.75, 0.025)
+material = SubResource("glass")
+
+[node name="Handle" type="CSGBox3D" parent="."]
+position = Vector3(1.66, 0.83, -5.43)
+size = Vector3(0.05, 0.32, 0.035)
+material = SubResource("amber")
+
+[node name="SignBoard" type="CSGBox3D" parent="."]
+position = Vector3(1, 2.86, -5.57)
+size = Vector3(4, 0.67, 0.16)
+material = SubResource("trim")
+
+[node name="SignLight" type="CSGBox3D" parent="."]
+position = Vector3(1, 2.53, -5.47)
+size = Vector3(3.95, 0.039, 0.035)
+material = SubResource("cyan")
+
+[node name="Sign" type="Label3D" parent="."]
+position = Vector3(1, 2.87, -5.47)
+text = "旧城区酒吧"
+font_size = 72
+pixel_size = 0.009
+modulate = Color(0.89, 0.76, 0.48, 1)
+outline_size = 0
+
+[node name="WindowFrame0" type="CSGBox3D" parent="."]
+position = Vector3(-7.7, 1.53, -5.72)
+size = Vector3(2.55, 1.65, 0.17)
+material = SubResource("trim")
+
+[node name="Window0" type="CSGBox3D" parent="."]
+position = Vector3(-7.7, 1.53, -5.62)
+size = Vector3(2.32, 1.4, 0.055)
+material = SubResource("glass")
+
+[node name="Mullion0" type="CSGBox3D" parent="."]
+position = Vector3(-7.7, 1.53, -5.58)
+size = Vector3(0.065, 1.4, 0.055)
+material = SubResource("trim")
+
+[node name="WindowFrame1" type="CSGBox3D" parent="."]
+position = Vector3(-3.1, 1.53, -5.72)
+size = Vector3(2.55, 1.65, 0.17)
+material = SubResource("trim")
+
+[node name="Window1" type="CSGBox3D" parent="."]
+position = Vector3(-3.1, 1.53, -5.62)
+size = Vector3(2.32, 1.4, 0.055)
+material = SubResource("glass")
+
+[node name="Mullion1" type="CSGBox3D" parent="."]
+position = Vector3(-3.1, 1.53, -5.58)
+size = Vector3(0.065, 1.4, 0.055)
+material = SubResource("trim")
+
+[node name="WindowFrame2" type="CSGBox3D" parent="."]
+position = Vector3(5.3, 1.53, -5.72)
+size = Vector3(2.55, 1.65, 0.17)
+material = SubResource("trim")
+
+[node name="Window2" type="CSGBox3D" parent="."]
+position = Vector3(5.3, 1.53, -5.62)
+size = Vector3(2.32, 1.4, 0.055)
+material = SubResource("glass")
+
+[node name="Mullion2" type="CSGBox3D" parent="."]
+position = Vector3(5.3, 1.53, -5.58)
+size = Vector3(0.065, 1.4, 0.055)
+material = SubResource("trim")
+
+[node name="WindowFrame3" type="CSGBox3D" parent="."]
+position = Vector3(9, 1.53, -5.72)
+size = Vector3(2.55, 1.65, 0.17)
+material = SubResource("trim")
+
+[node name="Window3" type="CSGBox3D" parent="."]
+position = Vector3(9, 1.53, -5.62)
+size = Vector3(2.32, 1.4, 0.055)
+material = SubResource("glass")
+
+[node name="Mullion3" type="CSGBox3D" parent="."]
+position = Vector3(9, 1.53, -5.58)
+size = Vector3(0.065, 1.4, 0.055)
+material = SubResource("trim")
+
+[node name="Lane0" type="CSGBox3D" parent="."]
+position = Vector3(-9, 0.004, 4.45)
+size = Vector3(1.3, 0.015, 0.072)
+material = SubResource("stripe")
+
+[node name="Lane3" type="CSGBox3D" parent="."]
+position = Vector3(-6, 0.004, 4.45)
+size = Vector3(1.3, 0.015, 0.072)
+material = SubResource("stripe")
+
+[node name="Lane6" type="CSGBox3D" parent="."]
+position = Vector3(-3, 0.004, 4.45)
+size = Vector3(1.3, 0.015, 0.072)
+material = SubResource("stripe")
+
+[node name="Lane9" type="CSGBox3D" parent="."]
+position = Vector3(0, 0.004, 4.45)
+size = Vector3(1.3, 0.015, 0.072)
+material = SubResource("stripe")
+
+[node name="Lane12" type="CSGBox3D" parent="."]
+position = Vector3(3, 0.004, 4.45)
+size = Vector3(1.3, 0.015, 0.072)
+material = SubResource("stripe")
+
+[node name="Lane15" type="CSGBox3D" parent="."]
+position = Vector3(6, 0.004, 4.45)
+size = Vector3(1.3, 0.015, 0.072)
+material = SubResource("stripe")
+
+[node name="Lane18" type="CSGBox3D" parent="."]
+position = Vector3(9, 0.004, 4.45)
+size = Vector3(1.3, 0.015, 0.072)
+material = SubResource("stripe")
+
+[node name="BoundaryWest" type="CSGBox3D" parent="."]
+position = Vector3(-11.9, 0.43, 0.5)
+size = Vector3(0.24, 0.86, 15)
+material = SubResource("trim")
+use_collision = true
+
+[node name="BoundaryEast" type="CSGBox3D" parent="."]
+position = Vector3(11.9, 0.43, 0.5)
+size = Vector3(0.24, 0.86, 15)
+material = SubResource("trim")
+use_collision = true
+
+[node name="BoundarySouth" type="CSGBox3D" parent="."]
+position = Vector3(0, 0.43, 8.5)
+size = Vector3(24, 0.86, 0.25)
+material = SubResource("trim")
+use_collision = true
+
+[node name="LampPost0" type="CSGBox3D" parent="."]
+position = Vector3(-8.9, 1.5, -2.45)
+size = Vector3(0.12, 3, 0.12)
+material = SubResource("trim")
+use_collision = true
+
+[node name="Lamp0" type="CSGBox3D" parent="."]
+position = Vector3(-8.9, 3.05, -2.15)
+size = Vector3(0.38, 0.15, 0.76)
+material = SubResource("amber")
+
+[node name="StreetLight0" type="OmniLight3D" parent="."]
+position = Vector3(-8.9, 2.94, -2.12)
+light_color = Color(1, 0.68, 0.39, 1)
+light_energy = 2
+omni_range = 7.5
+
+[node name="LampPost1" type="CSGBox3D" parent="."]
+position = Vector3(6.9, 1.5, -2.45)
+size = Vector3(0.12, 3, 0.12)
+material = SubResource("trim")
+use_collision = true
+
+[node name="Lamp1" type="CSGBox3D" parent="."]
+position = Vector3(6.9, 3.05, -2.15)
+size = Vector3(0.38, 0.15, 0.76)
+material = SubResource("amber")
+
+[node name="StreetLight1" type="OmniLight3D" parent="."]
+position = Vector3(6.9, 2.94, -2.12)
+light_color = Color(1, 0.68, 0.39, 1)
+light_energy = 2
+omni_range = 7.5
+
+[node name="ServiceCrate" type="CSGBox3D" parent="."]
+position = Vector3(8, 0.45, -4.6)
+size = Vector3(1.6, 0.9, 0.96)
+material = SubResource("rust")
+use_collision = true
+
+[node name="ServiceCrateTop" type="CSGBox3D" parent="."]
+position = Vector3(8, 0.94, -4.6)
+size = Vector3(1.68, 0.1, 1.04)
+material = SubResource("trim")
+
+[node name="PowerCabinet" type="CSGBox3D" parent="."]
+position = Vector3(-9.9, 0.72, -4.9)
+size = Vector3(0.93, 1.44, 0.55)
+material = SubResource("trim")
+use_collision = true
+
+[node name="DoorLight" type="OmniLight3D" parent="."]
+position = Vector3(1, 2.45, -4.86)
+light_color = Color(1, 0.57, 0.28, 1)
+light_energy = 2.1
+omni_range = 5.6
+
+[node name="WindowSpill" type="OmniLight3D" parent="."]
+position = Vector3(5.5, 1.8, -5.18)
+light_color = Color(0.54, 0.73, 0.85, 1)
+light_energy = 0.76
+omni_range = 4.25
+
+[node name="Car" type="Node3D" parent="."]
+position = Vector3(-3.85, 0, -0.6)
+
+[node name="Chassis" type="CSGBox3D" parent="Car"]
+position = Vector3(0, 0.37, 0)
+size = Vector3(1.74, 0.58, 3.82)
+material = SubResource("car")
+use_collision = true
+
+[node name="Cabin" type="CSGBox3D" parent="Car"]
+position = Vector3(0, 0.78, 0.16)
+size = Vector3(1.59, 0.49, 1.92)
+material = SubResource("carGlass")
+
+[node name="Roof" type="CSGBox3D" parent="Car"]
+position = Vector3(0, 1.05, 0.17)
+size = Vector3(1.55, 0.11, 1.71)
+material = SubResource("car")
+
+[node name="FrontBumper" type="CSGBox3D" parent="Car"]
+position = Vector3(0, 0.23, -1.94)
+size = Vector3(1.76, 0.2, 0.16)
+material = SubResource("trim")
+
+[node name="RearBumper" type="CSGBox3D" parent="Car"]
+position = Vector3(0, 0.23, 1.94)
+size = Vector3(1.76, 0.2, 0.16)
+material = SubResource("trim")
+
+[node name="HeadLamp0" type="CSGBox3D" parent="Car"]
+position = Vector3(-0.66, 0.44, -1.93)
+size = Vector3(0.32, 0.17, 0.07)
+material = SubResource("amber")
+
+[node name="TailLamp0" type="CSGBox3D" parent="Car"]
+position = Vector3(-0.66, 0.43, 1.94)
+size = Vector3(0.29, 0.15, 0.065)
+material = SubResource("red")
+
+[node name="HeadLamp1" type="CSGBox3D" parent="Car"]
+position = Vector3(0.66, 0.44, -1.93)
+size = Vector3(0.32, 0.17, 0.07)
+material = SubResource("amber")
+
+[node name="TailLamp1" type="CSGBox3D" parent="Car"]
+position = Vector3(0.66, 0.43, 1.94)
+size = Vector3(0.29, 0.15, 0.065)
+material = SubResource("red")
+
+[node name="Tire0" type="CSGCylinder3D" parent="Car"]
+position = Vector3(-0.82, 0.28, -1.18)
+rotation_degrees = Vector3(0, 0, 90)
+radius = 0.29
+height = 0.24
+sides = 12
+material = SubResource("rubber")
+
+[node name="Tire1" type="CSGCylinder3D" parent="Car"]
+position = Vector3(0.82, 0.28, -1.18)
+rotation_degrees = Vector3(0, 0, 90)
+radius = 0.29
+height = 0.24
+sides = 12
+material = SubResource("rubber")
+
+[node name="Tire2" type="CSGCylinder3D" parent="Car"]
+position = Vector3(-0.82, 0.28, 1.23)
+rotation_degrees = Vector3(0, 0, 90)
+radius = 0.29
+height = 0.24
+sides = 12
+material = SubResource("rubber")
+
+[node name="Tire3" type="CSGCylinder3D" parent="Car"]
+position = Vector3(0.82, 0.28, 1.23)
+rotation_degrees = Vector3(0, 0, 90)
+radius = 0.29
+height = 0.24
+sides = 12
+material = SubResource("rubber")
+
+[node name="CarExit" type="Marker3D" parent="."]
+position = Vector3(-2.43, 0, -0.6)
+
+[node name="Entrance" type="Marker3D" parent="."]
+position = Vector3(1, 0, -4.98)
+
+[node name="Player" parent="." instance=ExtResource("player")]
+position = Vector3(-3.4, 0, -0.6)
+
+[node name="Camera3D" parent="." instance=ExtResource("camera")]
+rotation_degrees = Vector3(-53, 0, 0)
+
+[node name="PhantomCamera3D" parent="Camera3D" index="2"]
+rotation_degrees = Vector3(-53, 0, 0)
+follow_offset = Vector3(1.65, 8.0, 5.25)
+
+[node name="DialogueUI" parent="." instance=ExtResource("dialogue")]
+
+[node name="SceneDirector" parent="." instance=ExtResource("director")]
+auto_start_on_enter = false
+complete_when_all_waves_cleared = false
+result_view_path = NodePath("")
+
+[node name="Opening" type="Node" parent="."]
+script = ExtResource("opening")
+exterior = true
+
+[editable path="Camera3D"]

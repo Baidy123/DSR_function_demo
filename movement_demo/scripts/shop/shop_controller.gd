@@ -104,7 +104,7 @@ func _open_authorized(player: Node3D) -> bool:
 
 
 func purchase(item_id: StringName, slot: int) -> bool:
-	if not _open:
+	if not _open or _is_browse_only():
 		return false
 	var state := _resolve_state()
 	var player := _player()
@@ -170,6 +170,8 @@ func _view_rows(items: Array[ShopItemDefinition], state: Node, player: Node3D) -
 			"price": item.price,
 			"weapon": item.effect == ShopItemDefinition.Effect.WEAPON,
 		}
+		if _is_browse_only():
+			row["browse_only"] = true
 		if item.effect == ShopItemDefinition.Effect.WEAPON:
 			row["slots"] = [
 				{"slot": 0, "label": "覆盖主武器", "enabled": _can_purchase(item, 0, state, player)},
@@ -182,9 +184,13 @@ func _view_rows(items: Array[ShopItemDefinition], state: Node, player: Node3D) -
 
 
 func _can_purchase(item: ShopItemDefinition, slot: int, state: Node, player: Node3D) -> bool:
-	if item == null or item.price > int(state.money):
+	if _is_browse_only() or item == null or item.price > int(state.money):
 		return false
 	return _validate_effect(state, player, item, slot)
+
+
+func _is_browse_only() -> bool:
+	return _scene_request != null and _scene_request.parameters.get("browse_only", false)
 
 
 func _validate_effect(state: Node, player: Node3D, item: ShopItemDefinition, slot: int) -> bool:

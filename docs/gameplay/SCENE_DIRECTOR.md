@@ -4,7 +4,7 @@
 
 ## 新场景先这样接入
 
-酒馆和五关已经装配，无需重复添加。新场景按以下步骤配置：
+酒吧外、酒馆和五关已经装配，无需重复添加。新场景按以下步骤配置：
 
 1. 把 `scenes/world/scene_director.tscn` 拖到场景根下，保留一份入口。
 2. 在 **Health Path** 选择本场玩家的 Health；同级 Player 的路径是 `../Player/Health`。
@@ -19,6 +19,14 @@
 普通 NPC 沿用现有 `npc.tscn`，配置对话资源与起点，并让其既有 `../DialogueUI` 路径指向本场对话界面。调用 `npc.request_dialogue(player)` 即可；获准后才转身和限制玩家。交互物自己的对话仍用 **ShowDialogueEffect** 拖入资源，见[交互说明](INTERACTION.md)。
 
 商店沿用 RewardNPC、ShopController、ShopBoard：NPC 绑定本场控制器，控制器绑定面板和 ShopCatalog；商品添加方式见[商店配置](REWARDS.md)。`open_shop_for_player(player)`、`close_shop()` 会转交导演，购买仍用 `purchase(item_id, slot)`。有可见商品时暂停，空目录显示“暂无商品”且不暂停。
+
+## 开场接线
+
+`Opening` 节点负责阶段、交互范围与目标提示，文本由 `resources/dialogue/opening.dialogue` 提供。靠近目标或按 E 只提交前台 `script` 请求。导演受理后，脚本通过同一请求的子动作安排 `dialogue`、`presentation`、`shop` 和 `transition`，并通过导演持有玩家控制，直到该段结束。访客、伙计、过帘与下车的移动由演出脚本执行。普通顾客及门帘的感应动作使用后台 `script` 请求。
+
+`shop` 请求传入 `browse_only = true` 时，面板禁用购买按钮，`ShopController.purchase()` 同时拒绝交易。目录关闭后继续价格对话和交付。装备通过现有装备快照一次性发放，仓库门沿用 QuestPortal 以及导演的跨关装备搬运。大姐头和商人使用 NPC 的 `seat_path`、`seat_offset` 绑定家具，状态面板也使用绑定后的坐标。
+
+两场通过 GameState 的 `opening_active` / `opening_complete` 交接。直接 F6 运行酒馆或完成开场后返程，使用酒馆的常规任务和商店入口。首次流程的付款、人物原则、接入制度和供应信息旗标由对应选项设置，活跃于本次运行。
 
 默认先结束当前对话／商店，再播放事件镜头；忙碌时再次按 E 不会排队弹出另一个窗口。死亡立即取消当前演出与界面。关闭按钮、来源离场和场景卸载只释放本次控制，不解除其他拥有者的暂停。
 

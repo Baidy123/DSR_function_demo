@@ -1,5 +1,7 @@
 [gd_scene format=3 uid="uid://dmglkk0768iby"]
 [ext_resource type="PackedScene" path="res://scenes/world/scene_director.tscn" id="director_authority"]
+[ext_resource type="PackedScene" path="res://scenes/access_denied/hub/tavern_cast.tscn" id="tavern_cast"]
+[ext_resource type="Script" path="res://scripts/world/opening_sequence.gd" id="opening"]
 
 [ext_resource type="PackedScene" path="res://scenes/player/player.tscn" id="player_prefab"]
 
@@ -106,6 +108,8 @@ max_health = 100.0
 position = Vector3(0.8820, 0.0000, -7.6500)
 script = ExtResource("2")
 npc_id = &"npc_a"
+seat_path = NodePath("../BarEnvironment/Booths/Booth4")
+seat_offset = Vector3(1.78, 0.1, -0.78)
 dialogue_resource = ExtResource("4_5vw27")
 
 [node name="Body" type="MeshInstance3D" parent="NPC" unique_id=973626900]
@@ -177,6 +181,8 @@ script = ExtResource("impact_receiver")
 position = Vector3(-0.4500, 0.0000, -5.8940)
 script = ExtResource("5_reward_npc")
 npc_id = &"reward_npc"
+seat_path = NodePath("../BarEnvironment/SouthLounge/Tables/Setting1/NorthSofa")
+seat_offset = Vector3(0, 0.12, 0.15)
 dialogue_resource = ExtResource("6_reward_dialogue")
 shop_controller_path = NodePath("../ShopController")
 
@@ -274,3 +280,8 @@ auto_start_on_enter = false
 complete_when_all_waves_cleared = false
 result_view_path = NodePath("")
 guide_path = NodePath("")
+
+[node name="TavernCast" parent="." instance=ExtResource("tavern_cast")]
+
+[node name="Opening" type="Node" parent="."]
+script = ExtResource("opening")

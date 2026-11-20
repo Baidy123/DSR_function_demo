@@ -1,5 +1,6 @@
 # Demo 当前进度与待办
 
+- [x] 2026-11-20 F5 开场接入旧城区酒吧外景、酒馆委托、只读商店和初始装备，正门进入铁港仓库（第1关）。见[开场路线](gameplay/PLAY_GUIDE.md#开场路线)。
 - [x] 2026-11-14 Esc 暂停菜单：继续游戏、设置内手动操作说明、退出确认；酒馆与五关共用，入场和死亡重开不自动弹说明，保留死亡／切场及其他界面的暂停所有权。见[游玩说明](gameplay/PLAY_GUIDE.md#暂停与设置)。
 - [ ] 后续设置：按键映射、画面／分辨率、难度、鼠标辅助。当前仅确定预留方向，具体选项、难度影响范围和设置保存方式尚未设计。
 
@@ -265,6 +266,6 @@
 
 ## 入口
 
-默认 F5 入口为 `scenes/main.tscn` 酒馆；接取 A 任务后经门口传送门进入 `scenes/world/levels/lvl_1.tscn` 并继续五关流程。运行脚本按职责收在 `scripts/`，敌人测试及辅助代码在 `tests/enemy/`；玩家、武器和通用测试在 `tests/`。说明见 [目录结构](project-layout.md) 和 [敌人测试](enemy-tests.md)。
+默认 F5 从 `scenes/access_denied/hub/tavern_exterior.tscn` 开始。完成酒馆开场后进入 `scenes/world/levels/lvl_1.tscn` 并继续五关流程。运行脚本按职责收在 `scripts/`，敌人测试及辅助代码在 `tests/enemy/`；玩家、武器和通用测试在 `tests/`。说明见 [目录结构](project-layout.md) 和 [敌人测试](enemy-tests.md)。
 
 工作区已有的地图、武器和插件修改应继续保留。

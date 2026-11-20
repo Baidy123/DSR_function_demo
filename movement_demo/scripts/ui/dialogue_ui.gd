@@ -16,17 +16,40 @@ var is_loading: bool = false
 var dialogue_source: Node
 var _session: int = 0
 var _announced: bool = false
+var _pages: PackedStringArray
+var _page := 0
+
+const PORTRAIT_COLORS := {
+	"主角": Color("#657d83"),
+	"酒保": Color("#aa7954"),
+	"大姐头": Color("#9b605b"),
+	"委托人": Color("#987e59"),
+	"商人": Color("#577c99"),
+	"A": Color("#9b605b"),
+	"B": Color("#747686"),
+}
+const PAGE_LENGTH := 52
 
 @onready var dialogue_panel: PanelContainer = $DialoguePanel
 @onready var dialogue_text: Label = $DialoguePanel/MarginContainer/Content/DialogueText
 @onready var choices: VBoxContainer = $DialoguePanel/MarginContainer/Content/Choices
+@onready var speaker: Label = $DialoguePanel/MarginContainer/Content/Speaker/Name
+@onready var portrait: SubViewportContainer = $DialoguePanel/MarginContainer/Content/Speaker/Portrait
+@onready var page_hint: Label = $DialoguePanel/MarginContainer/Content/PageHint
 
 
 func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
 	# 交互物通过这个组打开对话，不需要知道界面在场景里的位置。
 	add_to_group(&"dialogue_ui")
+	get_viewport().size_changed.connect(_fit_panel)
+	_fit_panel()
 	dialogue_panel.hide()
+
+
+func _fit_panel() -> void:
+	var width := get_viewport().get_visible_rect().size.x
+	dialogue_panel.offset_left = -minf(width - 28.0, clampf(width * 0.38, 310.0, 530.0)) - 14.0
 
 
 func open_dialogue(player, resource: DialogueResource, start: String, source: Node = null) -> void:
@@ -61,7 +84,7 @@ func cancel_scene_action(request: Request, _reason: StringName) -> void:
 func _input(event: InputEvent) -> void:
 	if dialogue_player == null:
 		return
-	var interact_pressed: bool = event.is_action_pressed("interact")
+	var interact_pressed: bool = event.is_action_pressed("interact") and not event.is_echo()
 	var left_click: bool = (
 		event is InputEventMouseButton
 		and event.button_index == MOUSE_BUTTON_LEFT
@@ -76,7 +99,7 @@ func _input(event: InputEvent) -> void:
 		return
 
 	# 出现选项后，把鼠标事件留给按钮；E 仍不能跳过分支。
-	if not is_loading and dialogue_line != null and not dialogue_line.responses.is_empty():
+	if not is_loading and dialogue_line != null and _page == _pages.size() - 1 and not dialogue_line.responses.is_empty():
 		if interact_pressed:
 			get_viewport().set_input_as_handled()
 		return
@@ -84,6 +107,10 @@ func _input(event: InputEvent) -> void:
 	# 消费推进事件，避免同一次点击落到新出现的选项按钮上。
 	get_viewport().set_input_as_handled()
 	if is_loading or dialogue_line == null:
+		return
+	if _page < _pages.size() - 1:
+		_page += 1
+		_show_page()
 		return
 	_show_line(dialogue_line.next_id)
 
@@ -110,28 +137,60 @@ func _show_line(next_id: String) -> void:
 		_close_dialogue()
 		return
 
-	dialogue_text.text = dialogue_line.text
-	if not dialogue_line.character.is_empty():
-		dialogue_text.text = dialogue_line.character + ": " + dialogue_line.text
+	var character := dialogue_line.character
+	speaker.text = character if not character.is_empty() else "主角"
+	portrait.visible = character != "旁白"
+	var figure := portrait.get_node("Viewport/Capsule") as MeshInstance3D
+	var material := figure.material_override as StandardMaterial3D
+	material.albedo_color = PORTRAIT_COLORS.get(character, Color("#657d83"))
+	_pages = _paginate(dialogue_line.text)
+	_page = 0
 
 	for response in dialogue_line.responses:
 		var button := Button.new()
 		button.text = response.text
 		button.disabled = not response.is_allowed
-		button.add_theme_font_size_override("font_size", 24)
+		button.add_theme_font_size_override("font_size", 17)
+		button.alignment = HORIZONTAL_ALIGNMENT_LEFT
+		button.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		button.pressed.connect(_show_line.bind(response.next_id))
 		choices.add_child(button)
 
-	choices.visible = not dialogue_line.responses.is_empty()
 	dialogue_panel.show()
 	is_loading = false
+	_show_page()
 	if not _announced:
 		_announced = true
 		dialogue_started.emit(dialogue_source)
+func _show_page() -> void:
+	dialogue_text.text = _pages[_page]
+	dialogue_text.visible = not dialogue_text.text.is_empty()
+	choices.visible = _page == _pages.size() - 1 and not dialogue_line.responses.is_empty()
+	page_hint.visible = not choices.visible
+	page_hint.text = "左键 / E  继续"
+	if _pages.size() > 1:
+		page_hint.text += "    %d / %d" % [_page + 1, _pages.size()]
+	if not choices.visible:
+		return
 	for button in choices.get_children():
 		if not button.disabled:
 			button.grab_focus()
 			break
+
+
+func _paginate(text: String) -> PackedStringArray:
+	var pages := PackedStringArray()
+	var remaining := text.strip_edges()
+	while remaining.length() > PAGE_LENGTH:
+		var cut := PAGE_LENGTH
+		for index in range(PAGE_LENGTH - 1, 27, -1):
+			if remaining[index] in ["。", "！", "？", "；", "，", ".", "!", "?", " "]:
+				cut = index + 1
+				break
+		pages.append(remaining.left(cut))
+		remaining = remaining.substr(cut).strip_edges()
+	pages.append(remaining)
+	return pages
 
 
 func _close_dialogue() -> void:
