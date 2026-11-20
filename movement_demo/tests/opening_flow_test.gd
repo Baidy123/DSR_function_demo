@@ -68,6 +68,7 @@ func _run() -> void:
 	var commissioner := current_scene.get_node("NPC") as Node3D
 	var merchant := current_scene.get_node("RewardNPC") as Node3D
 	var merchant_seat := current_scene.get_node("BarEnvironment/SouthLounge/Tables/Setting1/NorthSofa/Seats/Center") as TavernSeat
+	var across_merchant := current_scene.get_node("BarEnvironment/SouthLounge/Tables/Setting1/SouthSofa/Seats/Center") as TavernSeat
 	var seated_cues: Array[String] = []
 	var presentation := player.get_node("PlayerPresentation")
 	var seat_motion := {
@@ -103,6 +104,11 @@ func _run() -> void:
 		check(seat.occupant() == player and player.is_crouching()
 			and Vector2(actor_facing.x, actor_facing.z).normalized().dot(Vector2(seat_facing.x, seat_facing.z).normalized()) > 0.999,
 			"dialogue script seats the player at the fixed heading for " + cue)
+		if cue == "merchant":
+			var to_merchant: Vector3 = merchant.global_position - player.global_position
+			check(seat == across_merchant and actor_facing.slide(Vector3.UP).normalized()
+				.dot(to_merchant.slide(Vector3.UP).normalized()) > 0.98,
+				"merchant dialogue seats the player directly across from the merchant")
 		seated_cues.append(cue))
 	check(Director.for_node(player) != null, "tavern has its own director")
 	check(current_scene.get_node("BarEnvironment").scene_file_path.is_empty(),

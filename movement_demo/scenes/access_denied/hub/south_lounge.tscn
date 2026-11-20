@@ -324,7 +324,7 @@ position = Vector3(0.0000, 0.0000, 1.4500)
 rotation_degrees = Vector3(0.0000, 180.0000, 0.0000)
 
 [node name="Table" type="StaticBody3D" parent="Tables/Setting1"]
-position = Vector3(0, 0.71, 0)
+position = Vector3(0, 0.71, -0.24)
 
 [node name="Mesh" type="MeshInstance3D" parent="Tables/Setting1/Table"]
 mesh = SubResource("Box18")

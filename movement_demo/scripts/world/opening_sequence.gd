@@ -12,12 +12,10 @@ const CAMERA_CUES := {
 	"booth": ^"../BarEnvironment/Booths/Booth4/Curtain",
 	"merchant": ^"../RewardNPC",
 }
+const MERCHANT_PLAYER_SEAT := ^"../BarEnvironment/SouthLounge/Tables/Setting1/SouthSofa/Seats/Center"
 const SEAT_CUES := {
 	"commissioner": [^"../BarEnvironment/Booths/Booth4/Seating/Seats/LeftRear"],
-	"merchant": [
-		^"../BarEnvironment/SouthLounge/Tables/Setting1/SouthSofa/Seats/Center",
-		^"../BarEnvironment/SouthLounge/Tables/Setting1/NorthSofa/Seats/Right",
-	],
+	"merchant": [MERCHANT_PLAYER_SEAT],
 }
 
 enum Phase { ARRIVAL, ENTER, BARTENDER, VISITOR, CURTAIN, COMMISSIONER, MERCHANT, CATALOG, DELIVERY, DEPART }
@@ -113,7 +111,7 @@ func _near_target() -> bool:
 		if phase == Phase.COMMISSIONER:
 			return _curtain.get_parent().is_ancestor_of(seat)
 		if phase in [Phase.MERCHANT, Phase.CATALOG, Phase.DELIVERY]:
-			return scene.get_node("BarEnvironment/SouthLounge/Tables/Setting1").is_ancestor_of(seat)
+			return seat == get_node_or_null(MERCHANT_PLAYER_SEAT)
 		if phase != Phase.BARTENDER:
 			return false
 	if phase == Phase.COMMISSIONER and _curtain.to_local(player.global_position).z > -0.35:
