@@ -1,5 +1,7 @@
 # 货币商店与任务奖励
 
+余额保存在自动加载的 `GameState.money`。购买和任务均使用该账户，`add_money(amount)`、`spend_money(amount)` 和 `money_changed` 是现有接入点。敌人死亡货币掉落的扩展接线及重试策略见[酒馆编辑与调试](TAVERN_AUTHORING.md#货币和以后新增掉落)。
+
 酒馆东侧房间的蓝色 NPC 标签为“商店”，交互时打开货币商店。商品由 `resources/shop/shop_catalog.tres`
 配置，任务金额由 `resources/stages/stage_table_template.tres` 里的 `money_reward` 配置。旧的三选一奖励
 组件保留为兼容代码，不再接入主流程。

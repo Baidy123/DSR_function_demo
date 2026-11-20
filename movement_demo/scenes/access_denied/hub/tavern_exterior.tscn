@@ -421,6 +421,9 @@ position = Vector3(1, 0, -4.98)
 [node name="Player" parent="." instance=ExtResource("player")]
 position = Vector3(-3.4, 0, -0.6)
 
+[node name="Health" parent="Player" index="4"]
+max_health = 100.0
+
 [node name="Camera3D" parent="." instance=ExtResource("camera")]
 rotation_degrees = Vector3(-53, 0, 0)
 
@@ -440,3 +443,4 @@ script = ExtResource("opening")
 exterior = true
 
 [editable path="Camera3D"]
+[editable path="Player"]

@@ -64,6 +64,7 @@ alignment = 0
 text = "继续"
 
 [node name="Portrait" type="TextureRect" parent="."]
+texture_filter = 1
 visible = false
 anchor_left = 1.0
 anchor_right = 1.0

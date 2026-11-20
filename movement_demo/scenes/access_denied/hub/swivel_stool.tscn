@@ -81,4 +81,3 @@ position = Vector3(0, 0.65, 0)
 rotation_degrees = Vector3(0, 0, 0)
 script = ExtResource("seat_point")
 furniture_collision = NodePath("..")
-swivel = true

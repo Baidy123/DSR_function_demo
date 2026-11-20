@@ -39,6 +39,7 @@
 | [相机](gameplay/CAMERA.md) | 玩家绑定、武器视野与遮挡透明 |
 | [模型、动画与特效](gameplay/PRESENTATION.md) | 表现资源契约及接入流程 |
 | [交互物](gameplay/INTERACTION.md) | 条件、效果与可复用对象 |
+| [酒馆编辑与调试](gameplay/TAVERN_AUTHORING.md) | Main 布景、固定坐席、拖动路线点、开场血量和货币接入 |
 | [阶段与任务](gameplay/STAGE_STATE.md) | 配置表、任务条件及 NPC 状态 |
 | [项目结构](project-layout.md) | 模块职责、目录与维护约束 |
 | [测试入口](testing.md) | 查询清单、选择专项及结果判断 |

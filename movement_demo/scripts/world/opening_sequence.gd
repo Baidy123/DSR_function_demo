@@ -12,6 +12,13 @@ const CAMERA_CUES := {
 	"booth": ^"../BarEnvironment/Booths/Booth4/Curtain",
 	"merchant": ^"../RewardNPC",
 }
+const SEAT_CUES := {
+	"commissioner": [^"../BarEnvironment/Booths/Booth4/Seating/Seats/LeftRear"],
+	"merchant": [
+		^"../BarEnvironment/SouthLounge/Tables/Setting1/SouthSofa/Seats/Center",
+		^"../BarEnvironment/SouthLounge/Tables/Setting1/NorthSofa/Seats/Right",
+	],
+}
 
 enum Phase { ARRIVAL, ENTER, BARTENDER, VISITOR, CURTAIN, COMMISSIONER, MERCHANT, CATALOG, DELIVERY, DEPART }
 
@@ -40,6 +47,7 @@ var _objective: Label
 var _marker: Label3D
 var _target: Vector3
 var _range := 1.6
+var _scripted_seat: TavernSeat
 
 
 func _ready() -> void:
@@ -61,6 +69,7 @@ func _ready() -> void:
 		_curtain.story_managed = true
 		_visitor = scene.get_node("Visitor")
 		_runner = scene.get_node("Runner")
+		ui.scripted_seat_assigned.connect(_on_scripted_seat_assigned)
 		_visitor_start = _visitor.global_position
 		_runner_start = _runner.global_position
 		_portal = scene.get_node("Interactables/LevelPortal")
@@ -170,6 +179,9 @@ func begin_scene_action(request: SceneRequest) -> void:
 		Phase.COMMISSIONER:
 			completed = await _say(request, _commissioner, "commissioner")
 			if completed and request.is_current():
+				await _release_scripted_seat(request)
+				if not request.is_current():
+					return
 				state.help_choice = "accepted"
 				state.available_level = 1
 				state.talked_to_a = true
@@ -200,6 +212,9 @@ func cancel_scene_action(_request_to_cancel: SceneRequest, _reason: StringName) 
 		_motion.kill()
 		_motion = null
 	if not exterior and is_instance_valid(_curtain):
+		if is_instance_valid(_scripted_seat) and is_instance_valid(player) and not player.is_dead():
+			_scripted_seat.try_leave(player)
+		_scripted_seat = null
 		_curtain.set_open(false)
 		if phase == Phase.VISITOR:
 			_visitor.global_position = _visitor_start
@@ -244,7 +259,6 @@ func _visitor_sequence(request: SceneRequest) -> bool:
 	_curtain.set_open(false)
 	director.request_action(&"script", {
 		"source": self, "target": _visitor, "dedupe_key": &"visitor_departure",
-		"parameters": {"vanish_at_end": true},
 	})
 	return true
 
@@ -268,10 +282,12 @@ func _deliver(request: SceneRequest) -> bool:
 		return false
 	if not await _say(request, _merchant, "delivery"):
 		return false
+	await _release_scripted_seat(request)
+	if not request.is_current():
+		return false
 	_runner.drop_crate()
 	Director.for_node(self).request_action(&"script", {
 		"source": self, "target": _runner, "dedupe_key": &"runner_departure",
-		"parameters": {"vanish_at_end": true},
 	})
 	var equipment := player.get_node("Equipment")
 	equipment.apply_campaign_snapshot({
@@ -295,10 +311,27 @@ func _say(request: SceneRequest, source: Node, cue: String) -> bool:
 	var action: SceneRequest = director.request_child(request, &"dialogue", {
 		"source": source, "target": ui, "player": player,
 		"parameters": {"resource": Dialogue, "start": cue, "face_source": cue != "arrival",
-			"camera_cues": CAMERA_CUES},
+			"camera_cues": CAMERA_CUES, "seat_cues": SEAT_CUES},
 	})
 	var result := await action.wait_result()
 	return request.is_current() and result.status == &"completed"
+
+
+func _on_scripted_seat_assigned(_cue: String) -> void:
+	_scripted_seat = player.current_seat()
+
+
+func _release_scripted_seat(request: SceneRequest) -> void:
+	if not is_instance_valid(_scripted_seat) or player.current_seat() != _scripted_seat:
+		return
+	var director = Director.for_node(self)
+	var action: SceneRequest = director.request_child(request, &"script", {
+		"source": self, "target": _scripted_seat, "player": player,
+		"parameters": {"scripted": true, "leave": true},
+	})
+	var result := await action.wait_result()
+	if result.status == &"completed":
+		_scripted_seat = null
 
 
 func _show_focus(request: SceneRequest, subject: Node3D, size: float, hold: float) -> void:

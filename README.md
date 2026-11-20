@@ -13,6 +13,8 @@
 
 完整流程与死亡重生规则见[游玩说明](docs/gameplay/PLAY_GUIDE.md)，商品、任务金额与恢复点规则见[商店说明](docs/gameplay/REWARDS.md)。
 
+编辑酒馆家具、绑定初始坐席、拖动 NPC 路线以及配置开场生命值，见[酒馆编辑与调试](docs/gameplay/TAVERN_AUTHORING.md)。
+
 Dialogue Manager、Phantom Camera 和 Godot AI 插件源码及许可证随工程保存；Godot 可执行程序、导入缓存和临时文件不纳入仓库。
 
 ## 已实现的功能

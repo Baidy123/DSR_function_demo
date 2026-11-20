@@ -9,6 +9,7 @@ var _scene_request: Request
 signal dialogue_started(source: Node)
 signal dialogue_ended(source: Node)
 signal camera_cue_started(cue: String)
+signal scripted_seat_assigned(cue: String)
 
 var dialogue_player = null
 var dialogue_resource: DialogueResource
@@ -177,6 +178,9 @@ func _show_line(next_id: String) -> void:
 	if not _announced:
 		_announced = true
 		dialogue_started.emit(dialogue_source)
+	await _assign_scripted_seat(dialogue_line.get_tag_value("sit"))
+	if session != _session:
+		return
 	await _present_dialogue_cue(cue)
 	if session == _session:
 		_presenting_camera = false
@@ -274,6 +278,30 @@ func _present_dialogue_cue(cue: String) -> void:
 	if camera.has_started():
 		camera_cue_started.emit(cue)
 	await camera.wait_result()
+
+
+func _assign_scripted_seat(cue: String) -> void:
+	if cue.is_empty() or _scene_request == null:
+		return
+	var dialogue_request := _scene_request
+	var seats: Dictionary = dialogue_request.parameters.get("seat_cues", {})
+	var director = Director.for_node(self)
+	if director == null:
+		return
+	for path: NodePath in seats.get(cue, []):
+		var seat := get_node_or_null(path) as TavernSeat
+		if seat == null:
+			continue
+		var action: Request = director.request_child(dialogue_request, &"script", {
+			"source": self, "target": seat, "player": dialogue_player,
+			"parameters": {"scripted": true},
+		})
+		var result := await action.wait_result()
+		if not dialogue_request.is_current():
+			return
+		if result.status == &"completed":
+			scripted_seat_assigned.emit(cue)
+			return
 
 
 func _paginate(text: String) -> PackedStringArray:

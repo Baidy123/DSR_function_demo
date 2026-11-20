@@ -4,7 +4,7 @@ extends Marker3D
 const Geometry = preload("res://scripts/systems/character_geometry.gd")
 
 @export_node_path("PhysicsBody3D") var furniture_collision: NodePath
-@export var swivel := false
+@export_node_path("CharacterBody3D") var initial_occupant_path: NodePath
 @export var share_table_with_opposite_sofa := false
 @export_range(0.4, 3.0, 0.05) var reach := 1.55
 @export_range(0.4, 2.5, 0.01) var npc_exit_distance := 0.9
@@ -16,15 +16,33 @@ var _return_position: Vector3
 
 func _ready() -> void:
 	add_to_group(&"tavern_seat")
+	if not initial_occupant_path.is_empty():
+		_bind_initial_occupant.call_deferred()
+
+
+func _bind_initial_occupant() -> void:
+	var actor := get_node_or_null(initial_occupant_path) as TavernNPC
+	if actor != null and actor.visible and not claim(actor, exit_position_for(actor)):
+		push_warning("初始角色无法坐入 %s" % get_path())
+
+
+func exit_position_for(actor: TavernNPC) -> Vector3:
+	return actor.floor_position(global_position - global_basis.z.normalized() * npc_exit_distance)
 
 
 func begin_scene_action(request: SceneRequest) -> void:
 	var actor := request.node(&"player") as CharacterBody3D
-	if not request.is_current() or actor == null or actor.is_in_dialogue or actor.is_dead() or actor.is_vaulting():
+	var scripted: bool = request.parent_id != 0 and request.parameters.get("scripted", false)
+	if not request.is_current() or actor == null or (actor.is_in_dialogue and not scripted) or actor.is_dead() or actor.is_vaulting():
 		request.fail("seat_unavailable")
 		return
-	var success := try_leave(actor) if request.parameters.get("leave", false) else (
-		offer_score(actor) < INF and claim(actor, actor.global_position))
+	var success: bool
+	if request.parameters.get("leave", false):
+		success = try_leave(actor)
+	elif scripted:
+		success = _assign_scripted(actor)
+	else:
+		success = offer_score(actor) < INF and claim(actor, actor.global_position)
 	if success:
 		request.complete()
 	else:
@@ -35,6 +53,15 @@ func cancel_scene_action(_request: SceneRequest, _reason: StringName) -> void:
 	pass
 
 
+func _assign_scripted(actor: CharacterBody3D) -> bool:
+	if occupant() == actor:
+		return true
+	var previous := actor.current_seat() as TavernSeat
+	if previous != null and (occupant() != null or not _has_room(actor) or not previous.try_leave(actor)):
+		return false
+	return claim(actor, actor.global_position)
+
+
 func occupant() -> CharacterBody3D:
 	return _occupant.get_ref() as CharacterBody3D if _occupant != null else null
 
@@ -43,7 +70,7 @@ func shares_table_with(other: TavernSeat) -> bool:
 	if other == null:
 		return false
 	if get_parent() == other.get_parent():
-		return not swivel
+		return true
 	if not share_table_with_opposite_sofa or not other.share_table_with_opposite_sofa:
 		return false
 	var table_group := get_parent().get_parent().get_parent()
@@ -75,11 +102,8 @@ func claim(actor: CharacterBody3D, exit_position: Vector3) -> bool:
 	actor.tree_exiting.connect(_on_actor_exiting, CONNECT_ONE_SHOT)
 	if is_instance_valid(_furniture):
 		actor.add_collision_exception_with(_furniture)
-	var yaw := global_rotation.y
-	if swivel:
-		var towards := actor.global_position - global_position
-		yaw = atan2(-towards.x, -towards.z) if Vector2(towards.x, towards.z).length() > 0.05 else actor.global_rotation.y
-	actor.sit_at_seat(self, global_position, yaw)
+	var facing := -global_basis.z
+	actor.sit_at_seat(self, global_position, atan2(-facing.x, -facing.z))
 	return true
 
 

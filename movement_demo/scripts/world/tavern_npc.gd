@@ -16,7 +16,7 @@ signal interaction_requested(player: Node3D)
 @export var carry_crate := false
 @export var starts_hidden := false
 @export var patrol_on_ready := false
-@export_node_path("Marker3D") var seat_path: NodePath
+@export_node_path("Node3D") var route_path: NodePath
 @export_node_path("CollisionShape3D") var floor_path: NodePath = ^"../BarEnvironment/Architecture/Floor/Collision"
 ## World positions arranged in visiting order. A vacant route keeps this actor at its authored spot.
 @export var route: Array[Vector3] = []
@@ -43,6 +43,8 @@ var _index := 0
 var _delay := 0.0
 var _patrolling := false
 var _vanish_at_end := false
+var _loop_wait := 0.0
+var _route_gate: TavernStaffDoor
 var _floor_plane := Plane(Vector3.UP, 0.0)
 var _detour_blocked_time := 0.0
 
@@ -73,11 +75,8 @@ func _ready() -> void:
 		add_to_group(&"npc")
 	if _interaction_area != null:
 		_interaction_area.monitoring = special_npc
-	var seat := get_node_or_null(seat_path) as TavernSeat
-	if seat != null and not starts_hidden:
-		seat.claim(self, _seat_exit(seat))
 	set_physics_process(false)
-	if patrol_on_ready and not starts_hidden and not route.is_empty():
+	if patrol_on_ready and not starts_hidden and (_authored_route() != null or not route.is_empty()):
 		_start_patrol.call_deferred()
 
 
@@ -182,15 +181,11 @@ func _apply_pose(crouched: bool) -> void:
 		presentation.set_seated_pose(crouched)
 
 
-func _seat_exit(seat: TavernSeat) -> Vector3:
-	return floor_position(seat.global_position - seat.global_basis.z.normalized() * seat.npc_exit_distance)
-
-
 func set_physical_presence(present: bool) -> void:
 	visible = present
 	collision_layer = 1 if present else 0
 	if not present and current_seat() != null:
-		var exit := _seat_exit(_seat)
+		var exit := _seat.exit_position_for(self)
 		_seat.release(self)
 		stand_from_seat(exit)
 
@@ -199,7 +194,17 @@ func _start_patrol() -> void:
 	var director = Director.for_node(self)
 	if director != null:
 		director.request_action(&"script", {"source": self, "target": self,
-			"parameters": {"patrol": true}, "dedupe_key": &"patrol"})
+			"parameters": {"patrol": true} if _authored_route() == null else {},
+			"dedupe_key": &"patrol"})
+
+
+func _authored_route() -> TavernRoute:
+	return get_node_or_null(route_path) as TavernRoute if not route_path.is_empty() else null
+
+
+func route_points() -> Array[Vector3]:
+	var authored := _authored_route()
+	return authored.world_points() if authored != null else route.duplicate()
 
 
 func scene_action_is_background() -> bool:
@@ -212,21 +217,28 @@ func begin_scene_action(request: SceneRequest) -> void:
 	if _request != null and _request.is_current():
 		request.fail("actor_is_moving")
 		return
+	var points: Array[Vector3] = []
+	points.assign(request.parameters.get("points", route_points()))
+	if points.is_empty():
+		request.fail("route_empty")
+		return
 	if current_seat() != null and not _seat.try_leave(self):
 		request.fail("actor_seat_exit_blocked")
 		return
 	_request = request
-	_patrolling = request.parameters.get("patrol", false)
-	_vanish_at_end = request.parameters.get("vanish_at_end", false)
-	_points.assign(request.parameters.get("points", route))
+	var authored: TavernRoute = null if request.parameters.has("points") else _authored_route()
+	var mode := authored.finish_mode if authored != null else TavernRoute.Finish.STAY
+	_patrolling = request.parameters.get("patrol", mode == TavernRoute.Finish.LOOP)
+	_loop_wait = authored.loop_interval if authored != null else waypoint_pause
+	_vanish_at_end = not _patrolling and request.parameters.get("vanish_at_end", mode == TavernRoute.Finish.DESPAWN)
+	_points = points
+	_route_gate = authored.exit_gate() if authored != null and _vanish_at_end else null
 	_detour.clear()
 	_index = 0
 	_delay = 0
 	_detour_blocked_time = 0
-	if _points.is_empty():
-		_finish()
-	else:
-		set_physics_process(true)
+	_open_gate_on_last_leg()
+	set_physics_process(true)
 
 
 func cancel_scene_action(request: SceneRequest, _reason: StringName) -> void:
@@ -300,8 +312,16 @@ func _next_waypoint() -> void:
 			_finish()
 			return
 		_index = 0
+		_delay = _loop_wait
+		return
+	_open_gate_on_last_leg()
 	if _patrolling:
 		_delay = waypoint_pause
+
+
+func _open_gate_on_last_leg() -> void:
+	if is_instance_valid(_route_gate) and _index == _points.size() - 1:
+		_route_gate.open_for(self)
 
 
 func _finish() -> void:
@@ -313,6 +333,9 @@ func _finish() -> void:
 
 
 func _stop() -> void:
+	if is_instance_valid(_route_gate):
+		_route_gate.close_for(self)
+	_route_gate = null
 	set_physics_process(false)
 	_request = null
 	_detour.clear()

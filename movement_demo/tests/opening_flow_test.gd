@@ -38,9 +38,13 @@ func _run() -> void:
 		"the scrollable transcript and the external portrait are separate nodes")
 	check(Director.for_node(player) != null and player.is_in_dialogue
 		and player.get_node("Equipment").active_slot == -1, "outdoor director locks the unarmed player")
+	check(player.get_node("Health").max_health == 100.0 and player.get_node("Health").health == 100.0,
+		"F5 exterior starts with 100 health")
 	await _capture("arrival")
 	check(await _dialogue(ui), "arrival dialogue finishes by clicking")
-	check(ui.history.get_child_count() == 3, "transcript displays only the three scripted inner monologue lines")
+	check(ui.history.get_child_count() > 3 and ui.history.get_child(0).get_child_count() == 1
+		and ui.history.get_child(0).get_child(0).text.begins_with("主角坐在"),
+		"stage directions are present, while the scene-description paragraph is omitted")
 	check(await _wait_for(func(): return opening.phase == Opening.Phase.ENTER), "car exit and entrance camera finish")
 	check(not player.is_in_dialogue and player.get_node("Visual").visible, "arrival restores movement")
 	await _capture("exterior")
@@ -64,9 +68,23 @@ func _run() -> void:
 	var commissioner := current_scene.get_node("NPC") as Node3D
 	var merchant := current_scene.get_node("RewardNPC") as Node3D
 	var merchant_seat := current_scene.get_node("BarEnvironment/SouthLounge/Tables/Setting1/NorthSofa/Seats/Center") as TavernSeat
+	var seated_cues: Array[String] = []
+	ui.scripted_seat_assigned.connect(func(cue: String) -> void:
+		var seat: TavernSeat = player.current_seat()
+		var actor_facing: Vector3 = -player.global_basis.z
+		var seat_facing: Vector3 = -seat.global_basis.z
+		check(seat.occupant() == player and player.is_crouching()
+			and Vector2(actor_facing.x, actor_facing.z).normalized().dot(Vector2(seat_facing.x, seat_facing.z).normalized()) > 0.999,
+			"dialogue script seats the player at the fixed heading for " + cue)
+		seated_cues.append(cue))
 	check(Director.for_node(player) != null, "tavern has its own director")
+	check(current_scene.get_node("BarEnvironment").scene_file_path.is_empty(),
+		"the tavern environment is authored inline in Main")
 	check(curtain.to_local(commissioner.global_position).z < -1.0, "commissioner sits behind the northeast curtain")
 	check(merchant_seat.occupant() == merchant, "merchant occupies the left lounge seat")
+	check(merchant_seat.get_node_or_null(merchant_seat.initial_occupant_path) == merchant
+		and current_scene.get_node("BarEnvironment/Tables/Table1/Seats/East/SeatPoint").occupant() == current_scene.get_node("HallReader"),
+		"occupied seats store their initial NPC assignments")
 	var walker := current_scene.get_node("Walker") as TavernNPC
 	check((commissioner as TavernNPC).special_npc and not walker.special_npc
 		and merchant.get_script() == walker.get_script(), "ordinary and special NPCs share the same class")
@@ -79,6 +97,11 @@ func _run() -> void:
 	check(authored.get_node("NPC").position.is_equal_approx(commissioner.position)
 		and authored.get_node("RewardNPC").position.is_equal_approx(merchant.position),
 		"fixed seats keep the same position from scene file to gameplay")
+	var new_seated := ["HallReader", "HallGuest", "EastGuest", "LoungeGuest", "CounterGuest"]
+	check(new_seated.all(func(actor_name: String) -> bool:
+		var actor := current_scene.get_node(actor_name) as TavernNPC
+		return actor.current_seat() != null and actor.position.is_equal_approx(authored.get_node(actor_name).position)),
+		"the five additional seated NPCs start in their authored positions")
 	authored.free()
 	check(not portal.enabled, "warehouse exit stays closed before delivery")
 	check(not curtain.get_node("SolidCurtain/CollisionShape3D").disabled,
@@ -110,12 +133,6 @@ func _run() -> void:
 	_interact()
 	await _conversation(ui, "knocking at the curtain")
 	check(await _wait_for(func(): return opening.phase == Opening.Phase.COMMISSIONER), "player crosses the curtain")
-	var player_seat := seats.get_node("LeftFront") as TavernSeat
-	var direction: Vector3 = player_seat.global_position - player.global_position
-	player.global_rotation.y = atan2(-direction.x, -direction.z)
-	_press_action(&"sit")
-	check(await _wait_for(func(): return player.current_seat() == player_seat or ui.dialogue_panel.visible)
-		and player_seat.occupant() == player and player.is_crouching(), "F binds the facing seat and applies the crouch pose")
 	_interact()
 	check(await _wait_for(func(): return ui.dialogue_panel.visible), "speaking from inside opens the commission")
 	check(await _dialogue(ui, ["你想去那个仓库", "去过，但", "为什么找我", "可我现在没钱", "你怎么知道", "有这么多人"]),
@@ -126,10 +143,8 @@ func _run() -> void:
 	check(state.help_choice == "accepted" and state.available_level == 1 and not portal.enabled,
 		"commission registers the task while the door waits for gear")
 	check(_verified_page_turn, "clicking a long line shows its next page before choices or a new line")
-	check(player.current_seat() == player_seat, "player stays seated throughout the commission dialogue")
-	_press_action(&"sit")
-	check(await _wait_for(func(): return player.current_seat() == null) and player_seat.occupant() == null,
-		"F stands up and releases the seat")
+	check(seated_cues == ["commissioner"] and player.current_seat() == null,
+		"commission dialogue controls sitting and then releases the player")
 	Input.action_press("move_down")
 	var left_booth := await _wait_for(func(): return curtain.to_local(player.global_position).z > 0.8)
 	Input.action_release("move_down")
@@ -144,6 +159,8 @@ func _run() -> void:
 	await _go_to(opening._target)
 	_interact()
 	await _conversation(ui, "merchant introduction", ["那我先看看"])
+	check(seated_cues == ["commissioner", "merchant"] and player.current_seat() != null,
+		"merchant dialogue seats the player through the catalog")
 	var board := current_scene.get_node("ShopBoard")
 	var shop := current_scene.get_node("ShopController")
 	check(await _wait_for(func(): return board.visible), "director opens the catalog")
@@ -158,6 +175,7 @@ func _run() -> void:
 	await _conversation(ui, "gear delivery")
 	check(state.get_flag("ASKED_MERCHANT_SUPPLY"), "price follow-up records the supply explanation")
 	check(await _wait_for(func(): return opening.phase == Opening.Phase.DEPART), "delivery restores free exploration")
+	check(player.current_seat() == null, "delivery finishes by releasing the scripted seat")
 	var loadout: Dictionary = player.get_node("Equipment").campaign_snapshot()
 	check(state.get_flag("opening_complete") and not player.is_in_dialogue
 		and loadout.primary_weapon != null and loadout.secondary_weapon == null
@@ -170,8 +188,9 @@ func _run() -> void:
 		and visitor.global_position.distance_to(visitor.floor_position(Vector3(0.15, 0, 7.06))) < 0.2,
 		"visitor disappears only after reaching the exit")
 	check(await _wait_for(func(): return not runner.visible, 950)
-		and runner.global_position.distance_to(runner.floor_position(runner.route.back())) < 0.2,
-		"runner walks to the exit before disappearing")
+		and runner.global_position.distance_to(runner.floor_position(runner.route_points().back())) < 0.2
+		and runner.global_position.distance_to(current_scene.get_node("BarEnvironment/Architecture/StaffDoor").global_position) < 1.6,
+		"runner leaves through the staff door")
 
 	await _go_to(Vector3(0, 0, 6.9))
 	check(await _wait_for(func(): return portal.get_overlapping_bodies().has(player)), "door interaction area detects the player")
