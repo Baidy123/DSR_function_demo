@@ -8,6 +8,7 @@ const StarterMedkit = preload("res://resources/player/default_medkit.tres")
 const ACTIVE := &"opening_active"
 const COMPLETE := &"opening_complete"
 const BOOTH_APPROACH := Vector3(-0.42, 0, -1.03)
+const BARTENDER_HINT_HEIGHT := 2.35
 const CAMERA_CUES := {
 	"booth": ^"../BarEnvironment/Booths/Booth4/Curtain",
 	"merchant": ^"../RewardNPC",
@@ -32,6 +33,7 @@ var _request: SceneRequest
 var _motion: Tween
 var _entrance: Node3D
 var _bartender: Node3D
+var _bartender_counter: CollisionShape3D
 var _curtain: Node3D
 var _commissioner: Node3D
 var _merchant: Node3D
@@ -62,6 +64,7 @@ func _ready() -> void:
 			set_process_unhandled_input(false)
 			return
 		_bartender = scene.get_node("BarEnvironment/BarCounter/Bartender")
+		_bartender_counter = scene.get_node("BarEnvironment/BarCounter/Long/Collision")
 		_curtain = scene.get_node("BarEnvironment/Booths/Booth4/Curtain")
 		_commissioner = scene.get_node("NPC")
 		_merchant = scene.get_node("RewardNPC")
@@ -95,6 +98,9 @@ func _physics_process(_delta: float) -> void:
 	if phase == Phase.ARRIVAL or (phase == Phase.VISITOR and _near_target()):
 		_start(&"system")
 	elif _marker != null:
+		if phase == Phase.BARTENDER:
+			_target = _bartender.global_position
+			_marker.global_position = _target + Vector3.UP * BARTENDER_HINT_HEIGHT
 		_marker.modulate = Color(1.0, 0.83, 0.50) if _near_target() else Color(0.91, 0.85, 0.73)
 
 
@@ -108,20 +114,30 @@ func _unhandled_input(event: InputEvent) -> void:
 
 
 func _near_target() -> bool:
+	if phase == Phase.BARTENDER:
+		return _near_bartender()
 	var seat: TavernSeat = player.current_seat()
 	if seat != null:
 		if phase == Phase.COMMISSIONER:
 			return _curtain.get_parent().is_ancestor_of(seat)
 		if phase in [Phase.MERCHANT, Phase.CATALOG, Phase.DELIVERY]:
 			return seat == get_node_or_null(MERCHANT_PLAYER_SEAT)
-		if phase != Phase.BARTENDER:
-			return false
+		return false
 	if phase == Phase.COMMISSIONER and _curtain.to_local(player.global_position).z > -0.35:
 		return false
 	if phase in [Phase.MERCHANT, Phase.CATALOG, Phase.DELIVERY] and player.global_position.z < _lounge_rail.global_position.z + 0.38:
 		return false
 	var offset := player.global_position - _target
 	return Vector2(offset.x, offset.z).length_squared() <= _range * _range
+
+
+func _near_bartender() -> bool:
+	var cabinet := _bartender_counter.shape as BoxShape3D
+	var player_at_bar := _bartender_counter.to_local(player.global_position)
+	var bartender_at_bar := _bartender_counter.to_local(_bartender.global_position)
+	var from_customer_edge := player_at_bar.x - cabinet.size.x * 0.5
+	var offset := Vector2(from_customer_edge, player_at_bar.z - bartender_at_bar.z)
+	return from_customer_edge >= 0.0 and offset.length_squared() <= _range * _range
 
 
 func _busy() -> bool:
@@ -464,7 +480,9 @@ func _refresh_objective() -> void:
 		Phase.BARTENDER:
 			text = "向吧台后的酒保打听大姐头"
 			label = "E  询问酒保"
-			_target = Vector3(-0.95, 0, -3.28)
+			_target = _bartender.global_position
+			height = BARTENDER_HINT_HEIGHT
+			_range = 2.05
 		Phase.VISITOR, Phase.CURTAIN:
 			text = "到酒吧东北角的门帘卡座找大姐头" if phase == Phase.VISITOR else "敲门帘旁的隔断"
 			label = "门帘卡座" if phase == Phase.VISITOR else "E  敲隔断"

@@ -8,6 +8,8 @@
 
 吧台北端在 `BarEnvironment/BarCounter/NorthReturn` 向内拐，占原开口约三分之二。`NorthPartition` 是接到墙边的齐台面木隔门，两段各有碰撞体。调整这两处时，让柜体、隔门与墙面在地面一侧连续，并给北面通往员工门的路线留出空间。
 
+开场的 **E 询问酒保** 提示跟随 `BarEnvironment/BarCounter/Bartender`。移动酒保后，可交谈范围会沿吧台一起移动。柜体 `Long/Collision` 的本地 **+X** 侧是客人侧。
+
 ## 放 NPC 和设置坐席
 
 1. 在 Main 实例化 `scenes/access_denied/hub/tavern_npc.tscn`，命名并摆好站位。仅当需要阶段状态、对话或商店时，勾选 **Special NPC** 并填写相应资源。

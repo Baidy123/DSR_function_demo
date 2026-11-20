@@ -162,7 +162,26 @@ func _run() -> void:
 	check(await _wait_for(func(): return absf(walker.position.x - 1.8) < 0.2 and walker.position.z > -4.2),
 		"walker rejoins the original route after the detour")
 
-	await _go_to(opening._target)
+	var bartender := current_scene.get_node("BarEnvironment/BarCounter/Bartender") as Node3D
+	var bartender_start := bartender.global_position
+	bartender.global_position += Vector3(0, 0, 0.38)
+	await physics_frame
+	await physics_frame
+	var prompt_offset: Vector3 = opening._marker.global_position - bartender.global_position
+	check(prompt_offset.slide(Vector3.UP).length() < 0.01 and prompt_offset.y > 1.93,
+		"the opening prompt follows the bartender above his name")
+	bartender.global_position = bartender_start
+	var counter := current_scene.get_node("BarEnvironment/BarCounter/Long/Collision") as CollisionShape3D
+	var cabinet := counter.shape as BoxShape3D
+	var bar_position := counter.to_local(bartender_start)
+	bar_position.y = -cabinet.size.y * 0.5 + 0.025
+	bar_position.x = -cabinet.size.x * 0.5 - 0.6
+	await _go_to(counter.to_global(bar_position))
+	_interact()
+	check(opening.phase == Opening.Phase.BARTENDER and not ui.dialogue_panel.visible,
+		"bartender interaction stays on the customer side of the bar")
+	bar_position.x = cabinet.size.x * 0.5 + 1.55
+	await _go_to(counter.to_global(bar_position))
 	_interact()
 	await _conversation(ui, "bartender", ["你这里是不是", "这么明显", "她好说话吗"])
 	check(opening.phase == Opening.Phase.VISITOR, "bartender points to the curtain")
