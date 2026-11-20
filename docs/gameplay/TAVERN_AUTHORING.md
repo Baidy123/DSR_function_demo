@@ -6,7 +6,7 @@
 
 在 Main 展开 `BarEnvironment` 就能直接编辑墙、地板、吧台、桌椅位置和灯光。单件家具仍引用可复用的模板。如果要调整某个实例内部的座位点，右键它开启 **Editable Children**。正式入口使用 Main 内的节点。原 `svg_tavern_environment.tscn` 可用于查阅旧布景。
 
-吧台北端的开口由 `BarEnvironment/BarCounter/NorthPartition` 封住，隔断含可见面板和实体碰撞。调整它时给隔断北侧通往员工门的路线留出空间。
+吧台北端在 `BarEnvironment/BarCounter/NorthReturn` 向内拐，占原开口约三分之二。`NorthPartition` 是接到墙边的齐台面木隔门，两段各有碰撞体。调整这两处时，让柜体、隔门与墙面在地面一侧连续，并给北面通往员工门的路线留出空间。
 
 ## 放 NPC 和设置坐席
 

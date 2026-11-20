@@ -255,20 +255,48 @@ material = SubResource("StandardMaterial3D_reward_npc")
 radius = 0.35
 height = 1.75
 
-[sub_resource type="BoxMesh" id="CounterPartitionPanel"]
+[sub_resource type="BoxMesh" id="CounterReturnWood"]
 material = SubResource("env_Wood")
-size = Vector3(3.62, 2.55, 0.24)
+size = Vector3(2.35, 1, 0.72)
+
+[sub_resource type="BoxShape3D" id="CounterReturnShape"]
+size = Vector3(2.365, 1.0625, 0.72)
+
+[sub_resource type="BoxMesh" id="CounterReturnTop"]
+material = SubResource("env_Steel")
+size = Vector3(2.35, 0.075, 0.828)
+
+[sub_resource type="StandardMaterial3D" id="CounterGateTimber"]
+albedo_color = Color(0.34, 0.166, 0.085, 1)
+roughness = 0.84
+
+[sub_resource type="StandardMaterial3D" id="CounterGateBrass"]
+albedo_color = Color(0.48, 0.30, 0.131, 1)
+metallic = 0.55
+roughness = 0.45
+
+[sub_resource type="BoxMesh" id="CounterPartitionPanel"]
+material = SubResource("CounterGateTimber")
+size = Vector3(1.06, 0.81, 0.092)
 
 [sub_resource type="BoxShape3D" id="CounterPartitionShape"]
-size = Vector3(3.62, 2.55, 0.24)
+size = Vector3(1.19, 1.06, 0.16)
 
 [sub_resource type="BoxMesh" id="CounterPartitionBase"]
-material = SubResource("env_Steel")
-size = Vector3(3.64, 0.22, 0.28)
+material = SubResource("env_Wood")
+size = Vector3(1.14, 0.10, 0.126)
 
 [sub_resource type="BoxMesh" id="CounterPartitionRail"]
-material = SubResource("env_Amber")
-size = Vector3(3.62, 0.036, 0.26)
+material = SubResource("env_Wood")
+size = Vector3(1.14, 0.104, 0.146)
+
+[sub_resource type="BoxMesh" id="CounterGateStile"]
+material = SubResource("env_Wood")
+size = Vector3(0.087, 0.91, 0.124)
+
+[sub_resource type="BoxMesh" id="CounterGateFitting"]
+material = SubResource("CounterGateBrass")
+size = Vector3(0.105, 0.045, 0.036)
 
 [node name="Main" type="Node3D" unique_id=1975287300]
 
@@ -287,22 +315,61 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 6.5)
 
 [node name="BarCounter" type="Node3D" parent="BarEnvironment"]
 
+[node name="NorthReturn" type="StaticBody3D" parent="BarEnvironment/BarCounter"]
+position = Vector3(-4.675, 0.5, -7.005)
+
+[node name="Mesh" type="MeshInstance3D" parent="BarEnvironment/BarCounter/NorthReturn" groups=["camera_fadeable"]]
+mesh = SubResource("CounterReturnWood")
+
+[node name="Collision" type="CollisionShape3D" parent="BarEnvironment/BarCounter/NorthReturn"]
+position = Vector3(0, 0.03125, 0)
+shape = SubResource("CounterReturnShape")
+
+[node name="Top" type="MeshInstance3D" parent="BarEnvironment/BarCounter/NorthReturn" groups=["camera_fadeable"]]
+position = Vector3(-0.062, 0.525, 0)
+mesh = SubResource("CounterReturnTop")
+
 [node name="NorthPartition" type="StaticBody3D" parent="BarEnvironment/BarCounter"]
-position = Vector3(-5.21, 1.275, -7.295)
+position = Vector3(-6.435, 0.53, -7.29)
 
 [node name="Panel" type="MeshInstance3D" parent="BarEnvironment/BarCounter/NorthPartition" groups=["camera_fadeable"]]
+position = Vector3(0, 0.035, 0)
 mesh = SubResource("CounterPartitionPanel")
 
 [node name="Collision" type="CollisionShape3D" parent="BarEnvironment/BarCounter/NorthPartition"]
 shape = SubResource("CounterPartitionShape")
 
 [node name="Base" type="MeshInstance3D" parent="BarEnvironment/BarCounter/NorthPartition" groups=["camera_fadeable"]]
-position = Vector3(0, -1.165, 0)
+position = Vector3(0, -0.40, 0)
 mesh = SubResource("CounterPartitionBase")
 
 [node name="Trim" type="MeshInstance3D" parent="BarEnvironment/BarCounter/NorthPartition" groups=["camera_fadeable"]]
-position = Vector3(0, 0.98, 0)
+position = Vector3(0, 0.478, 0)
 mesh = SubResource("CounterPartitionRail")
+
+[node name="HingeStile" type="MeshInstance3D" parent="BarEnvironment/BarCounter/NorthPartition" groups=["camera_fadeable"]]
+position = Vector3(-0.526, 0.056, 0)
+mesh = SubResource("CounterGateStile")
+
+[node name="LatchStile" type="MeshInstance3D" parent="BarEnvironment/BarCounter/NorthPartition" groups=["camera_fadeable"]]
+position = Vector3(0.526, 0.056, 0)
+mesh = SubResource("CounterGateStile")
+
+[node name="CenterStile" type="MeshInstance3D" parent="BarEnvironment/BarCounter/NorthPartition" groups=["camera_fadeable"]]
+position = Vector3(0, 0.056, 0)
+mesh = SubResource("CounterGateStile")
+
+[node name="UpperHinge" type="MeshInstance3D" parent="BarEnvironment/BarCounter/NorthPartition" groups=["camera_fadeable"]]
+position = Vector3(-0.516, 0.30, -0.07)
+mesh = SubResource("CounterGateFitting")
+
+[node name="LowerHinge" type="MeshInstance3D" parent="BarEnvironment/BarCounter/NorthPartition" groups=["camera_fadeable"]]
+position = Vector3(-0.516, -0.24, -0.07)
+mesh = SubResource("CounterGateFitting")
+
+[node name="Latch" type="MeshInstance3D" parent="BarEnvironment/BarCounter/NorthPartition" groups=["camera_fadeable"]]
+position = Vector3(0.49, 0.31, -0.07)
+mesh = SubResource("CounterGateFitting")
 
 [node name="Booths" type="Node3D" parent="BarEnvironment"]
 
