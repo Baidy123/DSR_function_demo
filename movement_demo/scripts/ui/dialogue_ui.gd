@@ -21,15 +21,13 @@ var _announced: bool = false
 var _pages: PackedStringArray
 var _page := 0
 var _skip_followup := ""
+var _presenting_camera := false
 
-const PORTRAIT_COLORS := {
-	"主角": Color("#657d83"),
-	"酒保": Color("#aa7954"),
-	"{大姐头名字}": Color("#9b605b"),
-	"委托人": Color("#987e59"),
-	"商人": Color("#577c99"),
-	"A": Color("#9b605b"),
-	"B": Color("#747686"),
+const PORTRAITS := {
+	"酒保": preload("res://resources/dialogue/portraits/bartender.png"),
+	"{大姐头名字}": preload("res://resources/dialogue/portraits/commissioner.png"),
+	"商人": preload("res://resources/dialogue/portraits/merchant.png"),
+	"A": preload("res://resources/dialogue/portraits/commissioner.png"),
 }
 const PAGE_LENGTH := 52
 
@@ -37,7 +35,7 @@ const PAGE_LENGTH := 52
 @onready var transcript: ScrollContainer = $DialoguePanel/MarginContainer/Content/Transcript
 @onready var history: VBoxContainer = $DialoguePanel/MarginContainer/Content/Transcript/History
 @onready var choices: VBoxContainer = $DialoguePanel/MarginContainer/Content/Choices
-@onready var portrait: SubViewportContainer = $Portrait
+@onready var portrait: TextureRect = $Portrait
 @onready var page_hint: Label = $DialoguePanel/MarginContainer/Content/PageHint
 @onready var skip_followup: Button = $DialoguePanel/MarginContainer/Content/SkipFollowup
 
@@ -113,6 +111,9 @@ func _input(event: InputEvent) -> void:
 			return
 	if not interact_pressed and not left_click:
 		return
+	if _presenting_camera:
+		get_viewport().set_input_as_handled()
+		return
 
 	# 出现选项后，把鼠标事件留给按钮；E 仍不能跳过分支。
 	if dialogue_line != null and _page == _pages.size() - 1 and not dialogue_line.responses.is_empty():
@@ -170,13 +171,19 @@ func _show_line(next_id: String) -> void:
 		choices.add_child(button)
 
 	dialogue_panel.show()
+	var cue := dialogue_line.get_tag_value("camera")
+	_presenting_camera = not cue.is_empty()
 	_show_page()
 	if not _announced:
 		_announced = true
 		dialogue_started.emit(dialogue_source)
-	await _present_dialogue_cue(dialogue_line.get_tag_value("camera"))
+	await _present_dialogue_cue(cue)
 	if session == _session:
+		_presenting_camera = false
 		is_loading = false
+		_refresh_replies()
+		if not cue.is_empty():
+			_scroll_to_latest.call_deferred(session)
 
 
 func _show_page() -> void:
@@ -184,13 +191,15 @@ func _show_page() -> void:
 	var narration := dialogue_line.has_tag("narration") or character == "旁白" or character.is_empty()
 	if not _pages[_page].is_empty():
 		_append_history(character if not narration and _page == 0 else "", _pages[_page], narration)
-		portrait.visible = not narration
-		if not narration:
-			var figure := portrait.get_node("Viewport/Capsule") as MeshInstance3D
-			figure.material_override.albedo_color = PORTRAIT_COLORS.get(character, Color("#657d83"))
-	choices.visible = _page == _pages.size() - 1 and not dialogue_line.responses.is_empty()
+		portrait.texture = PORTRAITS.get(character) if not narration else null
+		portrait.visible = portrait.texture != null
+	_refresh_replies()
+
+
+func _refresh_replies() -> void:
+	choices.visible = not _presenting_camera and _page == _pages.size() - 1 and not dialogue_line.responses.is_empty()
 	skip_followup.visible = choices.visible and not _skip_followup.is_empty()
-	page_hint.visible = not choices.visible
+	page_hint.visible = not _presenting_camera and not choices.visible
 	page_hint.text = "左键 / E  继续"
 	if _pages.size() > 1:
 		page_hint.text += "    %d / %d" % [_page + 1, _pages.size()]
@@ -206,6 +215,7 @@ func _choose_reply(text: String, next_id: String) -> void:
 	if is_loading:
 		return
 	_skip_followup = ""
+	portrait.hide()
 	_append_history("主角", text, false, true)
 	_show_line(next_id)
 
@@ -304,6 +314,7 @@ func _close_authorized(result: StringName) -> void:
 	dialogue_line = null
 	dialogue_resource = null
 	is_loading = false
+	_presenting_camera = false
 	if request != null:
 		scene_action_finished.emit(request.id, result)
 		scene_action_opened.emit(request.id)

@@ -3,12 +3,15 @@
 [ext_resource type="Script" path="res://scripts/world/tavern_npc.gd" id="npc"]
 
 [sub_resource type="CapsuleMesh" id="Visual"]
-radius = 0.3
-height = 1.38
+radius = 0.35
+height = 1.75
 
 [sub_resource type="CapsuleShape3D" id="Body"]
 radius = 0.25
-height = 1.38
+height = 1.75
+
+[sub_resource type="SphereShape3D" id="InteractionRange"]
+radius = 1.45
 
 [sub_resource type="StandardMaterial3D" id="CrateMaterial"]
 albedo_color = Color(0.48, 0.36, 0.21, 1)
@@ -23,12 +26,21 @@ motion_mode = 1
 script = ExtResource("npc")
 
 [node name="Body" type="MeshInstance3D" parent="."]
-position = Vector3(0, 0.69, 0)
+position = Vector3(0, 0.875, 0)
 mesh = SubResource("Visual")
 
 [node name="CollisionShape3D" type="CollisionShape3D" parent="."]
-position = Vector3(0, 0.72, 0)
+position = Vector3(0, 0.905, 0)
 shape = SubResource("Body")
+
+[node name="InteractionArea" type="Area3D" parent="."]
+position = Vector3(0, 0.9, 0)
+collision_layer = 0
+monitoring = false
+monitorable = false
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="InteractionArea"]
+shape = SubResource("InteractionRange")
 
 [node name="Crate" type="MeshInstance3D" parent="."]
 visible = false

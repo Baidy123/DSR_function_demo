@@ -39,6 +39,8 @@ movement_demo/
 │   ├── world/             掩体、训练靶、区域、门、NPC、交互物与屏障
 │   │   ├── opening_sequence.gd   开场分段、交互条件、导演子请求与初始装备发放
 │   │   ├── tavern_npc.gd         有碰撞的酒馆 NPC，坐席、巡游、局部绕行和出口离场
+│   │   ├── tavern_seat.gd       家具坐席点、占用和角色姿态切换
+│   │   ├── tavern_seating.gd    玩家面对空位时显示提示并向导演请求入座
 │   │   ├── quest_portal.gd       按任务与 A 解锁进度进入对应关卡
 │   │   ├── tavern_return_portal.gd 记录关卡完成、玩家快照与酒馆检查点并返回酒馆
 │   │   └── interactions/  交互效果基类、注入上下文与各效果实现

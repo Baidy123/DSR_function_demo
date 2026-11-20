@@ -223,6 +223,8 @@ func _unhandled_input(event: InputEvent) -> void:
 
 ## R主动请求，不要求瞄准或进入战斗区；枪械状态自己检查弹量和备弹。
 func request_reload() -> bool:
+	if player.has_method("current_seat") and player.current_seat() != null:
+		return false
 	if is_melee_active() or is_waiting_for_melee_stand() or player.is_vaulting() or weapon == null or weapon.fire_mode == WeaponData.FireMode.MELEE or player.is_dead() or player.is_in_dialogue or get_tree().paused:
 		return false
 	var resuming: bool = ammo.reload_checkpoint > 0.0
@@ -340,7 +342,7 @@ func get_locked_aim_point() -> Vector3:
 
 
 func can_combat() -> bool:
-	if player.is_dead():
+	if player.is_dead() or (player.has_method("current_seat") and player.current_seat() != null):
 		return false
 	# 查询实际重叠区域；支持多个区域重叠，不需要全局开关。
 	for area in get_tree().get_nodes_in_group("combat_zone"):

@@ -99,6 +99,14 @@ func _unhandled_input(event: InputEvent) -> void:
 
 
 func _near_target() -> bool:
+	var seat: TavernSeat = player.current_seat()
+	if seat != null:
+		if phase == Phase.COMMISSIONER:
+			return _curtain.get_parent().is_ancestor_of(seat)
+		if phase in [Phase.MERCHANT, Phase.CATALOG, Phase.DELIVERY]:
+			return scene.get_node("BarEnvironment/SouthLounge/Tables/Setting1").is_ancestor_of(seat)
+		if phase != Phase.BARTENDER:
+			return false
 	if phase == Phase.COMMISSIONER and _curtain.to_local(player.global_position).z > -0.35:
 		return false
 	if phase in [Phase.MERCHANT, Phase.CATALOG, Phase.DELIVERY] and player.global_position.z < _lounge_rail.global_position.z + 0.38:
@@ -260,7 +268,11 @@ func _deliver(request: SceneRequest) -> bool:
 		return false
 	if not await _say(request, _merchant, "delivery"):
 		return false
-	_runner.set_physical_presence(false)
+	_runner.drop_crate()
+	Director.for_node(self).request_action(&"script", {
+		"source": self, "target": _runner, "dedupe_key": &"runner_departure",
+		"parameters": {"vanish_at_end": true},
+	})
 	var equipment := player.get_node("Equipment")
 	equipment.apply_campaign_snapshot({
 		"primary_weapon": StarterWeapon,

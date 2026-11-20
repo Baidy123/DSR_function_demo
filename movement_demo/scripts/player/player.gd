@@ -99,6 +99,7 @@ var is_facing_npc: bool = false
 var npc_direction: Vector3 = Vector3.ZERO
 var current_speed: float = 0.0
 var is_in_dialogue: bool = false
+var _seat: TavernSeat
 var _melee_push_velocity := Vector3.ZERO
 var _melee_push_remaining := 0.0
 var _melee_push_duration := 0.0
@@ -134,7 +135,7 @@ func _ready() -> void:
 
 
 func _unhandled_input(event: InputEvent) -> void:
-	if event.is_echo() or is_dead() or is_in_dialogue or get_tree().paused: return
+	if event.is_echo() or is_dead() or is_in_dialogue or current_seat() != null or get_tree().paused: return
 	if event.is_action_pressed("crouch"):
 		request_crouch(not manual_crouch)
 		get_viewport().set_input_as_handled()
@@ -146,6 +147,9 @@ func _unhandled_input(event: InputEvent) -> void:
 
 func _physics_process(delta: float) -> void:
 	if is_dead() or get_tree().paused:
+		return
+	if current_seat() != null:
+		_update_stamina(delta)
 		return
 	_hit_slow_remaining = maxf(0.0, _hit_slow_remaining - maxf(0.0, delta))
 	if is_zero_approx(_hit_slow_remaining): _hit_slow_remaining = 0.0
@@ -348,6 +352,9 @@ func set_dialogue_active(active: bool) -> void:
 
 
 func face_npc(npc_position: Vector3) -> void:
+	if current_seat() != null:
+		is_facing_npc = false
+		return
 	npc_direction = npc_position - global_position
 	npc_direction.y = 0.0
 	if not npc_direction.is_zero_approx():
@@ -455,7 +462,7 @@ func get_movement_noise_radius() -> float:
 
 
 func request_crouch(crouched: bool) -> bool:
-	if is_dead() or is_in_dialogue or get_tree().paused: return false
+	if is_dead() or is_in_dialogue or current_seat() != null or get_tree().paused: return false
 	manual_crouch = crouched
 	if not crouched: _aim_cover.clear()
 	return true
@@ -463,6 +470,43 @@ func request_crouch(crouched: bool) -> bool:
 
 func is_crouching() -> bool:
 	return not is_vaulting() and crouch_amount >= 0.9999
+
+
+func current_seat() -> TavernSeat:
+	return _seat if is_instance_valid(_seat) else null
+
+
+func seat_body_dimensions(crouched: bool) -> Vector2:
+	return Vector2(_body_radius(), get_posture_body_height(crouched))
+
+
+func sit_at_seat(seat: TavernSeat, point: Vector3, heading: float) -> void:
+	_seat = seat
+	if combat != null:
+		combat.cancel_melee()
+		combat.cancel_aim()
+		combat.cancel_reload()
+	clear_hit_effects()
+	current_speed = 0.0
+	is_sprinting = false
+	is_facing_npc = false
+	velocity = Vector3.ZERO
+	global_position = point
+	global_rotation.y = heading
+	crouch_amount = 1.0
+	_posture_presentation_transition = &""
+	_apply_body_posture()
+	reset_physics_interpolation()
+
+
+func stand_from_seat(point: Vector3) -> void:
+	_seat = null
+	global_position = point
+	_camera_ground_height = point.y
+	reset_physics_interpolation()
+	if not manual_crouch:
+		crouch_amount = 0.0
+		_apply_body_posture()
 
 
 func is_vaulting() -> bool:
@@ -570,7 +614,7 @@ func _apply_body_posture() -> void:
 
 
 func request_vault(direction: Vector3) -> bool:
-	if is_dead() or is_in_dialogue or get_tree().paused or is_vaulting() or not is_on_floor(): return false
+	if is_dead() or is_in_dialogue or current_seat() != null or get_tree().paused or is_vaulting() or not is_on_floor(): return false
 	if combat != null and combat.is_melee_active(): return false
 	var plan: Dictionary = LowCoverGeometry.query_vault(self, direction, cover_interaction_distance, vault_duration, true)
 	if not plan.get("valid", false): return false
@@ -715,6 +759,9 @@ func _on_vault_region_reset(region: Node) -> void:
 
 
 func _on_posture_death() -> void:
+	if current_seat() != null:
+		_seat.release(self)
+		_seat = null
 	_vault_plan.clear()
 	_vault_pushed.clear()
 	_posture_presentation_transition = &""

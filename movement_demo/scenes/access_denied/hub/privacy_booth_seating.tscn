@@ -1,5 +1,7 @@
 [gd_scene format=3]
 
+[ext_resource type="Script" path="res://scripts/world/tavern_seat.gd" id="seat_point"]
+
 [ext_resource type="Script" path="res://scenes/access_denied/hub/curved_booth_sofa.gd" id="sofa"]
 [ext_resource type="Shader" path="res://scenes/access_denied/hub/tufted_leather.gdshader" id="leather"]
 
@@ -69,3 +71,48 @@ shape = SubResource("TableShape")
 [node name="Pedestal" type="MeshInstance3D" parent="."]
 position = Vector3(0, 0.355, 0.12)
 mesh = SubResource("Pedestal")
+
+[node name="Seats" type="Node3D" parent="."]
+
+[node name="Left" type="Marker3D" parent="Seats"]
+position = Vector3(-0.75, 0.59, -2.03)
+rotation_degrees = Vector3(0, 180, 0)
+script = ExtResource("seat_point")
+furniture_collision = NodePath("../../SofaCollision")
+
+[node name="Center" type="Marker3D" parent="Seats"]
+position = Vector3(0, 0.59, -2.03)
+rotation_degrees = Vector3(0, 180, 0)
+script = ExtResource("seat_point")
+furniture_collision = NodePath("../../SofaCollision")
+
+[node name="Right" type="Marker3D" parent="Seats"]
+position = Vector3(0.75, 0.59, -2.03)
+rotation_degrees = Vector3(0, 180, 0)
+script = ExtResource("seat_point")
+furniture_collision = NodePath("../../SofaCollision")
+
+[node name="LeftRear" type="Marker3D" parent="Seats"]
+position = Vector3(-1.64, 0.59, -0.74)
+rotation_degrees = Vector3(0, -90, 0)
+script = ExtResource("seat_point")
+furniture_collision = NodePath("../../SofaCollision")
+
+[node name="LeftFront" type="Marker3D" parent="Seats"]
+position = Vector3(-1.64, 0.59, 0.94)
+rotation_degrees = Vector3(0, -90, 0)
+script = ExtResource("seat_point")
+furniture_collision = NodePath("../../SofaCollision")
+
+[node name="RightRear" type="Marker3D" parent="Seats"]
+position = Vector3(1.68, 0.59, -0.74)
+rotation_degrees = Vector3(0, 90, 0)
+script = ExtResource("seat_point")
+furniture_collision = NodePath("../../SofaCollision")
+npc_exit_distance = 0.72
+
+[node name="RightFront" type="Marker3D" parent="Seats"]
+position = Vector3(1.64, 0.59, 0.94)
+rotation_degrees = Vector3(0, 90, 0)
+script = ExtResource("seat_point")
+furniture_collision = NodePath("../../SofaCollision")

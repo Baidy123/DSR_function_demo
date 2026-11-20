@@ -1,5 +1,7 @@
 [gd_scene load_steps=11 format=3]
 
+[ext_resource type="Script" path="res://scripts/world/tavern_seat.gd" id="seat_point"]
+
 [sub_resource type="StandardMaterial3D" id="LeatherDark"]
 albedo_color = Color(0.19, 0.025, 0.022, 1)
 roughness = 0.72
@@ -132,3 +134,47 @@ mesh = SubResource("Box")
 material_override = SubResource("Brass")
 [node name="Collision" type="CollisionShape3D" parent="Table"]
 shape = SubResource("TableShape")
+
+[node name="Seats" type="Node3D" parent="."]
+
+[node name="Left" type="Marker3D" parent="Seats"]
+position = Vector3(-0.77, 0.63, 0.66)
+rotation_degrees = Vector3(0, 180, 0)
+script = ExtResource("seat_point")
+furniture_collision = NodePath("../../BoothCollision")
+
+[node name="Center" type="Marker3D" parent="Seats"]
+position = Vector3(0, 0.63, 0.66)
+rotation_degrees = Vector3(0, 180, 0)
+script = ExtResource("seat_point")
+furniture_collision = NodePath("../../BoothCollision")
+
+[node name="Right" type="Marker3D" parent="Seats"]
+position = Vector3(0.77, 0.63, 0.66)
+rotation_degrees = Vector3(0, 180, 0)
+script = ExtResource("seat_point")
+furniture_collision = NodePath("../../BoothCollision")
+
+[node name="LeftRear" type="Marker3D" parent="Seats"]
+position = Vector3(-1.51, 0.64, 1.25)
+rotation_degrees = Vector3(0, -90, 0)
+script = ExtResource("seat_point")
+furniture_collision = NodePath("../../BoothCollision")
+
+[node name="LeftFront" type="Marker3D" parent="Seats"]
+position = Vector3(-1.51, 0.64, 2.05)
+rotation_degrees = Vector3(0, -90, 0)
+script = ExtResource("seat_point")
+furniture_collision = NodePath("../../BoothCollision")
+
+[node name="RightRear" type="Marker3D" parent="Seats"]
+position = Vector3(1.51, 0.64, 1.25)
+rotation_degrees = Vector3(0, 90, 0)
+script = ExtResource("seat_point")
+furniture_collision = NodePath("../../BoothCollision")
+
+[node name="RightFront" type="Marker3D" parent="Seats"]
+position = Vector3(1.51, 0.64, 2.05)
+rotation_degrees = Vector3(0, 90, 0)
+script = ExtResource("seat_point")
+furniture_collision = NodePath("../../BoothCollision")

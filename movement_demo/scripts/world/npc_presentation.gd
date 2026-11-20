@@ -24,3 +24,10 @@ func _on_ended(source: Node) -> void:
 	if source != get_parent(): return
 	state.in_dialogue = false
 	if presentation != null: presentation.apply_state(state)
+
+
+func set_seated_pose(seated: bool) -> void:
+	state.sitting = seated
+	state.crouch_amount = 1.0 if seated else 0.0
+	if presentation != null:
+		presentation.apply_state(state)

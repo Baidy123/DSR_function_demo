@@ -1,5 +1,7 @@
 [gd_scene format=3]
 
+[ext_resource type="Script" path="res://scripts/world/tavern_seat.gd" id="seat_point"]
+
 
 
 [sub_resource type="StandardMaterial3D" id="Base"]
@@ -120,3 +122,26 @@ mesh = SubResource("Box12")
 [node name="RightArm" type="MeshInstance3D" parent="."]
 position = Vector3(1.0850, 0.4900, 0.0350)
 mesh = SubResource("Box12")
+
+[node name="Seats" type="Node3D" parent="."]
+
+[node name="Left" type="Marker3D" parent="Seats"]
+position = Vector3(-0.73, 0.54, 0.16)
+rotation_degrees = Vector3(0, 180, 0)
+script = ExtResource("seat_point")
+furniture_collision = NodePath("../../Backrest")
+share_table_with_opposite_sofa = true
+
+[node name="Center" type="Marker3D" parent="Seats"]
+position = Vector3(0, 0.54, 0.16)
+rotation_degrees = Vector3(0, 180, 0)
+script = ExtResource("seat_point")
+furniture_collision = NodePath("../../Backrest")
+share_table_with_opposite_sofa = true
+
+[node name="Right" type="Marker3D" parent="Seats"]
+position = Vector3(0.73, 0.54, 0.16)
+rotation_degrees = Vector3(0, 180, 0)
+script = ExtResource("seat_point")
+furniture_collision = NodePath("../../Backrest")
+share_table_with_opposite_sofa = true

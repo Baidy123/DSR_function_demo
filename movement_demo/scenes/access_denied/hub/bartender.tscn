@@ -1,5 +1,7 @@
 [gd_scene format=3]
 
+[ext_resource type="Script" path="res://scripts/world/tavern_npc.gd" id="shared_npc"]
+
 [sub_resource type="StandardMaterial3D" id="BartenderMaterial"]
 albedo_color = Color(0.63, 0.37, 0.20, 1)
 
@@ -12,7 +14,12 @@ height = 1.75
 radius = 0.35
 height = 1.75
 
-[node name="Bartender" type="StaticBody3D"]
+[node name="Bartender" type="CharacterBody3D"]
+script = ExtResource("shared_npc")
+special_npc = true
+npc_id = &"bartender"
+keep_authored_position = true
+floor_path = NodePath("../../Architecture/Floor/Collision")
 
 [node name="Body" type="MeshInstance3D" parent="."]
 position = Vector3(0, 0.875, 0)

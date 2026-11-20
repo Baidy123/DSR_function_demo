@@ -22,11 +22,13 @@
 
 ## 开场接线
 
-`Opening` 节点负责阶段、交互范围与目标提示，文本由 `resources/dialogue/opening.dialogue` 提供。靠近目标或按 E 提交前台 `script` 请求，导演通过子动作安排对话、演出、商店和切场。对话行的 `[#camera=booth]` 和 `[#camera=merchant]` 标签通过 `camera_cues` 映射选择镜头目标，镜头作为当前对话请求的子动作播放。旁白行标为 `[#narration]`，用无姓名的文字入栏。可选追问使用界面继续按钮，已选择的原稿回复会追加到当前会话记录。
+`Opening` 节点负责阶段、交互范围与目标提示。剧情文本保存于 `resources/dialogue/opening.dialogue`。对话中的 `[#camera=booth]` 和 `[#camera=merchant]` 通过 `camera_cues` 选择镜头目标，镜头是对话的子请求。镜头返回后显示当前页回复。对话记录保留台词、内心独白和已选回复。
 
 门帘默认有物理阻挡。开场敲隔断后，导演授权玩家穿过门帘，之后可双向感应开合。访客出卡座由演出短暂开帘，随后用后台移动请求沿路线走到酒馆正门再隐藏。直接 F6 运行酒馆时可在门帘前按 E 授权通行。
 
-顾客、访客和伙计是 `tavern_npc.tscn` 的独立实例，直接在 `main.tscn` 调整位置。坐席勾选 `seated`，巡游客勾选 `patrol_on_ready` 并填写按顺序经过的世界坐标 `route`。脚本用 `floor_path` 沿场景地板修正行走高度，遇到玩家或其他带碰撞的对象会尝试从旁边经过并回到原路线。旁路也被堵住时会重新尝试。
+酒馆角色共用 `TavernNPC`。检查器中的 **Special NPC** 开关启用阶段状态和对话／商店，两种模式共用身体、坐姿和移动。用 `seat_path` 绑定初始坐席，巡游客勾选 `patrol_on_ready` 并填写路径 `route`。访客和送货伙计各自走到正门后离场。
+
+`TavernSeat` 是家具上的独立 `Marker3D`，记录位置、朝向和占用者。圆凳单点，普通沙发三点，两侧有座位的卡座每侧两点。玩家通过 **F** 向导演请求入座和离席。可在检查器调整点位、互动距离及 NPC 离席距离。
 
 `shop` 请求传入 `browse_only = true` 时，面板禁用购买按钮，`ShopController.purchase()` 同时拒绝交易。目录关闭后继续价格对话和交付。装备通过现有装备快照一次性发放，仓库门沿用 QuestPortal 以及导演的跨关装备搬运。大姐头和商人的位置直接保存在主场景，`keep_authored_position` 使阶段刷新继续使用保存的位置。
 

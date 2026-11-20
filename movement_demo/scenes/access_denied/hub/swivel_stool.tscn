@@ -1,5 +1,7 @@
 [gd_scene format=3]
 
+[ext_resource type="Script" path="res://scripts/world/tavern_seat.gd" id="seat_point"]
+
 
 
 [sub_resource type="CylinderMesh" id="Seat"]
@@ -72,3 +74,11 @@ mesh = SubResource("Seat")
 [node name="Collision" type="CollisionShape3D" parent="."]
 position = Vector3(0, 0.306, 0)
 shape = SubResource("Shape")
+
+
+[node name="SeatPoint" type="Marker3D" parent="."]
+position = Vector3(0, 0.65, 0)
+rotation_degrees = Vector3(0, 0, 0)
+script = ExtResource("seat_point")
+furniture_collision = NodePath("..")
+swivel = true
