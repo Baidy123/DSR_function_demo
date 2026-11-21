@@ -9,13 +9,13 @@ script = ExtResource("5_mouse_accuracy")
 convergence_model = 2
 convergence_seconds = 2.0
 convergence_exponent_k = 5.0
-min_spread_angle_degrees = 2.5
-max_spread_angle_degrees = 5.5
-initial_spread_angle_degrees = 4.0
-shot_spread_penalty_degrees = 0.25
-shot_max_spread_angle_degrees = 4.5
-player_move_spread_degrees_per_meter = 0.5
-moving_spread_angle_degrees = 5.0
+min_spread_angle_degrees = 0.75
+max_spread_angle_degrees = 1.65
+initial_spread_angle_degrees = 1.2
+shot_spread_penalty_degrees = 0.075
+shot_max_spread_angle_degrees = 1.35
+player_move_spread_degrees_per_meter = 0.15
+moving_spread_angle_degrees = 1.5
 spread_recovery_delay = 0.2
 
 [resource]
