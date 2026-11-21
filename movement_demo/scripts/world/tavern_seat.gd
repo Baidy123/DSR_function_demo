@@ -92,24 +92,25 @@ func _assign_scripted(request: SceneRequest, actor: CharacterBody3D) -> bool:
 	var previous := actor.current_seat() as TavernSeat
 	if previous != null:
 		return shares_table_with(previous)
-	if _seat_request != null or occupant() != null or not _has_room(actor):
+	if _seat_request != null or occupant() != null:
 		return false
 	var return_position := _ground_point(actor, actor.global_position)
 	var route := _approach_route(actor, return_position)
 	if route.is_empty():
-		return false
+		return _claim_seat(actor, return_position if return_position.is_finite() else actor.global_position, false)
 	_seat_request = request
 	_initial_posture = actor.crouch_amount
 	_entry_position = route.back()
 	_approach_origin = return_position
 	actor.set_scripted_seat_motion(true)
-	var success := await _approach_and_sit(request, actor, route)
+	var approached := await _approach_and_sit(request, actor, route)
 	if _seat_request != request:
 		return false
-	if success:
-		success = claim(actor, return_position)
-		if success:
-			_return_route = route
+	# A new obstruction may stop the walk. A current story cue still places the actor in the reserved seat.
+	var success: bool = request.is_current() and is_instance_valid(actor) and actor.is_inside_tree() \
+		and not actor.is_dead() and _claim_seat(actor, return_position, false)
+	if success and approached:
+		_return_route = route
 	_end_seat_motion(actor, success)
 	return success
 
@@ -125,7 +126,13 @@ func _leave_scripted(request: SceneRequest, actor: CharacterBody3D) -> bool:
 	if route.is_empty() or not Geometry.can_occupy(actor, route.back(), standing.y, standing.x):
 		route = _approach_route(actor, origin)
 	if route.is_empty():
-		return false
+		# The same obstruction that forced a scripted sit may still block the return walk.
+		var destination := _ground_point(actor, _return_position)
+		if not Geometry.can_occupy(actor, destination, standing.y, standing.x):
+			return false
+		release(actor)
+		actor.stand_from_seat(destination)
+		return true
 	var entry: Vector3 = route.pop_back()
 
 	_seat_request = request
@@ -134,9 +141,11 @@ func _leave_scripted(request: SceneRequest, actor: CharacterBody3D) -> bool:
 	var posture := 1.0 if actor.manual_crouch else 0.0
 	var offset := entry - actor.global_position
 	var heading := atan2(-offset.x, -offset.z)
-	var left := await _move_seat_pose(request, actor, entry, heading, posture, SIT_SECONDS)
+	var left := await _move_seat_pose(request, actor, entry, heading, posture, SIT_SECONDS, true)
 	if _seat_request != request:
 		return false
+	# A scripted occupant may overlap the seat geometry. The standing destination must still be clear.
+	left = left and Geometry.can_occupy(actor, entry, standing.y, standing.x)
 	if left:
 		_rising_from_seat = false
 		release(actor)
@@ -155,8 +164,6 @@ func _approach_route(actor: CharacterBody3D, start: Vector3) -> Array[Vector3]:
 	var forward := -global_basis.z.slide(Vector3.UP).normalized()
 	var side := forward.cross(Vector3.UP)
 	var standing: Vector2 = actor.seat_body_dimensions(false)
-	var sitting: Vector2 = actor.seat_body_dimensions(true)
-	var space := actor.get_world_3d().direct_space_state
 	for depth: float in ENTRY_DEPTHS:
 		for lateral: float in ENTRY_SIDES:
 			var point := global_position + forward * depth + side * lateral
@@ -165,12 +172,6 @@ func _approach_route(actor: CharacterBody3D, start: Vector3) -> Array[Vector3]:
 			if not entry.is_finite() or absf(entry.y - start.y) > 0.2:
 				continue
 			if not Geometry.can_occupy(actor, entry, standing.y, standing.x):
-				continue
-			var slide := Geometry.capsule_query(actor, entry, sitting.y, sitting.x)
-			slide.exclude = _excluded_rids(actor)
-			slide.motion = global_position - entry
-			var fractions := space.cast_motion(slide)
-			if fractions.size() != 2 or fractions[0] < 0.9999:
 				continue
 			if Geometry.can_sweep(actor, start, entry, standing.y, standing.x):
 				return [entry]
@@ -200,7 +201,7 @@ func _approach_and_sit(request: SceneRequest, actor: CharacterBody3D, route: Arr
 	_sliding_onto_seat = true
 	if is_instance_valid(_furniture):
 		actor.add_collision_exception_with(_furniture)
-	return await _move_seat_pose(request, actor, global_position, heading, 1.0, SIT_SECONDS)
+	return await _move_seat_pose(request, actor, global_position, heading, 1.0, SIT_SECONDS, true)
 
 
 func _walk_seat_route(request: SceneRequest, actor: CharacterBody3D, route: Array[Vector3], posture: float) -> bool:
@@ -215,7 +216,7 @@ func _walk_seat_route(request: SceneRequest, actor: CharacterBody3D, route: Arra
 
 
 func _move_seat_pose(request: SceneRequest, actor: CharacterBody3D, point: Vector3, heading: float,
-		posture: float, duration: float) -> bool:
+		posture: float, duration: float, ignore_collision := false) -> bool:
 	var start := actor.global_position
 	var start_heading: float = actor.get_seat_motion_heading()
 	var start_posture: float = actor.crouch_amount
@@ -230,9 +231,13 @@ func _move_seat_pose(request: SceneRequest, actor: CharacterBody3D, point: Vecto
 		var weight := smoothstep(0.0, duration, elapsed)
 		var turn_weight := smoothstep(0.0, minf(duration, TURN_SECONDS), elapsed)
 		actor.apply_seat_motion_pose(lerp_angle(start_heading, heading, turn_weight), lerpf(start_posture, posture, weight))
-		var delta := start.lerp(point, weight) - actor.global_position
-		if not delta.is_zero_approx() and actor.move_and_collide(delta) != null:
-			return false
+		var destination := start.lerp(point, weight)
+		if ignore_collision:
+			actor.global_position = destination
+		else:
+			var delta := destination - actor.global_position
+			if not delta.is_zero_approx() and actor.move_and_collide(delta) != null:
+				return false
 	return true
 
 
@@ -250,9 +255,13 @@ func _end_seat_motion(actor: CharacterBody3D, seated: bool) -> void:
 
 
 func _recover_interrupted_slide(actor: CharacterBody3D) -> void:
-	actor.move_and_collide(_entry_position - actor.global_position)
 	var dimensions: Vector2 = actor.seat_body_dimensions(false)
-	var clear := Geometry.can_occupy(actor, actor.global_position, dimensions.y, dimensions.x)
+	var clear := Geometry.can_occupy(actor, _entry_position, dimensions.y, dimensions.x)
+	if clear:
+		actor.global_position = _entry_position
+	else:
+		actor.move_and_collide(_entry_position - actor.global_position)
+		clear = Geometry.can_occupy(actor, actor.global_position, dimensions.y, dimensions.x)
 	if not clear:
 		# A moving body can occupy the entry after we have committed to the slide.
 		# Finish in the reserved seat if returning to the floor is temporarily blocked.
@@ -261,10 +270,10 @@ func _recover_interrupted_slide(actor: CharacterBody3D) -> void:
 		clear = Geometry.can_occupy(actor, _approach_origin, dimensions.y, dimensions.x)
 		if clear:
 			actor.global_position = _approach_origin
-			actor.reset_physics_interpolation()
 	if is_instance_valid(_furniture):
 		actor.remove_collision_exception_with(_furniture)
 	if clear:
+		actor.reset_physics_interpolation()
 		actor.apply_seat_motion_pose(actor.get_seat_motion_heading(), _initial_posture)
 
 
@@ -301,9 +310,15 @@ func offer_score(actor: CharacterBody3D) -> float:
 
 
 func claim(actor: CharacterBody3D, exit_position: Vector3) -> bool:
+	return _claim_seat(actor, exit_position, true)
+
+
+func _claim_seat(actor: CharacterBody3D, exit_position: Vector3, check_room: bool) -> bool:
 	if _seat_request != null and _seat_request.node(&"player") != actor:
 		return false
-	if occupant() != null or not actor.has_method(&"sit_at_seat") or actor.current_seat() != null or not _has_room(actor):
+	if occupant() != null or not actor.has_method(&"sit_at_seat") or actor.current_seat() != null:
+		return false
+	if check_room and not _has_room(actor):
 		return false
 	_occupant = weakref(actor)
 	_return_position = exit_position

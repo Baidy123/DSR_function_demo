@@ -69,6 +69,7 @@ func _run() -> void:
 	var merchant := current_scene.get_node("RewardNPC") as Node3D
 	var merchant_seat := current_scene.get_node("BarEnvironment/SouthLounge/Tables/Setting1/NorthSofa/Seats/Center") as TavernSeat
 	var across_merchant := current_scene.get_node("BarEnvironment/SouthLounge/Tables/Setting1/SouthSofa/Seats/Center") as TavernSeat
+	var block_merchant_approach := OS.get_cmdline_user_args().has("--block-merchant-approach")
 	var seated_cues: Array[String] = []
 	var presentation := player.get_node("PlayerPresentation")
 	var seat_motion := {
@@ -103,9 +104,13 @@ func _run() -> void:
 	physics_frame.connect(sample_seat_motion)
 	ui.scripted_seat_assigned.connect(func(cue: String) -> void:
 		sample_seat_motion.call()
-		check(seat_motion.steps >= 8 and seat_motion.largest_step <= 0.16
-			and seat_motion.walking_animation and seat_motion.lowering_animation,
-			"dialogue seating travels and lowers over consecutive physics frames for " + cue)
+		if block_merchant_approach and cue == "merchant":
+			check(seat_motion.steps <= 1 and seat_motion.largest_step > 0.16,
+				"blocked merchant approach places the player directly in the seat")
+		else:
+			check(seat_motion.steps >= 8 and seat_motion.largest_step <= 0.16
+				and seat_motion.walking_animation and seat_motion.lowering_animation,
+				"dialogue seating travels and lowers over consecutive physics frames for " + cue)
 		seat_motion.steps = 0
 		seat_motion.largest_step = 0.0
 		seat_motion.walking_animation = false
@@ -233,8 +238,19 @@ func _run() -> void:
 	check(not ui.dialogue_panel.visible and opening.phase == Opening.Phase.MERCHANT,
 		"the rail blocks merchant interaction from the hall side")
 	await _go_to(opening._target)
+	var merchant_start: Vector3 = player.global_position
+	var approach_blockers: Array[StaticBody3D] = []
+	if OS.get_cmdline_user_args().has("--block-merchant-seat"):
+		_add_seating_blocker(across_merchant.global_position + Vector3.UP * 0.44, Vector3(0.24, 0.6, 0.24))
+		await physics_frame
+	if block_merchant_approach:
+		for direction in [Vector3.LEFT, Vector3.RIGHT, Vector3.FORWARD, Vector3.BACK]:
+			var size := Vector3(0.14, 2, 1.2) if direction.x != 0 else Vector3(1.2, 2, 0.14)
+			approach_blockers.append(_add_seating_blocker(merchant_start + Vector3.UP + direction * 0.44, size))
+		await physics_frame
 	_interact()
 	await _conversation(ui, "merchant introduction", ["那我先看看"])
+	for blocker in approach_blockers: blocker.collision_layer = 0
 	check(seated_cues == ["commissioner", "merchant"] and player.current_seat() != null,
 		"merchant dialogue seats the player through the catalog")
 	var board := current_scene.get_node("ShopBoard")
@@ -261,13 +277,24 @@ func _run() -> void:
 		and absf(delivery_offset.z) < 0.16, "runner brings the crate to the front end of the merchant's table")
 	check(await _wait_for(func(): return runner.global_position.distance_to(runner_at_table) > 0.4, 90)
 		and ui.dialogue_panel.visible, "runner walks away while the delivery dialogue is still open")
+	if block_merchant_approach:
+		# Let the runner clear the table before restoring the same obstruction for the player's exit.
+		await _wait_for(func() -> bool:
+			var departure: SceneRequest = opening._runner_departure
+			return departure != null and departure.dedupe_key == &"runner_departure")
+	for blocker in approach_blockers: blocker.collision_layer = 1
 	await _conversation(ui, "gear delivery")
 	check(state.get_flag("ASKED_MERCHANT_SUPPLY"), "price follow-up records the supply explanation")
 	check(await _wait_for(func(): return opening.phase == Opening.Phase.DEPART), "delivery restores free exploration")
 	check(player.current_seat() == null, "delivery finishes by releasing the scripted seat")
 	var merchant_exit: Dictionary = exit_samples[Opening.Phase.DELIVERY]
-	check(merchant_exit.steps >= 8 and merchant_exit.largest_step <= 0.16 and merchant_exit.walking,
-		"player stands and walks away from the merchant over consecutive physics frames")
+	if block_merchant_approach:
+		check(player.global_position.slide(Vector3.UP).distance_to(merchant_start.slide(Vector3.UP)) < 0.06,
+			"blocked merchant exit returns the player to the clear original standing position")
+		for blocker in approach_blockers: blocker.queue_free()
+	else:
+		check(merchant_exit.steps >= 8 and merchant_exit.largest_step <= 0.16 and merchant_exit.walking,
+			"player stands and walks away from the merchant over consecutive physics frames")
 	physics_frame.disconnect(sample_seat_motion)
 	var loadout: Dictionary = player.get_node("Equipment").campaign_snapshot()
 	check(state.get_flag("opening_complete") and not player.is_in_dialogue
@@ -294,6 +321,18 @@ func _run() -> void:
 		check(false, "warehouse door loads the real first level")
 	print("Opening flow: %d checks, %d failed" % [checks, failures])
 	quit(0 if failures == 0 else 1)
+
+
+func _add_seating_blocker(point: Vector3, size: Vector3) -> StaticBody3D:
+	var body := StaticBody3D.new()
+	var collider := CollisionShape3D.new()
+	var shape := BoxShape3D.new()
+	shape.size = size
+	collider.shape = shape
+	body.add_child(collider)
+	current_scene.add_child(body)
+	body.global_position = point
+	return body
 
 
 func _go_to(point: Vector3) -> void:
