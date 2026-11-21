@@ -2,12 +2,22 @@
 extends EditorInspectorPlugin
 
 var _creating_native_property := false
+var _history: EditorUndoRedoManager
 const ENEMY_RECOVERY_FIELDS := ["spread_recovery_degrees_per_second", "stabilize_seconds", "settle_seconds"]
 const PLAYER_CONVERGENCE_FIELDS := ["convergence_model", "convergence_seconds", "convergence_exponent_k"]
+const PLAYER_RECOVERY_DELAYS := ["spread_recovery_delay", "accuracy_recovery_delay"]
+const PLAYER_CONE_FIELDS := ["min_spread_angle_degrees", "max_spread_angle_degrees", "initial_spread_angle_degrees",
+	"moving_spread_angle_degrees", "player_move_spread_degrees_per_meter", "shot_spread_penalty_degrees", "shot_max_spread_angle_degrees"]
+const PLAYER_PROBABILITY_FIELDS := ["initial_accuracy", "moving_accuracy_cap", "player_move_accuracy_loss_per_meter",
+	"shot_accuracy_penalty", "minimum_accuracy"]
+const PLAYER_SHOTGUN_FIELDS := ["stable_jitter_degrees", "unstable_jitter_degrees", "starting_stability", "movement_loss_per_meter",
+	"movement_stability_floor", "shell_stability_loss", "shell_stability_floor", "stability_recovery_delay"]
+const PLAYER_HIT_FIELDS := ["hit_accuracy_loss_multiplier", "suppression_accuracy_loss_multiplier"]
 const MELEE_OPENING_FIELDS := ["melee_headshot_opening_enabled", "melee_headshot_threshold_multiplier"]
 
 const PatternProperty = preload("res://addons/weapon_mode_inspector/shotgun_pattern_property.gd")
 const CoverageProperty = preload("res://addons/weapon_mode_inspector/shotgun_coverage_property.gd")
+const AimModeProperty = preload("res://addons/weapon_mode_inspector/aim_mode_property.gd")
 const PatternPreview = preload("res://scripts/debug/shotgun_pattern_preview.gd")
 
 const PROBABILITY_FIELDS := {
@@ -40,6 +50,7 @@ const SPREAD_FIELDS := {
 }
 const COMMON_FIELDS := {
 	"tracking_parallel_tolerance_degrees": "跟枪免罚半角（仅玩家）",
+	"convergence_model": "收敛公式",
 	"convergence_seconds": "收敛时间（最大→最小）", "convergence_exponent_k": "指数强度 k",
 	"headshot_accuracy_threshold": "爆头起始准度", "headshot_damage_multiplier": "未秒杀时伤害倍率", "headshot_stagger_seconds": "被爆头状态时长",
 	"headshot_movement_multiplier": "被爆头时保留移速", "headshot_accuracy_cap": "被爆头期间精度上限",
@@ -59,6 +70,17 @@ const COMMON_FIELDS := {
 	"melee_slow_multiplier": "眩晕时保留移速", "melee_slow_seconds": "眩晕持续时间（秒）",
 	"melee_headshot_threshold_multiplier": "眩晕破绽门槛倍率（仅敌人受方）",
 }
+const PAIRED_LABELS := {
+	"spread_recovery_delay": "散布锥恢复等待", "accuracy_recovery_delay": "概率恢复等待",
+	"stable_jitter_degrees": "稳定时最大随机偏移", "unstable_jitter_degrees": "不稳定时最大随机偏移",
+	"starting_stability": "初始稳定度", "movement_loss_per_meter": "每米移动损耗",
+	"movement_stability_floor": "移动稳定度下限", "shell_stability_loss": "每枪稳定度损耗",
+	"shell_stability_floor": "开火稳定度下限", "stability_recovery_delay": "恢复等待时间",
+	"crouch_spread_reduction": "最大散布缩减", "hit_accuracy_loss_multiplier": "命中精度损失倍率",
+	"suppression_accuracy_loss_multiplier": "压制精度损失倍率",
+}
+const PAIRED_PERCENT_FIELDS := ["starting_stability", "movement_loss_per_meter", "movement_stability_floor",
+	"shell_stability_loss", "shell_stability_floor", "crouch_spread_reduction"]
 const PERCENT_FIELDS := [
 	"headshot_accuracy_threshold",
 	"headshot_movement_multiplier", "headshot_accuracy_cap",
@@ -82,6 +104,10 @@ const FIREARM_FIELDS := [
 
 ## 自定义数值控件也提供直接提示；脚本的 ## 属性文档同时保留原生检查器帮助。
 const EFFECT_HELP := {
+	"convergence_model": "线性匀速；二次和指数前快后慢。三者在同一完整时间到达最准。",
+	"crouch_spread_reduction": "蹲姿时最大散布或最大霰弹随机偏移的缩减比例。0% 关闭。",
+	"hit_accuracy_loss_multiplier": "攻击武器的命中精度损失乘此倍率。×0 免除该模式的损失。",
+	"suppression_accuracy_loss_multiplier": "敌方弹道擦过时，攻击武器的压制精度损失乘此倍率。×0 免除该模式的损失。",
 	"tracking_parallel_tolerance_degrees": "仅玩家使用此枪时有效。目标沿瞄准连线靠近／远离，在两侧各25°（默认）的范围内不扣目标移动精度；超出后连续增加损失。0使用纯横向投影；玩家自身移动、受击等惩罚保持。敌人使用同一枪时不读取此项。",
 	"stabilize_seconds": "仅敌人：从初始概率恢复到100%的秒数；初始100%时按0到100%。继续供原AI恢复与掩体阶段估时使用。玩家不读取，不受玩家公式和收敛时间影响。",
 	"settle_seconds": "仅敌人：霰弹从初始稳定度恢复到最准的秒数；初始100%时按0到100%。玩家不读取；玩家霰弹统一使用所属武器的玩家收敛时间与公式。",
@@ -117,11 +143,21 @@ const EFFECT_HELP := {
 
 func _can_handle(object: Object) -> bool:
 	if _creating_native_property: return false
-	return object is WeaponData or object is ShotgunPattern or object is ShotgunSettings or object is PatternPreview
+	return object is WeaponData or object is ShotgunPattern or object is ShotgunSettings or object is PatternPreview \
+		or _is_player_combat(object)
 
 
 func _parse_property(object: Object, type: Variant.Type, path: String, hint: PropertyHint,
 		hint_text: String, usage: int, wide: bool) -> bool:
+	if _is_player_combat(object):
+		if path == "crouch_spread_reduction":
+			_add_mode_pair(object, object, path, [path])
+			return true
+		if path in PLAYER_HIT_FIELDS:
+			if path == PLAYER_HIT_FIELDS[0]:
+				_add_mode_pair(object, object, path, PLAYER_HIT_FIELDS)
+			return true
+		return false
 	if (object is ShotgunSettings and path == "spread_mode") or (object is PatternPreview and path == "preview_spread_mode"):
 		_creating_native_property = true
 		var native := EditorInspector.instantiate_property_editor(object, type, path, hint, hint_text, usage, wide)
@@ -136,6 +172,8 @@ func _parse_property(object: Object, type: Variant.Type, path: String, hint: Pro
 			return true
 		return false
 	if object is ShotgunSettings:
+		if path in PLAYER_SHOTGUN_FIELDS and _shows_paired_shotgun(object):
+			return true
 		if path == "pattern_angle_degrees":
 			add_property_editor(path, CoverageProperty.new(), false, "图样覆盖范围")
 			return true
@@ -155,36 +193,22 @@ func _parse_property(object: Object, type: Variant.Type, path: String, hint: Pro
 		return false
 	if path == "fire_mode":
 		var editor := RefreshingEnumProperty.new()
-		editor.configure(hint_text, int(object.fire_mode))
+		var history := _editor_history()
+		editor.configure(hint_text, int(object.fire_mode), history.get_history_undo_redo(history.get_object_history_id(object)))
 		add_property_editor(path, editor)
 		return true
 	if path == "shotgun":
 		return object.fire_mode != WeaponData.FireMode.SHOTGUN
-	if path == "mouse_aim_accuracy":
-		return object.fire_mode == WeaponData.FireMode.MELEE or _is_enemy_context()
+	if _parse_weapon_pairs(object, path):
+		return true
 	if object.fire_mode == WeaponData.FireMode.SHOTGUN and (path == "damage" or PROBABILITY_FIELDS.has(path) or SPREAD_FIELDS.has(path)):
 		return true
 	if object.fire_mode == WeaponData.FireMode.MELEE and (path in FIREARM_FIELDS or PROBABILITY_FIELDS.has(path) or SPREAD_FIELDS.has(path)):
 		return true
 	if path in ENEMY_RECOVERY_FIELDS and _is_player_context(): return true
 	if path == "tracking_parallel_tolerance_degrees" and _is_enemy_context(): return true
-	if path in PLAYER_CONVERGENCE_FIELDS and _is_enemy_context(): return true
 	if path in MELEE_OPENING_FIELDS and (_is_enemy_context() or object.fire_mode == WeaponData.FireMode.MELEE): return true
 	if path == "melee_headshot_threshold_multiplier" and not object.melee_headshot_opening_enabled: return true
-	if path == "convergence_model":
-		var note := Label.new()
-		note.name = "AimRecoveryHelp"
-		note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		note.text = "玩家三种公式统一使用收敛时间；二次／指数前快后慢。\n恢复等待与惩罚继续生效；敌人使用独立的原算法接口。"
-		note.add_theme_font_size_override("font_size", 13)
-		add_custom_control(note)
-		var editor := RefreshingEnumProperty.new()
-		editor.configure(hint_text, int(object.convergence_model))
-		editor.tooltip_text = "线性匀速；二次和指数前快后慢。三者在同一完整时间到达最准；增加总时间可提高等待最准的成本。仅玩家生效。"
-		add_property_editor(path, editor, false, "收敛公式")
-		return true
-	if path == "convergence_exponent_k" and object.convergence_model != WeaponData.ConvergenceModel.EXPONENTIAL:
-		return true
 	var headshot_labels := {"headshot_enabled": "启用爆头", "headshot_instant_kill_enabled": "启用爆头秒杀", "headshot_stagger_refresh_mode": "连续硬直刷新方式",
 		"melee_headshot_opening_enabled": "眩晕爆头破绽（仅玩家近战命中敌人）"}
 	if headshot_labels.has(path):
@@ -209,6 +233,79 @@ func _parse_property(object: Object, type: Variant.Type, path: String, hint: Pro
 		editor.spin.tooltip_text = EFFECT_HELP[path]
 	add_property_editor(path, editor, false, label_text)
 	return true
+
+
+func _parse_weapon_pairs(weapon: WeaponData, path: String) -> bool:
+	var player_gun := not _is_enemy_context() and weapon.fire_mode != WeaponData.FireMode.MELEE
+	var shotgun := weapon.fire_mode == WeaponData.FireMode.SHOTGUN
+	if path == "mouse_aim_accuracy":
+		if player_gun and shotgun:
+			_add_mode_pair(weapon, weapon.get_shotgun_settings(), path, PLAYER_SHOTGUN_FIELDS)
+		return true
+	if path in PLAYER_CONVERGENCE_FIELDS:
+		if player_gun and path == PLAYER_CONVERGENCE_FIELDS[0]:
+			_add_mode_pair(weapon, weapon, path, PLAYER_CONVERGENCE_FIELDS)
+		return true
+	if not player_gun: return false
+	if path == "headshot_accuracy_threshold":
+		_add_mode_pair(weapon, weapon, path, [path])
+		return true
+	var mode := _context_mode(weapon)
+	if path in PLAYER_RECOVERY_DELAYS:
+		if not shotgun and path == PLAYER_RECOVERY_DELAYS[0]:
+			var fields := [PLAYER_RECOVERY_DELAYS[1 - mode]] if mode in [0, 1] else PLAYER_RECOVERY_DELAYS
+			_add_mode_pair(weapon, weapon, path, fields)
+		return true
+	if path in PLAYER_CONE_FIELDS:
+		if not shotgun and mode != 0 and path == PLAYER_CONE_FIELDS[0]:
+			_add_mode_pair(weapon, weapon, path, PLAYER_CONE_FIELDS)
+		return true
+	if path in PLAYER_PROBABILITY_FIELDS:
+		if not shotgun and mode != 1 and path == PLAYER_PROBABILITY_FIELDS[0]:
+			_add_mode_pair(weapon, weapon, path, PLAYER_PROBABILITY_FIELDS)
+		return true
+	return false
+
+
+func _add_mode_pair(owner: Object, tracking: Object, anchor: String, paths: Array) -> void:
+	var properties := {}
+	for field in tracking.get_property_list():
+		properties[field.name] = field
+	var fields: Array[Dictionary] = []
+	for path in paths:
+		var field: Dictionary = properties[path]
+		field.label = PAIRED_LABELS.get(path, COMMON_FIELDS.get(path, PROBABILITY_FIELDS.get(path, SPREAD_FIELDS.get(path, path))))
+		field.help = EFFECT_HELP.get(path, "")
+		field.percentage = path in PERCENT_FIELDS or path in PAIRED_PERCENT_FIELDS
+		fields.append(field)
+	var editor := AimModeProperty.new()
+	editor.configure(owner, tracking, fields, _editor_history())
+	add_property_editor(anchor, editor)
+
+
+func _editor_history() -> EditorUndoRedoManager:
+	if _history == null:
+		var bridge := EditorPlugin.new()
+		_history = bridge.get_undo_redo()
+		bridge.free()
+	return _history
+
+
+func _is_player_combat(object: Object) -> bool:
+	return object is Node and object.get_script() != null \
+		and object.get_script().resource_path == "res://scripts/player/player_combat_v3.gd"
+
+
+func _shows_paired_shotgun(settings: ShotgunSettings) -> bool:
+	var selected := EditorInterface.get_inspector().get_edited_object()
+	if selected is WeaponData: return selected.shotgun == settings
+	if not _is_player_context(): return false
+	var slots: Node = selected.get_node_or_null("../Equipment") if _is_player_combat(selected) else selected
+	if slots == null: return false
+	for slot in ["primary_weapon", "secondary_weapon"]:
+		var weapon := slots.get(slot) as WeaponData
+		if weapon != null and weapon.shotgun == settings: return true
+	return false
 
 
 # Nested resources follow the selected owner; standalone resources show both interfaces.
@@ -247,6 +344,7 @@ func _context_mode(weapon: Object) -> int:
 class RefreshingEnumProperty extends EditorProperty:
 	var option := OptionButton.new()
 	var shown_mode: int = -1
+	var _object_history: UndoRedo
 
 	func _init() -> void:
 		option.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -254,15 +352,22 @@ class RefreshingEnumProperty extends EditorProperty:
 		add_focusable(option)
 		option.item_selected.connect(_on_selected)
 
-	func configure(enum_hint: String, current_mode: int) -> void:
+	func configure(enum_hint: String, current_mode: int, history: UndoRedo) -> void:
 		shown_mode = current_mode
+		_object_history = history
 		for entry in enum_hint.split(","):
 			var parts := entry.rsplit(":", true, 1)
 			option.add_item(parts[0], int(parts[1]) if parts.size() == 2 else option.item_count)
 
 
+	func _ready() -> void:
+		if _object_history != null:
+			_object_history.version_changed.connect(_update_property)
+
+
 	func _update_property() -> void:
 		var weapon := get_edited_object()
+		if weapon == null: return
 		var mode: int = int(weapon.get(get_edited_property()))
 		option.select(option.get_item_index(mode))
 		if mode != shown_mode:
@@ -294,19 +399,7 @@ class NumberProperty extends EditorProperty:
 		spin.value_changed.connect(_on_value_changed)
 
 	func configure(range_hint: String, percentage: bool) -> void:
-		var parts := range_hint.split(",")
-		scale_factor = 100.0 if percentage else 1.0
-		spin.min_value = float(parts[0]) * scale_factor
-		spin.max_value = float(parts[1]) * scale_factor
-		spin.step = float(parts[2]) * scale_factor
-		spin.allow_greater = parts.has("or_greater")
-		spin.allow_lesser = parts.has("or_less")
-		if percentage:
-			spin.suffix = "%"
-		else:
-			for part in parts:
-				if part.begins_with("suffix:"):
-					spin.suffix = part.trim_prefix("suffix:")
+		scale_factor = AimModeProperty.configure_spin(spin, range_hint, percentage)
 
 	func _update_property() -> void:
 		spin.set_value_no_signal(float(get_edited_object().get(get_edited_property())) * scale_factor)

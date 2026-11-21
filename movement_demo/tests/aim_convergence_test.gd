@@ -313,3 +313,14 @@ func _separate_aim_parameters() -> void:
 	check(probe.directions.size() == 1 and probe.directions[0].is_equal_approx(expected[0])
 		and is_equal_approx(combat.accuracy, 0.45) and is_equal_approx(combat.accuracy_recovery_timer, 0.7),
 		"Real mouse shot uses its own shotgun jitter, recoil and recovery wait")
+	gun.hit_accuracy_loss = 0.2
+	combat.hit_accuracy_loss_multiplier = 1.5
+	combat.mouse_hit_accuracy_loss_multiplier = 0.5
+	combat.accuracy = 0.9
+	combat.apply_weapon_hit(gun.get_attack_effects())
+	var mouse_after_hit: float = combat.accuracy
+	combat.aim_control = combat.AimControl.AUTO_LOCK
+	combat.accuracy = 0.9
+	combat.apply_weapon_hit(gun.get_attack_effects())
+	check(is_equal_approx(mouse_after_hit, 0.8) and is_equal_approx(combat.accuracy, 0.6),
+		"Both modes apply the same incoming hit using their own received accuracy multiplier")

@@ -34,8 +34,8 @@ func test_inspector_03_probability() -> void:
 	assert_true(properties.has("fire_mode"), "fire mode visible in weapon slot")
 	if properties.has("shot_accuracy_penalty"):
 		var field = properties.shot_accuracy_penalty
-		assert_true(is_equal_approx(field.spin.value, f.weapon.shot_accuracy_penalty * 100.0), "percentage scale")
-		field.spin.value = 12.0
+		assert_true(is_equal_approx(field.value, f.weapon.shot_accuracy_penalty * 100.0), "percentage scale")
+		field.value = 12.0
 	f.combat.set("aim_mode", 1)
 	EditorInterface.get_inspector().emit_signal("property_edited", "aim_mode")
 
@@ -55,7 +55,7 @@ func test_inspector_05_cone() -> void:
 	assert_true(properties.has("damage"), "common fields still visible")
 	if properties.has("shot_spread_penalty_degrees"):
 		f.previous_angle = f.weapon.shot_spread_penalty_degrees
-		properties.shot_spread_penalty_degrees.spin.value = 2.5
+		properties.shot_spread_penalty_degrees.value = 2.5
 
 
 func test_inspector_06_undo() -> void:
@@ -116,7 +116,12 @@ func _fixture() -> Dictionary:
 func _editors(node: Node, resource: Resource) -> Dictionary:
 	var result := {}
 	if node is EditorProperty and node.get_edited_object() == resource:
-		result[node.get_edited_property()] = node
+		var tabs := node.get_node_or_null("AimModeTabs") as TabContainer
+		if tabs == null:
+			result[node.get_edited_property()] = node
+		else:
+			for row in tabs.get_child(0).get_children():
+				result[String(row.name)] = row.get_node("Value")
 	for child in node.get_children(true):
 		result.merge(_editors(child, resource))
 	return result

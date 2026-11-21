@@ -65,25 +65,22 @@ var _switch_turn_distance := 0.0
 ## 蹲姿最大散布乘以(1-n)，最小散布不变；0关闭，n始终小于1。
 ## 霰弹只缩小最大随机偏移，固定图样不变；不修改恢复进度、时间或爆头资格。
 @export_range(0.0, 0.99, 0.01) var crouch_spread_reduction: float = 0.25
+@export_storage var mouse_crouch_spread_reduction: float = 0.25
 var crouch_bonus_blocked_until_recovery: bool = false
 
-@export_group("受击反应倍率")
+@export_group("受击精度")
 ## 受到攻击武器命中精度损失的倍率，射击与附带近战共用；0免除此项、0.5减半、1正常、2加倍。
 ## 例如武器损失20%、本值0.5，实际扣10个百分点，精度80%变70%；不改变伤害或擦过影响。
 @export_range(0.0, 10.0, 0.05, "suffix:×") var hit_accuracy_loss_multiplier: float = 1.0
 ## 受到敌方弹道擦过时的精度损失倍率；0关闭该损失、0.5减半、1正常。范围仍由攻击武器决定，不改变命中影响。
 @export_range(0.0, 10.0, 0.05, "suffix:×") var suppression_accuracy_loss_multiplier: float = 1.0
+@export_storage var mouse_hit_accuracy_loss_multiplier: float = 1.0
+@export_storage var mouse_suppression_accuracy_loss_multiplier: float = 1.0
+
+@export_group("受击减速")
 ## 命中速度损失倍率，射击与附带近战共用；武器减速30%×0.5=减速15%、保留85%速度。
 ## 0免除减速，1正常，2加倍；只缩放损失，不缩放持续时间、击退或重力，擦过不会减速。
 @export_range(0.0, 10.0, 0.05, "suffix:×") var hit_speed_loss_multiplier: float = 1.0
-
-@export_group("鼠标瞄准精度反应")
-## 鼠标瞄准时蹲姿缩减最大散布的比例。
-@export_range(0.0, 0.99, 0.01) var mouse_crouch_spread_reduction := 0.25
-## 鼠标瞄准时，受击造成的精度损失倍率。
-@export_range(0.0, 10.0, 0.05, "suffix:×") var mouse_hit_accuracy_loss_multiplier := 1.0
-## 鼠标瞄准时，敌方弹道擦过造成的精度损失倍率。
-@export_range(0.0, 10.0, 0.05, "suffix:×") var mouse_suppression_accuracy_loss_multiplier := 1.0
 
 signal weapon_changed(data: WeaponData)
 signal shot_fired(hit: bool, stability: float)

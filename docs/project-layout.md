@@ -101,6 +101,7 @@ movement_demo/
 | `player/player_medkit.gd` | 治疗资格、输入中断、冻结参数与计时，向 Health 交付回血 |
 | `weapons/weapon_data.gd` | 静态枪械参数、收敛和爆头等纯数值规则；不保存角色运行进度 |
 | `weapons/player_mouse_aim_accuracy.gd` | 玩家鼠标瞄准的可选独立参数，公式仍由 WeaponData 和共享火控执行 |
+| `addons/weapon_mode_inspector/aim_mode_property.gd` | 将同一类别的参数排成双模式页，直接编辑原字段或鼠标资源，使用编辑器撤销历史 |
 | `weapons/weapon_ammo.gd` | 每枪弹匣与装填计时，玩家／敌人共用；策略由调用方决定 |
 | `weapons/shotgun_ballistics.gd` | 弹丸采样、物理射线与近弹几何，伤害归各方射击入口 |
 | `weapons/headshot_resolver.gd` | 按实际目标冻结每枪结果与一次破绽消费，再交付受击 |

@@ -64,7 +64,7 @@ func _validate_property(property: Dictionary) -> void:
 @export var shotgun: ShotgunSettings
 
 @export_group("瞄准与散布")
-@export_subgroup("鼠标瞄准精度")
+@export_subgroup("霰弹随机偏移与稳定度")
 ## 只供玩家鼠标瞄准读取。旧资源留空时沿用本武器原有的精度参数。
 @export var mouse_aim_accuracy: MouseAimAccuracy
 
@@ -98,9 +98,9 @@ func _validate_property(property: Dictionary) -> void:
 @export_range(0.0, 10.0, 0.1) var convergence_exponent_k: float = 3.0
 @export_subgroup("恢复等待")
 ## 新的精度损失后等多久开始收拢（秒）；比移动最大散布更散时，继续走路不会反复刷新等待。
-@export_range(0.0, 3.0, 0.05) var spread_recovery_delay: float = 0.6
+@export_range(0.0, 3.0, 0.05, "suffix:s") var spread_recovery_delay: float = 0.6
 ## 新的精度损失后等多久开始恢复中心概率（秒）；低于移动下限时，继续走路不会反复刷新等待。
-@export_range(0.0, 3.0, 0.05) var accuracy_recovery_delay: float = 0.6
+@export_range(0.0, 3.0, 0.05, "suffix:s") var accuracy_recovery_delay: float = 0.6
 
 @export_subgroup("散布锥（角度）")
 ## 完全稳定时的最小散布半角；0度可完全收拢，大于0仍会随机射偏。

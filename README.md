@@ -67,8 +67,8 @@ Dialogue Manager、Phantom Camera 和 Godot AI 插件源码及许可证随工程
 | Player | 移速、转速、加减速、耐力、蹲姿与翻越 | [移动](docs/gameplay/MOVEMENT.md) |
 | Player → Combat → 目标切换 | `Mouse Target Assist Enabled` 开关、鼠标行程、方向半角、转身速度 | [锁定与精度](docs/gameplay/COMBAT.md) |
 | Player → Combat → Aim Control | 场景默认采用自动锁定或鼠标瞄准，游戏内可从暂停设置覆盖 | [瞄准方式](docs/gameplay/COMBAT.md#瞄准方式) |
-| Player → Equipment → 武器 → 鼠标瞄准精度 | 独立调节鼠标瞄准收敛、散布、损耗、爆头门槛和霰弹随机偏移 | [各自调节准度](docs/gameplay/COMBAT.md#各自调节准度) |
-| Player → Combat | `Aim Mode` 弹道算法、蹲姿散布缩减、受击反应倍率 | [战斗配置](docs/gameplay/COMBAT.md) |
+| Player → Equipment → 武器 → 玩家收敛等栏目 | 在各栏的「自动锁定」和「鼠标瞄准」页分别调节准度 | [各自调节准度](docs/gameplay/COMBAT.md#各自调节准度) |
+| Player → Combat | `Aim Mode` 弹道算法、分模式蹲姿精度和受击精度、共用受击减速 | [战斗配置](docs/gameplay/COMBAT.md) |
 | Player → Equipment | 主副武器、初始槽、初始共享备弹、医疗包资源与数量 | [装备](docs/gameplay/WEAPON_SLOTS.md) |
 | Player → Health | 最大生命、Debug 入口 | [生命与治疗](docs/gameplay/PLAYER_HEALTH.md) |
 | Camera3D | `Player Path`、视野过渡、遮挡透明；视野范围跟随武器 `Aim Range` | [相机](docs/gameplay/CAMERA.md) |

@@ -20,7 +20,13 @@ func _run() -> void:
 	EditorInterface.get_inspector().expand_all_folding()
 	for frame in 10: await process_frame
 	var ranged := _properties(EditorInterface.get_inspector(), weapon)
-	check(ranged.has("mouse_aim_accuracy"), "枪械检查器可单独配置鼠标瞄准精度")
+	var convergence_tabs := _mode_tabs(weapon, "convergence_model")
+	check(convergence_tabs != null and convergence_tabs.get_tab_count() == 2
+		and convergence_tabs.get_tab_title(0) == "自动锁定" and convergence_tabs.get_tab_title(1) == "鼠标瞄准",
+		"玩家收敛内部按自动锁定和鼠标瞄准显示两个同级选项")
+	check(not ranged.has("mouse_aim_accuracy") and _mode_tabs(weapon, "min_spread_angle_degrees") != null
+		and _mode_tabs(weapon, "initial_accuracy") != null and _mode_tabs(weapon, "headshot_accuracy_threshold") != null,
+		"枪械在各组显示双模式入口，收起整份鼠标准度资源")
 	var tracking_spin := _spin(weapon, "tracking_parallel_tolerance_degrees")
 	check(tracking_spin != null and tracking_spin.value == 25 and tracking_spin.max_value == 45 and not tracking_spin.tooltip_text.is_empty(), "枪械瞄准检查器提供默认25度的玩家跟枪免罚半角与说明")
 	for field in ["hit_accuracy_loss", "suppression_accuracy_loss", "hit_speed_loss", "melee_accuracy_loss"]:
@@ -74,6 +80,7 @@ func _run() -> void:
 	check(redone and weapon.fire_mode == WeaponData.FireMode.MELEE and not _properties(EditorInterface.get_inspector(), weapon).has("magazine_capacity") and weapon.magazine_capacity == 27, "缺少资源即时通知时，重做重新隐藏并保留数值")
 	await _convergence_checks(manager)
 	await _player_recovery_controls(manager)
+	await _combat_accuracy_controls(manager)
 	# 使用实际敌人节点的内嵌资源 Inspector，并通过资源选择器展开。
 	EditorInterface.open_scene_from_path("res://scenes/enemy/enemy.tscn")
 	await create_timer(1.0).timeout
@@ -141,10 +148,29 @@ func _check_layout(weapon: WeaponData) -> void:
 
 
 func _spin(object: Object, path: String) -> SpinBox:
+	var paired := _mode_field(object, path, 0) as SpinBox
+	if paired != null: return paired
 	for prop in _descendants(EditorInterface.get_inspector(), "EditorProperty"):
 		if prop.get_edited_object() != object or prop.get_edited_property() != path: continue
 		var spins := _descendants(prop, "SpinBox")
 		if not spins.is_empty(): return spins[0]
+	return null
+
+
+func _mode_tabs(object: Object, path: String) -> TabContainer:
+	for prop in _descendants(EditorInterface.get_inspector(), "EditorProperty"):
+		if prop.get_edited_object() == object and prop.get_edited_property() == path:
+			return prop.get_node_or_null("AimModeTabs") as TabContainer
+	return null
+
+
+func _mode_field(object: Object, path: String, mode: int) -> Control:
+	for prop in _descendants(EditorInterface.get_inspector(), "EditorProperty"):
+		if prop.get_edited_object() != object: continue
+		var tabs := prop.get_node_or_null("AimModeTabs") as TabContainer
+		if tabs == null: continue
+		var field := tabs.get_child(mode).get_node_or_null(path + "/Value") as Control
+		if field != null: return field
 	return null
 
 
@@ -188,7 +214,9 @@ func _player_recovery_controls(manager: EditorUndoRedoManager) -> void:
 			for picker in _descendants(prop, "EditorResourcePicker"): picker.resource_selected.emit(weapon.shotgun, false)
 	for frame in 30: await process_frame
 	EditorInterface.get_inspector().expand_all_folding()
-	check(_spin(weapon.shotgun, "settle_seconds") == null and _spin(weapon, "convergence_seconds") != null, "玩家霰弹没有第二套恢复时间入口")
+	check(_spin(weapon.shotgun, "settle_seconds") == null and _spin(weapon, "convergence_seconds") != null
+		and _mode_field(weapon, "starting_stability", 1) != null and _spin(weapon.shotgun, "starting_stability") == null,
+		"玩家霰弹按模式编辑稳定度，省去重复字段和敌人恢复时间")
 	EditorInterface.edit_resource(weapon.shotgun)
 	for frame in 30: await process_frame
 	EditorInterface.get_inspector().expand_all_folding()
@@ -212,24 +240,23 @@ func _convergence_checks(manager: EditorUndoRedoManager) -> void:
 	for frame in 30: await process_frame
 	EditorInterface.get_inspector().expand_all_folding()
 	for frame in 10: await process_frame
-	var fields := _properties(EditorInterface.get_inspector(), weapon)
-	check(fields.has("convergence_model") and fields.has("convergence_seconds") and not fields.has("convergence_exponent_k"), "线性显示收敛公式与时间，隐藏指数强度")
+	var tracking_exponent := _spin(weapon, "convergence_exponent_k")
+	var mouse_exponent := _mode_field(weapon, "convergence_exponent_k", 1) as SpinBox
+	check(_spin(weapon, "convergence_seconds") != null and tracking_exponent != null and mouse_exponent != null
+		and not tracking_exponent.editable and not mouse_exponent.editable, "两个线性页显示同样的收敛字段，指数强度不可编辑")
 	_select_enum(weapon, "convergence_model", WeaponData.ConvergenceModel.EXPONENTIAL)
 	for frame in 30: await process_frame
-	check(weapon.convergence_model == 2 and _properties(EditorInterface.get_inspector(), weapon).has("convergence_exponent_k"), "真实公式下拉框写入指数并显示强度")
+	check(weapon.convergence_model == 2 and _spin(weapon, "convergence_exponent_k").editable, "真实公式下拉框写入指数并启用强度")
 	var history := manager.get_history_undo_redo(manager.get_object_history_id(weapon))
 	var undone := history.undo()
 	for frame in 30: await process_frame
-	check(undone and weapon.convergence_model == 0 and not _properties(EditorInterface.get_inspector(), weapon).has("convergence_exponent_k"), "撤销公式后字段按线性刷新")
+	check(undone and weapon.convergence_model == 0 and not _spin(weapon, "convergence_exponent_k").editable, "撤销公式后字段按线性刷新")
 	var redone := history.redo()
 	for frame in 30: await process_frame
-	check(redone and weapon.convergence_model == 2 and _properties(EditorInterface.get_inspector(), weapon).has("convergence_exponent_k"), "重做公式后恢复指数强度")
-	var edited := false
-	for prop in _descendants(EditorInterface.get_inspector(), "EditorProperty"):
-		if prop.get_edited_object() != weapon or prop.get_edited_property() != "convergence_seconds": continue
-		for spin in _descendants(prop, "SpinBox"):
-			edited = spin.suffix == "s" and not spin.tooltip_text.is_empty()
-			spin.value = 2.75
+	check(redone and weapon.convergence_model == 2 and _spin(weapon, "convergence_exponent_k").editable, "重做公式后恢复指数强度")
+	var seconds := _spin(weapon, "convergence_seconds")
+	var edited := seconds.suffix == "s" and not seconds.tooltip_text.is_empty()
+	seconds.value = 2.75
 	for frame in 10: await process_frame
 	check(edited and weapon.convergence_seconds == 2.75, "真实秒数控件有单位／独立作用说明且写回资源")
 	undone = history.undo()
@@ -238,19 +265,54 @@ func _convergence_checks(manager: EditorUndoRedoManager) -> void:
 	redone = history.redo()
 	for frame in 10: await process_frame
 	check(redone and weapon.convergence_seconds == 2.75, "收敛时间可原生重做")
+	var tabs := _mode_tabs(weapon, "convergence_model")
+	tabs.current_tab = 1
+	var mouse_seconds := _mode_field(weapon, "convergence_seconds", 1) as SpinBox
+	check(weapon.mouse_aim_accuracy == null and mouse_seconds.value == 2.75,
+		"旧武器进入鼠标标签页时显示沿用值，不创建资源")
+	mouse_seconds.value = 1.5
+	check(weapon.mouse_aim_accuracy != null and weapon.mouse_aim_accuracy.convergence_seconds == 1.5
+		and weapon.convergence_seconds == 2.75 and weapon.mouse_aim_accuracy.convergence_model == 2,
+		"鼠标编辑独立保存，并以原武器值初始化其他字段")
+	check(history.undo() and weapon.mouse_aim_accuracy == null and mouse_seconds.value == 2.75,
+		"撤销首次鼠标编辑恢复旧资源的沿用关系")
+	check(history.redo() and weapon.mouse_aim_accuracy.convergence_seconds == 1.5 and mouse_seconds.value == 1.5,
+		"重做首次鼠标编辑恢复配置和显示值")
 	var path := "user://convergence-inspector-test.tres"
 	var saved := ResourceSaver.save(weapon, path)
 	var loaded := ResourceLoader.load(path, "", ResourceLoader.CACHE_MODE_IGNORE) as WeaponData
-	check(saved == OK and loaded.convergence_model == 2 and loaded.convergence_seconds == 2.75, "检查器操作后的公式与时间保存重载一致")
+	check(saved == OK and loaded.convergence_model == 2 and loaded.convergence_seconds == 2.75
+		and loaded.mouse_aim_accuracy != null and loaded.mouse_aim_accuracy.convergence_seconds == 1.5,
+		"两模式收敛值保存重载一致")
 	DirAccess.remove_absolute(path)
 	_select_mode(weapon, WeaponData.FireMode.SHOTGUN)
 	for frame in 30: await process_frame
-	fields = _properties(EditorInterface.get_inspector(), weapon)
-	check(fields.has("convergence_model") and fields.has("convergence_seconds"), "霰弹保留玩家收敛入口")
+	check(_mode_tabs(weapon, "convergence_model") != null and _spin(weapon, "convergence_seconds") != null, "霰弹保留玩家收敛入口")
 	_select_mode(weapon, WeaponData.FireMode.MELEE)
 	for frame in 30: await process_frame
-	fields = _properties(EditorInterface.get_inspector(), weapon)
-	check(not fields.has("convergence_model") and not fields.has("convergence_seconds") and not fields.has("convergence_exponent_k"), "近战隐藏全部瞄准收敛字段")
+	check(_mode_tabs(weapon, "convergence_model") == null and _spin(weapon, "convergence_seconds") == null,
+		"近战隐藏全部瞄准收敛字段")
+
+
+func _combat_accuracy_controls(manager: EditorUndoRedoManager) -> void:
+	var combat := EditorInterface.get_edited_scene_root().get_node("Combat")
+	EditorInterface.inspect_object(combat)
+	for frame in 30: await process_frame
+	EditorInterface.get_inspector().expand_all_folding()
+	var hit_tabs := _mode_tabs(combat, "hit_accuracy_loss_multiplier")
+	check(hit_tabs != null and hit_tabs.get_child(0).get_child_count() == 2 and hit_tabs.get_child(1).get_child_count() == 2
+		and _mode_tabs(combat, "crouch_spread_reduction") != null
+		and _properties(EditorInterface.get_inspector(), combat).has("hit_speed_loss_multiplier"),
+		"玩家受击精度和蹲姿各有两页，受击减速独立显示")
+	if hit_tabs == null: return
+	hit_tabs.current_tab = 1
+	var mouse_hit := _mode_field(combat, "hit_accuracy_loss_multiplier", 1) as SpinBox
+	mouse_hit.value = 0.35
+	check(is_equal_approx(combat.get("mouse_hit_accuracy_loss_multiplier"), 0.35)
+		and combat.get("hit_accuracy_loss_multiplier") == 1.0, "鼠标受击倍率写入自己的场景属性")
+	var history := manager.get_history_undo_redo(manager.get_object_history_id(combat))
+	check(history.undo() and mouse_hit.value == 1.0 and combat.get("mouse_hit_accuracy_loss_multiplier") == 1.0,
+		"场景倍率可撤销并同步显示")
 
 
 func _select_enum(weapon: WeaponData, path: String, mode: int, suppress_notification: bool = false) -> void:
@@ -274,7 +336,7 @@ func _descendants(node: Node, type: String) -> Array:
 	return result
 
 
-func _properties(node: Node, weapon: WeaponData) -> Dictionary:
+func _properties(node: Node, weapon: Object) -> Dictionary:
 	var result := {}
 	if node is EditorProperty and node.get_edited_object() == weapon:
 		result[node.get_edited_property()] = true
