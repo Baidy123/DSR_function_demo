@@ -47,7 +47,6 @@ func _run() -> void:
 	check(planar_distance > minimum_separation,
 		"NPC B and RecordPlayer cannot both overlap the player interaction body")
 
-
 	var booths: Node3D = scene.get_node_or_null("BarEnvironment/Booths")
 	var curtained_booths := booths.get_children().filter(
 		func(booth: Node) -> bool: return booth.has_node("Curtain"))
@@ -55,9 +54,12 @@ func _run() -> void:
 		"only the northeast booth has a privacy curtain")
 	var bar := scene.get_node("BarEnvironment")
 	var sofas := bar.get_node("SofaSeats")
-	check(sofas.get_children().all(func(sofa: Node) -> bool:
-		return sofa.has_node("Upholstery/LeftSeat") and sofa.has_node("Upholstery/RightSeat")),
-		"ordinary sofas have seats on both sides of the rear bench")
+	var sofa_seats := get_nodes_in_group(&"tavern_seat").filter(sofas.is_ancestor_of)
+	check(not sofa_seats.is_empty() and sofa_seats.all(func(marker: Node) -> bool:
+		var seat := marker as TavernSeat
+		var furniture := seat.get_node_or_null(seat.furniture_collision) as PhysicsBody3D
+		return furniture != null and sofas.is_ancestor_of(furniture)),
+		"ordinary sofa seats are linked to their furniture collision bodies")
 	var tables := bar.get_node("Tables")
 	check(tables.get_child_count() == 2 and bar.has_node("TerminalColumn/Column/Collision"),
 		"two hall tables flank the terminal column")

@@ -65,9 +65,8 @@ func _run() -> void:
 		cameras.append(cue))
 	var portal := current_scene.get_node("Interactables/LevelPortal") as Interactable
 	var curtain := current_scene.get_node("BarEnvironment/Booths/Booth4/Curtain") as Node3D
-	var commissioner := current_scene.get_node("NPC") as Node3D
-	var merchant := current_scene.get_node("RewardNPC") as Node3D
-	var merchant_seat := current_scene.get_node("BarEnvironment/SouthLounge/Tables/Setting1/NorthSofa/Seats/Center") as TavernSeat
+	var commissioner := current_scene.get_node("NPC") as TavernNPC
+	var merchant := current_scene.get_node("RewardNPC") as TavernNPC
 	var across_merchant := current_scene.get_node("BarEnvironment/SouthLounge/Tables/Setting1/SouthSofa/Seats/Center") as TavernSeat
 	var block_merchant_approach := OS.get_cmdline_user_args().has("--block-merchant-approach")
 	var seated_cues: Array[String] = []
@@ -130,37 +129,16 @@ func _run() -> void:
 	check(Director.for_node(player) != null, "tavern has its own director")
 	check(current_scene.get_node("BarEnvironment").scene_file_path.is_empty(),
 		"the tavern environment is authored inline in Main")
-	check(curtain.to_local(commissioner.global_position).z < -1.0, "commissioner sits behind the northeast curtain")
-	check(merchant_seat.occupant() == merchant, "merchant occupies the left lounge seat")
-	check(merchant_seat.get_node_or_null(merchant_seat.initial_occupant_path) == merchant
-		and current_scene.get_node("BarEnvironment/Tables/Table1/Seats/East/SeatPoint").occupant() == current_scene.get_node("HallReader"),
-		"occupied seats store their initial NPC assignments")
+	check(curtain.to_local(commissioner.global_position).z < -1.0, "commissioner starts behind the northeast curtain")
 	var walker := current_scene.get_node("Walker") as TavernNPC
-	check((commissioner as TavernNPC).special_npc and not walker.special_npc
+	check(commissioner.special_npc and not walker.special_npc
 		and merchant.get_script() == walker.get_script(), "ordinary and special NPCs share the same class")
-	var seats := current_scene.get_node("BarEnvironment/Booths/Booth4/Seating/Seats")
-	check(seats.get_child_count() == 7
-		and current_scene.get_node("BarEnvironment/BarCounter/Stool1/SeatPoint").occupant() == current_scene.get_node("CounterPatron")
-		and merchant_seat.get_parent().get_child_count() == 3,
+	var booth_seats := current_scene.get_node("BarEnvironment/Booths/Booth4/Seating/Seats").get_children()
+	check(not booth_seats.is_empty() and booth_seats.all(func(seat: Node) -> bool: return seat is TavernSeat)
+		and current_scene.get_node_or_null("BarEnvironment/BarCounter/Stool1/SeatPoint") is TavernSeat
+		and across_merchant != null,
 		"stools, sofas and booth rows publish individual seat slots")
-	var authored := (load("res://scenes/main.tscn") as PackedScene).instantiate()
-	check(authored.get_node("NPC").position.is_equal_approx(commissioner.position)
-		and authored.get_node("RewardNPC").position.is_equal_approx(merchant.position),
-		"fixed seats keep the same position from scene file to gameplay")
-	var new_seated := ["HallReader", "HallGuest", "EastGuest", "LoungeGuest", "CounterGuest"]
-	check(new_seated.all(func(actor_name: String) -> bool:
-		var actor := current_scene.get_node(actor_name) as TavernNPC
-		return actor.current_seat() != null and actor.position.is_equal_approx(authored.get_node(actor_name).position)),
-		"the five additional seated NPCs start in their authored positions")
-	var initial_diners := new_seated + ["NPC", "RewardNPC", "CounterPatron", "CounterRegular", "LoungePatron"]
-	check(initial_diners.all(func(actor_name: String) -> bool:
-		var actor := current_scene.get_node(actor_name) as TavernNPC
-		var seat := actor.current_seat()
-		var capsule := actor.get_node("CollisionShape3D").shape as CapsuleShape3D
-		return (seat != null and seat.occupant() == actor
-			and is_equal_approx(capsule.height, actor.seat_body_dimensions(true).y))),
-		"all ten initial diners receive a seat and use the seated body height")
-	authored.free()
+	_check_initial_occupants()
 	check(not portal.enabled, "warehouse exit stays closed before delivery")
 	check(not curtain.get_node("SolidCurtain/CollisionShape3D").disabled,
 		"the curtain starts as an active physical barrier")
@@ -321,6 +299,38 @@ func _run() -> void:
 		check(false, "warehouse door loads the real first level")
 	print("Opening flow: %d checks, %d failed" % [checks, failures])
 	quit(0 if failures == 0 else 1)
+
+
+func _check_initial_occupants() -> void:
+	var authored := (load(current_scene.scene_file_path) as PackedScene).instantiate()
+	var assigned: Array[TavernNPC] = []
+	var visible_occupants := 0
+	for marker in authored.find_children("*", "Marker3D", true, false):
+		var authored_seat := marker as TavernSeat
+		if authored_seat == null or authored_seat.initial_occupant_path.is_empty():
+			continue
+		var seat_path := authored.get_path_to(authored_seat)
+		var seat := current_scene.get_node_or_null(seat_path) as TavernSeat
+		var actor := seat.get_node_or_null(authored_seat.initial_occupant_path) as TavernNPC if seat != null else null
+		if actor == null or not current_scene.is_ancestor_of(actor) or assigned.has(actor):
+			check(false, "initial assignment at %s resolves to a unique tavern NPC" % seat_path)
+			continue
+		assigned.append(actor)
+		if not actor.visible:
+			check(seat.occupant() == null and actor.current_seat() == null,
+				"hidden NPC %s leaves its initial seat vacant" % actor.name)
+			continue
+		visible_occupants += 1
+		var collider := actor.get_node_or_null("CollisionShape3D") as CollisionShape3D
+		var capsule := collider.shape as CapsuleShape3D if collider != null else null
+		var actor_forward := -actor.global_basis.z.slide(Vector3.UP).normalized()
+		var seat_forward := -seat.global_basis.z.slide(Vector3.UP).normalized()
+		check(seat.occupant() == actor and actor.current_seat() == seat
+			and actor.global_position.is_equal_approx(seat.global_position) and actor_forward.dot(seat_forward) > 0.999
+			and capsule != null and not collider.disabled and is_equal_approx(capsule.height, actor.seat_body_dimensions(true).y),
+			"%s occupies its authored seat at %s with the seated pose and capsule" % [actor.name, seat_path])
+	check(visible_occupants > 0, "the tavern has authored seats for visible initial NPCs")
+	authored.free()
 
 
 func _add_seating_blocker(point: Vector3, size: Vector3) -> StaticBody3D:

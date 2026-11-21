@@ -273,11 +273,16 @@ func test_dialogue(scene: Node, actor: Node) -> void:
 		source.get_node("Presentation").animation_profile = Fixture.profile()
 		source.get_node("Presentation").model_scene = model
 	await settle()
+	var npc_view = npc.get_node("Presentation")
+	var npc_state = npc.get_node("NpcPresentation").state
+	var seated: bool = npc.current_seat() != null
+	var talk_pose := &"crouch" if seated else &"dialogue"
+	var resting_pose := &"crouch" if seated else &"idle"
 	await ui.open_dialogue(actor, npc.dialogue_resource, npc.dialogue_start, npc)
-	check(npc.get_node("Presentation").current_state == &"dialogue", "真实对话通知发起 NPC")
+	check(npc_state.in_dialogue and npc_view.current_state == talk_pose, "真实对话通知发起 NPC，坐席保留坐姿")
 	check(other.get_node("Presentation").current_state == &"idle", "其他 NPC 不跟随交谈")
 	ui._close_dialogue()
-	check(npc.get_node("Presentation").current_state == &"idle", "对话关闭恢复待机")
+	check(not npc_state.in_dialogue and npc_view.current_state == resting_pose, "对话关闭恢复 NPC 原有坐姿或待机")
 	ui.open_dialogue(actor, npc.dialogue_resource, npc.dialogue_start, npc)
 	ui._close_dialogue()
 	await settle(5)
@@ -333,6 +338,8 @@ func test_shots(scene: Node, actor: Node3D, enemy: Node3D) -> void:
 	enemy.aim_acquired = true
 	enemy.aim_direction = Vector3.FORWARD
 	enemy.shot_cooldown = 0.0
+	# 远离地图的夹具可能在屏外，固定本实例的开火机会以验证命中特效与动画。
+	enemy.offscreen_fire_chance = 100.0
 	await settle()
 	before = service.active_count()
 	check(enemy.try_fire(), "敌人测试具备真实发射条件")

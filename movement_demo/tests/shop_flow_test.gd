@@ -135,7 +135,11 @@ func _check_real_shop_flow() -> void:
 	ctx.state.completed_level = 1
 	await ctx.tree.process_frame
 	check(await _open_shop_via_e(ctx), "shop reopens at unlock level 1")
-	check(ctx.board.item_count() == 4, "weapon rows appear at unlock level 1 while the owned flag stays hidden")
+	var unlocked_rows: int = ctx.board.item_count()
+	check(not ctx.board._find_item(&"shop_rifle_primary").is_empty()
+		and not ctx.board._find_item(&"shop_rifle_secondary").is_empty()
+		and ctx.board._find_item(&"mind_access_device").is_empty(),
+		"weapon rows appear at unlock level 1 while the owned flag stays hidden")
 
 	var original_secondary: WeaponData = ctx.equipment.secondary_weapon
 	var money_before_weapon: int = ctx.state.money
@@ -145,7 +149,9 @@ func _check_real_shop_flow() -> void:
 	check(ctx.state.money == money_before_weapon - 100, "primary weapon deducts 100")
 	check(ctx.state.has_purchased_shop_item(&"shop_rifle_primary"),
 		"primary weapon purchase is recorded")
-	check(ctx.board.item_count() == 3, "one-time primary row disappears after purchase")
+	check(ctx.board.item_count() == unlocked_rows - 1 and ctx.board._find_item(&"shop_rifle_primary").is_empty()
+		and not ctx.board._find_item(&"shop_rifle_secondary").is_empty(),
+		"one-time primary row disappears after purchase")
 
 	money_before_weapon = ctx.state.money
 	check(ctx.controller.purchase(&"shop_rifle_secondary", 1), "secondary weapon purchase succeeds")
@@ -154,7 +160,9 @@ func _check_real_shop_flow() -> void:
 	check(ctx.state.money == money_before_weapon - 120, "secondary weapon deducts 120")
 	check(ctx.state.has_purchased_shop_item(&"shop_rifle_secondary"),
 		"secondary weapon purchase is recorded")
-	check(ctx.board.item_count() == 2, "both one-time weapon rows disappear after purchase")
+	check(ctx.board.item_count() == unlocked_rows - 2 and ctx.board._find_item(&"shop_rifle_primary").is_empty()
+		and ctx.board._find_item(&"shop_rifle_secondary").is_empty(),
+		"both one-time weapon rows disappear after purchase")
 
 	var money_before_repeat: int = ctx.state.money
 	check(not ctx.controller.purchase(&"shop_rifle_primary", 0), "repeat one-time weapon is rejected")

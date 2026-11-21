@@ -6,6 +6,8 @@
 
 在 Main 展开 `BarEnvironment` 就能直接编辑墙、地板、吧台、桌椅位置和灯光。单件家具仍引用可复用的模板。如果要调整某个实例内部的座位点，右键它开启 **Editable Children**。正式入口使用 Main 内的节点。原 `svg_tavern_environment.tscn` 可用于查阅旧布景。
 
+带门帘卡座的 `Booth4/Seating/Sofa` 默认由 `curved_booth_sofa.gd` 在编辑器预览和运行时生成沙发网格。底座、坐垫和靠背的材质在 `privacy_booth_seating.tscn` 的 `Sofa` 节点上配置。保存场景时跳过生成的网格数据。要使用自制网格，将其存为外部资源后赋给 `Sofa` 的 **Mesh** 字段。
+
 吧台北端在 `BarEnvironment/BarCounter/NorthReturn` 向内拐，占原开口约三分之二。`NorthPartition` 是接到墙边的齐台面木隔门，两段各有碰撞体。调整这两处时，让柜体、隔门与墙面在地面一侧连续，并给北面通往员工门的路线留出空间。
 
 开场的 **E 询问酒保** 提示跟随 `BarEnvironment/BarCounter/Bartender`。移动酒保后，可交谈范围会沿吧台一起移动。柜体 `Long/Collision` 的本地 **+X** 侧是客人侧。

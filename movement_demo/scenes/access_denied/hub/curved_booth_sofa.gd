@@ -16,8 +16,18 @@ const SAMPLE_SPACING := 0.035
 @export var cushion_material: Material
 @export var backrest_material: Material
 
+var _generated_mesh: ArrayMesh
+
+
+func _validate_property(property: Dictionary) -> void:
+	# In the editor, generating the preview must not add a scene mesh override.
+	if property.name == &"mesh" and _generated_mesh != null and mesh == _generated_mesh:
+		property.usage &= ~PROPERTY_USAGE_STORAGE
+
 
 func _ready() -> void:
+	if mesh != null and not mesh.is_built_in():
+		return
 	var sofa := ArrayMesh.new()
 	_add_profile(sofa, base_material, PackedVector2Array([
 		Vector2(0.06, 0.002), Vector2(0.59, 0.002), Vector2(0.64, 0.045),
@@ -35,6 +45,7 @@ func _ready() -> void:
 		Vector2(0.21, 0.68), Vector2(0.15, 1.44), Vector2(0.12, 1.495),
 		Vector2(0.075, 1.52), Vector2(0.035, 1.505), Vector2(0.01, 1.455),
 	]))
+	_generated_mesh = sofa
 	mesh = sofa
 
 
