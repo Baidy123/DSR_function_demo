@@ -13,7 +13,7 @@
 ## 放 NPC 和设置坐席
 
 1. 在 Main 实例化 `scenes/access_denied/hub/tavern_npc.tscn`，命名并摆好站位。仅当需要阶段状态、对话或商店时，勾选 **Special NPC** 并填写相应资源。
-2. 在对应家具展开 `SeatPoint` 或 `Seats`，选中一个挂载 `TavernSeat` 的 `Marker3D`，把 NPC 本体拖入 **Initial Occupant Path**。初始占用归座位配置。运行时 NPC 只保存自己当前所坐的座位引用。
+2. 在对应家具展开 `SeatPoint` 或 `Seats`，选中一个挂载 `TavernSeat` 的 `Marker3D`，把 NPC 本体拖入 **Initial Occupant Path**。开场坐姿由座位的初始占用触发。NPC 站在坐垫上时，先选中座位检查此字段，然后重新打开 Main 确认绑定已经保存。
 3. 拖动座位点到坐垫上方。座位点的本地 **-Z** 是角色入座后的固定朝向。圆凳的座位点沿用凳子自身的朝向，摆放时绕 Y 轴旋转凳子根节点，使它面向相邻的桌子、吧台或终端。其他家具可直接旋转座位标记。**Reach** 控制入座距离，**Npc Exit Distance** 控制 NPC 离席时向前寻找落脚点的距离。座位已占用时其他人不能使用。
 4. 玩家可以自由按 F 入座、起身。开场大姐头和商人段落由对话行的 `[#sit=commissioner]`、`[#sit=merchant]` 触发入座。按优先级把座位路径填入 `opening_sequence.gd` 的 `SEAT_CUES`。剧情入座会在座位前找可站立的落脚点，必要时沿桌边拐弯，然后转到座位固定朝向并渐变到坐姿。对话或交付完毕后，导演安排主角起身并沿入座路线走回原来的落脚点。摆放家具时要给玩家胶囊留出通道。离席点被占时仍可等通道清空后按 F。
 5. 商人对话固定使用 `Tables/Setting1/SouthSofa/Seats/Center`，与商人隔桌正对。已坐在同桌其他位置时，可按 F 起身后开始对话。`Setting1/Table` 向商人侧偏移 0.24 米，给主角一侧留了入座通道。调整桌椅后，可在开场实际走一遍，核对胶囊能通过且两人仍面对面。

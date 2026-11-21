@@ -147,6 +147,14 @@ func _run() -> void:
 		var actor := current_scene.get_node(actor_name) as TavernNPC
 		return actor.current_seat() != null and actor.position.is_equal_approx(authored.get_node(actor_name).position)),
 		"the five additional seated NPCs start in their authored positions")
+	var initial_diners := new_seated + ["NPC", "RewardNPC", "CounterPatron", "CounterRegular", "LoungePatron"]
+	check(initial_diners.all(func(actor_name: String) -> bool:
+		var actor := current_scene.get_node(actor_name) as TavernNPC
+		var seat := actor.current_seat()
+		var capsule := actor.get_node("CollisionShape3D").shape as CapsuleShape3D
+		return (seat != null and seat.occupant() == actor
+			and is_equal_approx(capsule.height, actor.seat_body_dimensions(true).y))),
+		"all ten initial diners receive a seat and use the seated body height")
 	authored.free()
 	check(not portal.enabled, "warehouse exit stays closed before delivery")
 	check(not curtain.get_node("SolidCurtain/CollisionShape3D").disabled,
