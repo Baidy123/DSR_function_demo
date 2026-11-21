@@ -138,6 +138,15 @@ func _exercise_menu(scene: Node, menu: CanvasLayer) -> void:
 	await _capture("01-pause")
 	await _click(main.get_node("Settings"))
 	check(settings.visible and not main.visible and paused, "设置子页保持暂停")
+	var aim_choice := settings.get_node_or_null("AimControl/Choice") as OptionButton
+	check(aim_choice != null and aim_choice.item_count == 3, "设置提供瞄准方式选项")
+	if aim_choice != null:
+		aim_choice.select(2)
+		aim_choice.item_selected.emit(2)
+		check(combat.get_aim_control() == 2 and paused, "设置应用鼠标瞄准且保持暂停")
+		aim_choice.select(0)
+		aim_choice.item_selected.emit(0)
+		check(combat.get_aim_control() == combat.aim_control, "跟随场景配置恢复检查器值")
 	await _capture("02-settings")
 	await _click(settings.get_node("Guide"))
 	check(guide.visible and paused, "设置中手动打开操作说明")

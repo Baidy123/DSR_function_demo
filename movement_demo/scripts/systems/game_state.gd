@@ -1,5 +1,8 @@
 extends Node
 
+## 本次运行的瞄准偏好（Combat.AimControl）；0 跟随场景检查器。独立于关卡快照。
+var player_aim_control_override: int = 0
+
 var _transition_sequence := 0
 var _transition_prepared: Dictionary = {}
 var _transition_signals: Array[Dictionary] = []

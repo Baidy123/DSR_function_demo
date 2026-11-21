@@ -76,6 +76,7 @@ func _run() -> void:
 	await _headshot_ui()
 	_gesture_clock()
 	await _ui_focus()
+	await _free_mouse_aim()
 	await _lifecycle()
 	Input.action_release("aim")
 	Input.action_release("fire")
@@ -148,6 +149,63 @@ func _motion(relative: Vector2) -> void:
 	event.screen_relative = relative
 	event.button_mask = MOUSE_BUTTON_MASK_RIGHT
 	root.push_input(event, true)
+
+func _point_mouse_at(point: Vector3) -> Vector2:
+	var event := InputEventMouseMotion.new()
+	event.position = camera.unproject_position(point)
+	event.global_position = event.position
+	event.button_mask = MOUSE_BUTTON_MASK_RIGHT
+	root.push_input(event, true)
+	return event.position
+
+func _free_mouse_aim() -> void:
+	if not "aim_control" in combat:
+		check(false, "Combat exposes a selectable mouse aim mode")
+		return
+	await _setup([Vector3(0, 0, -5), Vector3(4, 0, 0)])
+	combat.aim_control = 2
+	_step()
+	var target := targets[1]
+	var initial_accuracy: float = combat.accuracy
+	var center := _point_mouse_at(target.global_position)
+	_step()
+	var reticle := combat.get_node("HUD/Reticle") as Control
+	reticle._process(0.0)
+	check(combat.locked_target == null and not combat._owns_switch_mouse_capture
+		and reticle.visible and reticle.position.is_equal_approx(center),
+		"Mouse aim clears the lock and displays the reticle at the cursor")
+	if DisplayServer.get_name() != "headless":
+		check(Input.mouse_mode == Input.MOUSE_MODE_HIDDEN, "Mouse aim hides the pointer while retaining absolute motion")
+	target.position.z -= 2.0
+	await physics_frame
+	_point_mouse_at(target.global_position)
+	_step(0.1)
+	check(combat.get_reticle_target() == target and is_equal_approx(combat.accuracy, initial_accuracy),
+		"Moving the cursor and a target adds no tracking penalty")
+	combat.accuracy = 1.0
+	var rounds: int = combat.ammo.magazine_rounds
+	combat.shoot()
+	check(target.hits == 1 and targets[0].hits == 0 and combat.ammo.magazine_rounds == rounds - 1
+		and combat.accuracy < 1.0, "Mouse aim shoots the selected point using shared ammo and recoil")
+	var wall := StaticBody3D.new()
+	wall.position = target.position * 0.5 + Vector3.UP
+	_box(wall, Vector3(0.6, 2, 0.6))
+	world.add_child(wall)
+	await physics_frame
+	_step(combat.weapon.shot_interval)
+	combat.accuracy = 1.0
+	combat.shoot()
+	check(combat.last_shot_collider == wall and target.hits == 1 and combat.get_reticle_target() == null,
+		"Cover blocks the actual shot and its headshot preview")
+	wall.free()
+	paused = true
+	check(not combat.is_mouse_aiming() and Input.mouse_mode == original_mouse_mode,
+		"Pausing mouse aim releases the pointer for menus")
+	paused = false
+	combat.aim_control = 1
+	player.visual.rotation = Vector3.ZERO
+	_step()
+	check(combat.locked_target == targets[0], "Switching back restores automatic acquisition")
 
 func _step(delta: float = 0.0) -> void:
 	combat.begin_frame(delta, Input.is_action_pressed("aim"))

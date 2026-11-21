@@ -173,7 +173,7 @@ func _physics_process(delta: float) -> void:
 		_move_while_locked(delta, direction, true)
 		return
 
-	if combat != null and is_instance_valid(combat.locked_target) and not is_in_dialogue:
+	if combat != null and not is_in_dialogue and (is_instance_valid(combat.locked_target) or combat.is_mouse_aiming()):
 		_move_while_locked(delta, direction)
 		return
 

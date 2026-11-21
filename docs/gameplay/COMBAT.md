@@ -1,8 +1,16 @@
 # 玩家锁定、精度与射击配置
 
-本页说明当前玩家战斗规则和武器调参。武器配置在 **Player → Equipment → Primary Weapon / Secondary Weapon**；Combat 保存瞄准算法、鼠标辅助和玩家受击倍率，负责执行当前武器。
+本页说明当前玩家战斗规则和武器调参。武器配置在 **Player → Equipment → Primary Weapon / Secondary Weapon**。Combat 保存瞄准方式、弹道算法、鼠标辅助和玩家受击倍率，负责执行当前武器。
 
-[锁定操作](PLAY_GUIDE.md#两种锁定模式)、[开火方式](PLAYER_FIRE_MODES.md)、[弹药换弹](AMMO.md)、[霰弹](SHOTGUN.md)和[近战](MELEE.md)分别说明对应系统。Fire Mode、Aim Mode 与鼠标辅助开关不是同一个设置。
+[锁定操作](PLAY_GUIDE.md#两种锁定模式)、[开火方式](PLAYER_FIRE_MODES.md)、[弹药换弹](AMMO.md)、[霰弹](SHOTGUN.md)和[近战](MELEE.md)分别说明对应系统。
+
+## 瞄准方式
+
+在 **Player → Combat → Aim Control** 为场景选择 **自动锁定**（默认）或 **鼠标瞄准**。玩家可在 **Esc → 设置 → 瞄准方式** 中覆盖场景配置，选择 **跟随场景配置** 恢复读取检查器。偏好随本次运行跨场景和重开关卡保留，重启游戏后读取场景默认值。
+
+鼠标瞄准时，按住右键，精度准星跟随窗口内的鼠标，角色朝准星转向，W / A / S / D 仍按画面方向移动。相机从准星投射到可碰撞表面，空处投影至枪口高度；子弹仍从枪口按当前武器的射程和散布发出，由实际遮挡决定命中。金色菱形读取枪口中心线上的敌人，实际爆头按散布后的命中目标结算。
+
+鼠标瞄准时，拨动准星和敌人移动都不扣准度。两种瞄准方式共用玩家移动、开火、受击、压制、换弹、蹲姿、武器收敛和爆头规则。切换方式会解除旧锁定并清除待发扳机，保留当前精度、冷却和弹药。自动锁定沿用下文的跟枪规则。
 
 ## 弹道算法与入口
 
@@ -190,7 +198,7 @@
 
 ## 代码职责与验证
 
-`weapon_data.gd` 保存参数和纯数值公式；`player_combat_v3.gd` 处理输入、锁定、转身、精度、弹药与射击；`target_switch_gesture.gd` 仅累计鼠标净位移。`headshot_resolver.gd` 根据实际命中冻结结算，`lock_reticle.gd` 只读显示。
+`weapon_data.gd` 保存参数和纯数值公式。`player_combat_v3.gd` 处理输入、锁定、鼠标投影、转身、精度、弹药与射击。`target_switch_gesture.gd` 仅累计换锁用的鼠标净位移。`headshot_resolver.gd` 根据实际命中冻结结算，`lock_reticle.gd` 只读显示。`GameState.player_aim_control_override` 保存暂停设置的会话偏好，独立于关卡快照。
 
 UI 使用 `get_effective_accuracy()`、`get_spread_stability()`、`get_target_headshot_chance(target)`、`is_turning_to_target()`；表现订阅 `shot_fired` 与 `headshot_resolved`。保持单一锁定、单一准度和逐枪结算入口。
 

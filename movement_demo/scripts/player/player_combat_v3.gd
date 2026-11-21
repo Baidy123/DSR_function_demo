@@ -18,8 +18,16 @@ const Ammo = preload("res://scripts/weapons/weapon_ammo.gd")
 var ammo = Ammo.new()
 var _reload_started_sprinting: bool = false
 enum AimMode { PROBABILITY, SPREAD_CONE }
-## 选择本节点的射击算法；两种模式共用锁定、碰撞和伤害结算。
+## 选择本节点的弹道算法；两种算法共用碰撞和伤害结算。
 @export_enum("旧概率模式:0", "新散布锥模式:1") var aim_mode: int = AimMode.SPREAD_CONE
+
+enum AimControl { FROM_SCENE, AUTO_LOCK, MOUSE }
+## 按住右键时自动锁定敌人，或让准星跟随鼠标。暂停菜单可以在本次运行中覆盖此值。
+@export_enum("自动锁定:1", "鼠标瞄准:2") var aim_control: int = AimControl.AUTO_LOCK
+var _active_aim_control: int = AimControl.AUTO_LOCK
+var _mouse_aim_cursor := Vector2.INF
+var _mouse_aim_point := Vector3.INF
+var _mouse_aim_target: Node3D
 
 @export_group("目标切换")
 ## 鼠标辅助锁定：按住右键时，无目标可按画面方向选敌，有目标可主动换锁。
@@ -43,7 +51,9 @@ enum AimMode { PROBABILITY, SPREAD_CONE }
 ## 转身中也可立即射击，弹道沿当时的角色朝向；不排队等转完，也不冻结精度。
 @export_range(30.0, 1080.0, 10.0, "suffix:°/s") var target_switch_turn_speed_degrees: float = 360.0
 var _target_switch_gesture := TargetSwitchGesture.new()
-var _owns_switch_mouse_capture := false
+var _owned_aim_mouse_mode := Input.MOUSE_MODE_VISIBLE
+var _owns_switch_mouse_capture: bool:
+	get: return _owned_aim_mouse_mode == Input.MOUSE_MODE_CAPTURED
 var _previous_mouse_mode: Input.MouseMode = Input.MOUSE_MODE_VISIBLE
 var _switch_capture_frame: int = -1
 var _window_focused := true
@@ -116,6 +126,7 @@ var player_position_before_move: Vector3 = Vector3.ZERO
 
 @onready var player = get_parent()
 @onready var status: Label = $HUD/Panel/Status
+@onready var _game_state = get_node_or_null("/root/GameState")
 
 
 ## 读取旧场景的自定义比例，后续保存使用新字段；不再执行旧的稳定度加法。
@@ -136,18 +147,23 @@ func _ready() -> void:
 
 func _notification(what: int) -> void:
 	if what == NOTIFICATION_PAUSED or what == NOTIFICATION_UNPAUSED:
+		_mouse_aim_cursor = Vector2.INF
 		_reset_target_movement_tracking()
-		_reset_target_switch_input()
+		_reset_aim_pointer()
 	elif what == NOTIFICATION_APPLICATION_FOCUS_OUT:
 		_window_focused = false
-		_reset_target_switch_input()
+		_mouse_aim_cursor = Vector2.INF
+		_reset_aim_pointer()
 	elif what == NOTIFICATION_APPLICATION_FOCUS_IN:
 		_window_focused = true
-		_reset_target_switch_input()
+		_reset_aim_pointer()
+	elif what == NOTIFICATION_WM_MOUSE_EXIT:
+		_mouse_aim_cursor = Vector2.INF
+		_clear_mouse_aim()
 
 
 func _exit_tree() -> void:
-	_reset_target_switch_input()
+	_reset_aim_pointer()
 
 
 func _apply_debug_mode(enabled: bool) -> void:
@@ -178,9 +194,11 @@ func equip_weapon(data: WeaponData, preserve_cooldown: bool = false, ammo_state 
 
 
 func _input(event: InputEvent) -> void:
+	if event is InputEventMouse and not _owns_switch_mouse_capture:
+		_mouse_aim_cursor = event.position
 	# 释放即清理，即使同一帧重新按下或释放被 UI 消费，也不能带入上一段瞄准的请求。
 	if event.is_action_released("aim"):
-		_reset_target_switch_input()
+		_reset_aim_pointer()
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -315,7 +333,7 @@ func cancel_aim() -> void:
 ## 翻越、姿态变化只解除旧目标牵引，不能借取消瞄准改写精度或扳机。
 func clear_target_lock() -> void:
 	_clear_target()
-	_reset_target_switch_input()
+	_reset_aim_pointer()
 
 
 ## 目标死亡／失效只清理旧锁定及手势；持续瞄准的鼠标辅助保持捕获。
@@ -341,6 +359,24 @@ func get_locked_aim_point() -> Vector3:
 	return Vector3.INF
 
 
+func get_aim_control() -> int:
+	var override: int = _game_state.player_aim_control_override if _game_state != null else AimControl.FROM_SCENE
+	return aim_control if override == AimControl.FROM_SCENE else override
+
+
+func is_mouse_aiming() -> bool:
+	return is_aiming and _mouse_aim_point.is_finite()
+
+
+func get_mouse_aim_screen_position() -> Vector2:
+	return _mouse_aim_cursor if _mouse_aim_cursor.is_finite() else get_viewport().get_mouse_position()
+
+
+func get_reticle_target() -> Node3D:
+	if not is_mouse_aiming(): return locked_target
+	return _mouse_aim_target if is_instance_valid(_mouse_aim_target) and _mouse_aim_target.is_in_group("combat_target") else null
+
+
 func can_combat() -> bool:
 	if player.is_dead() or (player.has_method("current_seat") and player.current_seat() != null):
 		return false
@@ -355,8 +391,14 @@ func can_combat() -> bool:
 func begin_frame(delta: float, aim_pressed: bool) -> void:
 	_switch_turn_distance = 0.0
 	if get_tree().paused:
-		_reset_target_switch_input()
+		_reset_aim_pointer()
 		return
+	var selected_control := get_aim_control()
+	if _active_aim_control != selected_control:
+		_active_aim_control = selected_control
+		clear_target_lock()
+		shot_requested = false
+		fire_held = false
 	if weapon != null and weapon.fire_mode == WeaponData.FireMode.MELEE:
 		equip_weapon(null) # 共享资源运行时被改成近战时，玩家也不能继续使用。
 	_advance_melee(delta)
@@ -371,6 +413,9 @@ func begin_frame(delta: float, aim_pressed: bool) -> void:
 	is_aiming = true
 	if player.is_vaulting():
 		clear_target_lock()
+		return
+	if _active_aim_control == AimControl.MOUSE:
+		_update_mouse_aim()
 		return
 	if locked_target != null and (not is_instance_valid(locked_target) or locked_target.is_queued_for_deletion() or not _target_visible(locked_target)):
 		_clear_target()
@@ -419,9 +464,11 @@ func end_frame(delta: float, moving: bool) -> void:
 		cancel_aim()
 	if is_instance_valid(locked_target) and not _target_visible(locked_target):
 		_clear_target()
+	if is_mouse_aiming():
+		_update_mouse_aim_target()
 	if weapon != null:
 		# 目标有效横移与主动换锁转身共用跟枪损耗；无有效跟枪影响时按原规则恢复。
-		var tracking_limited: bool = _apply_target_movement_accuracy_penalty(delta)
+		var tracking_limited := _active_aim_control == AimControl.AUTO_LOCK and _apply_target_movement_accuracy_penalty(delta)
 
 		var settings: Dictionary = weapon.get_aim_settings(is_using_spread_cone())
 		if was_reloading:
@@ -564,7 +611,11 @@ func _set_locked_target(target: Node3D, point: Vector3) -> void:
 
 
 func _can_use_mouse_target_assist() -> bool:
-	if not mouse_target_assist_enabled or not is_aiming or weapon == null:
+	return _active_aim_control == AimControl.AUTO_LOCK and mouse_target_assist_enabled and _can_use_aim_pointer()
+
+
+func _can_use_aim_pointer() -> bool:
+	if not is_aiming or weapon == null:
 		return false
 	if not _window_focused or get_tree().paused or player.is_dead() or player.is_in_dialogue:
 		return false
@@ -576,11 +627,67 @@ func _can_use_mouse_target_assist() -> bool:
 
 func _reset_target_switch_input() -> void:
 	_target_switch_gesture.reset()
-	if not _owns_switch_mouse_capture: return
-	_owns_switch_mouse_capture = false
+	if _owns_switch_mouse_capture:
+		_release_aim_mouse()
+
+
+func _reset_aim_pointer() -> void:
+	_reset_target_switch_input()
+	_clear_mouse_aim()
+
+
+func _claim_aim_mouse(mode: Input.MouseMode) -> void:
+	if _owned_aim_mouse_mode == mode: return
+	_previous_mouse_mode = Input.mouse_mode
+	Input.mouse_mode = mode
+	_owned_aim_mouse_mode = mode
+
+
+func _release_aim_mouse() -> void:
+	if _owned_aim_mouse_mode == Input.MOUSE_MODE_VISIBLE: return
 	# 菜单已经接管鼠标模式时，不用旧模式覆盖它。
-	if Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
+	if Input.mouse_mode == _owned_aim_mouse_mode:
 		Input.mouse_mode = _previous_mouse_mode
+	_owned_aim_mouse_mode = Input.MOUSE_MODE_VISIBLE
+
+
+func _clear_mouse_aim() -> void:
+	_mouse_aim_point = Vector3.INF
+	_mouse_aim_target = null
+	if _owned_aim_mouse_mode == Input.MOUSE_MODE_HIDDEN:
+		_release_aim_mouse()
+
+
+func _update_mouse_aim() -> void:
+	var viewport := get_viewport()
+	var screen := get_mouse_aim_screen_position()
+	if not _can_use_aim_pointer() or not viewport.get_visible_rect().has_point(screen):
+		_clear_mouse_aim()
+		return
+	var camera := viewport.get_camera_3d()
+	var origin := camera.project_ray_origin(screen)
+	var ray := camera.project_ray_normal(screen)
+	var hit := _ray_to(origin + ray * camera.far, origin)
+	var muzzle: Vector3 = player.get_muzzle_position()
+	# 空处以枪口高度投影，准星仍可带动角色转向和开火。
+	var point: Variant = Plane(Vector3.UP, muzzle.y).intersects_ray(origin, ray) if hit.is_empty() else hit.position
+	if point == null or muzzle.is_equal_approx(point):
+		_clear_mouse_aim()
+		return
+	_mouse_aim_point = point
+	_claim_aim_mouse(Input.MOUSE_MODE_HIDDEN)
+	var offset := _mouse_aim_point - muzzle
+	if Vector2(offset.x, offset.z).length_squared() > 0.0001:
+		player.visual.global_rotation.y = atan2(-offset.x, -offset.z)
+
+
+func _update_mouse_aim_target() -> void:
+	# 菱形只预览枪口中心线可触及的目标，真实命中仍由散布后的射线结算。
+	var muzzle: Vector3 = player.get_muzzle_position()
+	var direction := muzzle.direction_to(_mouse_aim_point)
+	var hit := _ray_to(muzzle + direction * weapon.fire_range, muzzle) if not direction.is_zero_approx() else {}
+	var collider := hit.get("collider") as Node3D
+	_mouse_aim_target = collider if is_instance_valid(collider) and collider.is_in_group("combat_target") else null
 
 
 func _update_target_switch() -> void:
@@ -588,9 +695,8 @@ func _update_target_switch() -> void:
 		_reset_target_switch_input()
 		return
 	if not _owns_switch_mouse_capture:
-		_previous_mouse_mode = Input.mouse_mode
-		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
-		_owns_switch_mouse_capture = true
+		_mouse_aim_cursor = Vector2.INF
+		_claim_aim_mouse(Input.MOUSE_MODE_CAPTURED)
 		_switch_capture_frame = Engine.get_process_frames()
 		_target_switch_gesture.reset()
 	var motion := _target_switch_gesture.take_motion()
@@ -707,6 +813,9 @@ func _ray_to(endpoint: Vector3, origin: Vector3 = Vector3.INF) -> Dictionary:
 func shoot() -> void:
 	if is_melee_active() or is_waiting_for_melee_stand() or player.is_vaulting() or not is_aiming or player.is_in_dialogue or weapon == null or weapon.fire_mode == WeaponData.FireMode.MELEE or shot_cooldown > 0.0 or not can_combat():
 		return
+	var mouse_aim := _active_aim_control == AimControl.MOUSE
+	if mouse_aim and (not is_mouse_aiming() or _mouse_aim_point.is_equal_approx(player.get_muzzle_position())):
+		return
 	if get_tree().paused or not ammo.consume_round():
 		return
 	# 再检查一次，防止输入与物理更新之间出现遮挡。
@@ -723,9 +832,10 @@ func shoot() -> void:
 	shot_cooldown = weapon.shot_interval
 	var origin: Vector3 = player.get_muzzle_position()
 	var direction: Vector3 = -player.visual.global_basis.z
-	var has_lock: bool = is_instance_valid(locked_target)
 	# 主动转身中不把弹道强拉到新锁定点；按本次发射的朝向和准度执行原散布。
-	if has_lock and not _switch_turn_pending:
+	if mouse_aim:
+		direction = origin.direction_to(_mouse_aim_point)
+	elif is_instance_valid(locked_target) and not _switch_turn_pending:
 		direction = (get_locked_aim_point() - origin).normalized()
 
 	if weapon.fire_mode == WeaponData.FireMode.SHOTGUN:

@@ -138,9 +138,14 @@ python movement_demo/tests/run_combat_regressions.py --godot E:/Godot/Godot_v4.7
 
 ## 按功能选检查
 
+鼠标瞄准改动验证了准星跟随、跟随移动目标时的精度、真实子弹和掩体遮挡、切回锁定及暂停归还鼠标。`target_switch_test` 在 headless 为 256/256、真实 OpenGL 为 257/257，`pause_menu_test` 分别为 53/53 和 55/55。原自动跟枪和收敛分别为 `directional_tracking_test` 56/56、`aim_convergence_test` 68/68。
+
+额外运行的 `aim_disruption_test` 原样运行前后为 49/58 和 48/58，差项是敌人实际直击无敌玩家。用同一本地工程的修改前副本对比，并在临时诊断脚本固定敌人屏外开火随机种子后，两侧均为 49/58 且失败项一致。现存失败包括交战双方的相机可见性、近弹与直击检查、开阔路线火力估计、概率模式边走边恢复的显示检查。保留原断言和实际参数，当前对照未确定这些场景下的实际玩法表现。
+
 | 改动 | 优先入口／范围 |
 | --- | --- |
 | 鼠标辅助、换锁、转身 | `target_switch_test`，相关可见性／战斗兼容 |
+| 鼠标瞄准、自动锁定与设置切换 | `target_switch_test`、`pause_menu_test` |
 | 跟枪、收敛、受击精度 | `directional_tracking_test`、`aim_convergence_test`、`aim_disruption_test` |
 | 爆头与近战破绽 | 爆头、执行及 `melee_headshot_opening_test`，按需敌人状态专项 |
 | 装备、弹药、装填 | 武器槽、玩家换弹／接续、霰弹装填、`ammo_drop_test` |

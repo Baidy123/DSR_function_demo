@@ -94,7 +94,7 @@ movement_demo/
 | 文件／组件 | 职责与接口边界 |
 | --- | --- |
 | `player/player.gd` | 真实移动、碰撞、耐力、姿态和翻越；移动前后调用 Combat 的帧入口 |
-| `player/player_combat_v3.gd` | 锁定、鼠标辅助、转身、准度、扳机、当前枪弹药、射击和玩家近战 |
+| `player/player_combat_v3.gd` | 自动锁定、鼠标瞄准投影、转身、共用准度、扳机、当前枪弹药、射击和玩家近战 |
 | `player/target_switch_gesture.gd` | 仅累计鼠标净位移、时间和新输入标记，不持有目标或场景 |
 | `player/player_weapon_slots.gd` / Equipment | 装备配置、槽位、每槽运行状态、共享备弹和唯一医疗包库存 |
 | `player/player_health.gd` | 生命、伤害、治疗结算、自身失能与死亡通知；场景后续由调度器决定 |
@@ -105,7 +105,7 @@ movement_demo/
 | `weapons/headshot_resolver.gd` | 按实际目标冻结每枪结果与一次破绽消费，再交付受击 |
 | `ui/lock_reticle.gd` | 只读准度、目标概率和转身状态，显示准星／菱形／转向标记 |
 
-Equipment 交接当前枪给 Combat；相机订阅 `weapon_changed`，表现订阅真实射击结果。鼠标辅助沿原 Combat 执行，不新增第二份锁定或自由瞄准状态。主动转身固定读取当前武器低速跟枪项，真实目标移动仍独立按原速度插值，两项损耗取较大者。
+Equipment 交接当前枪给 Combat。相机订阅 `weapon_changed`，表现订阅真实射击结果。Combat 统一读取检查器 `aim_control` 或 `GameState` 中的会话偏好，两种瞄准方式共用精度和射击流程。自动锁定主动转身固定读取当前武器低速跟枪项，实际目标移动按速度插值，两项损耗取较大者。鼠标瞄准以相机投影提供枪口射击方向，并跳过跟枪损耗。
 
 ## 敌人、区域与小队
 
@@ -144,7 +144,7 @@ Equipment 交接当前枪给 Combat；相机订阅 `weapon_changed`，表现订�
 
 ## 相机、表现与内容
 
-`scenes/ui/pause_menu.tscn` 与 `scripts/ui/pause_menu.gd` 由场景导演核心在运行时装配，提供 Esc 暂停、设置内操作说明和退出确认，只展示界面并回传意图。`SceneDirector.request_pause_menu()`／`resume_from_pause_menu()` 持有和释放共享暂停协调器的独立令牌；关闭子页不释放世界暂停。说明复用原 `play_guide.tscn`，保留原 `LevelFlow/PlayGuide` 节点路径与显式教程接口，入口 `guide_path` 默认留空，酒馆和五关不再自动显示说明。设置页当前只开放操作说明，其他设置尚未接入。
+`scenes/ui/pause_menu.tscn` 与 `scripts/ui/pause_menu.gd` 由场景导演核心在运行时装配，提供 Esc 暂停、瞄准方式、操作说明和退出确认。菜单将瞄准选择写入 `GameState.player_aim_control_override`，暂停与退出回传场景导演。`SceneDirector.request_pause_menu()`／`resume_from_pause_menu()` 持有和释放共享暂停协调器的独立令牌。说明复用原 `play_guide.tscn` 与 `LevelFlow/PlayGuide` 节点路径，显式教程入口 `guide_path` 默认留空。
 
 相机根 `systems/player_camera.gd` 统一绑定玩家、读取武器 Aim Range、控制视野过渡；`camera_occlusion.gd` 仅处理显式标记装饰的材质副本与还原。CameraGroundAnchor 过滤翻越抬升。保持原 Phantom Camera 跟随和更新关系。
 

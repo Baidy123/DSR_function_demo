@@ -55,7 +55,8 @@ func _process(delta: float) -> void:
 	if get_tree().paused:
 		hide()
 		return
-	var target = combat.locked_target
+	var target = combat.get_reticle_target()
+	var mouse_aim: bool = combat.is_mouse_aiming()
 	var camera := get_viewport().get_camera_3d()
 	if camera == null:
 		_draw_aim = false
@@ -70,29 +71,32 @@ func _process(delta: float) -> void:
 			_headshot_markers.remove_at(index)
 		else:
 			marker.screen = camera.unproject_position(marker.point)
-	_draw_aim = combat.is_aiming and is_instance_valid(target)
+	_draw_aim = combat.is_aiming and (mouse_aim or is_instance_valid(target))
 	_draw_switch_target = false
 	_headshot_ready = false
 	_headshot_probability = 0.0
 	_headshot_full_precision = false
 	if _draw_aim:
-		var point: Vector3 = combat.get_locked_aim_point()
-		# UI 跟随渲染插值；弹道仍使用物理位置。
-		point = target.get_global_transform_interpolated() * target.to_local(point)
-		_draw_aim = not camera.is_position_behind(point)
-		if _draw_aim:
-			position = camera.unproject_position(point)
-			_draw_switch_target = combat.is_turning_to_target()
-			_draw_aim = not _draw_switch_target
-		if _draw_aim:
-			var stability: float = combat.get_effective_accuracy()
-			# 姿态影响大小；颜色与爆头菱形仍取基础收敛进度，不能因蹲下提前亮起。
-			radius = lerpf(maximum_radius, minimum_radius, combat.get_spread_stability())
-			tint = Color(1.0, 0.55, 0.2).lerp(Color(0.35, 1.0, 0.55), stability)
-			_headshot_probability = combat.get_target_headshot_chance(target)
-			_headshot_ready = _headshot_probability > 0.0
-			_headshot_full_precision = _headshot_ready and stability >= 1.0 - 0.000001
-			_headshot_size = lerpf(maxf(headshot_maximum_size, headshot_minimum_size), headshot_minimum_size, _headshot_probability)
+		if mouse_aim:
+			position = combat.get_mouse_aim_screen_position()
+		else:
+			var point: Vector3 = combat.get_locked_aim_point()
+			# UI 跟随渲染插值；弹道仍使用物理位置。
+			point = target.get_global_transform_interpolated() * target.to_local(point)
+			_draw_aim = not camera.is_position_behind(point)
+			if _draw_aim:
+				position = camera.unproject_position(point)
+				_draw_switch_target = combat.is_turning_to_target()
+				_draw_aim = not _draw_switch_target
+	if _draw_aim:
+		var stability: float = combat.get_effective_accuracy()
+		# 姿态影响大小；颜色与爆头菱形仍取基础收敛进度，不能因蹲下提前亮起。
+		radius = lerpf(maximum_radius, minimum_radius, combat.get_spread_stability())
+		tint = Color(1.0, 0.55, 0.2).lerp(Color(0.35, 1.0, 0.55), stability)
+		_headshot_probability = combat.get_target_headshot_chance(target)
+		_headshot_ready = _headshot_probability > 0.0
+		_headshot_full_precision = _headshot_ready and stability >= 1.0 - 0.000001
+		_headshot_size = lerpf(maxf(headshot_maximum_size, headshot_minimum_size), headshot_minimum_size, _headshot_probability)
 	visible = _draw_aim or _draw_switch_target or not _headshot_markers.is_empty()
 	queue_redraw()
 
@@ -114,6 +118,9 @@ func _draw() -> void:
 		draw_arc(Vector2.ZERO, radius, 0.0, TAU, 64, tint, 2.0, true)
 		for direction in [Vector2.LEFT, Vector2.RIGHT, Vector2.UP, Vector2.DOWN]:
 			draw_line(direction * (radius - 5.0), direction * (radius + 6.0), tint, 2.0, true)
+		if combat.is_mouse_aiming():
+			draw_circle(Vector2.ZERO, 3.0, Color(0.0, 0.0, 0.0, 0.8), true, -1.0, true)
+			draw_circle(Vector2.ZERO, 1.5, tint, true, -1.0, true)
 		if _headshot_ready:
 			_draw_headshot_marker(Vector2(0, -radius - _headshot_size - 9.0))
 	for marker in _headshot_markers:
