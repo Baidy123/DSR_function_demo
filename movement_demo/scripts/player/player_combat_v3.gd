@@ -77,6 +77,14 @@ var crouch_bonus_blocked_until_recovery: bool = false
 ## 0免除减速，1正常，2加倍；只缩放损失，不缩放持续时间、击退或重力，擦过不会减速。
 @export_range(0.0, 10.0, 0.05, "suffix:×") var hit_speed_loss_multiplier: float = 1.0
 
+@export_group("鼠标瞄准精度反应")
+## 鼠标瞄准时蹲姿缩减最大散布的比例。
+@export_range(0.0, 0.99, 0.01) var mouse_crouch_spread_reduction := 0.25
+## 鼠标瞄准时，受击造成的精度损失倍率。
+@export_range(0.0, 10.0, 0.05, "suffix:×") var mouse_hit_accuracy_loss_multiplier := 1.0
+## 鼠标瞄准时，敌方弹道擦过造成的精度损失倍率。
+@export_range(0.0, 10.0, 0.05, "suffix:×") var mouse_suppression_accuracy_loss_multiplier := 1.0
+
 signal weapon_changed(data: WeaponData)
 signal shot_fired(hit: bool, stability: float)
 ## 每个实际命中的目标最多通知一次；pellets 是本枪对它触发爆头的弹丸数。
@@ -182,7 +190,7 @@ func equip_weapon(data: WeaponData, preserve_cooldown: bool = false, ammo_state 
 	weapon = data
 	ammo = ammo_state if ammo_state != null else Ammo.new(data)
 	_reload_started_sprinting = resume_slow_reload
-	accuracy = weapon.get_aim_settings(is_using_spread_cone()).initial if weapon != null else 0.0
+	accuracy = get_weapon_aim_settings(weapon).initial if weapon != null else 0.0
 	accuracy_recovery_timer = 0.0
 	crouch_bonus_blocked_until_recovery = false
 	cancel_aim()
@@ -282,11 +290,12 @@ func is_slow_reload() -> bool:
 func _hold_reload_accuracy() -> void:
 	accuracy = 0.0
 	crouch_bonus_blocked_until_recovery = true
-	accuracy_recovery_timer = maxf(0.0, weapon.get_aim_settings(is_using_spread_cone()).delay) if weapon != null else 0.0
+	accuracy_recovery_timer = maxf(0.0, get_weapon_aim_settings(weapon).delay) if weapon != null else 0.0
 
 ## 攻击基础值来自攻击者快照；无来源扣血不调用此入口，也不回退旧角色常量。
 func apply_weapon_hit(effects: Dictionary) -> void:
-	var loss := _scaled_loss(float(effects.get("hit_accuracy_loss", 0.0)), hit_accuracy_loss_multiplier)
+	var multiplier := mouse_hit_accuracy_loss_multiplier if _uses_mouse_aim_tuning() else hit_accuracy_loss_multiplier
+	var loss := _scaled_loss(float(effects.get("hit_accuracy_loss", 0.0)), multiplier)
 	var melee: bool = effects.get("melee", false)
 	_apply_accuracy_loss(loss, melee)
 	if melee and loss > 0.0:
@@ -301,7 +310,7 @@ func _scaled_loss(base: float, multiplier: float) -> float:
 func _apply_accuracy_loss(loss: float, block_crouch: bool = false) -> void:
 	if weapon == null or player.is_dead() or not is_finite(loss) or loss <= 0.0: return
 	accuracy = clampf(accuracy - loss, 0.0, 1.0)
-	accuracy_recovery_timer = maxf(accuracy_recovery_timer, weapon.get_aim_settings(is_using_spread_cone()).delay)
+	accuracy_recovery_timer = maxf(accuracy_recovery_timer, get_weapon_aim_settings(weapon).delay)
 	if block_crouch:
 		_hit_accuracy_frame = Engine.get_physics_frames()
 		crouch_bonus_blocked_until_recovery = true
@@ -317,7 +326,8 @@ func notice_shot(origin: Vector3, endpoint: Vector3, effects: Dictionary) -> voi
 		var query := PhysicsRayQueryParameters3D.create(chest, closest, 1, [player.get_rid()])
 		query.hit_from_inside = true
 		if not player.get_world_3d().direct_space_state.intersect_ray(query).is_empty(): return
-	_apply_accuracy_loss(_scaled_loss(float(effects.get("suppression_accuracy_loss", 0.0)), suppression_accuracy_loss_multiplier))
+	var multiplier := mouse_suppression_accuracy_loss_multiplier if _uses_mouse_aim_tuning() else suppression_accuracy_loss_multiplier
+	_apply_accuracy_loss(_scaled_loss(float(effects.get("suppression_accuracy_loss", 0.0)), multiplier))
 
 
 func cancel_aim() -> void:
@@ -326,7 +336,7 @@ func cancel_aim() -> void:
 	shot_requested = false
 	fire_held = false
 	# 松开再按瞄准不能消除刚刚累积的射击惩罚。
-	accuracy = minf(accuracy, weapon.get_aim_settings(is_using_spread_cone()).initial) if weapon != null else 0.0
+	accuracy = minf(accuracy, get_weapon_aim_settings(weapon).initial) if weapon != null else 0.0
 	$HUD/Reticle.hide()
 
 
@@ -362,6 +372,14 @@ func get_locked_aim_point() -> Vector3:
 func get_aim_control() -> int:
 	var override: int = _game_state.player_aim_control_override if _game_state != null else AimControl.FROM_SCENE
 	return aim_control if override == AimControl.FROM_SCENE else override
+
+
+func _uses_mouse_aim_tuning() -> bool:
+	return get_aim_control() == AimControl.MOUSE
+
+
+func get_weapon_aim_settings(data: WeaponData) -> Dictionary:
+	return data.get_aim_settings(is_using_spread_cone(), _uses_mouse_aim_tuning())
 
 
 func is_mouse_aiming() -> bool:
@@ -470,7 +488,7 @@ func end_frame(delta: float, moving: bool) -> void:
 		# 目标有效横移与主动换锁转身共用跟枪损耗；无有效跟枪影响时按原规则恢复。
 		var tracking_limited := _active_aim_control == AimControl.AUTO_LOCK and _apply_target_movement_accuracy_penalty(delta)
 
-		var settings: Dictionary = weapon.get_aim_settings(is_using_spread_cone())
+		var settings := get_weapon_aim_settings(weapon)
 		if was_reloading:
 			# 完成的这一帧也保持最低，下一帧才开始原恢复等待，避免大delta提前恢复。
 			_hold_reload_accuracy()
@@ -519,7 +537,7 @@ func _recover_accuracy(delta: float, limit: float) -> void:
 	# 只计入延迟结束后剩余的时间，避免低帧率改变恢复速度。
 	var recovery_delta: float = maxf(0.0, delta - accuracy_recovery_timer)
 	accuracy_recovery_timer = maxf(0.0, accuracy_recovery_timer - delta)
-	accuracy = minf(limit, weapon.recover_player_accuracy(accuracy, recovery_delta))
+	accuracy = minf(limit, weapon.recover_player_accuracy(accuracy, recovery_delta, _uses_mouse_aim_tuning()))
 
 
 func _start_target_movement_tracking(target: Node3D) -> void:
@@ -823,8 +841,8 @@ func shoot() -> void:
 		_clear_target()
 	shot_count += 1
 	var stability: float = get_effective_accuracy()
-	var headshot_settings := weapon.get_headshot_settings(stability)
-	var aim_settings := weapon.get_aim_settings(is_using_spread_cone())
+	var headshot_settings := weapon.get_headshot_settings(stability, _uses_mouse_aim_tuning())
+	var aim_settings := get_weapon_aim_settings(weapon)
 	var base_damage := weapon.damage
 	var attack_effects := weapon.get_attack_effects()
 	if weapon.shot_noise != null:
@@ -884,8 +902,10 @@ func shoot() -> void:
 func _shoot_shotgun(origin: Vector3, direction: Vector3, stability: float, attack_effects: Dictionary, headshot_settings: Dictionary) -> void:
 	var shotgun := weapon.get_shotgun_settings()
 	var pellet_damage := maxf(0.0, shotgun.pellet_damage)
-	var aim_settings := shotgun.get_aim_settings(is_using_spread_cone())
-	var pellets := ShotgunBallistics.trace(player, weapon, origin, direction, get_spread_stability(), _shotgun_rng)
+	var aim_settings := get_weapon_aim_settings(weapon)
+	var spread_stability := get_spread_stability()
+	var jitter := _get_random_spread_angle(spread_stability)
+	var pellets := ShotgunBallistics.trace(player, weapon, origin, direction, spread_stability, _shotgun_rng, jitter)
 	var hits := ShotgunBallistics.count_hits(pellets, &"combat_target")
 	# 全部射线和每目标一次判定完成后才调用受击，死亡／回调不改变本枪其余结果。
 	var results := Headshots.resolve(hits, pellet_damage, headshot_settings, _headshot_rng)
@@ -959,7 +979,7 @@ func get_effective_accuracy() -> float:
 ## UI查询与实际命中共用规则；不掷骰、不消费敌人的破绽。
 func get_target_headshot_chance(target: Node3D) -> float:
 	if weapon == null or not is_instance_valid(target): return 0.0
-	return Headshots.get_target_chance(weapon.get_headshot_settings(get_effective_accuracy()), target)
+	return Headshots.get_target_chance(weapon.get_headshot_settings(get_effective_accuracy(), _uses_mouse_aim_tuning()), target)
 
 
 ## 相对于原角度区间的弹道稳定度，仅供散布采样与准星大小读取，不用于爆头。
@@ -970,19 +990,14 @@ func get_spread_stability() -> float:
 	if crouch_bonus_blocked_until_recovery or ammo.is_reloading or ammo.reload_checkpoint > 0.0:
 		return base
 	if player == null or not player.is_crouching() or player.is_vaulting(): return base
-	var minimum: float
-	var maximum: float
-	if weapon.fire_mode == WeaponData.FireMode.SHOTGUN:
-		var shotgun := weapon.get_shotgun_settings()
-		minimum = shotgun.get_jitter_degrees(1.0)
-		maximum = shotgun.get_jitter_degrees(0.0)
-	elif is_using_spread_cone():
-		minimum = clampf(weapon.min_spread_angle_degrees, 0.0, 45.0)
-		maximum = clampf(weapon.max_spread_angle_degrees, minimum, 45.0)
-	else:
+	if weapon.fire_mode != WeaponData.FireMode.SHOTGUN and not is_using_spread_cone():
 		return base # 概率模式没有连续散布区间，不给中心命中概率增加姿态加成。
+	var bounds := weapon.get_spread_bounds(_uses_mouse_aim_tuning())
+	var minimum := bounds.x
+	var maximum := bounds.y
 	if maximum - minimum <= 0.00001: return base
-	var reduction := clampf(crouch_spread_reduction, 0.0, 0.99) if is_finite(crouch_spread_reduction) else 0.0
+	var configured := mouse_crouch_spread_reduction if _uses_mouse_aim_tuning() else crouch_spread_reduction
+	var reduction := clampf(configured, 0.0, 0.99) if is_finite(configured) else 0.0
 	var crouched_maximum := maxf(minimum, maximum * (1.0 - reduction))
 	return 1.0 - (1.0 - base) * (crouched_maximum - minimum) / (maximum - minimum)
 
@@ -991,14 +1006,18 @@ func get_spread_stability() -> float:
 func get_spread_half_angle_degrees() -> float:
 	if weapon == null:
 		return 0.0
+	var random_spread := _get_random_spread_angle(get_spread_stability())
 	if weapon.fire_mode == WeaponData.FireMode.SHOTGUN:
 		var shotgun := weapon.get_shotgun_settings()
 		var extent := 0.0
 		for point in shotgun.get_pattern_points(): extent = maxf(extent, point.length())
-		return extent * shotgun.pattern_angle_degrees + shotgun.get_jitter_degrees(get_spread_stability())
-	var minimum: float = clampf(weapon.min_spread_angle_degrees, 0.0, 45.0)
-	var maximum: float = clampf(weapon.max_spread_angle_degrees, minimum, 45.0)
-	return lerpf(maximum, minimum, get_spread_stability())
+		return extent * shotgun.pattern_angle_degrees + random_spread
+	return random_spread
+
+
+func _get_random_spread_angle(stability: float) -> float:
+	var bounds := weapon.get_spread_bounds(_uses_mouse_aim_tuning())
+	return lerpf(bounds.y, bounds.x, stability)
 
 
 # 在整个锥内按立体角均匀取样，不再先判定是否直射中心。

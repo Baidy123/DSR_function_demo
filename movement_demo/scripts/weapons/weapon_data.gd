@@ -8,6 +8,7 @@ enum StaggerRefresh { KEEP_LONGER, RESTART }
 enum ConvergenceModel { LINEAR, QUADRATIC, EXPONENTIAL }
 
 const ShotgunConfig = preload("res://scripts/weapons/shotgun_settings.gd")
+const MouseAimAccuracy = preload("res://scripts/weapons/player_mouse_aim_accuracy.gd")
 const DEFAULT_CONVERGENCE_SECONDS := 4.0
 
 func get_ammo_definition() -> AmmoDefinition:
@@ -63,6 +64,10 @@ func _validate_property(property: Dictionary) -> void:
 @export var shotgun: ShotgunSettings
 
 @export_group("瞄准与散布")
+@export_subgroup("鼠标瞄准精度")
+## 只供玩家鼠标瞄准读取。旧资源留空时沿用本武器原有的精度参数。
+@export var mouse_aim_accuracy: MouseAimAccuracy
+
 @export_subgroup("锁定")
 ## 锁定距离（米）：玩家相机据此计算视野；远程敌人默认以此距离加训练中的感知余量作为视距。
 @export_range(0.5, 50.0, 0.5) var aim_range: float = 8.0
@@ -251,61 +256,79 @@ func _validate_property(property: Dictionary) -> void:
 
 ## 两套输入在这里换算，双方共用惩罚与等待；recovery仅供敌人原算法。
 ## 玩家恢复只调用 recover_player_accuracy()，不再读取此字典的recovery。
-func get_aim_settings(use_spread: bool) -> Dictionary:
+func get_aim_settings(use_spread: bool, mouse_aim := false) -> Dictionary:
 	if fire_mode == FireMode.SHOTGUN:
-		return get_shotgun_settings().get_aim_settings(use_spread)
+		return get_shotgun_settings().get_aim_settings(use_spread, mouse_aim_accuracy if mouse_aim else null)
+	var tuning := _aim_accuracy_source(mouse_aim)
 	if not use_spread:
 		# 初始100%也会因换弹/受伤下降，恢复速度不能因此永久变成零。
-		var recovery_span := 1.0 - clampf(initial_accuracy, 0.0, 1.0)
+		var recovery_span := 1.0 - clampf(tuning.initial_accuracy, 0.0, 1.0)
 		if is_zero_approx(recovery_span): recovery_span = 1.0
 		return {
-			"initial": initial_accuracy,
+			"initial": tuning.initial_accuracy,
 			"recovery": recovery_span / maxf(stabilize_seconds, 0.01),
-			"moving_cap": moving_accuracy_cap,
-			"player_move_loss": maxf(0.0, player_move_accuracy_loss_per_meter),
-			"shot_penalty": shot_accuracy_penalty,
-			"shot_floor": minimum_accuracy,
-			"delay": accuracy_recovery_delay,
+			"moving_cap": tuning.moving_accuracy_cap,
+			"player_move_loss": maxf(0.0, tuning.player_move_accuracy_loss_per_meter),
+			"shot_penalty": tuning.shot_accuracy_penalty,
+			"shot_floor": tuning.minimum_accuracy,
+			"delay": tuning.accuracy_recovery_delay,
 			"slow": target_move_accuracy_loss_per_meter_slow,
 			"fast": target_move_accuracy_loss_per_meter_fast,
 			"target_floor": minf(1.0, maxf(target_move_minimum_accuracy, minimum_accuracy + 0.01)),
 			"fast_speed": target_move_fast_speed,
 		}
-	var minimum: float = clampf(min_spread_angle_degrees, 0.0, 45.0)
-	var maximum: float = clampf(max_spread_angle_degrees, minimum, 45.0)
-	var span: float = maximum - minimum
+	var bounds := _cone_spread_bounds(tuning)
+	var span := bounds.y - bounds.x
 	# 零宽度的锥始终使用同一角度，变化量为0，避免除零。
 	var degrees_to_fraction: float = 1.0 / span if span > 0.00001 else 0.0
 	return {
-		"initial": _angle_to_stability(initial_spread_angle_degrees, minimum, span),
+		"initial": _angle_to_stability(tuning.initial_spread_angle_degrees, bounds.x, span),
 		"recovery": maxf(0.0, spread_recovery_degrees_per_second) * degrees_to_fraction,
-		"moving_cap": _angle_to_stability(moving_spread_angle_degrees, minimum, span),
-		"player_move_loss": maxf(0.0, player_move_spread_degrees_per_meter) * degrees_to_fraction,
-		"shot_penalty": maxf(0.0, shot_spread_penalty_degrees) * degrees_to_fraction,
-		"shot_floor": _angle_to_stability(shot_max_spread_angle_degrees, minimum, span),
-		"delay": maxf(0.0, spread_recovery_delay),
+		"moving_cap": _angle_to_stability(tuning.moving_spread_angle_degrees, bounds.x, span),
+		"player_move_loss": maxf(0.0, tuning.player_move_spread_degrees_per_meter) * degrees_to_fraction,
+		"shot_penalty": maxf(0.0, tuning.shot_spread_penalty_degrees) * degrees_to_fraction,
+		"shot_floor": _angle_to_stability(tuning.shot_max_spread_angle_degrees, bounds.x, span),
+		"delay": maxf(0.0, tuning.spread_recovery_delay),
 		"slow": maxf(0.0, target_move_spread_degrees_per_meter_slow) * degrees_to_fraction,
 		"fast": maxf(0.0, target_move_spread_degrees_per_meter_fast) * degrees_to_fraction,
-		"target_floor": _angle_to_stability(target_move_max_spread_angle_degrees, minimum, span),
+		"target_floor": _angle_to_stability(target_move_max_spread_angle_degrees, bounds.x, span),
 		"fast_speed": spread_target_move_fast_speed,
 	}
 
 
+func _aim_accuracy_source(mouse_aim: bool) -> Resource:
+	return mouse_aim_accuracy if mouse_aim and mouse_aim_accuracy != null else self
+
+
+func _cone_spread_bounds(tuning: Resource) -> Vector2:
+	var minimum := clampf(tuning.min_spread_angle_degrees, 0.0, 45.0)
+	return Vector2(minimum, clampf(tuning.max_spread_angle_degrees, minimum, 45.0))
+
+
+## 散布锥半角或霰弹随机偏移的范围。霰弹固定图样另由 ShotgunSettings 提供。
+func get_spread_bounds(mouse_aim := false) -> Vector2:
+	if fire_mode == FireMode.SHOTGUN:
+		return get_shotgun_settings().get_jitter_bounds(mouse_aim_accuracy if mouse_aim else null)
+	return _cone_spread_bounds(_aim_accuracy_source(mouse_aim))
+
+
 ## 只做玩家恢复的纯值计算；当前进度、等待和恢复上限仍由 Combat 持有。
 ## 相位由当前稳定度反求，所以受击／射击后接续曲线，不重新等待完整总时长。
-func recover_player_accuracy(current: float, delta: float) -> float:
+func recover_player_accuracy(current: float, delta: float, mouse_aim := false) -> float:
 	var base := _valid_fraction(current)
 	if not is_finite(delta) or delta <= 0.0 or base >= 1.0:
 		return base
-	var step := delta / convergence_seconds
+	var tuning := _aim_accuracy_source(mouse_aim)
+	var step: float = delta / tuning.convergence_seconds
 	var remaining := 1.0 - base
-	match convergence_model:
+	match tuning.convergence_model:
 		ConvergenceModel.QUADRATIC:
 			var phase := 1.0 - sqrt(remaining)
 			if phase + step >= 1.0: return 1.0
 			return maxf(base, 1.0 - pow(1.0 - phase - step, 2.0))
 		ConvergenceModel.EXPONENTIAL:
-			var k := clampf(convergence_exponent_k, 0.0, 10.0) if is_finite(convergence_exponent_k) else 3.0
+			var exponent: float = tuning.convergence_exponent_k
+			var k := clampf(exponent, 0.0, 10.0) if is_finite(exponent) else 3.0
 			# k趋近0时直接使用极限，避免相近数相减后再相除。
 			if k < 0.001: return minf(1.0, base + step)
 			var tail := exp(-k)
@@ -322,9 +345,9 @@ func get_shotgun_settings() -> ShotgunSettings:
 
 
 ## 只返回配置与精度资格；是否实际命中、掷概率及伤害由玩家原射击流程负责。
-func get_headshot_chance(stability: float) -> float:
+func get_headshot_chance(stability: float, mouse_aim := false) -> float:
 	if not headshot_enabled or fire_mode == FireMode.MELEE: return 0.0
-	return headshot_probability(stability, headshot_accuracy_threshold)
+	return headshot_probability(stability, _aim_accuracy_source(mouse_aim).headshot_accuracy_threshold)
 
 
 ## 唯一准度→爆头概率公式；普通命中、破绽命中及UI预览共用，不持有目标或资源状态。
@@ -340,9 +363,9 @@ func get_headshot_damage_multiplier() -> float:
 
 
 ## 一枪一次的纯值快照；外部修改资源从下一枪生效，不改变本枪后续目标。
-func get_headshot_settings(stability: float) -> Dictionary:
+func get_headshot_settings(stability: float, mouse_aim := false) -> Dictionary:
 	return {"enabled": headshot_enabled and fire_mode != FireMode.MELEE,
-		"stability": stability, "accuracy_threshold": headshot_accuracy_threshold,
+		"stability": stability, "accuracy_threshold": _aim_accuracy_source(mouse_aim).headshot_accuracy_threshold,
 		"instant_kill": headshot_instant_kill_enabled,
 		"multiplier": get_headshot_damage_multiplier(), "stagger_seconds": _valid_seconds(headshot_stagger_seconds),
 		"movement_multiplier": clampf(headshot_movement_multiplier, 0.0, 1.0) if is_finite(headshot_movement_multiplier) else 0.0,

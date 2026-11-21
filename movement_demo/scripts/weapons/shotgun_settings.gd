@@ -67,16 +67,17 @@ enum SpreadMode { RANDOM, NO_INWARD }
 
 
 ## 两种旧瞄准模式都只复用稳定度生命周期；霰弹不使用中心命中抽签或整团散布锥。
-func get_aim_settings(_use_spread: bool) -> Dictionary:
-	var initial := clampf(starting_stability, 0.0, 1.0)
+func get_aim_settings(_use_spread: bool, mouse_accuracy: Resource = null) -> Dictionary:
+	var tuning := mouse_accuracy if mouse_accuracy != null else self
+	var initial := clampf(tuning.starting_stability, 0.0, 1.0)
 	return {
 		"initial": initial,
 		"recovery": (1.0 - initial if initial < 1.0 else 1.0) / maxf(0.01, settle_seconds),
-		"moving_cap": clampf(movement_stability_floor, 0.0, 1.0),
-		"player_move_loss": maxf(0.0, movement_loss_per_meter),
-		"shot_penalty": clampf(shell_stability_loss, 0.0, 1.0),
-		"shot_floor": clampf(shell_stability_floor, 0.0, 1.0),
-		"delay": maxf(0.0, stability_recovery_delay),
+		"moving_cap": clampf(tuning.movement_stability_floor, 0.0, 1.0),
+		"player_move_loss": maxf(0.0, tuning.movement_loss_per_meter),
+		"shot_penalty": clampf(tuning.shell_stability_loss, 0.0, 1.0),
+		"shot_floor": clampf(tuning.shell_stability_floor, 0.0, 1.0),
+		"delay": maxf(0.0, tuning.stability_recovery_delay),
 		"slow": maxf(0.0, tracking_loss_per_meter.x),
 		"fast": maxf(0.0, tracking_loss_per_meter.y),
 		"target_floor": clampf(maxf(tracking_stability_floor, shell_stability_floor + 0.01), 0.0, 1.0),
@@ -84,9 +85,15 @@ func get_aim_settings(_use_spread: bool) -> Dictionary:
 	}
 
 
+func get_jitter_bounds(mouse_accuracy: Resource = null) -> Vector2:
+	var tuning := mouse_accuracy if mouse_accuracy != null else self
+	var minimum := clampf(tuning.stable_jitter_degrees, 0.0, 5.0)
+	return Vector2(minimum, clampf(tuning.unstable_jitter_degrees, minimum, 5.0))
+
+
 func get_jitter_degrees(stability: float) -> float:
-	var minimum := clampf(stable_jitter_degrees, 0.0, 5.0)
-	return lerpf(maxf(minimum, clampf(unstable_jitter_degrees, 0.0, 5.0)), minimum, clampf(stability, 0.0, 1.0))
+	var bounds := get_jitter_bounds()
+	return lerpf(bounds.y, bounds.x, clampf(stability, 0.0, 1.0))
 
 
 func get_pattern_points() -> PackedVector2Array:

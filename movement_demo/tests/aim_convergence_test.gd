@@ -26,6 +26,7 @@ func check(ok: bool, label: String) -> void:
 func _run() -> void:
 	_models()
 	await _player()
+	_separate_aim_parameters()
 	world.queue_free()
 	await process_frame
 	print("AIM CONVERGENCE: %d/%d passed" % [checks - failed, checks])
@@ -236,3 +237,79 @@ func _ballistics() -> void:
 		var same := directions.size() == probe.directions.size()
 		for i in mini(directions.size(), probe.directions.size()): same = same and directions[i].is_equal_approx(probe.directions[i])
 		check(same and combat._shotgun_rng.state == rng.state, "Shotgun mode %d actual rays shrink only random jitter, retaining fixed points and RNG sequence" % spread_mode)
+
+
+func _separate_aim_parameters() -> void:
+	var template := load("res://resources/weapons/test_pistol.tres") as WeaponData
+	if not "mouse_aim_accuracy" in template or template.get("mouse_aim_accuracy") == null:
+		check(false, "Player weapon saves a separate mouse aim profile")
+		return
+	for name in ["pistol", "rifle", "smg", "shotgun"]:
+		var stock = load("res://resources/weapons/test_%s.tres" % name)
+		check(stock.mouse_aim_accuracy != null, "Built-in %s saves a mouse aim profile" % name)
+	gun = WeaponData.new()
+	var configured: Variant = gun
+	check(gun.get_aim_settings(true) == configured.get_aim_settings(true, true), "Old weapons retain saved accuracy when a profile is absent")
+	var profile = template.get("mouse_aim_accuracy").get_script().new()
+	configured.mouse_aim_accuracy = profile
+	profile.convergence_model = WeaponData.ConvergenceModel.QUADRATIC
+	profile.convergence_seconds = 1.0
+	profile.min_spread_angle_degrees = 1.0
+	profile.max_spread_angle_degrees = 5.0
+	profile.initial_spread_angle_degrees = 2.0
+	profile.spread_recovery_delay = 0.25
+	profile.shot_spread_penalty_degrees = 0.6
+	profile.initial_accuracy = 0.7
+	profile.starting_stability = 0.85
+	profile.stable_jitter_degrees = 0.2
+	profile.unstable_jitter_degrees = 2.0
+	profile.shell_stability_loss = 0.3
+	profile.stability_recovery_delay = 0.7
+	profile.headshot_accuracy_threshold = 0.5
+	combat.aim_control = combat.AimControl.MOUSE
+	combat.aim_mode = combat.AimMode.SPREAD_CONE
+	player.crouch_amount = 0.0
+	combat.equip_weapon(gun)
+	check(is_equal_approx(combat.accuracy, 0.75) and is_equal_approx(combat.get_spread_half_angle_degrees(), 2.0),
+		"Mouse aim equips with its own initial spread and bounds")
+	combat.begin_frame(0.0, true)
+	combat.accuracy = 0.0
+	combat.accuracy_recovery_timer = 0.25
+	combat.end_frame(0.75, false)
+	check(is_equal_approx(combat.accuracy, 0.75), "Mouse aim recovers with its own curve and duration")
+	combat.aim_control = combat.AimControl.AUTO_LOCK
+	combat.begin_frame(0.0, true)
+	combat.end_frame(0.5, false)
+	check(is_equal_approx(combat.accuracy, 0.875) and gun.get_aim_settings(true).shot_penalty == 0.25,
+		"Mode switch preserves progress and uses the original tracking settings")
+	check(is_equal_approx(configured.get_aim_settings(false, true).initial, 0.7) and gun.get_aim_settings(false).initial == 0.5,
+		"Legacy probability settings are independent across aim controls")
+	gun.fire_mode = WeaponData.FireMode.SHOTGUN
+	check(is_equal_approx(configured.get_aim_settings(true, true).initial, 0.85) and gun.get_aim_settings(true).initial == 0.65
+		and configured.get_spread_bounds(true).is_equal_approx(Vector2(0.2, 2.0)),
+		"Shotgun uses mouse stability and jitter while keeping its tracking and enemy settings")
+	gun.shotgun.pattern = ShotgunPattern.new()
+	gun.shotgun.pattern.points = PackedVector2Array([Vector2.ZERO])
+	var camera := Camera3D.new()
+	camera.position = player.global_position + Vector3.UP * 20.0
+	camera.rotation_degrees.x = -90.0
+	world.add_child(camera)
+	camera.make_current()
+	combat.aim_control = combat.AimControl.MOUSE
+	combat.equip_weapon(gun)
+	var motion := InputEventMouseMotion.new()
+	motion.position = camera.unproject_position(player.global_position + Vector3.FORWARD * 6.0)
+	root.push_input(motion, true)
+	combat.begin_frame(0.0, true)
+	combat.accuracy = 0.75
+	check(is_equal_approx(combat.get_target_headshot_chance(player), 0.5), "Mouse reticle uses its own headshot threshold")
+	var probe := player.get_node("ImpactEffects") as RayProbe
+	probe.directions.clear()
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 81
+	combat._shotgun_rng.seed = 81
+	var expected := Ballistics.directions(Vector3.FORWARD, Ballistics.sample_offsets(gun.shotgun, 0.75, rng, 0.65))
+	combat.shoot()
+	check(probe.directions.size() == 1 and probe.directions[0].is_equal_approx(expected[0])
+		and is_equal_approx(combat.accuracy, 0.45) and is_equal_approx(combat.accuracy_recovery_timer, 0.7),
+		"Real mouse shot uses its own shotgun jitter, recoil and recovery wait")

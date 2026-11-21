@@ -5,6 +5,15 @@
 [ext_resource type="Resource" path="res://resources/noise/gunshot_noise.tres" id="2_7l6oa"]
 [ext_resource type="Resource" uid="uid://blvv661nthnpu" path="res://resources/weapons/patterns/balanced.tres" id="3"]
 [ext_resource type="PackedScene" path="res://scenes/presentation/weapon_placeholder.tscn" id="4"]
+[ext_resource type="Script" path="res://scripts/weapons/player_mouse_aim_accuracy.gd" id="5_mouse_accuracy"]
+
+[sub_resource type="Resource" id="Resource_mouse_accuracy"]
+script = ExtResource("5_mouse_accuracy")
+convergence_model = 2
+headshot_accuracy_threshold = 0.6
+unstable_jitter_degrees = 5.0
+starting_stability = 0.3
+stability_recovery_delay = 0.2
 
 [sub_resource type="Resource" id="Resource_d48b2"]
 script = ExtResource("2")
@@ -26,6 +35,7 @@ shot_interval = 0.35
 ammo_type = 3
 magazine_capacity = 2
 shotgun = SubResource("Resource_d48b2")
+mouse_aim_accuracy = SubResource("Resource_mouse_accuracy")
 aim_range = 15.0
 convergence_model = 2
 headshot_accuracy_threshold = 0.6

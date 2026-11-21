@@ -4,9 +4,10 @@ const ImpactEffects = preload("res://scripts/systems/effects/impact_effects.gd")
 
 
 ## 单位为度的固定落点加各颗独立扰动；模式只约束方向，不改变图样或偏移长度分布。
-static func sample_offsets(weapon: ShotgunSettings, stability: float, rng: RandomNumberGenerator) -> PackedVector2Array:
+static func sample_offsets(weapon: ShotgunSettings, stability: float, rng: RandomNumberGenerator,
+		jitter_override := -1.0) -> PackedVector2Array:
 	var result := PackedVector2Array()
-	var jitter := weapon.get_jitter_degrees(stability)
+	var jitter := jitter_override if jitter_override >= 0.0 else weapon.get_jitter_degrees(stability)
 	for point in weapon.get_pattern_points():
 		var base := point * clampf(weapon.pattern_angle_degrees, 0.0, 15.0)
 		var angle := rng.randf_range(0.0, TAU)
@@ -33,10 +34,10 @@ static func directions(forward: Vector3, offsets: PackedVector2Array) -> PackedV
 ## 先查询整枪所有弹丸，再由调用者结算伤害，防止前面的目标死亡后后续弹丸穿到后面。
 ## 只处理弹道与命中特效快照，不消费弹药、不控制角色、AI 或伤害。
 static func trace(shooter: CollisionObject3D, weapon: WeaponData, origin: Vector3,
-		forward: Vector3, stability: float, rng: RandomNumberGenerator) -> Array[Dictionary]:
+		forward: Vector3, stability: float, rng: RandomNumberGenerator, jitter_override := -1.0) -> Array[Dictionary]:
 	var result: Array[Dictionary] = []
 	var effects := ImpactEffects.find_for(shooter)
-	for direction in directions(forward, sample_offsets(weapon.get_shotgun_settings(), stability, rng)):
+	for direction in directions(forward, sample_offsets(weapon.get_shotgun_settings(), stability, rng, jitter_override)):
 		var endpoint: Vector3 = origin + direction * maxf(0.0, weapon.fire_range)
 		var query := PhysicsRayQueryParameters3D.create(origin, endpoint, 1, [shooter.get_rid()])
 		query.hit_from_inside = true

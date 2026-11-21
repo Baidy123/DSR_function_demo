@@ -2,6 +2,21 @@
 
 [ext_resource type="Script" uid="uid://b7iqg2tyib57x" path="res://scripts/weapons/weapon_data.gd" id="1_cd4rn"]
 [ext_resource type="Resource" path="res://resources/noise/gunshot_noise.tres" id="2_evrrc"]
+[ext_resource type="Script" path="res://scripts/weapons/player_mouse_aim_accuracy.gd" id="5_mouse_accuracy"]
+
+[sub_resource type="Resource" id="Resource_mouse_accuracy"]
+script = ExtResource("5_mouse_accuracy")
+convergence_model = 2
+convergence_seconds = 2.0
+convergence_exponent_k = 5.0
+min_spread_angle_degrees = 2.5
+max_spread_angle_degrees = 5.5
+initial_spread_angle_degrees = 4.0
+shot_spread_penalty_degrees = 0.25
+shot_max_spread_angle_degrees = 4.5
+player_move_spread_degrees_per_meter = 0.5
+moving_spread_angle_degrees = 5.0
+spread_recovery_delay = 0.2
 
 [resource]
 script = ExtResource("1_cd4rn")
@@ -11,6 +26,7 @@ damage = 9.0
 ammo_type = 2
 magazine_capacity = 30
 reload_seconds = 4.0
+mouse_aim_accuracy = SubResource("Resource_mouse_accuracy")
 aim_range = 22.0
 tracking_parallel_tolerance_degrees = null
 convergence_model = 2

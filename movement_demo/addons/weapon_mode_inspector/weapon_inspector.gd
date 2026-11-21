@@ -160,6 +160,8 @@ func _parse_property(object: Object, type: Variant.Type, path: String, hint: Pro
 		return true
 	if path == "shotgun":
 		return object.fire_mode != WeaponData.FireMode.SHOTGUN
+	if path == "mouse_aim_accuracy":
+		return object.fire_mode == WeaponData.FireMode.MELEE or _is_enemy_context()
 	if object.fire_mode == WeaponData.FireMode.SHOTGUN and (path == "damage" or PROBABILITY_FIELDS.has(path) or SPREAD_FIELDS.has(path)):
 		return true
 	if object.fire_mode == WeaponData.FireMode.MELEE and (path in FIREARM_FIELDS or PROBABILITY_FIELDS.has(path) or SPREAD_FIELDS.has(path)):

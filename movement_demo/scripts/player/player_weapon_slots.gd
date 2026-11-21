@@ -363,7 +363,7 @@ func apply_stowed_accuracy_loss(loss: float) -> void:
 		if slot == active_slot: continue
 		var data := _weapon_at(slot)
 		if data == null: continue
-		var settings: Dictionary = data.get_aim_settings(combat.is_using_spread_cone())
+		var settings: Dictionary = combat.get_weapon_aim_settings(data)
 		var saved: Dictionary = _aim_states[slot]
 		var previous: float = saved.get("accuracy", settings.initial) if saved.get("weapon") == data else settings.initial
 		_aim_states[slot] = {"weapon": data, "accuracy": maxf(0.0, previous - loss), "crouch_bonus_blocked": true,
