@@ -123,9 +123,8 @@ func _player() -> void:
 	combat.equip_weapon(gun)
 	for frame in 4: await physics_frame
 	check(combat.can_combat(), "Fixture uses real player and physical combat zone")
-	for mode in 3:
-		gun.fire_mode = WeaponData.FireMode.SHOTGUN if mode == 2 else WeaponData.FireMode.SEMI_AUTO
-		combat.aim_mode = 0 if mode == 0 else 1
+	for mode in [WeaponData.FireMode.SEMI_AUTO, WeaponData.FireMode.SHOTGUN]:
+		gun.fire_mode = mode
 		combat.equip_weapon(gun)
 		combat.is_aiming = true
 		combat.accuracy = 0
@@ -135,14 +134,13 @@ func _player() -> void:
 		combat.accuracy = 0
 		combat.is_aiming = false
 		combat.end_frame(20, false)
-		check(is_equal_approx(combat.accuracy, gun.get_aim_settings(mode != 0).initial), "Mode %d keeps the non-aiming recovery cap" % mode)
+		check(is_equal_approx(combat.accuracy, combat.get_weapon_aim_settings(gun).initial), "Mode %d keeps the non-aiming recovery cap" % mode)
 		combat.is_aiming = true
 		combat.accuracy = 0
 		combat.player_position_before_move = player.global_position
 		combat.end_frame(20, true)
-		check(is_equal_approx(combat.accuracy, gun.get_aim_settings(mode != 0).moving_cap), "Mode %d keeps the movement recovery cap" % mode)
+		check(is_equal_approx(combat.accuracy, combat.get_weapon_aim_settings(gun).moving_cap), "Mode %d keeps the movement recovery cap" % mode)
 	gun.fire_mode = WeaponData.FireMode.SEMI_AUTO
-	combat.aim_mode = 1
 	combat.equip_weapon(gun)
 	combat.is_aiming = true
 	combat.accuracy = 0.75
@@ -259,7 +257,6 @@ func _separate_aim_parameters() -> void:
 	profile.initial_spread_angle_degrees = 2.0
 	profile.spread_recovery_delay = 0.25
 	profile.shot_spread_penalty_degrees = 0.6
-	profile.initial_accuracy = 0.7
 	profile.starting_stability = 0.85
 	profile.stable_jitter_degrees = 0.2
 	profile.unstable_jitter_degrees = 2.0
@@ -267,7 +264,6 @@ func _separate_aim_parameters() -> void:
 	profile.stability_recovery_delay = 0.7
 	profile.headshot_accuracy_threshold = 0.5
 	combat.aim_control = combat.AimControl.MOUSE
-	combat.aim_mode = combat.AimMode.SPREAD_CONE
 	player.crouch_amount = 0.0
 	combat.equip_weapon(gun)
 	check(is_equal_approx(combat.accuracy, 0.75) and is_equal_approx(combat.get_spread_half_angle_degrees(), 2.0),
@@ -282,8 +278,8 @@ func _separate_aim_parameters() -> void:
 	combat.end_frame(0.5, false)
 	check(is_equal_approx(combat.accuracy, 0.875) and gun.get_aim_settings(true).shot_penalty == 0.25,
 		"Mode switch preserves progress and uses the original tracking settings")
-	check(is_equal_approx(configured.get_aim_settings(false, true).initial, 0.7) and gun.get_aim_settings(false).initial == 0.5,
-		"Legacy probability settings are independent across aim controls")
+	check(configured.get_aim_settings(false, true) == gun.get_aim_settings(false) and gun.get_aim_settings(false).initial == 0.5,
+		"Enemy probability settings ignore the player mouse profile")
 	gun.fire_mode = WeaponData.FireMode.SHOTGUN
 	check(is_equal_approx(configured.get_aim_settings(true, true).initial, 0.85) and gun.get_aim_settings(true).initial == 0.65
 		and configured.get_spread_bounds(true).is_equal_approx(Vector2(0.2, 2.0)),

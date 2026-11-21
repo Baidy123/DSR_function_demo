@@ -18,7 +18,6 @@ shot_max_spread_angle_degrees = 1.95
 player_move_spread_degrees_per_meter = 0.3
 moving_spread_angle_degrees = 2.1
 spread_recovery_delay = 0.3
-accuracy_recovery_delay = 0.2
 
 [resource]
 script = ExtResource("1_hwf44")

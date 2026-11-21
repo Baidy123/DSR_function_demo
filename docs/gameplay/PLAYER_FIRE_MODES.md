@@ -1,6 +1,6 @@
 # 武器开火方式
 
-每把武器用 **WeaponData → 基本信息 → Fire Mode** 选择开火方式。玩家装备入口为 **Player → Equipment → Primary Weapon / Secondary Weapon**。开火方式、Combat 的 Aim Mode（弹道算法）与 Aim Control（瞄准方式）分别配置。
+每把武器用 **WeaponData → 基本信息 → Fire Mode** 选择开火方式。玩家装备入口为 **Player → Equipment → Primary Weapon / Secondary Weapon**。Combat 的 **Aim Control** 另行选择自动锁定或鼠标瞄准。
 
 ## 模式与参数
 

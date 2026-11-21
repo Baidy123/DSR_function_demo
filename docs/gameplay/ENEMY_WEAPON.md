@@ -11,7 +11,7 @@
 | 枪口跟转速度 | Shooting → Aim Turn Speed Degrees | 默认90°/秒，区别于身体转身速度 |
 | 屏外开火机会 | Shooting → Offscreen Fire Chance | 0～100%，默认50%；只影响原本合法的开火尝试 |
 | 射击诊断 | Shooting → Debug Shooting | 输出中心概率、实际命中或遮挡 |
-| 普通枪准度 | Weapon → 瞄准与散布 → 概率模式（百分比） | 初始概率、每枪损失、移动与目标跟踪损失 |
+| 普通枪准度 | Weapon → 瞄准与散布 → 敌人中心概率（百分比） | 初始概率、每枪损失、移动与目标跟踪损失、恢复等待 |
 | 敌人恢复 | Weapon → 瞄准与散布 → 敌人恢复（原算法） | `stabilize_seconds`；玩家收敛公式不覆盖此项 |
 | 射击节奏 | Training → Profile → Tactics | 反应时间、稳枪目标、点射数量、间隔倍率、停顿 |
 | 感知距离 | Training → Profile → Perception | 默认启用武器锁定距离加感知余量；可切回独立视距 |

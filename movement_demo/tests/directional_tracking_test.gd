@@ -39,7 +39,7 @@ func _run() -> void:
 	_add_box(target, Vector3(0.6, 1.8, 0.6), Vector3(0, 0.9, 0))
 	world.add_child(target)
 	for frame in 4: await physics_frame
-	for mode in 3:
+	for mode in [WeaponData.FireMode.SEMI_AUTO, WeaponData.FireMode.SHOTGUN]:
 		await _prepare(mode)
 		check(combat.locked_target == target and combat.can_combat(), "Mode %d: actual physics visibility acquires the target" % mode)
 		for direction in [Vector3.FORWARD, Vector3.BACK]:
@@ -82,31 +82,26 @@ func _add_box(body: CollisionObject3D, size: Vector3, offset: Vector3) -> void:
 	body.add_child(collision)
 
 
-func _prepare(mode: int = 0, point: Vector3 = Vector3(0, 0, -10)) -> void:
+func _prepare(mode: WeaponData.FireMode = WeaponData.FireMode.SEMI_AUTO, point: Vector3 = Vector3(0, 0, -10)) -> void:
 	var gun := WeaponData.new()
 	gun.aim_range = 50
 	gun.cone_angle_degrees = 180
 	gun.shot_noise = null
-	gun.initial_accuracy = 0.5
 	gun.convergence_seconds = 2
-	gun.target_move_accuracy_loss_per_meter_slow = 0.1
-	gun.target_move_accuracy_loss_per_meter_fast = 0.2
-	gun.target_move_minimum_accuracy = 0.3
-	gun.player_move_accuracy_loss_per_meter = 0.1
-	gun.moving_accuracy_cap = 0.5
 	gun.min_spread_angle_degrees = 0
 	gun.max_spread_angle_degrees = 20
 	gun.initial_spread_angle_degrees = 10
+	gun.player_move_spread_degrees_per_meter = 2
+	gun.moving_spread_angle_degrees = 10
 	gun.target_move_spread_degrees_per_meter_slow = 2
 	gun.target_move_spread_degrees_per_meter_fast = 4
 	gun.target_move_max_spread_angle_degrees = 14
 	gun.shot_max_spread_angle_degrees = 18
-	if mode == 2:
-		gun.fire_mode = WeaponData.FireMode.SHOTGUN
+	gun.fire_mode = mode
+	if mode == WeaponData.FireMode.SHOTGUN:
 		gun.shotgun.starting_stability = 0.5
 		gun.shotgun.tracking_loss_per_meter = Vector2(0.1, 0.2)
 		gun.shotgun.tracking_stability_floor = 0.3
-	combat.aim_mode = combat.AimMode.PROBABILITY if mode == 0 else combat.AimMode.SPREAD_CONE
 	combat.equip_weapon(gun)
 	gun.tracking_parallel_tolerance_degrees = 5
 	player.position = Vector3.ZERO
@@ -126,7 +121,7 @@ func _tick(delta: float, offset: Vector3, player_offset: Vector3 = Vector3.ZERO)
 	combat.end_frame(delta, not player_offset.is_zero_approx())
 
 
-func _loss(mode: int, displacement: Vector3, delta: float, tolerance: float = 5.0) -> float:
+func _loss(mode: WeaponData.FireMode, displacement: Vector3, delta: float, tolerance: float = 5.0) -> float:
 	# 前后位置关于连线对称，避免把采样方向差异误认为惩罚左右不对称。
 	await _prepare(mode, Vector3(0, 0, -10) - displacement * 0.5)
 	combat.weapon.tracking_parallel_tolerance_degrees = tolerance
@@ -145,16 +140,16 @@ func _boundaries() -> void:
 		combat.accuracy_recovery_timer = 1
 		await _tick(0.1, Vector3(0.01, 0, -0.2))
 		check(combat.accuracy < 0.8, "Zero tolerance uses the pure lateral projection")
-	var near_edge: float = await _loss(0, Vector3(sin(deg_to_rad(5.01)), 0, -cos(deg_to_rad(5.01))), 0.2)
-	var diagonal: float = await _loss(0, Vector3(1, 0, -1).normalized(), 0.2)
+	var near_edge: float = await _loss(WeaponData.FireMode.SEMI_AUTO, Vector3(sin(deg_to_rad(5.01)), 0, -cos(deg_to_rad(5.01))), 0.2)
+	var diagonal: float = await _loss(WeaponData.FireMode.SEMI_AUTO, Vector3(1, 0, -1).normalized(), 0.2)
 	check(near_edge > 0 and near_edge < diagonal * 0.01, "Penalty grows continuously beyond the parallel tolerance")
 	# 同一横向分量增加径向速度，只能被平行容差减轻，不能因总跑速变大而增加损失。
-	var lateral: float = await _loss(0, Vector3(0.2, 0, 0), 0.1)
-	var rapid_approach: float = await _loss(0, Vector3(0.2, 0, 1.0), 0.1)
+	var lateral: float = await _loss(WeaponData.FireMode.SEMI_AUTO, Vector3(0.2, 0, 0), 0.1)
+	var rapid_approach: float = await _loss(WeaponData.FireMode.SEMI_AUTO, Vector3(0.2, 0, 1.0), 0.1)
 	check(rapid_approach > 0 and rapid_approach <= lateral, "Radial speed cannot select a stronger high-speed tracking penalty")
 	await _prepare()
-	combat.weapon.target_move_accuracy_loss_per_meter_slow = 0
-	combat.weapon.target_move_accuracy_loss_per_meter_fast = 0
+	combat.weapon.target_move_spread_degrees_per_meter_slow = 0
+	combat.weapon.target_move_spread_degrees_per_meter_fast = 0
 	await _tick(0.1, Vector3.RIGHT * 0.3)
 	check(is_equal_approx(combat.accuracy, 0.85), "Zero tracking rates release recovery even during lateral motion")
 	await _prepare()
@@ -181,7 +176,7 @@ func _boundaries() -> void:
 	check(not combat._apply_target_movement_accuracy_penalty(0.1), "An invalid-time sample is not charged on the following frame")
 	var results: Array[float] = []
 	for fps in [30, 60, 120]:
-		await _prepare(0, Vector3(-0.5, 0, -10))
+		await _prepare(WeaponData.FireMode.SEMI_AUTO, Vector3(-0.5, 0, -10))
 		combat.accuracy = 1
 		for frame in fps: await _tick(1.0 / fps, Vector3.RIGHT / fps)
 		results.append(combat.accuracy)
@@ -191,7 +186,7 @@ func _boundaries() -> void:
 func _weapon_tolerance() -> void:
 	var gun := WeaponData.new()
 	check(gun.tracking_parallel_tolerance_degrees == 25, "Weapon default is a twenty-five-degree player-only half-angle")
-	for mode in 3:
+	for mode in [WeaponData.FireMode.SEMI_AUTO, WeaponData.FireMode.SHOTGUN]:
 		for direction in [-1, 1]:
 			var offset := Vector3(sin(deg_to_rad(24.9)), 0, cos(deg_to_rad(24.9)) * direction)
 			check(is_zero_approx(await _loss(mode, offset, 0.2, 25)), "Mode %d: approach/retreat inside twenty-five degrees is exempt (%d)" % [mode, direction])

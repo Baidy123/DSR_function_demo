@@ -5,11 +5,8 @@ var _creating_native_property := false
 var _history: EditorUndoRedoManager
 const ENEMY_RECOVERY_FIELDS := ["spread_recovery_degrees_per_second", "stabilize_seconds", "settle_seconds"]
 const PLAYER_CONVERGENCE_FIELDS := ["convergence_model", "convergence_seconds", "convergence_exponent_k"]
-const PLAYER_RECOVERY_DELAYS := ["spread_recovery_delay", "accuracy_recovery_delay"]
 const PLAYER_CONE_FIELDS := ["min_spread_angle_degrees", "max_spread_angle_degrees", "initial_spread_angle_degrees",
 	"moving_spread_angle_degrees", "player_move_spread_degrees_per_meter", "shot_spread_penalty_degrees", "shot_max_spread_angle_degrees"]
-const PLAYER_PROBABILITY_FIELDS := ["initial_accuracy", "moving_accuracy_cap", "player_move_accuracy_loss_per_meter",
-	"shot_accuracy_penalty", "minimum_accuracy"]
 const PLAYER_SHOTGUN_FIELDS := ["stable_jitter_degrees", "unstable_jitter_degrees", "starting_stability", "movement_loss_per_meter",
 	"movement_stability_floor", "shell_stability_loss", "shell_stability_floor", "stability_recovery_delay"]
 const PLAYER_HIT_FIELDS := ["hit_accuracy_loss_multiplier", "suppression_accuracy_loss_multiplier"]
@@ -20,7 +17,7 @@ const CoverageProperty = preload("res://addons/weapon_mode_inspector/shotgun_cov
 const AimModeProperty = preload("res://addons/weapon_mode_inspector/aim_mode_property.gd")
 const PatternPreview = preload("res://scripts/debug/shotgun_pattern_preview.gd")
 
-const PROBABILITY_FIELDS := {
+const ENEMY_PROBABILITY_FIELDS := {
 	"initial_accuracy": "初始中心概率",
 	"stabilize_seconds": "敌人概率恢复时间",
 	"moving_accuracy_cap": "移动惩罚概率下限",
@@ -71,7 +68,7 @@ const COMMON_FIELDS := {
 	"melee_headshot_threshold_multiplier": "眩晕破绽门槛倍率（仅敌人受方）",
 }
 const PAIRED_LABELS := {
-	"spread_recovery_delay": "散布锥恢复等待", "accuracy_recovery_delay": "概率恢复等待",
+	"spread_recovery_delay": "散布锥恢复等待",
 	"stable_jitter_degrees": "稳定时最大随机偏移", "unstable_jitter_degrees": "不稳定时最大随机偏移",
 	"starting_stability": "初始稳定度", "movement_loss_per_meter": "每米移动损耗",
 	"movement_stability_floor": "移动稳定度下限", "shell_stability_loss": "每枪稳定度损耗",
@@ -109,9 +106,9 @@ const EFFECT_HELP := {
 	"hit_accuracy_loss_multiplier": "攻击武器的命中精度损失乘此倍率。×0 免除该模式的损失。",
 	"suppression_accuracy_loss_multiplier": "敌方弹道擦过时，攻击武器的压制精度损失乘此倍率。×0 免除该模式的损失。",
 	"tracking_parallel_tolerance_degrees": "仅玩家使用此枪时有效。目标沿瞄准连线靠近／远离，在两侧各25°（默认）的范围内不扣目标移动精度；超出后连续增加损失。0使用纯横向投影；玩家自身移动、受击等惩罚保持。敌人使用同一枪时不读取此项。",
-	"stabilize_seconds": "仅敌人：从初始概率恢复到100%的秒数；初始100%时按0到100%。继续供原AI恢复与掩体阶段估时使用。玩家不读取，不受玩家公式和收敛时间影响。",
+	"stabilize_seconds": "从初始概率恢复到100%的秒数。初始100%时按0到100%。供AI恢复与掩体阶段估时使用。",
 	"settle_seconds": "仅敌人：霰弹从初始稳定度恢复到最准的秒数；初始100%时按0到100%。玩家不读取；玩家霰弹统一使用所属武器的玩家收敛时间与公式。",
-	"convergence_seconds": "仅玩家：从最大散布到最小散布的完整秒数，不含恢复等待；当前状态从曲线对应位置继续。线性、二次、指数均只用此时间；概率模式对应0到100%，霰弹对应最大到最小随机偏移。默认4秒，最小0.01秒；旧0值按4秒，不再启用旧参数。敌人保持原算法。",
+	"convergence_seconds": "仅玩家使用。从最大散布到最小散布的完整秒数，不含恢复等待。线性、二次、指数均用此时间从曲线对应位置继续，霰弹对应最大到最小随机偏移。默认4秒，最小0.01秒。旧0值按4秒。",
 	"convergence_exponent_k": "指数曲线的前后速度差，越大前段越快、尾段越慢；0按线性，默认3。总收敛时间由上一项控制。",
 	"headshot_accuracy_threshold": "基础准度在此门槛时爆头率为0，至100%准度线性增加到必爆头；仍须实际命中，不保证秒杀。0表示从0%准度开始增长，关闭请使用启用爆头。",
 	"melee_headshot_threshold_multiplier": "仅玩家近战命中敌人：随后射击武器的普通爆头起始准度×此倍率，例如80%×0.8=64%。0将门槛降至0，1不降低门槛；不增加玩家准度。倍率在近战出手时冻结，首次有效枪击后消费。",
@@ -119,12 +116,12 @@ const EFFECT_HELP := {
 	"headshot_stagger_seconds": "存活敌人应用本武器移速与精度限制的秒数；默认1秒，0关闭。复用原受击效果，不禁止开枪或取消AI动作；转向、换弹、近战、重力和碰撞继续。",
 	"headshot_movement_multiplier": "状态期间保留多少自主移速；默认0%不能走动，100%不减速。与普通受击减速取较强者，不影响重力或击退；不取消AI动作。",
 	"headshot_accuracy_cap": "状态期间的最高精度；默认0%。不会抬高本来更差的精度，不禁止开枪；状态结束后沿原武器规则恢复。",
-	"target_move_accuracy_loss_per_meter_slow": "慢速目标每米降低的概率。玩家按平行容差处理后的有效横向距离计算；前后移动不扣这一项。敌人仍按原目标位移。",
-	"target_move_accuracy_loss_per_meter_fast": "高速目标每米降低的概率。玩家按有效横向距离和速度计算；径向速度不加重惩罚。敌人规则保留。",
-	"target_move_fast_speed": "达到该速度时采用高速每米惩罚。玩家使用有效横向速度，敌人使用原目标速度（米/秒）。",
-	"target_move_spread_degrees_per_meter_slow": "慢速目标每米扩大的散布半角。玩家按平行容差处理后的有效横向距离计算；前后移动不扣这一项。敌人规则保留。",
-	"target_move_spread_degrees_per_meter_fast": "高速目标每米扩大的散布半角。玩家按有效横向距离和速度计算；径向速度不加重惩罚。敌人规则保留。",
-	"spread_target_move_fast_speed": "达到该速度时采用高速每米扩散。玩家使用有效横向速度，敌人使用原目标速度（米/秒）。",
+	"target_move_accuracy_loss_per_meter_slow": "慢速目标每米降低的概率，按目标位移计算。",
+	"target_move_accuracy_loss_per_meter_fast": "高速目标每米降低的概率，按目标位移计算。",
+	"target_move_fast_speed": "目标达到此速度时采用高速每米惩罚（米/秒）。",
+	"target_move_spread_degrees_per_meter_slow": "慢速目标每米扩大的散布半角，按平行容差处理后的有效横向距离计算。",
+	"target_move_spread_degrees_per_meter_fast": "高速目标每米扩大的散布半角，按有效横向距离和速度计算。",
+	"spread_target_move_fast_speed": "目标有效横向速度达到此值时采用高速每米扩散（米/秒），较低速度在两种每米扩散量之间插值。",
 	"hit_accuracy_loss": "攻击武器命中后扣目标的精度，按百分点计算。20%×受方倍率0.5=扣10个百分点，80%变70%；0关闭。不影响自己的后坐力。",
 	"suppression_accuracy_loss": "敌方子弹擦过时扣目标的精度，再乘受方压制精度倍率；0只关闭精度损失，仍保留真实近弹警戒。",
 	"near_miss_radius": "目标胸部到实际弹道线段的最大距离（米）；0关闭擦过检测。弹道在第一碰撞截断，墙后延长线无效；与枪声范围无关。",
@@ -133,8 +130,8 @@ const EFFECT_HELP := {
 	"melee_accuracy_loss": "眩晕命中时一次扣除的基础精度，乘原受方倍率。100%×0.5只扣50个百分点；不改成持续精度上限，不禁止开枪，0关闭本项损失。",
 	"melee_slow_multiplier": "眩晕时基础保留移速。保留50%且受方倍率0.5时实际保留75%。100%只关闭减速，不关闭敌人的眩晕计时与爆头破绽；击退独立。",
 	"melee_slow_seconds": "近战眩晕与移动减速的初始秒数，0关闭持续效果；不禁止攻击或暂停AI。重复命中仍刷新普通减速，但不延长当前敌人眩晕或补发已消费的破绽。",
-	"moving_accuracy_cap": "正常移动惩罚的概率下限，不会瞬间抬高更差的精度。受击等造成更低概率时，经过恢复等待后可边走边逐渐恢复到本值；未瞄准不超过初始概率。",
-	"accuracy_recovery_delay": "新的精度损失后等多久开始恢复（秒）。低于移动下限时，继续走路不会反复刷新等待；新命中、擦过或射击会重新等待。",
+	"moving_accuracy_cap": "持枪者自身移动惩罚的中心概率下限。概率已低于此值时，移动惩罚停扣，持枪者移动期间暂停恢复。",
+	"accuracy_recovery_delay": "中心概率开始恢复前的等待秒数。持枪者持续移动会刷新等待，换弹、开火和额外精度损失也会触发等待。",
 	"spread_recovery_degrees_per_second": "保留原散布锥恢复接口与保存值，每秒收拢多少度，0不恢复。玩家不读取；当前敌人身体使用概率恢复时间，不读取散布锥角速度。",
 	"moving_spread_angle_degrees": "正常移动惩罚的最大半角，不会瞬间收拢更大散布。受击等造成额外散布时，经过恢复等待后可边走边逐渐收拢到本值；未瞄准不比初始散布更小。",
 	"spread_recovery_delay": "新的精度损失后等多久开始收拢（秒）。比移动最大散布更散时，继续走路不会反复刷新等待；新命中、擦过或射击会重新等待。",
@@ -201,10 +198,13 @@ func _parse_property(object: Object, type: Variant.Type, path: String, hint: Pro
 		return object.fire_mode != WeaponData.FireMode.SHOTGUN
 	if _parse_weapon_pairs(object, path):
 		return true
-	if object.fire_mode == WeaponData.FireMode.SHOTGUN and (path == "damage" or PROBABILITY_FIELDS.has(path) or SPREAD_FIELDS.has(path)):
+	var enemy_probability_field := ENEMY_PROBABILITY_FIELDS.has(path)
+	var spread_field := SPREAD_FIELDS.has(path)
+	if object.fire_mode == WeaponData.FireMode.SHOTGUN and (path == "damage" or enemy_probability_field or spread_field):
 		return true
-	if object.fire_mode == WeaponData.FireMode.MELEE and (path in FIREARM_FIELDS or PROBABILITY_FIELDS.has(path) or SPREAD_FIELDS.has(path)):
+	if object.fire_mode == WeaponData.FireMode.MELEE and (path in FIREARM_FIELDS or enemy_probability_field or spread_field):
 		return true
+	if (enemy_probability_field and _is_player_context()) or (spread_field and _is_enemy_context()): return true
 	if path in ENEMY_RECOVERY_FIELDS and _is_player_context(): return true
 	if path == "tracking_parallel_tolerance_degrees" and _is_enemy_context(): return true
 	if path in MELEE_OPENING_FIELDS and (_is_enemy_context() or object.fire_mode == WeaponData.FireMode.MELEE): return true
@@ -218,19 +218,18 @@ func _parse_property(object: Object, type: Variant.Type, path: String, hint: Pro
 		if native == null: return false
 		add_property_editor(path, native, false, headshot_labels[path])
 		return true
-	var mode: int = _context_mode(object)
-	if (mode == 0 and SPREAD_FIELDS.has(path)) or (mode == 1 and PROBABILITY_FIELDS.has(path)):
-		return true
 	if type != TYPE_FLOAT or hint != PROPERTY_HINT_RANGE:
 		return false
-	var label_text: String = COMMON_FIELDS.get(path, PROBABILITY_FIELDS.get(path, SPREAD_FIELDS.get(path, "")))
+	var label_text: String = COMMON_FIELDS.get(path, ENEMY_PROBABILITY_FIELDS.get(path, SPREAD_FIELDS.get(path, "")))
 	if label_text.is_empty():
 		return false
 	var editor := NumberProperty.new()
 	editor.configure(hint_text, path in PERCENT_FIELDS)
-	if EFFECT_HELP.has(path):
-		editor.tooltip_text = EFFECT_HELP[path]
-		editor.spin.tooltip_text = EFFECT_HELP[path]
+	var help_text: String = EFFECT_HELP.get(path, "")
+	if enemy_probability_field:
+		help_text = "仅敌人使用。" + help_text
+	editor.tooltip_text = help_text
+	editor.spin.tooltip_text = help_text
 	add_property_editor(path, editor, false, label_text)
 	return true
 
@@ -250,19 +249,13 @@ func _parse_weapon_pairs(weapon: WeaponData, path: String) -> bool:
 	if path == "headshot_accuracy_threshold":
 		_add_mode_pair(weapon, weapon, path, [path])
 		return true
-	var mode := _context_mode(weapon)
-	if path in PLAYER_RECOVERY_DELAYS:
-		if not shotgun and path == PLAYER_RECOVERY_DELAYS[0]:
-			var fields := [PLAYER_RECOVERY_DELAYS[1 - mode]] if mode in [0, 1] else PLAYER_RECOVERY_DELAYS
-			_add_mode_pair(weapon, weapon, path, fields)
+	if path == "spread_recovery_delay":
+		if not shotgun:
+			_add_mode_pair(weapon, weapon, path, [path])
 		return true
 	if path in PLAYER_CONE_FIELDS:
-		if not shotgun and mode != 0 and path == PLAYER_CONE_FIELDS[0]:
+		if not shotgun and path == PLAYER_CONE_FIELDS[0]:
 			_add_mode_pair(weapon, weapon, path, PLAYER_CONE_FIELDS)
-		return true
-	if path in PLAYER_PROBABILITY_FIELDS:
-		if not shotgun and mode != 1 and path == PLAYER_PROBABILITY_FIELDS[0]:
-			_add_mode_pair(weapon, weapon, path, PLAYER_PROBABILITY_FIELDS)
 		return true
 	return false
 
@@ -274,7 +267,7 @@ func _add_mode_pair(owner: Object, tracking: Object, anchor: String, paths: Arra
 	var fields: Array[Dictionary] = []
 	for path in paths:
 		var field: Dictionary = properties[path]
-		field.label = PAIRED_LABELS.get(path, COMMON_FIELDS.get(path, PROBABILITY_FIELDS.get(path, SPREAD_FIELDS.get(path, path))))
+		field.label = PAIRED_LABELS.get(path, COMMON_FIELDS.get(path, SPREAD_FIELDS.get(path, path)))
 		field.help = EFFECT_HELP.get(path, "")
 		field.percentage = path in PERCENT_FIELDS or path in PAIRED_PERCENT_FIELDS
 		fields.append(field)
@@ -320,23 +313,6 @@ func _is_enemy_context() -> bool:
 func _selected_script() -> String:
 	var selected := EditorInterface.get_inspector().get_edited_object()
 	return selected.get_script().resource_path if selected != null and selected.get_script() != null else ""
-
-
-func _context_mode(weapon: Object) -> int:
-	var combat = EditorInterface.get_inspector().get_edited_object()
-	if combat == null or combat.get_script() == null:
-		return -1
-	var script_path: String = combat.get_script().resource_path
-	if script_path == "res://scripts/player/player_weapon_slots.gd":
-		if weapon != combat.get("primary_weapon") and weapon != combat.get("secondary_weapon"):
-			return -1
-		var player_combat = combat.get_node_or_null("../Combat")
-		return int(player_combat.get("aim_mode")) if player_combat != null else -1
-	if script_path not in ["res://scripts/player/player_combat_v3.gd", "res://scripts/enemy/enemy_actor.gd"]:
-		return -1
-	if combat.get("weapon") != weapon:
-		return -1
-	return 0 if script_path == "res://scripts/enemy/enemy_actor.gd" else int(combat.get("aim_mode"))
 
 
 # 保留原资源字段与原生撤销；已打开资源热更新后可能漏发 setter 通知，

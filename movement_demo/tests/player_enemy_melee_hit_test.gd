@@ -24,15 +24,14 @@ func _run() -> void:
 	player.global_position = Vector3.ZERO
 	await frames(3)
 	var hp: float = player.health.health
-	for mode in [combat.AimMode.PROBABILITY, combat.AimMode.SPREAD_CONE]:
-		combat.aim_mode = mode
+	for slot in [slots.active_slot, 1 - slots.active_slot]:
 		combat.accuracy = 1.0
 		player.receive_melee_hit(5.0, Vector3(0, 0, -1), 0.0, 0.2, Vector3.FORWARD, {"melee": true, "hit_accuracy_loss": 1.0})
-		check(combat.accuracy == 0.0, "近战清零当前准度模式" + str(mode))
+		check(combat.accuracy == 0.0, "近战清零当前准度（槽位%d）" % slot)
 		combat.end_frame(0.2, false)
-		check(combat.accuracy == 0.0, "受击同帧不立刻恢复" + str(mode))
-		slots.select_slot(1 - slots.active_slot)
-		check(combat.accuracy == 0.0 and combat.accuracy_recovery_timer >= combat.weapon.get_aim_settings(combat.is_using_spread_cone()).delay, "切枪不能绕过准度清零" + str(mode))
+		check(combat.accuracy == 0.0, "受击同帧不立刻恢复（槽位%d）" % slot)
+		slots.select_slot(1 - slot)
+		check(combat.accuracy == 0.0 and combat.accuracy_recovery_timer >= combat.get_weapon_aim_settings(combat.weapon).delay, "切枪不能绕过准度清零（槽位%d）" % slot)
 	check(player.health.health == hp - 10.0, "近战伤害沿用玩家生命入口")
 	var original_ticks := Engine.physics_ticks_per_second
 	for ticks in [30, 60, 120]:

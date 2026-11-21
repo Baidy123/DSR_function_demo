@@ -17,10 +17,6 @@ const Ammo = preload("res://scripts/weapons/weapon_ammo.gd")
 @export_range(0.1, 1.0, 0.05) var sprint_reload_speed_multiplier: float = 0.5
 var ammo = Ammo.new()
 var _reload_started_sprinting: bool = false
-enum AimMode { PROBABILITY, SPREAD_CONE }
-## 选择本节点的弹道算法；两种算法共用碰撞和伤害结算。
-@export_enum("旧概率模式:0", "新散布锥模式:1") var aim_mode: int = AimMode.SPREAD_CONE
-
 enum AimControl { FROM_SCENE, AUTO_LOCK, MOUSE }
 ## 按住右键时自动锁定敌人，或让准星跟随鼠标。暂停菜单可以在本次运行中覆盖此值。
 @export_enum("自动锁定:1", "鼠标瞄准:2") var aim_control: int = AimControl.AUTO_LOCK
@@ -376,7 +372,7 @@ func _uses_mouse_aim_tuning() -> bool:
 
 
 func get_weapon_aim_settings(data: WeaponData) -> Dictionary:
-	return data.get_aim_settings(is_using_spread_cone(), _uses_mouse_aim_tuning())
+	return data.get_aim_settings(true, _uses_mouse_aim_tuning())
 
 
 func is_mouse_aiming() -> bool:
@@ -583,7 +579,7 @@ func _apply_target_movement_accuracy_penalty(delta: float) -> bool:
 		tracking_distance = moved_distance * lateral_weight
 	if maxf(tracking_distance, turn_distance) <= 0.000001: return false
 
-	var settings: Dictionary = weapon.get_aim_settings(is_using_spread_cone())
+	var settings: Dictionary = weapon.get_aim_settings(true)
 	var target_speed: float = tracking_distance / delta
 	var speed_factor: float = clampf(target_speed / maxf(settings.fast_speed, 0.01), 0.0, 1.0)
 	var loss_per_meter: float = lerpf(
@@ -609,7 +605,7 @@ func _apply_target_movement_accuracy_penalty(delta: float) -> bool:
 func _get_target_move_accuracy_floor() -> float:
 	if weapon == null:
 		return 0.0
-	return weapon.get_aim_settings(is_using_spread_cone()).target_floor
+	return weapon.get_aim_settings(true).target_floor
 
 
 ## 表现只读当前朝向状态；提前选中目标不代表枪口已经对准。
@@ -856,12 +852,8 @@ func shoot() -> void:
 	if weapon.fire_mode == WeaponData.FireMode.SHOTGUN:
 		_shoot_shotgun(origin, direction, stability, attack_effects, headshot_settings)
 		return
-	if is_using_spread_cone():
-		# 有无锁定都在整个三维锥内取样，稳定度只控制锥的半角。
-		direction = _random_direction_in_spread_cone(direction, get_spread_half_angle_degrees())
-	elif randf() >= stability:
-		# 旧模式保留“直射中心概率 + 8～20度三维偏转”，便于对比手感。
-		direction = _random_direction_in_miss_cone(direction, 8.0, 20.0)
+	# 有无锁定都在整个三维锥内取样，稳定度只控制锥的半角。
+	direction = _random_direction_in_spread_cone(direction, get_spread_half_angle_degrees())
 	var endpoint: Vector3 = origin + direction * weapon.fire_range
 	var hit: Dictionary = _ray_to(endpoint)
 	var effects := ImpactEffects.find_for(player)
@@ -937,38 +929,7 @@ func _shoot_shotgun(origin: Vector3, direction: Vector3, stability: float, attac
 	_update_status()
 
 
-## Combat 检查器选择算法；不重置锁定、稳定度或冷却。
-func is_using_spread_cone() -> bool:
-	return aim_mode == AimMode.SPREAD_CONE
-
-
-# 返回围绕 forward 的随机锥形偏移方向。
-# min_angle_degrees / max_angle_degrees 控制偏离瞄准中心的最小和最大夹角。
-func _random_direction_in_miss_cone(
-	forward: Vector3,
-	min_angle_degrees: float,
-	max_angle_degrees: float
-) -> Vector3:
-	var cone_axis: Vector3 = forward.normalized()
-
-	# 构造一个与瞄准方向垂直的局部二维平面。
-	# 当瞄准方向接近竖直时改用 RIGHT，避免叉乘退化。
-	var reference_axis: Vector3 = Vector3.UP
-	if absf(cone_axis.dot(reference_axis)) > 0.999:
-		reference_axis = Vector3.RIGHT
-
-	var cone_right: Vector3 = cone_axis.cross(reference_axis).normalized()
-	var cone_up: Vector3 = cone_right.cross(cone_axis).normalized()
-
-	# phi 决定锥体圆周上的方向，因此上下左右和斜方向都有可能出现。
-	var phi: float = randf_range(0.0, TAU)
-	var theta: float = deg_to_rad(randf_range(min_angle_degrees, max_angle_degrees))
-	var radial: Vector3 = cone_right * cos(phi) + cone_up * sin(phi)
-
-	return (cone_axis * cos(theta) + radial * sin(theta)).normalized()
-
-
-## 基础收敛进度：供爆头资格、中心概率与状态显示读取，姿态不能补满它。
+## 基础收敛进度供爆头资格与状态显示读取，姿态不能补满它。
 func get_effective_accuracy() -> float:
 	return clampf(accuracy, 0.0, 1.0) if is_finite(accuracy) else 0.0
 
@@ -987,8 +948,6 @@ func get_spread_stability() -> float:
 	if crouch_bonus_blocked_until_recovery or ammo.is_reloading or ammo.reload_checkpoint > 0.0:
 		return base
 	if player == null or not player.is_crouching() or player.is_vaulting(): return base
-	if weapon.fire_mode != WeaponData.FireMode.SHOTGUN and not is_using_spread_cone():
-		return base # 概率模式没有连续散布区间，不给中心命中概率增加姿态加成。
 	var bounds := weapon.get_spread_bounds(_uses_mouse_aim_tuning())
 	var minimum := bounds.x
 	var maximum := bounds.y
@@ -1017,7 +976,7 @@ func _get_random_spread_angle(stability: float) -> float:
 	return lerpf(bounds.y, bounds.x, stability)
 
 
-# 在整个锥内按立体角均匀取样，不再先判定是否直射中心。
+# 在整个锥内按立体角均匀取样。
 func _random_direction_in_spread_cone(forward: Vector3, half_angle_degrees: float) -> Vector3:
 	var cone_axis: Vector3 = forward.normalized() if not forward.is_zero_approx() else Vector3.FORWARD
 	var angle: float = deg_to_rad(clampf(half_angle_degrees, 0.0, 45.0))
@@ -1229,5 +1188,4 @@ func _update_status() -> void:
 	var precision: String = "%d%%" % roundi(get_effective_accuracy() * 100.0)
 	var fire_hint: String = "按住左键连发" if weapon != null and weapon.fire_mode == WeaponData.FireMode.AUTOMATIC else "左键单发"
 	var hint: String = "右键瞄准 / " + fire_hint if can_combat() else "非战斗区域：请进入靶场"
-	var accuracy_label: String = "稳定度" if is_using_spread_cone() else "中心概率"
-	status.text = "%s　%s\n锁定：%s　%s：%s\n%s" % [title, hint, target_name, accuracy_label, precision, last_result]
+	status.text = "%s　%s\n锁定：%s　稳定度：%s\n%s" % [title, hint, target_name, precision, last_result]

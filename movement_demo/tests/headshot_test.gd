@@ -61,11 +61,10 @@ func _run() -> void:
 	target = _target(Vector3(0, 0.9, -5))
 	for frame in 4: await physics_frame
 	check(combat.can_combat(), "Real player is in a physical combat zone")
-	for mode in [0, 1]:
-		combat.aim_mode = mode
-		check(is_equal_approx(_shoot(1), 62.5), "Mode %d: full precision applies 2.5x actual hit damage" % mode)
-		check(combat.accuracy < 1 if mode == 0 else true, "Eligibility uses pre-recoil precision")
-	combat.aim_mode = 1
+	gun.max_spread_angle_degrees = 4
+	check(is_equal_approx(_shoot(1), 62.5), "Full precision applies 2.5x actual hit damage")
+	check(combat.accuracy < 1, "Eligibility uses pre-recoil precision")
+	gun.max_spread_angle_degrees = 0
 	check(is_equal_approx(_shoot(0.9), 25), "Threshold precision has zero headshot probability")
 	gun.headshot_accuracy_threshold = 0.99
 	check(is_equal_approx(_shoot(0.98), 25), "A configured higher threshold retains ordinary damage below it")

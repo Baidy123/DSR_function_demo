@@ -66,7 +66,7 @@ enum SpreadMode { RANDOM, NO_INWARD }
 @export_range(0.1, 10.0, 0.1, "suffix:s") var settle_seconds: float = 1.2
 
 
-## 两种旧瞄准模式都只复用稳定度生命周期；霰弹不使用中心命中抽签或整团散布锥。
+## 玩家与敌人共用霰弹的稳定度规则，鼠标瞄准可使用独立参数。
 func get_aim_settings(_use_spread: bool, mouse_accuracy: Resource = null) -> Dictionary:
 	var tuning := mouse_accuracy if mouse_accuracy != null else self
 	var initial := clampf(tuning.starting_stability, 0.0, 1.0)

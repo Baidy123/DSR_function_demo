@@ -12,7 +12,6 @@ func run(scene: Node) -> Dictionary:
 	w.spread_recovery_delay = 0.4
 	# 用 set 让缺少新导出参数的旧实现也能运行到行为断言。
 	w.set("player_move_spread_degrees_per_meter", 4.0)
-	c.aim_mode = c.AimMode.SPREAD_CONE
 	c.equip_weapon(w)
 	for frame in range(5):
 		await scene.get_tree().physics_frame
@@ -48,17 +47,6 @@ func run(scene: Node) -> Dictionary:
 	checks["stopping_keeps_recovery_delay"] = is_equal_approx(c.get_spread_half_angle_degrees(), 0.8)
 	_step(c, p, Vector3.ZERO, 1.0, false)
 	checks["rest_still_recovers"] = is_equal_approx(c.get_spread_half_angle_degrees(), 0.0)
-	w.set("player_move_accuracy_loss_per_meter", 0.2)
-	c.aim_mode = c.AimMode.PROBABILITY
-	c.accuracy = 1.0
-	_step(c, p, Vector3(0.1, 0, 0), 0.1)
-	checks["probability_also_changes_gradually"] = is_equal_approx(c.accuracy, 0.98)
-	c.accuracy = w.moving_accuracy_cap + 0.01
-	_step(c, p, Vector3(0.1, 0, 0), 0.1)
-	checks["probability_stops_at_movement_limit"] = is_equal_approx(c.accuracy, w.moving_accuracy_cap)
-	c.accuracy = 0.1
-	_step(c, p, Vector3(0.1, 0, 0), 0.1)
-	checks["movement_does_not_raise_lower_probability"] = is_equal_approx(c.accuracy, 0.1)
 	return checks
 
 func _step(c: Node, p: Node3D, offset: Vector3, delta: float, moving: bool = true) -> void:

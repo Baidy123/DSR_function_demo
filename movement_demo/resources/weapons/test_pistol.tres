@@ -17,10 +17,6 @@ shot_max_spread_angle_degrees = 2.25
 player_move_spread_degrees_per_meter = 0.9
 moving_spread_angle_degrees = 2.4
 spread_recovery_delay = 0.4
-shot_accuracy_penalty = 0.05
-minimum_accuracy = 0.4
-moving_accuracy_cap = 0.4
-accuracy_recovery_delay = 0.4
 
 [resource]
 script = ExtResource("1")

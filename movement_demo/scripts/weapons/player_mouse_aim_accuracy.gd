@@ -28,14 +28,6 @@ extends Resource
 @export_range(0.0, 45.0, 0.1, "suffix:°") var moving_spread_angle_degrees := 7.8
 @export_range(0.0, 3.0, 0.05, "suffix:s") var spread_recovery_delay := 0.6
 
-@export_group("概率模式（百分比）")
-@export_range(0.0, 1.0, 0.01) var initial_accuracy := 0.5
-@export_range(0.0, 1.0, 0.01) var shot_accuracy_penalty := 0.25
-@export_range(0.0, 1.0, 0.01) var minimum_accuracy := 0.1
-@export_range(0.0, 1.0, 0.005) var player_move_accuracy_loss_per_meter := 0.15
-@export_range(0.0, 1.0, 0.01) var moving_accuracy_cap := 0.35
-@export_range(0.0, 3.0, 0.05, "suffix:s") var accuracy_recovery_delay := 0.6
-
 @export_group("霰弹随机偏移与稳定度")
 ## 单颗弹丸的随机偏移半角，固定图样由武器的 Shotgun 配置提供。
 @export_range(0.0, 5.0, 0.01, "suffix:°") var stable_jitter_degrees := 0.08

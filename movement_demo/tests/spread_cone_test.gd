@@ -15,7 +15,6 @@ func run(scene: Node) -> Dictionary:
 	checks["combat_provides_current_angle"] = combat.has_method("get_spread_half_angle_degrees")
 	if not checks.weapon_exports_min_and_max_spread or not checks.combat_provides_current_angle:
 		return checks
-	combat.aim_mode = combat.AimMode.SPREAD_CONE
 	player.set_physics_process(false)
 	player.position = Vector3(0, 0, -1)
 	player.rotation = Vector3.ZERO

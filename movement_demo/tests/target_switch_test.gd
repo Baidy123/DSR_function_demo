@@ -95,7 +95,7 @@ func _box(body: CollisionObject3D, size: Vector3, offset: Vector3 = Vector3.ZERO
 	collision.position = offset
 	body.add_child(collision)
 
-func _setup(points: Array[Vector3], mode: int = 1) -> void:
+func _setup(points: Array[Vector3], mode: WeaponData.FireMode = WeaponData.FireMode.SEMI_AUTO) -> void:
 	Input.action_release("aim")
 	Input.action_release("fire")
 	combat.cancel_aim()
@@ -113,8 +113,7 @@ func _setup(points: Array[Vector3], mode: int = 1) -> void:
 	gun.min_spread_angle_degrees = 0
 	gun.max_spread_angle_degrees = 20
 	gun.initial_spread_angle_degrees = 10
-	if mode == 2: gun.fire_mode = WeaponData.FireMode.SHOTGUN
-	combat.aim_mode = 0 if mode == 0 else 1
+	gun.fire_mode = mode
 	var ammunition = load("res://scripts/weapons/weapon_ammo.gd").new(gun, {gun.get_ammo_key(): 24})
 	combat.equip_weapon(gun, false, ammunition)
 	fired_stabilities.clear()
@@ -352,9 +351,9 @@ func _mouse_assist_acquisition() -> void:
 	check(combat.locked_target == targets[0], "No-lock mouse selection runs before same-frame automatic acquisition")
 
 func _mouse_assist_after_kill() -> void:
-	for mode in 3:
+	for mode in [WeaponData.FireMode.SEMI_AUTO, WeaponData.FireMode.SHOTGUN]:
 		await _setup([Vector3(0, 0, -5), Vector3(4, 0, 0)], mode)
-		if mode == 2:
+		if mode == WeaponData.FireMode.SHOTGUN:
 			combat.weapon.shotgun.pattern = ShotgunPattern.new()
 			combat.weapon.shotgun.stable_jitter_degrees = 0
 		targets[0].remove_on_hit = true
@@ -459,7 +458,7 @@ func _legality() -> void:
 	check(combat.locked_target == targets[0], "Coincident projections do not cause arbitrary target switching")
 
 func _combat_state() -> void:
-	for mode in 3:
+	for mode in [WeaponData.FireMode.SEMI_AUTO, WeaponData.FireMode.SHOTGUN]:
 		await _setup([Vector3(0, 0, -5), Vector3(4, 0, -5)], mode)
 		combat.shot_cooldown = 0.4
 		var rounds: int = combat.ammo.magazine_rounds
@@ -470,9 +469,9 @@ func _combat_state() -> void:
 		check(combat.ammo.magazine_rounds == rounds and combat.shot_count == count and is_equal_approx(combat.shot_cooldown, 0.4), "Mode %d switch does not shoot, consume ammo or reset cooldown" % mode)
 		_step(0.01)
 		check(combat.accuracy < 0.8 and combat.last_target_position == targets[1].position, "Mode %d positive-time turning charges tracking while the new target sample stays current" % mode)
-	for mode in 3:
+	for mode in [WeaponData.FireMode.SEMI_AUTO, WeaponData.FireMode.SHOTGUN]:
 		await _setup([Vector3(0, 0, -5), Vector3(4, 0, -5)], mode)
-		if mode == 2:
+		if mode == WeaponData.FireMode.SHOTGUN:
 			combat.weapon.shotgun.pattern = ShotgunPattern.new()
 			combat.weapon.shotgun.stable_jitter_degrees = 0
 		combat.accuracy = 0.8
@@ -573,17 +572,14 @@ func _turning() -> void:
 			check(combat.shot_count == count + 1 and not combat.shot_requested, "Canceling and reacquiring aim never repeats the already-fired single click")
 		Input.action_release("fire")
 
-func _tracking_fixture(mode: int) -> void:
+func _tracking_fixture(mode: WeaponData.FireMode) -> void:
 	await _setup([Vector3(0, 0, -5), Vector3(4, 0, -5)], mode)
 	var gun: WeaponData = combat.weapon
-	gun.target_move_accuracy_loss_per_meter_slow = 0.1
-	gun.target_move_accuracy_loss_per_meter_fast = 0.1
-	gun.target_move_minimum_accuracy = 0.4
 	gun.target_move_spread_degrees_per_meter_slow = 2
 	gun.target_move_spread_degrees_per_meter_fast = 2
 	gun.target_move_max_spread_angle_degrees = 12
 	gun.tracking_parallel_tolerance_degrees = 0
-	if mode == 2:
+	if mode == WeaponData.FireMode.SHOTGUN:
 		gun.shotgun.tracking_loss_per_meter = Vector2(0.1, 0.1)
 		gun.shotgun.tracking_stability_floor = 0.4
 	combat.target_switch_turn_speed_degrees = 90
@@ -591,7 +587,7 @@ func _tracking_fixture(mode: int) -> void:
 	_step() # Acquire B without rotating or inventing displacement between A and B.
 
 func _turn_accuracy() -> void:
-	for mode in 3:
+	for mode in [WeaponData.FireMode.SEMI_AUTO, WeaponData.FireMode.SHOTGUN]:
 		await _tracking_fixture(mode)
 		combat.accuracy_recovery_timer = 0
 		var expected := 0.8 - deg_to_rad(9) * sqrt(41.0) * 0.1
@@ -637,16 +633,14 @@ func _turn_accuracy() -> void:
 		check(is_equal_approx(combat.accuracy, 0.8 - deg_to_rad(9) * sqrt(41.0) * 0.1), "Mode %d resume charges only the new frame's angle" % mode)
 
 func _set_tracking_rates(slow: float, fast: float) -> void:
-	# The fixture's spread span is 20 degrees; all three modes receive the same fractions.
-	combat.weapon.target_move_accuracy_loss_per_meter_slow = slow
-	combat.weapon.target_move_accuracy_loss_per_meter_fast = fast
+	# The fixture's spread span is 20 degrees; both modes receive the same fractions.
 	combat.weapon.target_move_spread_degrees_per_meter_slow = slow * 20.0
 	combat.weapon.target_move_spread_degrees_per_meter_fast = fast * 20.0
 	if combat.weapon.shotgun != null:
 		combat.weapon.shotgun.tracking_loss_per_meter = Vector2(slow, fast)
 
 func _slow_turn_rates() -> void:
-	for mode in 3:
+	for mode in [WeaponData.FireMode.SEMI_AUTO, WeaponData.FireMode.SHOTGUN]:
 		for rates in [Vector2(0.02, 0.2), Vector2(0.02, 2.0), Vector2(0.04, 0.2)]:
 			await _tracking_fixture(mode)
 			_set_tracking_rates(rates.x, rates.y)
@@ -729,7 +723,7 @@ func _headshot_ui() -> void:
 	await _setup([Vector3(0, 0, -5), Vector3(4, 0, -5)])
 	combat.weapon.headshot_enabled = true
 	combat.weapon.headshot_accuracy_threshold = 0.9
-	# UI isolation only; the three-mode turn-accuracy section tests the real losses above.
+	# UI isolation only. The turn-accuracy section tests the real losses for both weapon types.
 	combat.weapon.target_move_spread_degrees_per_meter_slow = 0
 	combat.weapon.target_move_spread_degrees_per_meter_fast = 0
 	# Snapshot contract only: enemy melee lifetime is covered by its existing joint test.

@@ -7,11 +7,11 @@ const KEY := "weapon_mode_inspector_fixture"
 func test_inspector_01_setup() -> void:
 	var c = EditorInterface.get_edited_scene_root().get_node("Player/Combat")
 	var slots = c.get_node("../Equipment")
-	var fixture := {"combat": c, "slots": slots, "original_weapon": slots.get("primary_weapon"), "mode": c.get("aim_mode")}
+	var fixture := {"combat": c, "slots": slots, "original_weapon": slots.get("primary_weapon")}
 	fixture.weapon = fixture.original_weapon.duplicate()
+	fixture.weapon.shot_accuracy_penalty = 0.12
 	EditorInterface.get_base_control().set_meta(KEY, fixture)
 	slots.set("primary_weapon", fixture.weapon)
-	c.set("aim_mode", 0)
 	EditorInterface.edit_node(slots)
 	assert_true(EditorInterface.is_plugin_enabled("weapon_mode_inspector"), "plugin enabled")
 
@@ -20,45 +20,29 @@ func test_inspector_02_expand() -> void:
 	if _editors(EditorInterface.get_inspector(), _fixture().weapon).is_empty():
 		assert_true(_open_weapon(EditorInterface.get_inspector(), _fixture().weapon), "weapon picker opened")
 	EditorInterface.get_inspector().expand_all_folding()
-	assert_true(_fixture().combat.get("aim_mode") == 0, "probability mode selected")
+	assert_true(EditorInterface.get_inspector().get_edited_object() == _fixture().slots, "player equipment selected")
 
 
-func test_inspector_03_probability() -> void:
-	var f := _fixture()
-	var properties := _editors(EditorInterface.get_inspector(), f.weapon)
-	assert_true(properties.has("player_move_accuracy_loss_per_meter"), "player movement percentage visible")
-	assert_true(not properties.has("player_move_spread_degrees_per_meter"), "player movement angle hidden")
-	assert_true(properties.has("shot_accuracy_penalty"), "probability fields visible: " + str(properties.keys()))
-	assert_true(not properties.has("shot_spread_penalty_degrees"), "cone fields hidden")
-	assert_true(properties.has("damage"), "common fields visible")
-	assert_true(properties.has("fire_mode"), "fire mode visible in weapon slot")
-	if properties.has("shot_accuracy_penalty"):
-		var field = properties.shot_accuracy_penalty
-		assert_true(is_equal_approx(field.value, f.weapon.shot_accuracy_penalty * 100.0), "percentage scale")
-		field.value = 12.0
-	f.combat.set("aim_mode", 1)
-	EditorInterface.get_inspector().emit_signal("property_edited", "aim_mode")
-
-
-func test_inspector_04_expand_cone() -> void:
-	EditorInterface.get_inspector().expand_all_folding()
-	assert_true(is_equal_approx(_fixture().weapon.shot_accuracy_penalty, 0.12), "percentage writes resource")
-
-
-func test_inspector_05_cone() -> void:
+func test_inspector_03_player_fields() -> void:
 	var f := _fixture()
 	var properties := _editors(EditorInterface.get_inspector(), f.weapon)
 	assert_true(properties.has("player_move_spread_degrees_per_meter"), "player movement angle visible")
-	assert_true(not properties.has("player_move_accuracy_loss_per_meter"), "player movement percentage hidden")
 	assert_true(properties.has("shot_spread_penalty_degrees"), "cone fields visible: " + str(properties.keys()))
-	assert_true(not properties.has("shot_accuracy_penalty"), "probability fields hidden")
-	assert_true(properties.has("damage"), "common fields still visible")
+	assert_true(properties.has("spread_recovery_delay"), "player spread recovery delay visible")
+	assert_true(not properties.has("player_move_accuracy_loss_per_meter") and not properties.has("shot_accuracy_penalty")
+		and not properties.has("accuracy_recovery_delay"), "enemy probability fields hidden")
+	assert_true(properties.has("damage") and properties.has("fire_mode"), "common fields visible in weapon slot")
+
+
+func test_inspector_04_edit_cone() -> void:
+	var f := _fixture()
+	var properties := _editors(EditorInterface.get_inspector(), f.weapon)
 	if properties.has("shot_spread_penalty_degrees"):
 		f.previous_angle = f.weapon.shot_spread_penalty_degrees
 		properties.shot_spread_penalty_degrees.value = 2.5
 
 
-func test_inspector_06_undo() -> void:
+func test_inspector_05_undo() -> void:
 	var f := _fixture()
 	assert_true(is_equal_approx(f.weapon.shot_spread_penalty_degrees, 2.5), "angle writes actual resource")
 	assert_true(is_equal_approx(f.weapon.shot_accuracy_penalty, 0.12), "angle preserves probability")
@@ -72,9 +56,9 @@ func test_inspector_06_undo() -> void:
 	bridge.free()
 
 
-func test_inspector_07_roundtrip() -> void:
+func test_inspector_06_roundtrip() -> void:
 	var f := _fixture()
-	var path := "res://tests/.weapon_mode_roundtrip.tres"
+	var path := "user://weapon_mode_roundtrip.tres"
 	assert_true(ResourceSaver.save(f.weapon, path) == OK, "resource saves")
 	var saved = ResourceLoader.load(path, "", ResourceLoader.CACHE_MODE_IGNORE)
 	assert_true(is_equal_approx(saved.shot_spread_penalty_degrees, f.weapon.shot_spread_penalty_degrees), "angle survives reload")
@@ -83,17 +67,21 @@ func test_inspector_07_roundtrip() -> void:
 	EditorInterface.edit_resource(f.weapon)
 
 
-func test_inspector_08_expand_resource() -> void:
+func test_inspector_07_expand_resource() -> void:
 	EditorInterface.get_inspector().expand_all_folding()
 	assert_true(EditorInterface.get_inspector().get_edited_object() == _fixture().weapon, "standalone resource selected")
 
 
-func test_inspector_09_standalone_and_restore() -> void:
+func test_inspector_08_standalone() -> void:
 	var f := _fixture()
 	var properties := _editors(EditorInterface.get_inspector(), f.weapon)
-	assert_true(properties.has("shot_accuracy_penalty") and properties.has("shot_spread_penalty_degrees"), "standalone resource shows both groups")
+	assert_true(properties.get("shot_accuracy_penalty") is EditorProperty and properties.has("accuracy_recovery_delay")
+		and properties.has("shot_spread_penalty_degrees"), "standalone resource shows shared enemy probability and player spread")
+
+
+func test_inspector_09_restore() -> void:
+	var f := _fixture()
 	f.slots.set("primary_weapon", f.original_weapon)
-	f.combat.set("aim_mode", f.mode)
 	EditorInterface.edit_node(f.combat)
 	f.original_weapon.notify_property_list_changed()
 	EditorInterface.get_base_control().remove_meta(KEY)

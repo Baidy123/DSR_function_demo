@@ -133,10 +133,15 @@ func _run() -> void:
 	Input.action_press("aim")
 	await _step(5)
 	_check("visible head acquires lock above obscured torso", combat.locked_target == target and combat.get_locked_aim_point().y > 1.6)
-	combat.aim_mode = 0
+	var initial_minimum: float = combat.weapon.min_spread_angle_degrees
+	var initial_maximum: float = combat.weapon.max_spread_angle_degrees
+	combat.weapon.min_spread_angle_degrees = 0.0
+	combat.weapon.max_spread_angle_degrees = 0.0
 	combat.accuracy = 1.0
 	combat.shot_cooldown = 0.0
 	combat.shoot()
+	combat.weapon.min_spread_angle_degrees = initial_minimum
+	combat.weapon.max_spread_angle_degrees = initial_maximum
 	_check("visible head does not let muzzle shoot through blocker", combat.last_shot_collider == gun_blocker and target.hits == 0)
 	target.body_height = 1.0
 	target_shape.height = 1.0
@@ -148,14 +153,11 @@ func _run() -> void:
 	gun_blocker.queue_free()
 	player.request_crouch(true)
 	await _step(15)
-	# Crouching never writes or completes base convergence in either mode.
-	for mode in [0, 1]:
-		combat.aim_mode = mode
-		combat.accuracy = 0.5
-		combat.crouch_bonus_blocked_until_recovery = false
-		_check("mode %d preserves base accuracy while crouching" % mode, is_equal_approx(combat.get_effective_accuracy(), 0.5) and combat.accuracy == 0.5)
-		combat.accuracy = 0.9
-		_check("mode %d cannot complete convergence by crouching" % mode, combat.get_effective_accuracy() == 0.9)
+	combat.accuracy = 0.5
+	combat.crouch_bonus_blocked_until_recovery = false
+	_check("crouching preserves base accuracy", is_equal_approx(combat.get_effective_accuracy(), 0.5) and combat.accuracy == 0.5)
+	combat.accuracy = 0.9
+	_check("crouching cannot complete convergence", combat.get_effective_accuracy() == 0.9)
 	combat.accuracy = 0.5
 	combat.crouch_spread_reduction = 0.0
 	_check("zero reduction disables it", combat.get_spread_stability() == 0.5)

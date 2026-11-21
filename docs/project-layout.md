@@ -107,7 +107,7 @@ movement_demo/
 | `weapons/headshot_resolver.gd` | 按实际目标冻结每枪结果与一次破绽消费，再交付受击 |
 | `ui/lock_reticle.gd` | 只读准度、目标概率和转身状态，显示准星／菱形／转向标记 |
 
-Equipment 交接当前枪给 Combat。相机订阅 `weapon_changed`，表现订阅真实射击结果。Combat 统一读取检查器 `aim_control` 或 `GameState` 中的会话偏好，两种瞄准方式共用精度和射击流程。自动锁定主动转身固定读取当前武器低速跟枪项，实际目标移动按速度插值，两项损耗取较大者。鼠标瞄准以相机投影提供枪口射击方向，并跳过跟枪损耗。
+Equipment 交接当前枪给 Combat。相机订阅 `weapon_changed`，表现订阅真实射击结果。Combat 统一读取检查器 `aim_control` 或 `GameState` 中的会话偏好。两种瞄准方式都对普通枪使用散布锥，对霰弹使用弹丸图样。自动锁定主动转身固定读取当前武器低速跟枪项，实际目标移动按速度插值，两项损耗取较大者。鼠标瞄准以相机投影提供枪口射击方向，并跳过跟枪损耗。普通敌人的中心概率仍由 `WeaponData.get_aim_settings(false)` 提供。
 
 ## 敌人、区域与小队
 

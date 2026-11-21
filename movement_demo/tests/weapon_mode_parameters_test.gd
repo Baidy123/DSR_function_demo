@@ -36,7 +36,6 @@ func run(scene: Node) -> Dictionary:
 	weapon.shot_spread_penalty_degrees = 6.0
 	checks["cone_edit_does_not_change_probability"] = is_equal_approx(weapon.get_aim_settings(false).shot_penalty, 0.9)
 	weapon.shot_spread_penalty_degrees = 2.0
-	c.aim_mode = c.AimMode.SPREAD_CONE
 	c.equip_weapon(weapon)
 	checks["equip_reads_cone_initial_angle"] = is_equal_approx(c.get_spread_half_angle_degrees(), 15.0)
 	c.accuracy = 0.2

@@ -317,7 +317,8 @@ func test_shots(scene: Node, actor: Node3D, enemy: Node3D) -> void:
 	var combat = actor.get_node("Combat")
 	combat.weapon = combat.weapon.duplicate(true)
 	combat.weapon.fire_range = 30.0
-	combat.aim_mode = combat.AimMode.PROBABILITY
+	combat.weapon.min_spread_angle_degrees = 0.0
+	combat.weapon.max_spread_angle_degrees = 0.0
 	combat.accuracy = 1.0
 	combat.is_aiming = true
 	combat.shot_cooldown = 0.0

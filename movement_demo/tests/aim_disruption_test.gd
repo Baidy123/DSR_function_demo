@@ -182,10 +182,6 @@ func _run() -> void:
 	actor.update_weapon(0.2, player.global_position + Vector3.UP * 0.8)
 	check(actor.weapon_stability > 0.0, "初始概率100%的武器受到惩罚后也能恢复")
 	weapon.max_spread_angle_degrees = 20.0
-	combat.aim_mode = combat.AimMode.PROBABILITY
-	combat.accuracy = 1.0
-	player.receive_weapon_hit(1.0, Vector3.ZERO, enemy_weapon.get_attack_effects())
-	check(close(combat.accuracy, 0.85), "概率模式同样按攻击武器百分点扣减，不读取旧角度配置")
 	actor.shot_cooldown = 0.0
 	ai.context.fire.fire_pause_remaining = 0.0
 	ai.context.fire.fire_reaction_elapsed = ai.context.fire.fire_reaction_seconds
@@ -216,48 +212,40 @@ func _test_moving_recovery(scene: Node, player, combat) -> void:
 	weapon.moving_spread_angle_degrees = 8.0
 	weapon.convergence_seconds = 2.0
 	weapon.spread_recovery_delay = 0.4
-	weapon.initial_accuracy = 0.75
-	weapon.moving_accuracy_cap = 0.25
-	weapon.accuracy_recovery_delay = 0.4
 	player.get_node("Health").debug_invincible = true
 	for action in [&"aim", &"fire", &"sprint", &"move_up", &"move_down", &"move_left", &"move_right"]:
 		Input.action_release(action)
-	for mode in [combat.AimMode.SPREAD_CONE, combat.AimMode.PROBABILITY]:
-		var label: String = "散布模式" if mode == combat.AimMode.SPREAD_CONE else "概率模式"
-		combat.aim_mode = mode
-		combat.equip_weapon(weapon)
-		player.global_position = Vector3(22, 0, -2)
-		player.velocity = Vector3.ZERO
-		player.current_speed = 0.0
-		player.clear_hit_effects()
-		player.set_physics_process(true)
-		Input.action_press("move_left")
-		for frame in 20: await physics_frame
-		var before: Vector3 = player.global_position
-		player.receive_weapon_hit(1.0, Vector3.ZERO, {"hit_accuracy_loss": 1.0})
-		for frame in 12: await physics_frame
-		check(not combat.is_aiming and player.global_position.distance_to(before) > 0.1 and combat.accuracy == 0.0,
-			label + "：真实走路且未瞄准，受击后的恢复等待不会立即抬高精度")
-		for frame in 30: await physics_frame
-		check(combat.accuracy > 0.0 and combat.accuracy < 0.25,
-			label + "：持续走路时额外损失经过等待后逐渐恢复")
-		for frame in 60: await physics_frame
-		check(close(combat.accuracy, 0.25) and combat.status.text.contains("25%"),
-			label + "：持续走路只恢复到移动限制，左上角显示同步恢复")
-		if mode == combat.AimMode.SPREAD_CONE:
-			check(close(combat.get_spread_half_angle_degrees(), 8.0), "移动中恢复到8度，不绕过原移动散布限制")
-		var chest: Vector3 = player.get_torso_position()
-		combat.notice_shot(chest + Vector3(-3, 0, 0.2), chest + Vector3(3, 0, 0.2),
-			{"near_miss_radius": 0.5, "suppression_accuracy_loss": 1.0})
-		for frame in 12: await physics_frame
-		check(combat.accuracy == 0.0, label + "：新的擦过损失重新等待，不被走路瞬间抵消")
-		for frame in 30: await physics_frame
-		check(combat.accuracy > 0.0 and combat.accuracy < 0.25, label + "：擦过后持续走路也能逐渐恢复")
-		Input.action_release("move_left")
-		for frame in 120: await physics_frame
-		check(close(combat.accuracy, 0.75), label + "：停步后未瞄准只恢复到初始稳定度75%")
-		if mode == combat.AimMode.SPREAD_CONE:
-			check(close(combat.get_spread_half_angle_degrees(), 4.0), "停步后恢复初始4度，不跨帧收拢到初始值以内")
+	combat.equip_weapon(weapon)
+	player.global_position = Vector3(22, 0, -2)
+	player.velocity = Vector3.ZERO
+	player.current_speed = 0.0
+	player.clear_hit_effects()
+	player.set_physics_process(true)
+	Input.action_press("move_left")
+	for frame in 20: await physics_frame
+	var before: Vector3 = player.global_position
+	player.receive_weapon_hit(1.0, Vector3.ZERO, {"hit_accuracy_loss": 1.0})
+	for frame in 12: await physics_frame
+	check(not combat.is_aiming and player.global_position.distance_to(before) > 0.1 and combat.accuracy == 0.0,
+		"真实走路且未瞄准，受击后的恢复等待不会立即抬高精度")
+	for frame in 30: await physics_frame
+	check(combat.accuracy > 0.0 and combat.accuracy < 0.25,
+		"持续走路时额外损失经过等待后逐渐恢复")
+	for frame in 60: await physics_frame
+	check(close(combat.accuracy, 0.25) and combat.status.text.contains("25%"),
+		"持续走路只恢复到移动限制，左上角显示同步恢复")
+	check(close(combat.get_spread_half_angle_degrees(), 8.0), "移动中恢复到8度，不绕过原移动散布限制")
+	var chest: Vector3 = player.get_torso_position()
+	combat.notice_shot(chest + Vector3(-3, 0, 0.2), chest + Vector3(3, 0, 0.2),
+		{"near_miss_radius": 0.5, "suppression_accuracy_loss": 1.0})
+	for frame in 12: await physics_frame
+	check(combat.accuracy == 0.0, "新的擦过损失重新等待，不被走路瞬间抵消")
+	for frame in 30: await physics_frame
+	check(combat.accuracy > 0.0 and combat.accuracy < 0.25, "擦过后持续走路也能逐渐恢复")
+	Input.action_release("move_left")
+	for frame in 120: await physics_frame
+	check(close(combat.accuracy, 0.75), "停步后未瞄准只恢复到初始稳定度75%")
+	check(close(combat.get_spread_half_angle_degrees(), 4.0), "停步后恢复初始4度，不跨帧收拢到初始值以内")
 	player.set_physics_process(false)
 
 func _test_multipliers(player, combat, actor, ai, weapon: WeaponData, enemy_weapon: WeaponData) -> void:

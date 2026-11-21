@@ -89,7 +89,7 @@ func _validate_property(property: Dictionary) -> void:
 		convergence_model = value
 		notify_property_list_changed()
 ## 从最大到最小散布的完整用时，不含等待；当前状态从曲线对应位置继续。
-## 三种公式、概率模式与霰弹统一使用此时间，敌人不读取。默认4秒，最小0.01秒。
+## 玩家普通枪和霰弹的三种公式共用此时间。默认4秒，最小0.01秒。
 ## 旧资源的0（原兼容标记）及非法值使用默认4秒，不再读取角速度或敌人恢复时间。
 @export_range(0.01, 60.0, 0.01, "or_greater", "suffix:s") var convergence_seconds: float = DEFAULT_CONVERGENCE_SECONDS:
 	set(value):
@@ -99,8 +99,6 @@ func _validate_property(property: Dictionary) -> void:
 @export_subgroup("恢复等待")
 ## 新的精度损失后等多久开始收拢（秒）；比移动最大散布更散时，继续走路不会反复刷新等待。
 @export_range(0.0, 3.0, 0.05, "suffix:s") var spread_recovery_delay: float = 0.6
-## 新的精度损失后等多久开始恢复中心概率（秒）；低于移动下限时，继续走路不会反复刷新等待。
-@export_range(0.0, 3.0, 0.05, "suffix:s") var accuracy_recovery_delay: float = 0.6
 
 @export_subgroup("散布锥（角度）")
 ## 完全稳定时的最小散布半角；0度可完全收拢，大于0仍会随机射偏。
@@ -119,40 +117,38 @@ func _validate_property(property: Dictionary) -> void:
 ## 玩家受击等造成额外散布时，经过恢复延迟后可边走边逐渐收拢到此值，未瞄准不比初始散布更小。
 @export_range(0.0, 45.0, 0.1, "suffix:°") var moving_spread_angle_degrees: float = 7.8
 ## 目标慢速移动时，每米扩大多少度。
-## 玩家按平行容差处理后的有效横向距离计算；敌人沿用原目标位移。
+## 按平行容差处理后的有效横向距离计算。
 @export_range(0.0, 45.0, 0.01, "suffix:°/m") var target_move_spread_degrees_per_meter_slow: float = 0.36
 ## 目标高速移动时，每米扩大多少度。
-## 玩家按有效横向距离和速度计算；敌人沿用原目标位移和速度。
+## 按有效横向距离和速度计算。
 @export_range(0.0, 45.0, 0.01, "suffix:°/m") var target_move_spread_degrees_per_meter_fast: float = 1.2
 ## 仅跟枪惩罚最多把半角扩大到多少度；不会把其他原因造成的更大散布继续扩大。
 @export_range(0.0, 45.0, 0.1, "suffix:°") var target_move_max_spread_angle_degrees: float = 8.4
 ## 目标达到此速度（米/秒）时使用高速每米扩散；较慢时在慢/高速扩散之间插值。
-## 玩家使用有效横向速度，迎面／背离的径向速度不增加惩罚；敌人规则保留。
+## 使用有效横向速度，迎面／背离的径向速度不增加惩罚。
 @export_range(0.1, 30.0, 0.1) var spread_target_move_fast_speed: float = 6.0
 
-@export_subgroup("概率模式（百分比）")
-## 初始直射中心概率：0.5表示50%；松开瞄准也将概率限制到不超过本值。
+@export_subgroup("敌人中心概率（百分比）")
+## 初始直射中心概率：0.5表示50%；待命时概率不会超过本值。
 @export_range(0.0, 1.0, 0.01) var initial_accuracy: float = 0.5
 ## 每枪结束后降低多少中心概率：0.05表示5个百分点，连续射击累积。
 @export_range(0.0, 1.0, 0.01) var shot_accuracy_penalty: float = 0.25
 ## 射击惩罚的中心概率下限：0.1表示10%；不会抬高其他因素造成的更低概率。
 @export_range(0.0, 1.0, 0.01) var minimum_accuracy: float = 0.1
-## 玩家实际水平移动每米降低多少概率；0.15表示15个百分点，0表示不增加移动惩罚。
+## 持枪敌人实际水平移动每米降低多少概率；0.15表示15个百分点，0表示不增加移动惩罚。
 @export_range(0.0, 1.0, 0.005) var player_move_accuracy_loss_per_meter: float = 0.15
-## 玩家移动惩罚最多将中心概率降到此值：0.35表示35%；不会瞬间抬高已经更低的概率。
-## 若受击等造成更低概率，经过恢复延迟后可边走边逐渐恢复到此值；未瞄准仍不超过初始概率。
+## 持枪敌人移动惩罚最多将中心概率降到此值：0.35表示35%；不会瞬间抬高已经更低的概率。
 @export_range(0.0, 1.0, 0.01) var moving_accuracy_cap: float = 0.35
 ## 目标慢速移动时，每米扣除的中心概率：0.03表示每米3个百分点。
-## 玩家按平行容差处理后的有效横向距离计算；敌人沿用原目标位移。
 @export_range(0.0, 0.5, 0.005) var target_move_accuracy_loss_per_meter_slow: float = 0.03
 ## 目标高速移动时，每米扣除的中心概率：0.10表示每米10个百分点。
-## 玩家按有效横向距离和速度计算；敌人沿用原目标位移和速度。
 @export_range(0.0, 0.5, 0.005) var target_move_accuracy_loss_per_meter_fast: float = 0.10
 ## 跟枪惩罚的概率下限，至少比射击下限高1个百分点，最高100%。
 @export_range(0.0, 1.0, 0.01) var target_move_minimum_accuracy: float = 0.30
 ## 目标达到此速度（米/秒）时使用高速惩罚，较慢时在两种每米惩罚间插值。
-## 玩家使用有效横向速度，迎面／背离的径向速度不增加惩罚；敌人规则保留。
 @export_range(0.1, 30.0, 0.1) var target_move_fast_speed: float = 6.0
+## 敌人精度损失后开始恢复中心概率的等待时间（秒）。
+@export_range(0.0, 3.0, 0.05, "suffix:s") var accuracy_recovery_delay: float = 0.6
 
 @export_subgroup("敌人恢复（原算法）")
 ## 仅供原散布锥恢复接口：每秒收拢的角度，0不恢复。玩家不再读取此速度。
@@ -254,29 +250,29 @@ func _validate_property(property: Dictionary) -> void:
 ## 成功开火产生的声音半径（米），玩家和敌人都读取各自武器；0关闭枪声事件。
 @export_range(0.0, 100.0, 0.5) var shot_noise_radius: float = 14.0
 
-## 两套输入在这里换算，双方共用惩罚与等待；recovery仅供敌人原算法。
-## 玩家恢复只调用 recover_player_accuracy()，不再读取此字典的recovery。
+## 玩家传 true 并按瞄准方式选取配置，敌人传 false 读取武器自身配置。
+## 玩家恢复通过 recover_player_accuracy() 计算。
 func get_aim_settings(use_spread: bool, mouse_aim := false) -> Dictionary:
 	if fire_mode == FireMode.SHOTGUN:
-		return get_shotgun_settings().get_aim_settings(use_spread, mouse_aim_accuracy if mouse_aim else null)
-	var tuning := _aim_accuracy_source(mouse_aim)
+		return get_shotgun_settings().get_aim_settings(use_spread, mouse_aim_accuracy if use_spread and mouse_aim else null)
 	if not use_spread:
 		# 初始100%也会因换弹/受伤下降，恢复速度不能因此永久变成零。
-		var recovery_span := 1.0 - clampf(tuning.initial_accuracy, 0.0, 1.0)
+		var recovery_span := 1.0 - clampf(initial_accuracy, 0.0, 1.0)
 		if is_zero_approx(recovery_span): recovery_span = 1.0
 		return {
-			"initial": tuning.initial_accuracy,
+			"initial": initial_accuracy,
 			"recovery": recovery_span / maxf(stabilize_seconds, 0.01),
-			"moving_cap": tuning.moving_accuracy_cap,
-			"player_move_loss": maxf(0.0, tuning.player_move_accuracy_loss_per_meter),
-			"shot_penalty": tuning.shot_accuracy_penalty,
-			"shot_floor": tuning.minimum_accuracy,
-			"delay": tuning.accuracy_recovery_delay,
+			"moving_cap": moving_accuracy_cap,
+			"player_move_loss": maxf(0.0, player_move_accuracy_loss_per_meter),
+			"shot_penalty": shot_accuracy_penalty,
+			"shot_floor": minimum_accuracy,
+			"delay": accuracy_recovery_delay,
 			"slow": target_move_accuracy_loss_per_meter_slow,
 			"fast": target_move_accuracy_loss_per_meter_fast,
 			"target_floor": minf(1.0, maxf(target_move_minimum_accuracy, minimum_accuracy + 0.01)),
 			"fast_speed": target_move_fast_speed,
 		}
+	var tuning := _aim_accuracy_source(mouse_aim)
 	var bounds := _cone_spread_bounds(tuning)
 	var span := bounds.y - bounds.x
 	# 零宽度的锥始终使用同一角度，变化量为0，避免除零。

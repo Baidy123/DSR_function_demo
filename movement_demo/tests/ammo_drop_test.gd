@@ -394,7 +394,6 @@ func _shooting_and_models() -> void:
 	var targets: Array[CharacterBody3D] = []
 	for offset in [-0.7, 0.0, 0.7]: targets.append(_enemy(region, Vector3(muzzle.x + offset, 0, muzzle.z - 5)))
 	await _frames()
-	combat.aim_mode = 1
 	combat.is_aiming = true
 	combat.accuracy = 1
 	combat.shot_cooldown = 0

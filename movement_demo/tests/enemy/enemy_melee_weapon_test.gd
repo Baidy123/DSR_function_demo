@@ -42,7 +42,6 @@ func _run() -> void:
 	ai.set_physics_process(false)
 	player.set_physics_process(false)
 	player.health.debug_invincible = false
-	player.combat.aim_mode = 0
 	player.combat.accuracy = 1.0
 	actor.get_node("UnitType").profile = MeleeUnit.duplicate(true)
 	actor.equip_weapon(weapon)

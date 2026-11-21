@@ -25,8 +25,14 @@ func _run() -> void:
 		and convergence_tabs.get_tab_title(0) == "自动锁定" and convergence_tabs.get_tab_title(1) == "鼠标瞄准",
 		"玩家收敛内部按自动锁定和鼠标瞄准显示两个同级选项")
 	check(not ranged.has("mouse_aim_accuracy") and _mode_tabs(weapon, "min_spread_angle_degrees") != null
-		and _mode_tabs(weapon, "initial_accuracy") != null and _mode_tabs(weapon, "headshot_accuracy_threshold") != null,
+		and _mode_tabs(weapon, "headshot_accuracy_threshold") != null,
 		"枪械在各组显示双模式入口，收起整份鼠标准度资源")
+	var enemy_probability := _spin(weapon, "initial_accuracy")
+	check(_mode_tabs(weapon, "initial_accuracy") == null and enemy_probability != null
+		and enemy_probability.editable and enemy_probability.suffix == "%" and enemy_probability.tooltip_text.contains("仅敌人"),
+		"独立武器使用单一且标明仅敌人的百分比控件")
+	if enemy_probability != null: enemy_probability.value = 35
+	check(is_equal_approx(weapon.initial_accuracy, 0.35), "独立武器的敌人概率控件写入原共享字段")
 	var tracking_spin := _spin(weapon, "tracking_parallel_tolerance_degrees")
 	check(tracking_spin != null and tracking_spin.value == 25 and tracking_spin.max_value == 45 and not tracking_spin.tooltip_text.is_empty(), "枪械瞄准检查器提供默认25度的玩家跟枪免罚半角与说明")
 	for field in ["hit_accuracy_loss", "suppression_accuracy_loss", "hit_speed_loss", "melee_accuracy_loss"]:
@@ -112,6 +118,9 @@ func _run() -> void:
 	check(nested_restored.has("damage") and nested_restored.has("magazine_capacity") and nested.magazine_capacity == 31 and nested_restored.has("initial_accuracy") and not nested_restored.has("min_spread_angle_degrees"), "内嵌面板切回单发恢复数值，并保持敌人的概率模式过滤")
 	var enemy_recovery := _spin(nested, "stabilize_seconds")
 	check(enemy_recovery != null and enemy_recovery.editable and not nested_restored.has("convergence_seconds") and not nested_restored.has("convergence_model"), "敌人只显示原恢复接口，不受玩家收敛时间误锁")
+	check(_mode_tabs(nested, "initial_accuracy") == null and _spin(nested, "accuracy_recovery_delay") != null
+		and _spin(nested, "spread_recovery_delay") == null and _spin(nested, "target_move_spread_degrees_per_meter_slow") == null,
+		"敌人保留概率恢复等待，隐藏玩家散布和双模式页")
 	EditorInterface.get_inspector().edit(null)
 	bridge.free()
 	for frame in 5: await process_frame
@@ -143,7 +152,10 @@ func _check_layout(weapon: WeaponData) -> void:
 		elif property.usage & PROPERTY_USAGE_EDITOR:
 			locations[property.name] = [group, subgroup]
 	check(groups == ["基本信息", "射击与弹药", "Shotgun", "瞄准与散布", "命中效果", "近战", "外观与声音"] and locations.shotgun == ["Shotgun", ""], "Shotgun独立为一级组，位于瞄准与散布前")
-	check(locations.convergence_model == locations.convergence_seconds and locations.stabilize_seconds[1] == "敌人恢复（原算法）" and locations.spread_recovery_degrees_per_second == locations.stabilize_seconds and locations.accuracy_recovery_delay == locations.spread_recovery_delay, "玩家收敛、敌人恢复与恢复等待各自集中，职责明确")
+	check(locations.convergence_model == locations.convergence_seconds and locations.stabilize_seconds[1] == "敌人恢复（原算法）"
+		and locations.spread_recovery_degrees_per_second == locations.stabilize_seconds and locations.spread_recovery_delay[1] == "恢复等待"
+		and locations.accuracy_recovery_delay == locations.initial_accuracy and locations.initial_accuracy[1] == "敌人中心概率（百分比）",
+		"玩家收敛与散布等待、敌人中心概率及恢复字段各自集中")
 	check(locations.min_spread_angle_degrees[0] == "瞄准与散布" and locations.initial_accuracy[0] == "瞄准与散布" and locations.headshot_enabled[0] == "命中效果" and locations.visual_model[0] == locations.shot_noise[0], "散布、爆头、表现参数分别归入对应大组")
 
 
@@ -190,6 +202,10 @@ func _player_recovery_controls(manager: EditorUndoRedoManager) -> void:
 			for picker in _descendants(prop, "EditorResourcePicker"): picker.resource_selected.emit(weapon, false)
 	for frame in 30: await process_frame
 	EditorInterface.get_inspector().expand_all_folding()
+	check(_mode_tabs(weapon, "min_spread_angle_degrees") != null and _mode_field(weapon, "spread_recovery_delay", 1) != null
+		and _spin(weapon, "initial_accuracy") == null and _spin(weapon, "shot_accuracy_penalty") == null
+		and _spin(weapon, "accuracy_recovery_delay") == null and _spin(weapon, "target_move_accuracy_loss_per_meter_slow") == null,
+		"玩家装备显示双瞄准散布和恢复等待，隐藏敌人中心概率字段")
 	for model in [WeaponData.ConvergenceModel.QUADRATIC, WeaponData.ConvergenceModel.EXPONENTIAL, WeaponData.ConvergenceModel.LINEAR]:
 		_select_enum(weapon, "convergence_model", model)
 		for frame in 30: await process_frame
@@ -300,10 +316,11 @@ func _combat_accuracy_controls(manager: EditorUndoRedoManager) -> void:
 	for frame in 30: await process_frame
 	EditorInterface.get_inspector().expand_all_folding()
 	var hit_tabs := _mode_tabs(combat, "hit_accuracy_loss_multiplier")
+	var properties := _properties(EditorInterface.get_inspector(), combat)
 	check(hit_tabs != null and hit_tabs.get_child(0).get_child_count() == 2 and hit_tabs.get_child(1).get_child_count() == 2
 		and _mode_tabs(combat, "crouch_spread_reduction") != null
-		and _properties(EditorInterface.get_inspector(), combat).has("hit_speed_loss_multiplier"),
-		"玩家受击精度和蹲姿各有两页，受击减速独立显示")
+		and properties.has("hit_speed_loss_multiplier") and properties.has("aim_control") and not properties.has("aim_mode"),
+		"玩家保留瞄准方式及双页蹲姿与受击属性，移除弹道算法选择")
 	if hit_tabs == null: return
 	hit_tabs.current_tab = 1
 	var mouse_hit := _mode_field(combat, "hit_accuracy_loss_multiplier", 1) as SpinBox
