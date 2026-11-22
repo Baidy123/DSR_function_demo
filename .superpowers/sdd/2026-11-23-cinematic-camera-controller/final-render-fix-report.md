@@ -33,24 +33,24 @@ The raw failure was not reproduced in one normal run or eight additional unmodif
 
 ## Fix
 
-The initial fixture fix changed only the interruption test and its testing documentation; the focused-review follow-up below added the presentation activity signal.
+The initial fixture fix changed only the interruption test and its testing documentation. The focused-review follow-ups below replaced the original synchronous observability signal with a callback-free, monotonic presentation activation counter.
 
 - Added `_await_view_settled()` to wait for the source camera Transform, complete source lens state, and player Transform to remain equal for three consecutive frame cycles.
 - The wait is bounded to 240 frames, reports a diagnostic on timeout, and records `view_settled` in the fixture.
 - The failed-spawn assertion now explicitly verifies that natural player/camera settling completed before baseline capture.
 - Installed a test-only `node_added` probe and per-frame current-camera sampling for the failed Wave window. The case now verifies that no `PresentationCamera` was created, replaced, or made current, while retaining the existing request, foreground, pause, controller-idle, and `_assert_clean()` checks.
 - Kept shared `_assert_clean()` semantics unchanged for cases with actual cinematic ownership.
-- Updated `docs/testing.md` to the final 222/222 headless and 236/236 real-render totals, and documented the stabilization and synchronous no-takeover checks. Updated the camera guide to point at the stabilized fixture explanation instead of a baseline failure.
+- Updated `docs/testing.md` to the final 224/224 headless and 238/238 real-render totals, and documented the stabilization and callback-free no-takeover checks. Updated the camera guide to point at the stabilized fixture explanation instead of a baseline failure.
 
-No camera ownership or timing behavior, Phantom follow, weapon FOV, player occlusion, scene, resource, or UID files were modified. `PresentationCamera` later gained the synchronous observability signal described in the focused-review follow-up.
+No camera ownership or timing behavior, Phantom follow, weapon FOV, player occlusion, scene, resource, or UID files were modified. `PresentationCamera` exposes the read-only counter described in the final follow-up.
 
 ## Verification
 
 | Check | Result |
 | --- | --- |
-| `cinematic_interruption_test` headless | 222/222 passed |
-| `cinematic_interruption_test -- --capture` real OpenGL/Metal | 236/236 passed |
-| Same real-render capture repeated five times after the fixture timing fix | 235/235 on all five previous runs; later synchronous-probe run passed 236/236 |
+| `cinematic_interruption_test` headless | 224/224 passed |
+| `cinematic_interruption_test -- --capture` real OpenGL/Metal | 238/238 passed |
+| Earlier real-render capture runs after fixture timing stabilization but before the counter tests | 235/235 on all five previous runs |
 | `cinematic_controller_test` headless | 126/126 passed |
 | `scene_director_test` headless | 151/151 passed |
 | `python3 movement_demo/tests/run_regressions.py --check` | `Catalog OK` |
@@ -73,28 +73,31 @@ Expected diagnostics remain limited to the macOS root-certificate warning and th
 
 A focused review found that the first no-takeover probe could miss a synchronous `make_current()` followed by source restoration inside one call window: it counted newly added cameras but sampled camera ownership only at frame ends.
 
-Godot 4.7 does not expose a built-in `Camera3D.became_current` signal in this engine build. The project `PresentationCamera` therefore now emits `became_current` synchronously immediately after either real activation path calls `make_current()`:
+An intermediate follow-up added a custom synchronous `PresentationCamera.became_current` signal. A further focused review identified that signal as an Important reentrancy risk: a listener could cancel before `start_cinematic_shot()` returned, leaving controller state inconsistent. That signal was removed entirely in the final follow-up below.
+
+## Final Callback-Free Counter Follow-up
+
+`PresentationCamera` now exposes the read-only property `presentation_activation_count`. The private backing count increments immediately after each actual `PresentationCamera.make_current()` call in:
 
 - `start_presentation()`
 - `start_cinematic_shot()`
 
-This adds observability only; presentation ownership and camera timing are unchanged.
+The counter is monotonic, never resets, and introduces no listener, callback, or ownership/timing change. The failed-spawn test no longer references `became_current`.
 
-The failed-spawn test now:
+The failed-spawn fixture now:
 
-- Connects `became_current` for the existing controller `PresentationCamera`.
-- Uses `SceneTree.node_added` to connect any `PresentationCamera` created during the failed Wave window.
-- Counts activations by camera instance ID, so a same-call activation plus restore is detected even when the final current-camera sample is unchanged.
+- Starts and cancels one real cinematic presentation manually, then verifies the activation counter increased by exactly one and the source camera was restored.
+- Samples the counter again before the failed Wave and verifies it is unchanged after the failure window.
+- Keeps the existing `SceneTree.node_added` observer only for unexpected camera creation or replacement.
+- Installs test-only camera lifecycle connections, verifies they remain present before cleanup, explicitly disconnects them, verifies they are absent, and only then clears the probe's tracking dictionaries.
 - Retains controller-idle, request, foreground, pause, source Transform/lens, player Transform, instance-identity, no-new-camera, and frame-end current-camera checks.
-- Disconnects every probe connection and verifies no connection remains.
-
-The focused counter self-test starts a real cinematic presentation activation, verifies exactly one synchronous activation was counted, cancels the presentation, verifies the source camera was restored, and clears the self-test count before the failed Wave request.
+- Retains the settled baseline and all prior behavior checks.
 
 Evidence:
 
-- Red with the old production interface: `CINEMATIC INTERRUPTION: 220/222 passed`; the new self-test and zero-activation assertions failed because `PresentationCamera` had no `became_current` signal.
-- Green headless: `CINEMATIC INTERRUPTION: 222/222 passed`.
-- Green real OpenGL/Metal with `-- --capture`: `CINEMATIC INTERRUPTION: 236/236 passed`.
-- Existing checks after the follow-up: `cinematic_controller_test` 126/126, `scene_director_test` 151/151, `run_regressions.py --check` reports `Catalog OK`, and `git diff --check` is empty.
+- Red with the old signal-based interface: `CINEMATIC INTERRUPTION: 222/224 passed`. The self-test and failed-Wave assertions both failed because no activation counter existed, while the signal-removal condition also failed.
+- Green headless: `CINEMATIC INTERRUPTION: 224/224 passed`.
+- Green real OpenGL/Metal with `-- --capture`: `CINEMATIC INTERRUPTION: 238/238 passed`.
+- `cinematic_controller_test` 126/126, `scene_director_test` 151/151, `run_regressions.py --check` reports `Catalog OK`.
 
-Documentation now states that the failed Wave emitted zero synchronous `became_current` activations, created no replacement, left no probe connection, and retained all prior idle/request/pause/baseline invariants.
+Documentation now states that the failed Wave left the callback-free activation counter unchanged, created no replacement, left no probe connection, and retained all prior idle/request/pause/baseline invariants.

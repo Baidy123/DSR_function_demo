@@ -3,10 +3,13 @@ extends Camera3D
 ## Explicitly ticked by the presentation owner, including while the scene is paused.
 ## This node never changes the source rig, follow target, or scene pause state.
 signal presentation_finished(request_id: int, result: StringName)
-## Emitted synchronously after this presentation camera actually becomes current.
-signal became_current
 
 enum Phase { IDLE, MOVE, HOLD, RETURN }
+
+## Monotonic count of successful PresentationCamera activations.
+var presentation_activation_count: int:
+	get:
+		return _presentation_activation_count
 
 const VIEW_PROPERTIES: Array[StringName] = [
 	&"environment", &"attributes", &"compositor",
@@ -50,6 +53,7 @@ var _base_shot_transform: Transform3D
 var _start_lens: Dictionary
 var _return_lens: Dictionary
 var _shot_elapsed: float = 0.0
+var _presentation_activation_count: int = 0
 
 
 func _ready() -> void:
@@ -105,7 +109,7 @@ func start_presentation(source: Camera3D, focus: Vector3, options: Dictionary, r
 	reset_physics_interpolation()
 	_occlusion_target.global_position = _start_focus
 	make_current()
-	became_current.emit()
+	_presentation_activation_count += 1
 	return true
 
 
@@ -214,7 +218,7 @@ func start_cinematic_shot(source: Camera3D, snapshot: Dictionary, request_id: in
 	_create_shake_noise(snapshot)
 	source.tree_exiting.connect(_on_source_tree_exiting)
 	make_current()
-	became_current.emit()
+	_presentation_activation_count += 1
 	return true
 
 

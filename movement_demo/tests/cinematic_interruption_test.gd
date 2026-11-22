@@ -49,9 +49,9 @@ class DialogueSource extends Node:
 class PresentationTakeoverProbe extends RefCounted:
 	var created_count := 0
 	var watch_failures := 0
+	var unexpected_exits := 0
 	var _watched: Dictionary = {}
 	var _callbacks: Dictionary = {}
-	var _activation_counts: Dictionary = {}
 
 	func _on_node_added(node: Node) -> void:
 		if node is Camera3D and node.name == &"PresentationCamera":
@@ -60,29 +60,17 @@ class PresentationTakeoverProbe extends RefCounted:
 				watch_failures += 1
 
 	func watch_camera(camera: Camera3D) -> bool:
-		if not is_instance_valid(camera) or not camera.has_signal(&"became_current"):
+		if not is_instance_valid(camera):
 			return false
 		var instance_id := camera.get_instance_id()
 		if _watched.has(instance_id):
 			return true
-		var callback := _on_became_current.bind(instance_id)
-		if camera.connect(&"became_current", callback) != OK:
+		var callback := _on_camera_tree_exiting.bind(instance_id)
+		if camera.tree_exiting.connect(callback) != OK:
 			return false
 		_watched[instance_id] = camera
 		_callbacks[instance_id] = callback
 		return true
-
-	func activation_count(instance_id: int) -> int:
-		return int(_activation_counts.get(instance_id, 0))
-
-	func total_activations() -> int:
-		var total := 0
-		for count in _activation_counts.values():
-			total += int(count)
-		return total
-
-	func clear_activations() -> void:
-		_activation_counts.clear()
 
 	func connection_count() -> int:
 		var count := 0
@@ -90,7 +78,7 @@ class PresentationTakeoverProbe extends RefCounted:
 			var camera: Camera3D = _watched[instance_id]
 			var callback: Callable = _callbacks[instance_id]
 			if is_instance_valid(camera) \
-					and camera.is_connected(&"became_current", callback):
+					and camera.tree_exiting.is_connected(callback):
 				count += 1
 		return count
 
@@ -99,13 +87,18 @@ class PresentationTakeoverProbe extends RefCounted:
 			var camera: Camera3D = _watched[instance_id]
 			var callback: Callable = _callbacks[instance_id]
 			if is_instance_valid(camera) \
-					and camera.is_connected(&"became_current", callback):
-				camera.disconnect(&"became_current", callback)
+					and camera.tree_exiting.is_connected(callback):
+				camera.tree_exiting.disconnect(callback)
+
+	func clear_tracking() -> void:
 		_watched.clear()
 		_callbacks.clear()
 
-	func _on_became_current(instance_id: int) -> void:
-		_activation_counts[instance_id] = activation_count(instance_id) + 1
+	func _on_camera_tree_exiting(_instance_id: int) -> void:
+		unexpected_exits += 1
+
+	func tracked_count() -> int:
+		return _watched.size()
 
 var checks := 0
 var failures := 0
@@ -462,25 +455,46 @@ func _case_failed_spawn_has_no_shot() -> void:
 	var probe := PresentationTakeoverProbe.new()
 	var probe_connected: bool = node_added.connect(probe._on_node_added) == OK
 	probe_connected = probe.watch_camera(presentation) and probe_connected
+	var probe_connections_ready := node_added.is_connected(probe._on_node_added) \
+		and probe.connection_count() == 1
+	var activation_before_self_test := _presentation_activation_count(presentation)
 	var self_test_started: bool = is_instance_valid(presentation) and probe_connected \
 		and presentation.start_cinematic_shot(
 			f.source, f.shot.runtime_snapshot(), 900001)
-	var self_test_activations := probe.activation_count(presentation_id)
+	var activation_after_self_test := _presentation_activation_count(presentation)
 	if is_instance_valid(presentation):
 		presentation.cancel_presentation()
-	probe.clear_activations()
-	_check(probe_connected and self_test_started and self_test_activations == 1
+	var activation_before_failed_wave := _presentation_activation_count(presentation)
+	_check(probe_connections_ready and probe_connected,
+		"failed-spawn probe establishes node_added and camera cleanup connections")
+	_check(self_test_started and activation_after_self_test == activation_before_self_test + 1
+			and activation_before_failed_wave == activation_after_self_test
+			and not presentation.has_signal(&"became_current")
 			and f.source.is_current() and not presentation.is_current(),
-		"takeover activity probe counts one synchronous cinematic PresentationCamera activation and restores the source")
+		"one cinematic start/cancel increments the callback-free presentation activation counter by one")
 	var request: bool = f.host.request_wave(f.wave)
 	for _frame in 8:
 		await _steps(1)
 		presentation_ever_current = presentation_ever_current \
 			or (is_instance_valid(presentation) and presentation.is_current())
-	if node_added.is_connected(probe._on_node_added):
+	var activation_after_failed_wave := _presentation_activation_count(presentation)
+	var node_added_connected_before_disconnect := node_added.is_connected(probe._on_node_added)
+	if node_added_connected_before_disconnect:
 		node_added.disconnect(probe._on_node_added)
+	var node_added_connected_after_disconnect := node_added.is_connected(probe._on_node_added)
+	var camera_connections_before_disconnect := probe.connection_count()
 	probe.disconnect_all()
-	var takeover_probe_clear := probe.connection_count() == 0
+	var camera_connections_after_disconnect := probe.connection_count()
+	var tracked_cameras_before_clear := probe.tracked_count()
+	probe.clear_tracking()
+	var tracked_cameras_after_clear := probe.tracked_count()
+	_check(node_added_connected_before_disconnect \
+			and not node_added_connected_after_disconnect \
+			and camera_connections_before_disconnect == 1 \
+			and camera_connections_after_disconnect == 0 \
+			and tracked_cameras_before_clear == 1 \
+			and tracked_cameras_after_clear == 0,
+		"probe connections remain until explicit disconnect and tracking clears only after absence")
 	_check(not request and f.controller.get_snapshot().phase == &"idle",
 		"failed Wave deployment creates no empty Shot")
 	var requests: Dictionary = f.director.debug_snapshot().requests
@@ -491,13 +505,15 @@ func _case_failed_spawn_has_no_shot() -> void:
 		"failed Wave deployment acquires no Shot request, pause, or camera takeover")
 	var presentation_cameras: Array[Node] = f.region.find_children(
 		"PresentationCamera", "Camera3D", true, false)
-	_check(takeover_probe_clear and probe_connected and probe.watch_failures == 0
-			and probe.created_count == 0 and probe.total_activations() == 0
+	_check(probe_connected and probe.watch_failures == 0
+			and probe.created_count == 0 and probe.unexpected_exits == 0
+			and activation_after_failed_wave >= 0
+			and activation_after_failed_wave == activation_before_failed_wave
 			and not presentation_ever_current
 			and presentation_cameras.size() == 1
 			and presentation_cameras[0].get_instance_id() == presentation_id
 			and is_instance_valid(presentation) and not presentation.is_current(),
-		"failed Wave emits zero PresentationCamera became_current activations and creates no replacement")
+		"failed Wave leaves the PresentationCamera activation counter unchanged and creates no replacement")
 	_assert_clean(f, "failed spawn")
 	await _dispose_wave_fixture(f)
 
@@ -717,6 +733,12 @@ func _await_view_settled(source: Camera3D, player: Node3D) -> bool:
 	print("DIAGNOSTIC failed-spawn source camera did not settle within %d frames"
 			% VIEW_SETTLE_MAX_FRAMES)
 	return false
+
+func _presentation_activation_count(presentation: Node) -> int:
+	if not is_instance_valid(presentation):
+		return -1
+	var value: Variant = presentation.get(&"presentation_activation_count")
+	return int(value) if value is int else -1
 
 func _presentation_clean(presentation) -> bool:
 	if not is_instance_valid(presentation): return true
