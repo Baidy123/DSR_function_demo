@@ -456,7 +456,12 @@ func authorize_wave_deployment(wave: Node) -> bool:
 	if not is_instance_valid(wave) or state not in [&"running", &"guide"] or _load_failed or _completion_pending or get_tree().paused: return false
 	var request = _wave_requests.get(wave.get_instance_id())
 	if request == null or not request.is_current(): return false
-	var presentation: bool = _armed_presentations.has(wave.get_instance_id()) or wave.get("show_spawn_presentation") == true or _bindings.get("present_spawned_waves", false)
+	var shot_path: NodePath = wave.get("cinematic_shot_path") if wave.get("cinematic_shot_path") != null else NodePath()
+	var presentation := false
+	if shot_path.is_empty():
+		presentation = _armed_presentations.has(wave.get_instance_id()) \
+			or wave.get("show_spawn_presentation") == true \
+			or _bindings.get("present_spawned_waves", false)
 	return not presentation or _requests.snapshot().foreground == 0
 
 func wave_status(wave: Node) -> StringName:
@@ -469,6 +474,9 @@ func _on_wave_committed(wave: Node, _deployment_focus: Vector3) -> void:
 
 func _present_committed_wave(wave: Node) -> void:
 	if state not in [&"running", &"guide"]: return
+	var wave_id := wave.get_instance_id()
+	var armed: Dictionary = _armed_presentations.get(wave_id, {})
+	_armed_presentations.erase(wave_id)
 	var shot_path: NodePath = wave.get("cinematic_shot_path") if wave.get("cinematic_shot_path") != null else NodePath()
 	if not shot_path.is_empty():
 		var shot := wave.get_node_or_null(shot_path)
@@ -478,9 +486,8 @@ func _present_committed_wave(wave: Node) -> void:
 			if not admission.accepted and admission.result != &"busy":
 				report_action_error("camera", "Cinematic shot rejected: %s" % admission.reason)
 			return
-		report_action_error("camera", "Cinematic shot path is missing or invalid; falling back to legacy presentation")
-	var armed: Dictionary = _armed_presentations.get(wave.get_instance_id(), {})
-	_armed_presentations.erase(wave.get_instance_id())
+		report_action_error("camera", "Cinematic shot path is missing or invalid; legacy presentation skipped")
+		return
 	var owner: Node = wave
 	var target_path: NodePath
 	var options: Dictionary

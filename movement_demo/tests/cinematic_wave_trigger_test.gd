@@ -17,6 +17,22 @@ class CaptureHost extends Node3D:
 	func capture_templates(_region: Node3D) -> void:
 		pass
 
+class DialogueSource extends Node:
+	signal scene_action_finished(id: int, result: StringName)
+
+	var active_id := 0
+
+	func begin_scene_action(request) -> void:
+		active_id = request.id
+
+	func cancel_scene_action(_request, _reason: StringName) -> void:
+		active_id = 0
+
+	func complete() -> void:
+		var id := active_id
+		active_id = 0
+		scene_action_finished.emit(id, &"completed")
+
 class PlayerSource extends Node3D:
 	var is_in_dialogue := false
 	var is_facing_npc := false
@@ -46,6 +62,8 @@ func _run() -> void:
 	await _test_action_contract()
 	await _test_shot_waits_for_real_commit()
 	await _test_cinematic_priority_over_legacy()
+	await _test_invalid_new_path_is_terminal()
+	await _test_new_shot_priority_during_dialogue()
 	await _test_blocked_and_failed_deployments_have_no_shot()
 	await _test_busy_shot_does_not_roll_back_deployment()
 	await _test_legacy_presentation_remains_compatible()
@@ -105,6 +123,13 @@ func _test_wave_contract() -> void:
 	var invalid_warnings: PackedStringArray = wave.call("_get_configuration_warnings")
 	_check(_warnings_mention(invalid_warnings, "CinematicShot3D"),
 		"a non-CinematicShot3D Wave target warns in the inspector")
+	var has_setter := false
+	for method in wave.get_method_list():
+		if method.name == &"@cinematic_shot_path_setter":
+			has_setter = true
+			break
+	_check(has_setter,
+		"cinematic_shot_path installs a setter for immediate editor warning refresh")
 	scene.free()
 	await process_frame
 
@@ -164,6 +189,77 @@ func _test_cinematic_priority_over_legacy() -> void:
 	_check(f.director.call("debug_snapshot").presentation == 0
 			and f.region.get_node_or_null("PresentationCamera") == null,
 		"the legacy presentation never plays after the new Shot completes")
+	await _dispose_wave_fixture(f)
+
+
+func _test_invalid_new_path_is_terminal() -> void:
+	var f := await _wave_fixture(null, {
+		"legacy_fallback": true,
+		"legacy_fallback_target": ^"../CameraPoints/LegacyFocus",
+	})
+	f.wave.set("cinematic_shot_path", ^"../../CameraPoints/LegacyFocus")
+	f.wave.set("show_spawn_presentation", true)
+	f.wave.set("presentation_target_path", ^"../../CameraPoints/LegacyFocus")
+	f.wave.set("presentation_hold_seconds", 5.0)
+	var spawned_count := [0]
+	f.wave.spawned.connect(func() -> void: spawned_count[0] += 1)
+	var accepted: bool = f.director.call("request_wave_for_flow", f.wave, true, {
+		"move_seconds": 0.05, "hold_seconds": 5.0, "return_seconds": 0.05,
+	}, Rule.Scope.REGION, ^"../CameraPoints/LegacyFocus")
+	_check(accepted, "invalid new-path fixture arms its real Wave request")
+	_check(await _await_wave_status(f, &"active"),
+		"an invalid new Shot path cannot prevent real enemy deployment")
+	await _steps(4)
+	_check(f.controller.get_snapshot().phase == &"idle"
+			and int(f.director.call("debug_snapshot").presentation) == 0
+			and not paused,
+		"an invalid non-empty Shot path starts no cinematic or legacy presentation")
+	_check(spawned_count[0] == 1 and not _deployed_enemies(f).is_empty(),
+		"invalid Shot presentation keeps the committed enemies")
+	_check(not (f.director.get("_armed_presentations") as Dictionary).has(f.wave.get_instance_id()),
+		"an invalid new Shot path clears the armed legacy presentation payload")
+	if int(f.director.call("debug_snapshot").presentation) != 0:
+		f.director.call("skip_presentation")
+		await _steps(2)
+	await _dispose_wave_fixture(f)
+
+
+func _test_new_shot_priority_during_dialogue() -> void:
+	var f := await _wave_fixture(null, {
+		"legacy_fallback": true,
+		"legacy_fallback_target": ^"../CameraPoints/LegacyFocus",
+	})
+	f.wave.set("cinematic_shot_path", ^"../../CinematicShots/WaveShot")
+	f.wave.set("show_spawn_presentation", true)
+	f.wave.set("presentation_target_path", ^"../../CameraPoints/LegacyFocus")
+	f.wave.set("presentation_hold_seconds", 5.0)
+	var dialogue_request = f.director.call("request_action", &"dialogue", {
+		"source": f.dialogue, "target": f.dialogue, "player": f.dialogue_player,
+		"origin": &"interaction",
+	})
+	_check(dialogue_request.status == &"running" and not paused,
+		"dialogue foreground is active without pausing the Shot clock")
+	var spawned_count := [0]
+	f.wave.spawned.connect(func() -> void: spawned_count[0] += 1)
+	var accepted: bool = f.director.call("request_wave_for_flow", f.wave, true, {
+		"move_seconds": 0.05, "hold_seconds": 5.0, "return_seconds": 0.05,
+	}, Rule.Scope.REGION, ^"../CameraPoints/LegacyFocus")
+	_check(accepted, "new Shot path fixture arms its Wave during dialogue")
+	var started: bool = await _await_controller_started(f)
+	_check(started and spawned_count[0] == 1
+			and f.host.call("wave_status", f.wave) == &"active",
+		"a new Shot Wave deploys during dialogue instead of waiting on legacy presentation")
+	_check(int(f.director.call("debug_snapshot").presentation) == 0
+			and not (f.director.get("_armed_presentations") as Dictionary).has(f.wave.get_instance_id()),
+		"legacy Wave, armed, and scene-wide presentation payloads do not play")
+	_check(paused
+			and (f.director.call("debug_snapshot").pause.reasons as Array).count(&"cinematic_shot") == 1
+			and dialogue_request.status == &"running",
+		"the new Shot owns its pause while the dialogue request continues")
+	f.dialogue.complete()
+	await _steps(2)
+	_check(dialogue_request.status == &"completed",
+		"finishing dialogue does not alter the separate new Shot request")
 	await _dispose_wave_fixture(f)
 
 
@@ -288,7 +384,7 @@ func _test_flow_action_busy_failure() -> void:
 	await _dispose_flow_fixture(f)
 
 
-func _wave_fixture(blocker_position: Variant = null) -> Dictionary:
+func _wave_fixture(blocker_position: Variant = null, options: Dictionary = {}) -> Dictionary:
 	var region: Node3D = Region.new()
 	region.name = "CinematicWaveRegion"
 	region.position = Vector3(11.0, 0.0, 7.0)
@@ -311,6 +407,12 @@ func _wave_fixture(blocker_position: Variant = null) -> Dictionary:
 	legacy_focus.name = "LegacyFocus"
 	legacy_focus.position = Vector3(-4.0, 0.0, -5.0)
 	marker_root.add_child(legacy_focus)
+	var dialogue := DialogueSource.new()
+	dialogue.name = "Dialogue"
+	region.add_child(dialogue)
+	var dialogue_player := PlayerSource.new()
+	dialogue_player.name = "DialoguePlayer"
+	region.add_child(dialogue_player)
 	var shots := Node3D.new()
 	shots.name = "CinematicShots"
 	region.add_child(shots)
@@ -334,6 +436,8 @@ func _wave_fixture(blocker_position: Variant = null) -> Dictionary:
 	host.set("complete_when_all_waves_cleared", false)
 	host.set("spawn_retry_seconds", 0.05)
 	host.set("scene_rules", [])
+	host.set("present_spawned_waves", options.get("legacy_fallback", false))
+	host.set("presentation_target_path", options.get("legacy_fallback_target", NodePath()))
 	region.add_child(host)
 	var wave: Node3D = _add_real_wave(host, "Reinforcement", [Vector3(4.0, 0.0, -4.0), Vector3(6.0, 0.0, -4.0)])
 	if blocker_position != null:
@@ -360,6 +464,8 @@ func _wave_fixture(blocker_position: Variant = null) -> Dictionary:
 		"wave": wave,
 		"wave_shot": wave_shot,
 		"blocker_shot": blocker_shot,
+		"dialogue": dialogue,
+		"dialogue_player": dialogue_player,
 		"player": player,
 		"source": source,
 	}

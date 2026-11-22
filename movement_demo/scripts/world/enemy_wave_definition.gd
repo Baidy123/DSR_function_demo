@@ -33,7 +33,10 @@ enum TriggerCombination { ANY, ALL }
 @export_group("出场镜头")
 ## 新式单镜头。真实部署成功后由 CinematicCameraController 执行。
 ## 与旧 Show Spawn Presentation 同时存在时，本次 Shot 优先，旧配置不重复播放。
-@export_node_path("Node") var cinematic_shot_path: NodePath
+@export_node_path("Node") var cinematic_shot_path: NodePath:
+	set(value):
+		cinematic_shot_path = value
+		update_configuration_warnings()
 ## 开启后，本波真正生成成功时暂停战斗并展示下面绑定的目标，返回玩家视野后恢复。
 ## 必须手动指定 Presentation Target Path；出生点受阻时不提前播放。无需修改玩家相机。
 @export var show_spawn_presentation := false
