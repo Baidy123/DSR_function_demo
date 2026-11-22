@@ -28,8 +28,10 @@ func configuration_error() -> StringName:
 	if not is_finite(enter_seconds) or enter_seconds < 0.0:
 		return &"invalid_enter_seconds"
 	for value in [hold_seconds, return_seconds,
-			shake_frequency, shake_fade_in_seconds, shake_fade_out_seconds]:
+			shake_fade_in_seconds, shake_fade_out_seconds]:
 		if not is_finite(float(value)) or float(value) < 0.0: return &"invalid_timing"
+	if not is_finite(shake_frequency) or shake_frequency < 0.01:
+		return &"invalid_shake_frequency"
 	if not shake_position_amplitude.is_finite() or not shake_rotation_degrees.is_finite():
 		return &"invalid_shake"
 	return &""

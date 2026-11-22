@@ -26,6 +26,10 @@ func _run() -> void:
 		"Runtime snapshot contains pose, lens and timing")
 	shot.enter_seconds = NAN
 	check(shot.configuration_error() == &"invalid_enter_seconds", "Invalid enter time is rejected")
+	shot.enter_seconds = 0.6
+	shot.shake_frequency = 0.0
+	check(shot.configuration_error() == &"invalid_shake_frequency",
+		"Programmatic zero shake frequency follows the inspector minimum")
 	shot.free()
 	print("CINEMATIC SHOT: %d/%d passed" % [checks - failures, checks])
 	quit(1 if failures else 0)

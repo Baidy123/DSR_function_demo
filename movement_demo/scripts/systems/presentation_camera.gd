@@ -269,9 +269,12 @@ func _valid_cinematic_snapshot(snapshot: Dictionary) -> bool:
 			var vector: Variant = snapshot.get(key)
 			if not vector is Vector3 or not (vector as Vector3).is_finite():
 				return false
-	for key: String in ["shake_frequency", "shake_fade_in_seconds", "shake_fade_out_seconds"]:
+	for key: String in ["shake_fade_in_seconds", "shake_fade_out_seconds"]:
 		if snapshot.has(key) and not _finite_snapshot_number(snapshot, key, 0.0):
 			return false
+	if snapshot.has("shake_frequency") \
+			and not _finite_snapshot_number(snapshot, "shake_frequency", 0.01):
+		return false
 	if snapshot.has("shake_seed") and not snapshot.get("shake_seed") is int:
 		return false
 	if snapshot.has("pause_world") and not snapshot.get("pause_world") is bool:
@@ -315,6 +318,8 @@ func _advance_cinematic(delta: float) -> void:
 			return
 		global_transform = _base_shot_transform
 		_apply_shake()
+		if _occlusion_acquired:
+			_occlusion_target.global_position = _cinematic_occlusion_focus()
 		_update_occlusion(step)
 		if _elapsed < duration: return
 		_elapsed = 0.0
@@ -441,8 +446,10 @@ func _create_shake_noise(snapshot: Dictionary) -> void:
 	var seed_value: int = int(snapshot.get(&"shake_seed", 0))
 	_shake_position_noise = FastNoiseLite.new()
 	_shake_position_noise.seed = seed_value
+	_shake_position_noise.frequency = 1.0
 	_shake_rotation_noise = FastNoiseLite.new()
 	_shake_rotation_noise.seed = seed_value
+	_shake_rotation_noise.frequency = 1.0
 
 
 func _shake_envelope() -> float:
@@ -451,10 +458,12 @@ func _shake_envelope() -> float:
 	var fade_out: float = maxf(0.0, float(_shot_options.get(&"shake_fade_out_seconds", 0.0)))
 	match _phase:
 		Phase.MOVE:
+			fade_in = minf(fade_in, maxf(0.0, _move_seconds))
 			return clampf(_elapsed / fade_in, 0.0, 1.0) if fade_in > 0.0 else 1.0
 		Phase.HOLD:
 			return 1.0
 		Phase.RETURN:
+			fade_out = minf(fade_out, maxf(0.0, _return_seconds))
 			return clampf(1.0 - _elapsed / fade_out, 0.0, 1.0) if fade_out > 0.0 else 0.0
 	return 0.0
 
@@ -551,11 +560,16 @@ func _update_occlusion(delta: float) -> void:
 
 
 func _cinematic_occlusion_focus() -> Vector3:
-	if _source.has_method("get_follow_actor"):
+	if _source_available() and _source.has_method("get_follow_actor"):
 		var actor: Node3D = _source.call("get_follow_actor") as Node3D
 		if is_instance_valid(actor) and actor.is_inside_tree() and not actor.is_queued_for_deletion():
-			return actor.get_global_transform_interpolated().origin
-	return Vector3.ZERO
+			var player_focus: Vector3 = actor.get_global_transform_interpolated().origin
+			if player_focus.is_finite(): return player_focus
+	if _source_available():
+		var source_focus := _ground_focus(
+			_source, _source.get_global_transform_interpolated(), 0.0)
+		if source_focus.is_finite(): return source_focus
+	return _occlusion_target.global_position
 
 
 func _valid_camera(camera: Camera3D) -> bool:

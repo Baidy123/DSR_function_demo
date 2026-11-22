@@ -130,7 +130,7 @@ Equipment 交接当前枪给 Combat；相机订阅 `weapon_changed`，表现订�
 
 `scene_transition_executor.gd` 执行导演批准的加载，经 SceneTransition 在最终边界复核身份；GameState.prepare_scene_transition 只准备数据，commit_scene_transition 在引擎接受后、目标 _ready 前提交，并在完整状态写好后通知订阅者。父交互的合法加载链保留到终态，其他旧执行取消；普通加载失败归还控制，结果／死亡失败保留重试。InteractionContext 注入导演和执行身份，效果可等待子请求，跨关旧来源不再补发 interacted。
 
-波次候选在物理边界取得导演请求，Runtime 的 authorize_deployment 是紧邻真实提交的纯检查，保留原空间／清空业务。出场镜头沿唯一 wave_committed 回调安排；完成请求等前台收尾后，导演才调用 LevelFlow.execute_scene_completion 启用原出口。公开 start_encounter／request_wave／show_completion 为兼容请求入口，区域取消同时核对 scope_owner。
+波次候选在物理边界取得导演请求，Runtime 的 authorize_deployment 是紧邻真实提交的纯检查，保留原空间／清空业务。出场镜头沿唯一 wave_committed 回调安排；完成请求等前台、手摆演出和活动电影镜头收尾后，导演才调用 LevelFlow.execute_scene_completion 启用原出口。公开 start_encounter／request_wave／show_completion 为兼容请求入口，区域取消同时核对 scope_owner。
 
 排队规则通过内部启动条件复核，条件失效时取消本次执行。Runtime 的 deployment_failed 将实际部署错误传回导演，结束仍在等待的请求。加载父链在引擎接受前保留独立取消入口和弱来源监听，接受后的旧场景退出由加载适配完成收尾。
 
@@ -158,9 +158,9 @@ Equipment 交接当前枪给 Combat；相机订阅 `weapon_changed`，表现订�
 | `systems/presentation_camera.gd` | 玩家相机与演出相机之间的通用执行器；复制可见画面、执行旧式移动或新式 Cinematic Shot、返回最新玩家视野并交接遮挡 |
 | `debug/cinematic_camera_debug.gd` | Debug 构建下枚举当前场 Shot，只调用控制器 `play_shot`／`cancel_shot`；不拥有相机或暂停 |
 
-`SceneDirector/CinematicCameraController/PresentationCamera` 是固定执行层级，`SceneDirector/CinematicShots` 是可见作者容器。Wave 的 `cinematic_shot_path` 与 `PLAY_CINEMATIC_SHOT` 都提交同一单 Shot API；`busy` 不排队、不替换、不回滚敌人。玩家相机仍由 Phantom 和武器视野组件控制，原相机不交给总调度每帧移动。旧式 Marker3D／Node3D 演出继续由同一执行器兼容，新 Shot 优先，遮挡辅助同一时刻只有一个拥有者。
+`SceneDirector/CinematicCameraController/PresentationCamera` 是固定执行层级，`SceneDirector/CinematicShots` 是可见作者容器。直接 `play_shot()` 使用 SCENE scope；Wave 的 `cinematic_shot_path` 使用 REGION scope；`PLAY_CINEMATIC_SHOT` 继承规则 scope。`busy` 不排队、不替换、不回滚敌人，非对话前台与暂停菜单反向占用也会拒绝镜头。玩家相机仍由 Phantom 和武器视野组件控制，原相机不交给总调度每帧移动。旧式 Marker3D／Node3D 演出继续由同一执行器兼容，新 Shot 优先，遮挡辅助同一时刻只有一个拥有者。
 
-控制器在死亡、加载、区域复位、控制器／场景卸载、源相机失效、活动 Shot 删除、调试取消和外部相机接管时统一结束；暂停、鼠标与相机所有权分别由共享协调器与原相机恢复。专项为 `cinematic_controller_test`、`cinematic_camera_test`、`cinematic_wave_trigger_test`、`cinematic_debug_test` 和 `cinematic_interruption_test`。
+控制器在死亡、加载、区域复位、控制器／场景卸载、源相机失效、活动 Shot 删除、调试取消和外部相机接管时统一结束；区域复位按请求 scope 只清理 REGION，SCENE 继续。暂停、鼠标与相机所有权分别由共享协调器与原相机恢复。专项为 `cinematic_controller_test`、`cinematic_camera_test`、`cinematic_wave_trigger_test`、`cinematic_debug_test` 和 `cinematic_interruption_test`。
 
 `systems/presentation/` 读取实际状态驱动模型／动画，`systems/effects/` 管理命中快照、表面配置与特效生命周期。表现不改变伤害、枪口、碰撞或 AI；UI 不替代业务状态的唯一写入者。
 

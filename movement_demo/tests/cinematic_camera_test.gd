@@ -2,6 +2,7 @@ extends SceneTree
 
 const Shot = preload("res://scripts/systems/cinematic/cinematic_shot_3d.gd")
 const Presentation = preload("res://scenes/player/presentation_camera.tscn")
+const PlayerCamera = preload("res://scripts/systems/player_camera.gd")
 
 var checks := 0
 var failures := 0
@@ -29,6 +30,13 @@ class LeaseSource extends Camera3D:
 		ledger["owner"] = null
 		ledger["ends"] = int(ledger["ends"]) + 1
 
+class MovingActor extends Node3D:
+	func get_camera_ground_height() -> float:
+		return 0.0
+
+	func get_body_height() -> float:
+		return 1.75
+
 
 func _initialize() -> void:
 	_run.call_deferred()
@@ -41,6 +49,8 @@ func _run() -> void:
 	await _zero_duration_phases()
 	await _return_uses_latest_unshaken_source_view()
 	await _shake_is_deterministic_local_and_enveloped()
+	await _shake_fades_clamp_to_phase_lengths()
+	await _unpaused_occlusion_tracks_player()
 	await _occlusion_lease_and_terminal_identity()
 	await _malformed_snapshots_reject_cleanly()
 	print("CINEMATIC CAMERA: %d/%d passed" % [checks - failures, checks])
@@ -288,7 +298,7 @@ func _shake_is_deterministic_local_and_enveloped() -> void:
 	var first_shaken: Transform3D = camera.global_transform
 	check(_transform_near(first_shaken, _expected_shaken_transform(shot_transform, 1.4, 123, 4.0,
 		Vector3(0.2, 0.1, 0.3), Vector3(7.0, 11.0, 5.0)), 0.0002),
-		"Shake is deterministically added in the base Shot local basis")
+		"Shake uses the authored frequency with a unit-frequency noise source in the base Shot local basis")
 	check(_transform_near(source.global_transform, source_transform)
 		and is_equal_approx(source.fov, 68.0)
 		and _transform_near(shot.global_transform, shot_transform)
@@ -320,8 +330,10 @@ func _expected_shaken_transform(base: Transform3D, elapsed: float, seed_value: i
 		frequency: float, position_amplitude: Vector3, rotation_degrees_amplitude: Vector3) -> Transform3D:
 	var position_noise := FastNoiseLite.new()
 	position_noise.seed = seed_value
+	position_noise.frequency = 1.0
 	var rotation_noise := FastNoiseLite.new()
 	rotation_noise.seed = seed_value
+	rotation_noise.frequency = 1.0
 	var phase: float = elapsed * frequency
 	var local_position := Vector3(
 		position_noise.get_noise_1d(phase),
@@ -338,6 +350,99 @@ func _expected_shaken_transform(base: Transform3D, elapsed: float, seed_value: i
 	return Transform3D(
 		base.basis * local_rotation,
 		base.origin + base.basis * (local_position * position_amplitude))
+
+func _shake_fades_clamp_to_phase_lengths() -> void:
+	_new_world()
+	var source: Camera3D = _source()
+	var shot: Camera3D = _shot(0.2, 0.1, 0.2)
+	shot.shake_enabled = true
+	shot.shake_position_amplitude = Vector3(0.2, 0.1, 0.3)
+	shot.shake_rotation_degrees = Vector3(4.0, 3.0, 2.0)
+	shot.shake_frequency = 6.0
+	shot.shake_fade_in_seconds = 1.0
+	shot.shake_fade_out_seconds = 1.0
+	shot.shake_seed = 99
+	var camera: Camera3D = _presentation()
+	check(camera.start_cinematic_shot(source, shot.runtime_snapshot(), 62),
+		"Phase-clamped shake fixture starts")
+	camera.advance_presentation(0.1)
+	check(is_equal_approx(float(camera.call("_shake_envelope")), 0.5),
+		"MOVE fade-in is clamped to the enter phase length")
+	camera.advance_presentation(0.1)
+	camera.advance_presentation(0.1)
+	check(int(camera.get("_phase")) == 3
+			and is_equal_approx(float(camera.call("_shake_envelope")), 1.0),
+		"RETURN starts its clamped fade-out from full amplitude")
+	camera.advance_presentation(0.19)
+	check(is_equal_approx(float(camera.call("_shake_envelope")), 0.05),
+		"RETURN fade-out is clamped to its phase length near completion")
+	camera.advance_presentation(0.01)
+	check(source.is_current() and not camera.is_presenting()
+			and is_zero_approx(float(camera.call("_shake_envelope"))),
+		"Shake amplitude cannot remain nonzero after returning to the player camera")
+	await _clear_world()
+
+func _unpaused_occlusion_tracks_player() -> void:
+	_new_world()
+	var actor := MovingActor.new()
+	actor.name = "Player"
+	world.add_child(actor)
+	var source := PlayerCamera.new()
+	source.name = "PlayerCamera"
+	source.player_path = ^"../Player"
+	source.position = Vector3(0.0, 1.0, 8.0)
+	source.rotation = Vector3.ZERO
+	source.projection = Camera3D.PROJECTION_PERSPECTIVE
+	source.occlusion_fade_seconds = 0.0
+	source.physics_interpolation_mode = Node.PHYSICS_INTERPOLATION_MODE_OFF
+	source.set_process(false)
+	source.set_physics_process(false)
+	world.add_child(source)
+	source.make_current()
+	source.reset_physics_interpolation()
+
+	var material := StandardMaterial3D.new()
+	var initial_blocker := _fadeable_box(Vector3(0.0, 1.0, 4.0), material)
+	var moved_blocker := _fadeable_box(Vector3(4.0, 1.0, 4.0), material)
+	var return_blocker := _fadeable_box(Vector3(-4.0, 1.0, 4.0), material)
+	var shot := _shot(0.0, 0.1, 1.0)
+	shot.pause_world = false
+	shot.global_transform = source.global_transform
+	var camera: Camera3D = _presentation()
+	check(camera.start_cinematic_shot(source, shot.runtime_snapshot(), 49),
+		"Unpaused moving-player occlusion fixture starts")
+	camera.advance_presentation(0.0)
+	check(initial_blocker.get_surface_override_material(0) != null
+			and moved_blocker.get_surface_override_material(0) == null,
+		"Initial cinematic occlusion follows the current player position")
+
+	actor.position = Vector3(8.0, 0.0, 0.0)
+	actor.reset_physics_interpolation()
+	camera.advance_presentation(0.1)
+	check(initial_blocker.get_surface_override_material(0) == null
+			and moved_blocker.get_surface_override_material(0) != null,
+		"Unpaused cinematic occlusion follows the moved player instead of the cut-in position")
+
+	actor.position = Vector3(-8.0, 0.0, 0.0)
+	actor.reset_physics_interpolation()
+	camera.advance_presentation(0.25)
+	check(return_blocker.get_surface_override_material(0) != null
+			and initial_blocker.get_surface_override_material(0) == null
+			and moved_blocker.get_surface_override_material(0) == null,
+		"RETURN cinematic occlusion uses the latest player focus")
+	camera.cancel_presentation()
+	await _clear_world()
+
+func _fadeable_box(at: Vector3, material: Material) -> MeshInstance3D:
+	var mesh := MeshInstance3D.new()
+	var box := BoxMesh.new()
+	box.size = Vector3(1.5, 2.0, 0.5)
+	box.material = material
+	mesh.mesh = box
+	mesh.position = at
+	mesh.add_to_group(&"camera_fadeable")
+	world.add_child(mesh)
+	return mesh
 
 
 func _occlusion_lease_and_terminal_identity() -> void:
@@ -454,6 +559,13 @@ func _malformed_snapshots_reject_cleanly() -> void:
 		and source.is_current() and not camera.is_presenting()
 		and ledger["owner"] == null and int(ledger["begins"]) == 0,
 		"Non-finite shake configuration rejects before ownership")
+
+	var zero_frequency: Dictionary = valid.duplicate(true)
+	zero_frequency["shake_frequency"] = 0.0
+	check(not camera.start_cinematic_shot(source, zero_frequency, 66)
+		and source.is_current() and not camera.is_presenting()
+		and ledger["owner"] == null and int(ledger["begins"]) == 0,
+		"Zero shake frequency rejects before acquiring the occlusion lease")
 	await _clear_world()
 
 

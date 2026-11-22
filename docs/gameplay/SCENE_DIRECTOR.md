@@ -21,7 +21,7 @@
 
 商店沿用 RewardNPC、ShopController、ShopBoard：NPC 绑定本场控制器，控制器绑定面板和 ShopCatalog；商品添加方式见[商店配置](REWARDS.md)。`open_shop_for_player(player)`、`close_shop()` 会转交导演，购买仍用 `purchase(item_id, slot)`。有可见商品时暂停，空目录显示“暂无商品”且不暂停。
 
-生产对话会占用前台并锁住玩家，但本身不暂停世界。剧情 Shot 可与对话共存；`pause_world=true` 的 Shot 控制唯一的世界暂停，`pause_world=false` 时世界保持运行。商店等其他前台占用仍拒绝新 Shot。忙碌时再次按 E 不会排队弹出另一个窗口；死亡立即取消当前演出与界面。
+生产对话会占用前台并锁住玩家，但本身不暂停世界。剧情 Shot 可与对话共存；`pause_world=true` 的 Shot 控制唯一的世界暂停，`pause_world=false` 时世界保持运行。商店等其他前台占用仍拒绝新 Shot；对话期间已经排队的商店、引导或手摆演出也会阻止新的 Shot 准入，并在场景前台轮转时复核，不会趁镜头播放补开。忙碌时再次按 E 不会排队弹出另一个窗口；死亡立即取消当前演出与界面。
 
 ## 脚本请求速查
 
@@ -55,7 +55,7 @@ if not result.accepted:
     print("镜头未播放：", result.result)
 ```
 
-控制器只接受一个 Shot。`busy` 不改当前镜头；`get_snapshot()` 提供 phase、request id、`pause_world`、elapsed、remaining 和最近错误。`cancel_shot()` 与死亡／切场清理走同一取消路径。
+控制器只接受一个 Shot。直接 `play_shot()` 默认使用 SCENE scope，Wave 自动使用 REGION scope，`PLAY_CINEMATIC_SHOT` 保持所属 SceneFlowRule 的 SCENE／REGION scope。区域复位只取消 REGION 镜头，直接调用与 SCENE 规则镜头继续。普通暂停菜单或非对话管理控制存在时拒绝剧本／Debug Shot。`busy` 不改当前镜头；`get_snapshot()` 提供 phase、request id、`pause_world`、elapsed、remaining 和最近错误。`cancel_shot()` 与死亡／切场清理走同一取消路径。
 
 ## 编辑器里主要操作什么
 
@@ -184,7 +184,7 @@ REQUEST_WAVE 等真实生成才继续；若勾选 **Present Spawn**，动作的 
 | PRESENT_TARGET | 单独展示 Target Path 指向的 Marker3D/Node3D，不要求刷怪 |
 | GUIDE | 调用 begin() 并等待无参 finished，可选择是否暂停 |
 | WAIT_SIGNAL | 等待 Completed Trigger 的来源信号及过滤结果 |
-| COMPLETE_SCENE | 请求完成，必要镜头结束后显示结果，同帧死亡优先 |
+| COMPLETE_SCENE | 请求完成，等待手摆演出或活动电影镜头结束／取消后再显示结果，同帧死亡优先 |
 | RESTART | 编排者配置的重载动作；当前五关未配置，不是玩家平时的重试入口 |
 | CHANGE_SCENE | 请求 Scene Path 指定场景，失败可重试原目标 |
 | PLAY_CINEMATIC_SHOT | Target Path 选 CinematicShot3D；等 Shot 完成、取消或失败后再继续 |
@@ -261,7 +261,7 @@ String 不等于 StringName，整数1不等于布尔true。需要“事件发生
 - **Guide Path** 默认留空，当前五关进入与死亡重开不自动弹出操作说明；保留 `LevelFlow/PlayGuide` 节点路径，显式绑定的独立教程仍适配 `begin()/cancel()/finished`。允许走动的教程关闭 Guide Pauses World，核心不依赖 PlayGuide 类型。
 - 导演初始化时装配一个 `PauseMenu`，不改变地图的 Wave／Squad 层级。`request_pause_menu()` 仅在可游玩、无加载失败、世界未暂停且没有前台请求／其他控制拥有者时取得 `pause_menu` 暂停；`resume_from_pause_menu()` 只释放该令牌。菜单回传暂停、继续和确认退出意图，设置／说明子页不自行恢复世界。菜单打开时不推进导演排队请求、普通规则或演出计时；死亡／加载等状态变化及卸载关闭菜单并保留其他暂停所有权。
 - Health 只结算生命、停止玩家自身动作并发 `died`。调度器先取得死亡暂停，再取消镜头/动作，独立视图控制原 `Player/Health/DeathScreen`；“重新挑战”准备入关状态并重载当前场景，“返回酒馆”准备恢复最近酒馆检查点，再通过 `LevelFlow.next_scene_path()` 加载酒馆。两者均在加载接受后提交。没有 `LevelFlow` 适配器的通用场景隐藏“返回酒馆”，保留当前场景重开。
-- 生产对话通过前台控制和玩家锁参与会话，不取得世界暂停；剧情 Shot 的 `pause_world` 才是该会话唯一的真实暂停。Shot 先结束会恢复世界但保留对话锁，对话先结束则只解除玩家锁并继续 Shot。死亡、加载、区域复位、控制器卸载、活动 Shot 删除、源相机丢失和外部相机接管都会结束当前 Shot；切场后的新相机不会被旧镜头重新抢走。
+- 生产对话通过前台控制和玩家锁参与会话，不取得世界暂停；剧情 Shot 的 `pause_world` 才是该会话唯一的真实暂停。Shot 先结束会恢复世界但保留对话锁，对话先结束则只解除玩家锁并继续 Shot。显式 `COMPLETE_SCENE` 与全波自动完成都等待活动镜头结束或取消，不会提前进入结果态并终止镜头。死亡、加载、控制器卸载、活动 Shot 删除、源相机丢失和外部相机接管都会结束当前 Shot；区域复位只结束 REGION 镜头；切场后的新相机不会被旧镜头重新抢走。
 - 配置了 `LevelFlow.return_portal_path` 的五关在全部波次完成后只开放本关 `TavernReturnPortal`，不暂停世界，也不显示直接进入下一关的按钮。没有返程门的结果界面仍可暂停并显示原按钮；没有任何 Wave 不自动通关。
 - `LevelFlow.completion_pauses_world()` 决定完成时是否取得暂停所有权：有返程门时返回 false，保留结果按钮时返回 true。该接口只影响完成，不改变死亡暂停。
 - 离区仍由区域服务清理敌人、掉落与协同，调度器取消 REGION 规则和镜头。SCENE 开场和结果不重播；若 SCENE 规则正等旧轮波次，该等待明确取消诊断，不自动跨轮重投。

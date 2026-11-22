@@ -163,6 +163,9 @@ func _test_shot_waits_for_real_commit() -> void:
 		"Shot does not start before a real deployment")
 	var started: bool = await _await_controller_started(f)
 	_check(started, "Shot starts only after wave_committed")
+	var shot_request = f.director.find_request(f.controller.get_snapshot().request_id)
+	_check(shot_request != null and shot_request.scope == 1,
+		"Wave cinematic requests use REGION scope")
 	_check(spawned_observations.size() == 1
 			and spawned_observations[0].phase != &"idle",
 		"the Shot barrier exists before the public spawned notification")
@@ -170,7 +173,12 @@ func _test_shot_waits_for_real_commit() -> void:
 			and f.host.call("wave_status", f.wave) == &"active"
 			and _deployed_enemies(f).size() > 0,
 		"the accepted Shot follows a complete real deployment")
-	await _await_controller_idle(f)
+	f.host.reset_encounter()
+	_check(shot_request != null and shot_request.status == &"cancelled"
+			and shot_request.reason == &"region_reset"
+			and f.controller.get_snapshot().phase == &"idle"
+			and f.source.is_current(),
+		"Wave REGION scope is cancelled by region reset and restores the player camera")
 	await _dispose_wave_fixture(f)
 
 

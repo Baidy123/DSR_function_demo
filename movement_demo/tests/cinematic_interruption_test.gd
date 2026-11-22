@@ -150,10 +150,12 @@ func _case_scene_load_cancel() -> void:
 
 func _case_region_reset_cancel() -> void:
 	var f := await _fixture()
-	var admission: Dictionary = f.controller.play_shot(f.shot)
+	var admission: Dictionary = f.controller.play_shot(
+		f.shot, CinematicCameraController.SCOPE_REGION)
 	var request = f.director.find_request(admission.request_id)
 	f.host.reset_encounter()
-	_check(request != null and request.status == &"cancelled"
+	_check(request != null and request.scope == 1
+			and request.status == &"cancelled"
 			and request.reason == &"region_reset",
 		"region reset cancels the regional Shot")
 	_check(not f.presentation.is_current()

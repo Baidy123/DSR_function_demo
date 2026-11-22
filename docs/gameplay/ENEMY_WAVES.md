@@ -37,7 +37,7 @@ SEQUENCE／EVENTS／REQUEST 均向本场导演申请 wave 执行；Runtime 保�
 | Start Delay Seconds | 0秒 | 条件满足后的等待时间 |
 | Search On Spawn | 开启 | 后续波实际出生时取得一次玩家大概位置并进入搜索 |
 | Spawn Search Error Radius | 3米 | 该一次性提示的最大水平误差，0为精确快照 |
-| Cinematic Shot Path | 空 | 相对 Wave 指向 `CinematicShot3D`；真实生成成功后才播放，优先于旧手摆演出 |
+| Cinematic Shot Path | 空 | 相对 Wave 指向 `CinematicShot3D`；真实生成成功后才播放，优先于旧手摆演出，请求属于 REGION scope |
 
 SEQUENCE模式关闭Wait For Previous Clear时，从紧邻上一波实际出场起计时；开启则等全灭清理。其首波从战斗开始计时，后波不越过未出场的前波。EVENTS/REQUEST独立满足条件后才开始自己的延时，不受这项前波条件约束；暂停、对话、死亡等区域不可运行期间不累计时间。
 
@@ -55,7 +55,7 @@ SEQUENCE模式关闭Wait For Previous Clear时，从紧邻上一波实际出场�
 
 优先级为：`Cinematic Shot Path` → Wave 自己的 **Show Spawn Presentation** 与手摆目标 → SceneDirector 整场统一出场镜头。新路径存在时，旧 Wave 字段、动作 Present Spawn 和全场默认都不重复播放。镜头只在真实部署提交后开始，并在公开 `spawned` 前建立屏障；出生点暂时被占、部署失败或区域复位不会创建空镜头。
 
-控制器忙时，Wave 的敌人仍保留，只跳过该次相机表现，不排队等当前 Shot 结束后补播。同帧多个 Wave 请求只允许第一条获得活动 Shot，其余返回 `busy`；不会因此回滚已提交敌人。`pause_world=false` 的 Wave Shot 不暂停世界，但仍受死亡、加载、区域复位和源相机失效取消。
+控制器忙时，Wave 的敌人仍保留，只跳过该次相机表现，不排队等当前 Shot 结束后补播。同帧多个 Wave 请求只允许第一条获得活动 Shot，其余返回 `busy`；不会因此回滚已提交敌人。Wave Shot 使用 REGION scope，区域复位会取消它；直接 `play_shot()` 和 SCENE 规则镜头不会被本轮区域复位误停。`pause_world=false` 的 Wave Shot 不暂停世界，但仍受死亡、加载、区域复位和源相机失效取消。
 
 ## 给新战斗区域接入
 

@@ -40,7 +40,7 @@ SceneDirector
 └─ Wave1 / Wave2 / Scene Rules
 ```
 
-控制器同一时刻只接受一个 Shot。已有镜头播放时，新请求返回 `busy`；不替换、不排队，也不会自动播放“下一条”。`completed`、`cancelled`、`busy`、`invalid_shot`、`no_source_camera`、`camera_lost`、`source_lost` 和 `failed` 是公开结果。Debug 面板会显示阶段、`pause_world` 和最近结果。
+控制器同一时刻只接受一个 Shot。已有镜头播放时，新请求返回 `busy`；不替换、不排队，也不会自动播放“下一条”。普通暂停菜单或非对话管理控制仍持有时拒绝剧本／Debug Shot；前台为对话时也只允许镜头作为背景执行，若已有商店、引导、手摆演出等非对话前台排队，镜头同样返回 `busy`。已排队前台在真正启动前会再次核对镜头状态，不会在镜头占用相机时补开。`completed`、`cancelled`、`busy`、`invalid_shot`、`no_source_camera`、`camera_lost`、`source_lost` 和 `failed` 是公开结果。Debug 面板会显示阶段、`pause_world` 和最近结果。
 
 ### Shot 字段
 
@@ -55,7 +55,7 @@ SceneDirector
 | `transition_easing` | LINEAR、SMOOTH、EASE_IN、EASE_OUT、EASE_IN_OUT |
 | `shake_enabled` | 开启确定性局部抖动 |
 | `shake_position_amplitude` / `shake_rotation_degrees` | Shot 局部空间中的最大位置和旋转幅度 |
-| `shake_frequency`、`shake_fade_in_seconds`、`shake_fade_out_seconds` | 噪声频率与 ENTER／RETURN 包络 |
+| `shake_frequency`、`shake_fade_in_seconds`、`shake_fade_out_seconds` | 噪声频率（检查器最小值0.01）与 ENTER／RETURN 包络；渐入／渐出不会超过对应阶段时长 |
 | `shake_seed` | 固定切片与截图复现；相同 seed、阶段和时间得到相同偏移 |
 
 ### 阶段、返回边界与抖动
@@ -64,13 +64,13 @@ SceneDirector
 2. **HOLD** 固定在作者机位。抖动只叠加在运行中的 `PresentationCamera` 上，不写 Shot、玩家相机或共享资源。
 3. **RETURN** 持续读取玩家最新 Transform、武器视野和遮挡焦点，结束后再切回源相机。
 
-抖动位置与旋转都使用 Shot 局部基，seed 固定；遮罩资源只被引用。镜头中途死亡、加载、区域复位、控制器卸载、玩家相机删除／失效、活动 Shot 删除或外部相机接管都会停止采样并清理。外部系统已经取得的相机不会被旧镜头抢回。
+抖动位置与旋转都使用 Shot 局部基，seed 固定；噪声源使用单位频率，作者 `shake_frequency` 只应用一次。渐入／渐出按 ENTER／RETURN 实际时长截断，返回完成时幅度为0。遮罩资源只被引用。`pause_world=false` 时若玩家仍在移动，遮挡焦点也会随玩家更新，并在 RETURN 重读最新位置。镜头中途死亡、加载、区域复位、控制器卸载、玩家相机删除／失效、活动 Shot 删除或外部相机接管都会停止采样并清理。外部系统已经取得的相机不会被旧镜头抢回。
 
 ### 暂停、对话与鼠标
 
-生产对话请求会占用 SceneDirector 前台并锁住玩家，但 `SceneInteractionExecutor` 使用 `hold_request_controls(request, false, true)`，不会暂停世界。因此对话＋Shot 会话中，`pause_world=true` 的 Shot 是唯一的真实世界暂停；镜头结束会恢复世界，同时对话仍在运行且玩家仍锁定。`pause_world=false` 时即使对话仍在进行，世界也不暂停。镜头与对话可以任意顺序结束，但不要为对话额外制造世界暂停令牌。死亡或加载仍会取消 Shot；普通暂停菜单不会叠开。
+生产对话请求会占用 SceneDirector 前台并锁住玩家，但 `SceneInteractionExecutor` 使用 `hold_request_controls(request, false, true)`，不会暂停世界。因此对话＋Shot 会话中，`pause_world=true` 的 Shot 是唯一的真实世界暂停；镜头结束会恢复世界，同时对话仍在运行且玩家仍锁定。`pause_world=false` 时即使对话仍在进行，世界也不暂停。镜头与对话可以任意顺序结束，但不要为对话额外制造世界暂停令牌。死亡或加载仍会取消 Shot；Shot 播放时普通暂停菜单不会叠开，菜单或非对话管理控制先占用时剧本／Debug Shot 也不得反向切入。
 
-控制器切入前先验证 Shot 和当前源相机，再创建 SceneRequest、取得暂停并切换相机。任一步失败都会释放已经取得的令牌。取消统一走 `cancel_shot()`，死亡、切场、区域复位和卸载不另写一套恢复逻辑。
+控制器切入前先验证 Shot、直接快照和当前源相机，再创建 SceneRequest、取得暂停并切换相机。直接 `play_shot()` 的请求明确为 SCENE scope；Wave 镜头是 REGION scope；`PLAY_CINEMATIC_SHOT` 继承所属规则 scope。区域复位只取消本站区域的 REGION 镜头，SCENE 镜头继续并按自身结束路径恢复。任一步失败都会在取得相机或遮挡租约前返回，且不会泄漏暂停。取消统一走 `cancel_shot()`，死亡、切场、区域复位和卸载不另写一套恢复逻辑。
 
 ### 玩家相机边界
 

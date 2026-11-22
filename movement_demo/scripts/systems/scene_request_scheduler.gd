@@ -64,6 +64,11 @@ func advance(_delta: float) -> void:
 			_queue.erase(id)
 			continue
 		if _foreground != 0 and not request._background: continue
+		var director = _director.get_ref()
+		if not request._background and is_instance_valid(director) \
+				and director.has_method("can_start_queued_request") \
+				and not bool(director.call("can_start_queued_request", request)):
+			continue
 		_queue.erase(id)
 		_start(request)
 		if not request._background: break
@@ -122,6 +127,14 @@ func foreground_kind() -> StringName:
 	if _foreground == 0: return &""
 	var request: Request = _requests.get(_foreground)
 	return request.kind if request != null else &""
+
+func has_queued_non_dialogue_foreground() -> bool:
+	for id in _queue:
+		var request: Request = _requests.get(id)
+		if request != null and not request._background \
+				and request.parent_id == 0 and request.kind != &"dialogue":
+			return true
+	return false
 
 func snapshot() -> Dictionary:
 	var requests: Array[Dictionary] = []

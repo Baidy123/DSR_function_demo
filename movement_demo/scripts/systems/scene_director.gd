@@ -172,7 +172,10 @@ func advance(delta: float) -> void:
 		else: _finish_presentation()
 	if not can_run_actions(): return
 	_flows.advance(delta)
-	if _completion_pending and state == &"running" and _active_presentation == 0 and _guide == null and _requests.snapshot().foreground == 0 and Engine.get_process_frames() > _completion_frame:
+	if _completion_pending and state == &"running" and _active_presentation == 0 \
+			and not _cinematic_barrier_active() and _guide == null \
+			and _requests.snapshot().foreground == 0 \
+			and Engine.get_process_frames() > _completion_frame:
 		_finish_completion()
 
 func can_run_actions() -> bool:
@@ -275,6 +278,7 @@ func _on_waves_completed() -> void:
 	if _bindings.get("auto_complete_waves", true): request_completion()
 
 func _finish_completion() -> void:
+	if _cinematic_barrier_active(): return
 	if is_instance_valid(_health) and _health.get("is_dead") == true:
 		_on_player_died()
 		return
@@ -293,6 +297,12 @@ func _finish_completion() -> void:
 		else: _level_flow.show_completion()
 		_completion_executing = false
 	if completion != null: completion._settle(&"completed")
+
+func _cinematic_barrier_active() -> bool:
+	if _cinematic_request != null and not _cinematic_request.is_terminal():
+		return true
+	return is_instance_valid(_cinematic_controller) \
+		and _cinematic_controller.get_snapshot().get("phase", &"idle") != &"idle"
 
 func request_restart() -> void:
 	if state == &"dead": _request_transition({"reload": true, "mode": &"retry_level"})
@@ -482,7 +492,8 @@ func _present_committed_wave(wave: Node) -> void:
 		var shot := wave.get_node_or_null(shot_path)
 		var controller = _bindings.get("cinematic_controller")
 		if controller != null and shot is CinematicShot3D:
-			var admission: Dictionary = controller.play_shot(shot)
+			var admission: Dictionary = controller.play_shot(
+				shot, CinematicCameraController.SCOPE_REGION)
 			if not admission.accepted and admission.result != &"busy":
 				report_action_error("camera", "Cinematic shot rejected: %s" % admission.reason)
 			return
@@ -589,7 +600,9 @@ func reset_region(owner: Node = null) -> void:
 	var retiring := owner if owner != null else region_owner()
 	_requests.cancel_scope(retiring, &"region_reset")
 	if retiring != region_owner(): return
-	if _cinematic_request != null:
+	if _cinematic_request != null and _cinematic_request.scope == 1 \
+			and (_cinematic_request.node(&"scope_owner") == null
+				or _cinematic_request.node(&"scope_owner") == retiring):
 		_requests.cancel(_cinematic_request.id, &"region_reset")
 	_armed_presentations.clear()
 	if _active_presentation != 0 and _presentation_scope == 1 and (_camera_request == null or _camera_request.node(&"scope_owner") == retiring): _cancel_presentation()
@@ -710,14 +723,24 @@ func request_action(kind: StringName, context: Dictionary = {}) -> Request:
 	if kind == &"cinematic_shot" and (cinematic_active or _cinematic_request != null):
 		request._settle(&"rejected", &"busy")
 		return request
+	if kind == &"cinematic_shot" and _pauses != null \
+			and _pauses.has_non_dialogue_control_owner():
+		request._settle(&"rejected", &"busy")
+		return request
 	if kind == &"cinematic_shot" \
-			and _requests.foreground_kind() not in [&"", &"dialogue"]:
+			and (_requests.foreground_kind() not in [&"", &"dialogue"]
+				or _requests.has_queued_non_dialogue_foreground()):
 		request._settle(&"rejected", &"busy")
 		return request
 	var previous = _requests.duplicate_for(request)
 	if previous != null: return previous
 	_requests.submit(request)
 	return request
+
+func can_start_queued_request(request: Request) -> bool:
+	if request == null or request._background: return true
+	return not is_instance_valid(_cinematic_controller) \
+		or _cinematic_controller.get_snapshot().get("phase", &"idle") == &"idle"
 
 func _contains_node(value: Variant) -> bool:
 	if value is Node or value is WeakRef: return true

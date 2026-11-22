@@ -4,6 +4,8 @@ const ControllerScene = preload("res://scenes/cinematic/cinematic_camera_control
 const ShotScene = preload("res://scenes/cinematic/cinematic_shot_3d.tscn")
 const SceneDirectorScene = preload("res://scenes/world/scene_director.tscn")
 const Pauses = preload("res://scripts/systems/scene_pause_coordinator.gd")
+const FlowAction = preload("res://scripts/systems/scene_flow_action.gd")
+const FlowRule = preload("res://scripts/systems/scene_flow_rule.gd")
 
 var checks := 0
 var failures := 0
@@ -71,6 +73,41 @@ class ReentrantScript extends Node:
 		request = null
 		active.complete()
 
+class QueueShotAndForeground extends Node:
+	var controller: Node
+	var director: Node
+	var shot: Camera3D
+	var foreground_target: Node
+	var shot_request
+	var foreground_request
+	var request
+
+	func scene_action_is_background() -> bool:
+		return true
+
+	func begin_scene_action(value) -> void:
+		request = value
+		shot_request = director.request_action(&"cinematic_shot", {
+			"source": controller,
+			"target": shot,
+			"origin": &"cinematic",
+			"parameters": {"snapshot": shot.runtime_snapshot()},
+		})
+		foreground_request = director.request_action(&"shop", {
+			"source": foreground_target,
+			"target": foreground_target,
+			"origin": &"rule",
+		})
+
+	func cancel_scene_action(_value, _reason: StringName) -> void:
+		request = null
+
+	func complete_script() -> void:
+		var active = request
+		request = null
+		if active != null:
+			active.complete()
+
 func _initialize() -> void:
 	_run.call_deferred()
 
@@ -81,13 +118,17 @@ func _run() -> void:
 	await _test_paused_clock_advances()
 	await _test_second_shot_is_busy()
 	await _test_dialogue_and_shot_coexist()
-	await _test_reset_cancels_shot()
+	await _test_region_reset_preserves_scene_shot()
+	await _test_flow_shot_carries_rule_scope()
 	await _test_death_cancels_shot()
 	await _test_loading_cancels_shot()
 	await _test_unload_cancels_shot()
 	await _test_foreground_blocks_shot()
+	await _test_dialogue_queued_foreground_and_shot_exclusion()
 	await _test_shot_blocks_foreground()
 	await _test_pause_menu_blocked()
+	await _test_pause_menu_prevents_shot()
+	await _test_completion_waits_for_unpaused_shot()
 	await _test_invalid_shot_rejected_before_request()
 	await _test_no_source_camera_rejected_before_request()
 	await _test_unpaused_shot_clock()
@@ -236,15 +277,66 @@ func _test_dialogue_and_shot_coexist() -> void:
 	f.dialogue_provider.complete()
 	await _dispose(f)
 
-func _test_reset_cancels_shot() -> void:
+func _test_region_reset_preserves_scene_shot() -> void:
 	var f := await _fixture()
-	f.controller.play_shot(f.shot)
+	var admission: Dictionary = f.controller.play_shot(f.shot)
+	var request = f.director.find_request(admission.request_id)
+	var presentation: Camera3D = f.controller.get_node("PresentationCamera")
+	check(admission.accepted and request != null and request.scope == 0,
+		"Direct play_shot admission is explicitly scene-scoped")
 	f.director.reset_region()
-	check(f.controller.get_snapshot().phase == &"idle" and f.source.is_current(),
-		"Region reset cancels the Shot and restores the player camera")
-	check(not paused and Pauses.for_tree(self).snapshot().count == 0,
-		"Region reset releases the Shot pause without unrelated owners")
+	check(request != null and request.status == &"running"
+			and f.controller.get_snapshot().phase != &"idle"
+			and presentation.is_current(),
+		"Region reset preserves a direct scene-scoped Shot")
+	check(paused and Pauses.for_tree(self).snapshot().reasons == [&"cinematic_shot"],
+		"Preserving a scene Shot also preserves only its own pause owner")
+	f.controller.cancel_shot(&"test_cleanup")
+	var region_entry = f.director.request_action(&"cinematic_shot", {
+		"source": f.controller,
+		"target": f.shot,
+		"origin": &"wave",
+		"scope": 1,
+		"scope_owner": f.director.region_owner(),
+		"parameters": {"snapshot": f.shot.runtime_snapshot()},
+	})
+	check(region_entry.status == &"running" and region_entry.scope == 1,
+		"A region-scoped cinematic request starts")
+	f.director.reset_region()
+	check(region_entry.status == &"cancelled"
+			and region_entry.reason == &"region_reset"
+			and f.controller.get_snapshot().phase == &"idle"
+			and f.source.is_current(),
+		"Region reset still cancels a regional Shot and restores the player camera")
 	await _dispose(f)
+
+func _test_flow_shot_carries_rule_scope() -> void:
+	for rule_scope in [FlowRule.Scope.SCENE, FlowRule.Scope.REGION]:
+		var f := await _fixture()
+		var action := FlowAction.new()
+		action.kind = FlowAction.Kind.PLAY_CINEMATIC_SHOT
+		action.target_path = ^"CinematicShots/TestShot"
+		var rule := FlowRule.new()
+		rule.label = "scope-%s" % rule_scope
+		rule.scope = rule_scope
+		rule.actions.append(action)
+		f.director._flows.configure([rule])
+		f.director.advance(0.0)
+		var request = f.director.find_request(f.controller.get_snapshot().request_id)
+		check(request != null and request.scope == rule_scope
+				and f.controller.get_snapshot().phase != &"idle",
+			"PLAY_CINEMATIC_SHOT carries its rule scope: %s" % rule_scope)
+		f.director.reset_region()
+		if rule_scope == FlowRule.Scope.SCENE:
+			check(request != null and request.status == &"running"
+					and f.controller.get_snapshot().phase != &"idle",
+				"Region reset preserves a scene-scoped flow Shot")
+			f.controller.cancel_shot(&"test_cleanup")
+		else:
+			check(request != null and request.status == &"cancelled"
+					and f.controller.get_snapshot().phase == &"idle",
+				"Region reset cancels a region-scoped flow Shot")
+		await _dispose(f)
 
 func _test_death_cancels_shot() -> void:
 	var f := await _fixture()
@@ -310,6 +402,74 @@ func _test_foreground_blocks_shot() -> void:
 	f.director.cancel_request(guide_request.id, &"test_cleanup")
 	await _dispose(f)
 
+func _test_dialogue_queued_foreground_and_shot_exclusion() -> void:
+	for queued_kind in [&"shop", &"guide", &"presentation"]:
+		var f := await _fixture()
+		var dialogue = f.director.request_action(&"dialogue", {
+			"source": f.dialogue_provider, "target": f.dialogue_provider,
+			"player": f.player, "origin": &"interaction",
+		})
+		var queued
+		if queued_kind == &"guide":
+			var guide := GuideSource.new()
+			guide.name = "QueuedGuide"
+			f.scene.add_child(guide)
+			queued = f.director.request_action(&"guide", {
+				"source": f.host, "target": guide, "origin": &"rule",
+				"parameters": {"pause_world": false},
+			})
+		elif queued_kind == &"presentation":
+			queued = f.director.request_action(&"presentation", {
+				"source": f.host, "target": f.player, "origin": &"rule",
+			})
+		else:
+			queued = f.director.request_action(&"shop", {
+				"source": f.dialogue_provider, "target": f.dialogue_provider,
+				"player": f.player, "origin": &"rule",
+			})
+		var admission: Dictionary = f.controller.play_shot(f.shot)
+		check(dialogue.status == &"running" and queued.status == &"queued"
+				and not admission.accepted and admission.result == &"busy",
+			"A queued %s foreground blocks Shot admission" % queued_kind)
+		check(f.controller.get_snapshot().phase == &"idle"
+				and f.source.is_current() and not paused
+				and f.director.debug_snapshot().requests.requests.size() == 2,
+			"A queued %s rejection creates no camera or pause ownership" % queued_kind)
+		f.director.cancel_request(queued.id, &"test_cleanup")
+		f.dialogue_provider.complete()
+		await _dispose(f)
+
+	var f := await _fixture()
+	var dialogue = f.director.request_action(&"dialogue", {
+		"source": f.dialogue_provider, "target": f.dialogue_provider,
+		"player": f.player, "origin": &"interaction",
+	})
+	var queueing := QueueShotAndForeground.new()
+	queueing.name = "QueueShotAndForeground"
+	queueing.controller = f.controller
+	queueing.director = f.director
+	queueing.shot = f.shot
+	queueing.foreground_target = f.dialogue_provider
+	f.scene.add_child(queueing)
+	var outer = f.director.request_action(&"script", {
+		"source": f.host, "target": queueing, "origin": &"rule",
+		"parameters": {"mode": &"provider"},
+	})
+	check(dialogue.status == &"running" and outer.status == &"running"
+			and queueing.shot_request.status == &"queued"
+			and queueing.foreground_request.status == &"queued",
+		"Dialogue can queue a Shot followed by a non-dialogue foreground")
+	f.dialogue_provider.complete()
+	queueing.complete_script()
+	f.director.advance(0.0)
+	check(f.controller.get_snapshot().phase != &"idle"
+			and queueing.foreground_request.status == &"queued"
+			and f.dialogue_provider.active_id == 0,
+		"A queued non-dialogue foreground cannot start while the Shot is active")
+	f.director.cancel_request(queueing.foreground_request.id, &"test_cleanup")
+	f.controller.cancel_shot(&"test_cleanup")
+	await _dispose(f)
+
 func _test_shot_blocks_foreground() -> void:
 	var f := await _fixture()
 	var admission: Dictionary = f.controller.play_shot(f.shot)
@@ -349,6 +509,89 @@ func _test_pause_menu_blocked() -> void:
 	f.controller.cancel_shot(&"test_cleanup")
 	await _dispose(f)
 
+func _test_pause_menu_prevents_shot() -> void:
+	var f := await _fixture()
+	f.director.request_pause_menu()
+	var menu: CanvasLayer = f.director.get_node("PauseMenu")
+	var admission: Dictionary = f.controller.play_shot(f.shot)
+	check(menu.visible and paused and f.director.get("_menu_token") != 0
+			and not admission.accepted and admission.result == &"busy",
+		"A scripted Shot is rejected while the normal pause menu owns control")
+	check(f.controller.get_snapshot().phase == &"idle"
+			and f.source.is_current()
+			and Pauses.for_tree(self).snapshot().reasons == [&"pause_menu"],
+		"Pause-menu rejection switches no camera and leaks no cinematic pause")
+	check(f.director.debug_snapshot().requests.requests.is_empty(),
+		"Pause-menu rejection creates no queued or active cinematic request")
+	if f.controller.get_snapshot().phase != &"idle":
+		f.controller.cancel_shot(&"test_reset")
+	f.director.resume_from_pause_menu()
+
+	var owner := Node.new()
+	owner.name = "ExternalPauseOwner"
+	f.scene.add_child(owner)
+	var token: int = Pauses.for_tree(self).acquire(owner, &"test_pause_owner", true, true)
+	admission = f.controller.play_shot(f.shot)
+	check(token != 0 and paused and not admission.accepted and admission.result == &"busy",
+		"A managed non-dialogue pause owner blocks scripted Shot admission")
+	check(f.controller.get_snapshot().phase == &"idle"
+			and f.source.is_current()
+			and Pauses.for_tree(self).snapshot().reasons == [&"test_pause_owner"],
+		"Managed-pause rejection preserves the existing owner and player camera")
+	Pauses.for_tree(self).release(token)
+	await _dispose(f)
+
+func _test_completion_waits_for_unpaused_shot() -> void:
+	var f := await _fixture()
+	f.shot.pause_world = false
+	f.shot.enter_seconds = 0.1
+	f.shot.hold_seconds = 0.1
+	f.shot.return_seconds = 0.1
+	var action := FlowAction.new()
+	action.kind = FlowAction.Kind.COMPLETE_SCENE
+	var rule := FlowRule.new()
+	rule.label = "completion-barrier"
+	rule.actions.append(action)
+	f.director._flows.configure([rule])
+	var admission: Dictionary = f.controller.play_shot(f.shot)
+	f.director.advance(0.0)
+	await process_frame
+	f.director.advance(0.0)
+	check(admission.accepted and f.controller.get_snapshot().phase == &"enter"
+			and f.director.state == &"running"
+			and bool(f.director.debug_snapshot().completion_pending),
+		"COMPLETE_SCENE does not promote an active unpaused Shot to victory")
+	f.director.advance(0.31)
+	check(f.director.state == &"completed"
+			and f.controller.get_snapshot().phase == &"idle"
+			and f.source.is_current(),
+		"COMPLETE_SCENE promotes only after the unpaused Shot finishes and restores the player camera")
+	await _dispose(f)
+
+	f = await _fixture()
+	f.shot.pause_world = false
+	f.shot.enter_seconds = 0.1
+	f.shot.hold_seconds = 0.1
+	f.shot.return_seconds = 0.1
+	f.director._bindings["auto_complete_waves"] = true
+	admission = f.controller.play_shot(f.shot)
+	f.host._runtime.encounter_completed.emit()
+	check(admission.accepted and f.controller.get_snapshot().phase == &"enter"
+			and f.director.state == &"running"
+			and bool(f.director.debug_snapshot().completion_pending),
+		"Automatic wave completion waits for an active unpaused Shot")
+	await process_frame
+	f.director.advance(0.1)
+	check(f.controller.get_snapshot().phase != &"idle"
+			and f.director.state == &"running",
+		"Automatic completion remains pending during the Shot's later phases")
+	f.director.advance(0.21)
+	check(f.director.state == &"completed"
+			and f.controller.get_snapshot().phase == &"idle"
+			and f.source.is_current(),
+		"Automatic completion finishes after the Shot and camera restoration")
+	await _dispose(f)
+
 func _test_invalid_shot_rejected_before_request() -> void:
 	var f := await _fixture()
 	var malformed := MalformedShot.new()
@@ -358,6 +601,36 @@ func _test_invalid_shot_rejected_before_request() -> void:
 	check(not malformed_result.accepted and malformed_result.result == &"invalid_shot"
 			and f.director.debug_snapshot().requests.requests.is_empty(),
 		"Malformed runtime Snapshot is rejected before creating a request")
+	var direct_snapshot: Dictionary = f.shot.runtime_snapshot()
+	direct_snapshot.erase("shake_frequency")
+	var direct_malformed = f.director.request_action(&"cinematic_shot", {
+		"source": f.controller,
+		"target": f.shot,
+		"origin": &"cinematic",
+		"parameters": {"snapshot": direct_snapshot},
+	})
+	check(direct_malformed.status == &"failed"
+			and direct_malformed.reason == &"invalid_shot"
+			and f.controller.get_snapshot().phase == &"idle"
+			and f.source.is_current() and not paused
+			and f.director.debug_snapshot().requests.requests.is_empty(),
+		"A direct malformed cinematic snapshot rejects before ownership")
+	direct_snapshot = f.shot.runtime_snapshot()
+	direct_snapshot["shake_frequency"] = 0.0
+	var direct_zero = f.director.request_action(&"cinematic_shot", {
+		"source": f.controller,
+		"target": f.shot,
+		"origin": &"cinematic",
+		"parameters": {"snapshot": direct_snapshot},
+	})
+	check(direct_zero.status == &"failed"
+			and direct_zero.reason == &"invalid_shot"
+			and f.controller.get_snapshot().phase == &"idle"
+			and f.source.is_current() and not paused
+			and f.director.debug_snapshot().requests.requests.is_empty(),
+		"A direct zero-frequency snapshot rejects before camera or pause ownership")
+	if f.controller.get_snapshot().phase != &"idle":
+		f.controller.cancel_shot(&"test_reset")
 	f.shot.enter_seconds = NAN
 	var invalid_result: Dictionary = f.controller.play_shot(f.shot)
 	check(not invalid_result.accepted and invalid_result.result == &"invalid_enter_seconds"

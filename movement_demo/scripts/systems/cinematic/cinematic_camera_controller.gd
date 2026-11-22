@@ -5,6 +5,8 @@ signal shot_started(request_id: int, shot: CinematicShot3D)
 signal shot_phase_changed(request_id: int, phase: StringName)
 signal shot_finished(request_id: int, result: StringName)
 
+const SCOPE_SCENE := 0
+const SCOPE_REGION := 1
 const Shot = preload("res://scripts/systems/cinematic/cinematic_shot_3d.gd")
 const Pauses = preload("res://scripts/systems/scene_pause_coordinator.gd")
 
@@ -25,11 +27,13 @@ func _ready() -> void:
 func bind_director(director: Node) -> void:
 	_director = director
 
-func play_shot(shot: CinematicShot3D) -> Dictionary:
+func play_shot(shot: CinematicShot3D, scope: int = SCOPE_SCENE) -> Dictionary:
 	if _phase != &"idle":
 		return _admission(&"busy")
 	if not is_instance_valid(_director):
 		return _admission(&"no_director")
+	if scope not in [SCOPE_SCENE, SCOPE_REGION]:
+		return _admission(&"invalid_scope")
 	if not is_instance_valid(shot) or not (shot is CinematicShot3D):
 		return _admission(&"invalid_shot")
 	var error: StringName = shot.configuration_error()
@@ -47,6 +51,8 @@ func play_shot(shot: CinematicShot3D) -> Dictionary:
 		"source": self,
 		"target": shot,
 		"origin": &"cinematic",
+		"scope": scope,
+		"scope_owner": _director.region_owner(),
 		"parameters": {"snapshot": snapshot},
 	})
 	if not request.has_started() or request.is_terminal():
@@ -202,8 +208,9 @@ func _snapshot_error(snapshot: Dictionary) -> StringName:
 		var vector: Variant = snapshot.get(key)
 		if not vector is Vector3 or not (vector as Vector3).is_finite():
 			return &"invalid_shot"
-	for key in ["shake_frequency", "shake_fade_in_seconds", "shake_fade_out_seconds"]:
+	for key in ["shake_fade_in_seconds", "shake_fade_out_seconds"]:
 		if not _finite_number(snapshot, key, 0.0): return &"invalid_shot"
+	if not _finite_number(snapshot, "shake_frequency", 0.01): return &"invalid_shot"
 	if not snapshot.get("shake_seed") is int: return &"invalid_shot"
 	return &""
 

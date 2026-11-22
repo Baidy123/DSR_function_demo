@@ -80,6 +80,12 @@ func can_advance_cinematic(token: int) -> bool:
 			return false
 	return true
 
+func has_non_dialogue_control_owner() -> bool:
+	for entry in _tokens.values():
+		if entry.reason != &"dialogue":
+			return true
+	return false
+
 func _has_pause_owner() -> bool:
 	for entry in _tokens.values():
 		if entry.pause: return true
