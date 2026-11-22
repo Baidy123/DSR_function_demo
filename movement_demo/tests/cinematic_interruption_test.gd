@@ -62,7 +62,6 @@ func _run() -> void:
 	await _case_region_reset_cancel()
 	await _case_controller_unload_cancel()
 	await _case_source_camera_removed()
-	await _case_source_camera_not_current()
 	await _case_shot_removed_during_play()
 	await _case_second_shot_busy()
 	await _case_debug_cancel()
@@ -72,7 +71,7 @@ func _run() -> void:
 	await _case_failed_spawn_has_no_shot()
 	await _case_two_waves_same_frame_busy()
 	await _case_no_source_camera()
-	await _case_external_camera_takeover()
+	await _case_source_not_current_external_takeover()
 	await _case_pause_menu_blocked()
 	await _case_return_source_lost()
 	if OS.get_cmdline_user_args().has("--capture"):
@@ -85,21 +84,34 @@ func _run() -> void:
 func _case_death_during_phase(phase_name: String) -> void:
 	var f := await _fixture()
 	_configure_long_shot(f.shot)
+	_enable_cinematic_shake(f.shot)
+	var source_transform: Transform3D = f.source.global_transform
+	var source_lens := _source_lens(f.source)
+	var player_transform: Transform3D = f.player.global_transform
 	var admission: Dictionary = f.controller.play_shot(f.shot)
 	var request = f.director.find_request(admission.request_id)
-	if phase_name == "hold":
-		f.director.advance(0.5)
-	elif phase_name == "return":
-		f.director.advance(1.0)
+	if phase_name == "enter":
+		f.director.advance(0.25)
+	elif phase_name == "hold":
+		f.director.advance(0.75)
+	else:
+		f.director.advance(1.25)
 	_check(f.controller.get_snapshot().phase == StringName(phase_name)
-			and request != null and request.status == &"running",
-		"death fixture reaches %s" % phase_name)
+			and request != null and request.status == &"running"
+			and f.presentation.get("_shake_position_noise") != null,
+		"death fixture reaches %s with deterministic shake active" % phase_name)
 	f.health.die()
 	_check(request != null and request.status == &"cancelled",
 		"death during %s returns cancelled" % phase_name)
 	_check(not f.presentation.is_current()
-			and f.presentation.global_transform.is_equal_approx(f.source.global_transform),
-		"death during %s leaves no presentation transform or shake offset" % phase_name)
+			and f.presentation.global_transform.is_equal_approx(f.source.global_transform)
+			and f.presentation.get("_shake_position_noise") == null
+			and f.presentation.get("_shake_rotation_noise") == null,
+		"death during %s clears presentation shake and restores its source transform" % phase_name)
+	_check(f.source.global_transform.is_equal_approx(source_transform)
+			and _source_lens(f.source) == source_lens
+			and f.player.global_transform.is_equal_approx(player_transform),
+		"death during %s leaves the player camera lens and player transform unshaken" % phase_name)
 	var death_pause: Array[StringName] = [&"death"]
 	_assert_clean(f, "death during " + phase_name, death_pause)
 	await _dispose(f)
@@ -152,12 +164,15 @@ func _case_controller_unload_cancel() -> void:
 	var presentation: Camera3D = f.presentation
 	f.controller.free()
 	await _steps(2)
+	var requests: Dictionary = f.director.debug_snapshot().requests
 	_check(request != null and request.status == &"cancelled",
 		"controller unload settles the cinematic request as cancelled")
 	_check(f.source.is_current()
 			and (not is_instance_valid(presentation) or not presentation.is_presenting())
-			and Pauses.for_tree(self).snapshot().count == 0,
-		"controller unload clears camera ownership, subscriptions, and pause")
+			and Pauses.for_tree(self).snapshot().count == 0
+			and (requests.requests as Array).is_empty()
+			and int(requests.foreground) == 0,
+		"controller unload clears camera, subscriptions, scheduler requests, and pause")
 	_check(Input.mouse_mode == Input.MOUSE_MODE_VISIBLE and not paused,
 		"controller unload leaves mouse and world state clean")
 	await _dispose(f, false)
@@ -169,32 +184,20 @@ func _case_source_camera_removed() -> void:
 	var source: Camera3D = f.source
 	source.queue_free()
 	await _steps(2)
+	var requests: Dictionary = f.director.debug_snapshot().requests
 	_check(request != null and request.status == &"failed"
 			and request.reason == &"source_lost",
 		"removing the player camera ends playback with source_lost")
 	_check(f.controller.get_snapshot().phase == &"idle"
 			and not f.presentation.is_current()
-			and Pauses.for_tree(self).snapshot().count == 0 and not paused,
+			and f.presentation.get("_shake_position_noise") == null
+			and f.presentation.get("_shake_rotation_noise") == null
+			and Pauses.for_tree(self).snapshot().count == 0 and not paused
+			and (requests.requests as Array).is_empty()
+			and int(requests.foreground) == 0,
 		"source removal releases camera and pause ownership without stealing another camera")
 	_check(Input.mouse_mode == Input.MOUSE_MODE_VISIBLE,
 		"source removal restores visible mouse state")
-	await _dispose(f)
-
-func _case_source_camera_not_current() -> void:
-	var f := await _fixture()
-	var admission: Dictionary = f.controller.play_shot(f.shot)
-	var request = f.director.find_request(admission.request_id)
-	var takeover := Camera3D.new()
-	takeover.name = "ExternalCamera"
-	f.scene.add_child(takeover)
-	takeover.make_current()
-	f.director.advance(0.0)
-	_check(request != null and request.status == &"failed"
-			and request.reason == &"camera_lost",
-		"a source that is no longer current ends playback as camera_lost")
-	_check(takeover.is_current() and not f.presentation.is_current(),
-		"source-not-current cleanup abandons ownership to the external camera")
-	_assert_clean(f, "source not current", [], takeover)
 	await _dispose(f)
 
 func _case_shot_removed_during_play() -> void:
@@ -271,18 +274,21 @@ func _case_dialogue_and_shot_coexist() -> void:
 		"source": f.dialogue_provider, "target": f.dialogue_provider,
 		"player": f.player, "origin": &"interaction",
 	})
-	var dialogue_token: int = Pauses.for_tree(self).acquire(
-		f.dialogue_provider, &"dialogue", true, true)
+	_check(dialogue.status == &"running" and f.player.is_in_dialogue
+			and int(f.director.debug_snapshot().requests.foreground) == dialogue.id
+			and not paused,
+		"production dialogue locks the player and owns foreground without pausing the world")
 	var admission: Dictionary = f.controller.play_shot(f.shot)
 	_check(dialogue.status == &"running" and admission.accepted
 			and paused
-			and Pauses.for_tree(self).snapshot().reasons.count(&"dialogue") == 2,
-		"a Shot can start during dialogue while both pause owners coexist")
+			and Pauses.for_tree(self).snapshot().reasons == [&"dialogue", &"cinematic_shot"],
+		"a pausing Shot adds the only world pause during production dialogue")
 	f.dialogue_provider.complete()
-	Pauses.for_tree(self).release(dialogue_token)
 	_check(dialogue.status == &"completed" and paused
-			and f.controller.get_snapshot().phase == &"enter",
-		"dialogue can finish first without releasing the Shot pause")
+			and f.controller.get_snapshot().phase == &"enter"
+			and not f.player.is_in_dialogue
+			and Pauses.for_tree(self).snapshot().reasons == [&"cinematic_shot"],
+		"dialogue can finish first while the Shot keeps the only real world pause")
 	f.director.advance(0.31)
 	_assert_clean(f, "dialogue before Shot")
 	await _dispose(f)
@@ -295,20 +301,41 @@ func _case_dialogue_and_shot_coexist() -> void:
 		"source": f.dialogue_provider, "target": f.dialogue_provider,
 		"player": f.player, "origin": &"interaction",
 	})
-	dialogue_token = Pauses.for_tree(self).acquire(
-		f.dialogue_provider, &"dialogue", true, true)
 	_check(shot_admission.accepted and dialogue.status == &"running"
-			and Pauses.for_tree(self).snapshot().reasons.count(&"dialogue") == 2,
-		"dialogue can start after a Shot while both pause owners coexist")
+			and f.player.is_in_dialogue
+			and int(f.director.debug_snapshot().requests.foreground) == dialogue.id
+			and Pauses.for_tree(self).snapshot().reasons == [&"cinematic_shot", &"dialogue"],
+		"dialogue can start after a pausing Shot and still adds no world pause")
 	f.director.advance(0.31)
 	_check(shot_request != null and shot_request.status == &"completed"
-			and paused
-			and Pauses.for_tree(self).snapshot().reasons.count(&"dialogue") == 2
+			and not paused
+			and f.dialogue_provider.active_id == dialogue.id
+			and f.player.is_in_dialogue
+			and Pauses.for_tree(self).snapshot().reasons == [&"dialogue"]
 			and not Pauses.for_tree(self).snapshot().reasons.has(&"cinematic_shot"),
-		"the Shot can finish first without releasing dialogue pause")
+		"the Shot can finish first and resume the world while dialogue stays locked")
 	f.dialogue_provider.complete()
-	Pauses.for_tree(self).release(dialogue_token)
 	_assert_clean(f, "Shot before dialogue")
+	await _dispose(f)
+
+	f = await _fixture()
+	_configure_short_shot(f.shot)
+	f.shot.pause_world = false
+	dialogue = f.director.request_action(&"dialogue", {
+		"source": f.dialogue_provider, "target": f.dialogue_provider,
+		"player": f.player, "origin": &"interaction",
+	})
+	admission = f.controller.play_shot(f.shot)
+	_check(dialogue.status == &"running" and admission.accepted
+			and f.player.is_in_dialogue and not paused
+			and Pauses.for_tree(self).snapshot().reasons == [&"dialogue"],
+		"pause_world=false Shot and production dialogue leave the world running")
+	f.dialogue_provider.complete()
+	_check(not f.player.is_in_dialogue
+			and f.controller.get_snapshot().phase == &"enter",
+		"ending dialogue first leaves the unpaused Shot active")
+	f.director.advance(0.31)
+	_assert_clean(f, "unpaused dialogue before Shot")
 	await _dispose(f)
 
 func _case_no_pause_death_cancel() -> void:
@@ -343,13 +370,19 @@ func _case_no_pause_load_cancel() -> void:
 
 func _case_failed_spawn_has_no_shot() -> void:
 	var f := await _failed_wave_fixture()
+	_check(f.shot is CinematicShot3D
+			and f.wave.get_node_or_null(f.wave.cinematic_shot_path) == f.shot,
+		"failed-spawn Wave resolves its configured valid CinematicShot3D path")
 	var request: bool = f.host.request_wave(f.wave)
 	await _steps(8)
 	_check(not request and f.controller.get_snapshot().phase == &"idle",
 		"failed Wave deployment creates no empty Shot")
+	var requests: Dictionary = f.director.debug_snapshot().requests
 	_check(not paused and f.source.is_current()
-			and Pauses.for_tree(self).snapshot().count == 0,
-		"failed Wave deployment acquires no pause and preserves the player camera")
+			and Pauses.for_tree(self).snapshot().count == 0
+			and (requests.requests as Array).is_empty()
+			and int(requests.foreground) == 0,
+		"failed Wave deployment acquires no Shot request, pause, or camera takeover")
 	_assert_clean(f, "failed spawn")
 	await _dispose_wave_fixture(f)
 
@@ -393,10 +426,14 @@ func _case_no_source_camera() -> void:
 	source.make_current()
 	await _dispose(f)
 
-func _case_external_camera_takeover() -> void:
+func _case_source_not_current_external_takeover() -> void:
 	var f := await _fixture()
 	var admission: Dictionary = f.controller.play_shot(f.shot)
 	var request = f.director.find_request(admission.request_id)
+	f.director.advance(0.25)
+	_check(f.controller.get_snapshot().phase == &"enter"
+			and f.presentation.is_cinematic_shot(),
+		"takeover fixture is already presenting a non-idle Shot")
 	var external := Camera3D.new()
 	external.name = "ExternalTakeoverCamera"
 	f.scene.add_child(external)
@@ -404,11 +441,11 @@ func _case_external_camera_takeover() -> void:
 	f.director.advance(0.0)
 	_check(request != null and request.status == &"failed"
 			and request.reason == &"camera_lost",
-		"external camera takeover stops playback with camera_lost")
+		"replacing the no-longer-current source stops playback with camera_lost")
 	_check(external.is_current() and not f.presentation.is_current()
 			and Pauses.for_tree(self).snapshot().count == 0,
 		"cinematic cleanup never reclaims a camera owned by the external system")
-	_assert_clean(f, "external takeover", [], external)
+	_assert_clean(f, "source not current via external takeover", [], external)
 	await _dispose(f)
 
 func _case_pause_menu_blocked() -> void:
@@ -436,12 +473,17 @@ func _case_return_source_lost() -> void:
 		"RETURN source-loss fixture reaches RETURN")
 	var source: Camera3D = f.source
 	source.free()
+	var requests: Dictionary = f.director.debug_snapshot().requests
 	_check(request != null and request.status == &"failed"
 			and request.reason == &"source_lost",
 		"losing the player camera during RETURN safely cancels as source_lost")
 	_check(f.controller.get_snapshot().phase == &"idle"
 			and not f.presentation.is_current()
-			and not paused and Pauses.for_tree(self).snapshot().count == 0,
+			and f.presentation.get("_shake_position_noise") == null
+			and f.presentation.get("_shake_rotation_noise") == null
+			and not paused and Pauses.for_tree(self).snapshot().count == 0
+			and (requests.requests as Array).is_empty()
+			and int(requests.foreground) == 0,
 		"RETURN source loss releases presentation and pause without invalid access")
 	await _dispose(f)
 
@@ -507,20 +549,57 @@ func _configure_short_shot(shot: Camera3D) -> void:
 	shot.hold_seconds = 0.1
 	shot.return_seconds = 0.1
 
+func _enable_cinematic_shake(shot: Camera3D) -> void:
+	shot.shake_enabled = true
+	shot.shake_position_amplitude = Vector3(0.5, 0.25, 0.4)
+	shot.shake_rotation_degrees = Vector3(8.0, 6.0, 5.0)
+	shot.shake_frequency = 9.0
+	shot.shake_fade_in_seconds = 0.05
+	shot.shake_fade_out_seconds = 0.1
+	shot.shake_seed = 7341
+
+func _source_lens(source: Camera3D) -> Dictionary:
+	return {
+		"projection": source.projection,
+		"size": source.size,
+		"fov": source.fov,
+		"h_offset": source.h_offset,
+		"v_offset": source.v_offset,
+		"frustum_offset": source.frustum_offset,
+		"near": source.near,
+		"far": source.far,
+	}
+
 func _assert_clean(f: Dictionary, label: String, expected_reasons: Array[StringName] = [],
 		expected_camera: Camera3D = null) -> void:
 	var snapshot: Dictionary = f.controller.get_snapshot()
 	var pauses: Dictionary = Pauses.for_tree(self).snapshot()
+	var requests: Dictionary = f.director.debug_snapshot().requests
 	var camera: Camera3D = expected_camera if expected_camera != null else f.get("source")
 	_check(snapshot.phase == &"idle", label + ": controller idle")
 	_check(is_instance_valid(camera) and camera.is_current(),
 		label + ": expected camera restored")
+	_check((requests.get("requests", []) as Array).is_empty()
+			and int(requests.get("foreground", 0)) == 0,
+		label + ": no cinematic or foreground request retained")
 	_check(pauses.reasons == expected_reasons,
 		label + ": pause ledger has only the expected owners")
 	_check(paused == (not expected_reasons.is_empty()),
 		label + ": world pause matches expected ownership")
 	_check(Input.mouse_mode == Input.MOUSE_MODE_VISIBLE,
 		label + ": mouse mode visible")
+	var presentation_clear := true
+	var presentation = f.get("presentation")
+	if not is_instance_valid(presentation) and is_instance_valid(f.controller):
+		presentation = f.controller.get_node_or_null("PresentationCamera")
+	if is_instance_valid(presentation):
+		var options = presentation.get("_shot_options")
+		presentation_clear = not presentation.is_presenting() \
+			and presentation.get("_shake_position_noise") == null \
+			and presentation.get("_shake_rotation_noise") == null \
+			and options is Dictionary and (options as Dictionary).is_empty()
+	_check(presentation_clear,
+		label + ": PresentationCamera inactive with no retained shake state")
 
 func _dispose(f: Dictionary, controller_valid: bool = true) -> void:
 	if controller_valid and is_instance_valid(f.controller) \
@@ -545,6 +624,10 @@ func _failed_wave_fixture() -> Dictionary:
 	var source: Camera3D = CameraScene.instantiate() as Camera3D
 	source.name = "Camera3D"
 	region.add_child(source)
+	var shots := Node3D.new()
+	shots.name = "CinematicShots"
+	region.add_child(shots)
+	var failed_shot := _add_wave_shot(shots, "FailedSpawnShot", Vector3(7.0, 5.0, -4.0))
 	var host: Node3D = DirectorScene.instantiate() as Node3D
 	host.name = "SceneDirector"
 	host.set("guide_path", NodePath())
@@ -555,6 +638,7 @@ func _failed_wave_fixture() -> Dictionary:
 	var wave: Node3D = Wave.new()
 	wave.name = "FailedWave"
 	wave.set("start_mode", Wave.StartMode.REQUEST)
+	wave.set("cinematic_shot_path", ^"../../CinematicShots/FailedSpawnShot")
 	host.add_child(wave)
 	root.add_child(region)
 	current_scene = region
@@ -566,6 +650,7 @@ func _failed_wave_fixture() -> Dictionary:
 		"director": host.get("director"),
 		"controller": host.get_node("CinematicCameraController"),
 		"wave": wave,
+		"shot": failed_shot,
 		"source": source,
 	}
 

@@ -68,7 +68,7 @@ SceneDirector
 
 ### 暂停、对话与鼠标
 
-`pause_world=true` 时，控制器通过 `scene_pause_coordinator` 取得自己的令牌；对话也可同时取得令牌，两者独立释放。镜头先结束不会解除对话暂停，对话先结束也不会提前解除镜头暂停。`pause_world=false` 不取得镜头暂停，但死亡或加载仍会取消镜头。镜头播放期间普通暂停菜单不叠加，Esc 不会抢走演出控制。
+生产对话请求会占用 SceneDirector 前台并锁住玩家，但 `SceneInteractionExecutor` 使用 `hold_request_controls(request, false, true)`，不会暂停世界。因此对话＋Shot 会话中，`pause_world=true` 的 Shot 是唯一的真实世界暂停；镜头结束会恢复世界，同时对话仍在运行且玩家仍锁定。`pause_world=false` 时即使对话仍在进行，世界也不暂停。镜头与对话可以任意顺序结束，但不要为对话额外制造世界暂停令牌。死亡或加载仍会取消 Shot；普通暂停菜单不会叠开。
 
 控制器切入前先验证 Shot 和当前源相机，再创建 SceneRequest、取得暂停并切换相机。任一步失败都会释放已经取得的令牌。取消统一走 `cancel_shot()`，死亡、切场、区域复位和卸载不另写一套恢复逻辑。
 

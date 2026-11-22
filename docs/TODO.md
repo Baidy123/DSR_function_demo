@@ -1,6 +1,6 @@
 # Demo 当前进度与待办
 
-- [x] 2026-11-23 剧情演出相机单 Shot：新增 CinematicShot3D、SceneDirector 可见控制器、通用 PresentationCamera 自由机位／正交缩放／透视 FOV／确定性抖动、Wave 与 SceneFlowAction 触发及 Debug 面板。死亡、加载、区域复位、卸载、源相机丢失、Shot 删除、对话独立暂停、外部相机接管和 `pause_world=false` 均走统一取消；真实渲染构图／缩放／抖动／返回已核对。当前明确不做多 Shot 队列。
+- [x] 2026-11-23 剧情演出相机单 Shot：新增 CinematicShot3D、SceneDirector 可见控制器、通用 PresentationCamera 自由机位／正交缩放／透视 FOV／确定性抖动、Wave 与 SceneFlowAction 触发及 Debug 面板。死亡、加载、区域复位、卸载、源相机丢失、Shot 删除、对话锁玩家期间共存、外部相机接管和 `pause_world=false` 均走统一取消；对话本身不暂停世界，Shot 的 `pause_world` 是唯一世界暂停。真实渲染构图／缩放／抖动／返回已核对。当前明确不做多 Shot 队列。
 - [ ] 后续多 Shot 时间线：预留方向为显式序列资源或上层编排，但尚未确认切镜、排队、预加载、打断优先级和编辑器预览方式；当前控制器保持一条活动 Shot，不自动排队。
 
 - [x] 2026-11-14 Esc 暂停菜单：继续游戏、设置内手动操作说明、退出确认；酒馆与五关共用，入场和死亡重开不自动弹说明，保留死亡／切场及其他界面的暂停所有权。见[游玩说明](gameplay/PLAY_GUIDE.md#暂停与设置)。
