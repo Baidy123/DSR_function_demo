@@ -29,78 +29,76 @@ func _run() -> void:
 	if settings_script == null:
 		_finish()
 		return
-	check(settings_script.has_method("should_load_saved_config"),
-		"设置服务区分正式运行与测试脚本")
-	if settings_script.has_method("should_load_saved_config"):
-		check(not settings_script.should_load_saved_config(PackedStringArray(["--script"]), ""),
-			"测试脚本默认忽略开发者本机设置")
-		check(settings_script.should_load_saved_config(PackedStringArray(), ""),
-			"正式游戏启动加载用户设置")
-		check(settings_script.should_load_saved_config(
-			PackedStringArray(["--script"]), test_config),
-			"测试可显式指定隔离设置文件")
+	check(settings_script.should_load_saved_config(PackedStringArray(), ""),
+		"正式游戏启动加载用户设置")
+	check(not settings_script.should_load_saved_config(PackedStringArray(["--script"]), ""),
+		"测试脚本默认忽略开发者本机设置")
+	check(settings_script.should_load_saved_config(
+		PackedStringArray(["--script"]), test_config),
+		"测试可显式指定隔离设置文件")
 
 	var settings = settings_script.new()
-	check(settings.mouse_target_assist_enabled, "默认开启鼠标辅助锁定")
-	check(settings.target_switch_sensitivity == 1, "默认换锁灵敏度为标准档")
 	check(settings.window_mode == 0, "默认使用窗口模式")
 	check(settings.vsync_enabled, "默认开启垂直同步")
-	check(settings.has_method("target_switch_travel_ratio"), "设置服务提供换锁行程换算")
-	if settings.has_method("target_switch_travel_ratio"):
-		settings.target_switch_sensitivity = 0
-		check(is_equal_approx(settings.target_switch_travel_ratio(), 0.16), "低灵敏度需要更长鼠标行程")
-		settings.target_switch_sensitivity = 1
-		check(is_equal_approx(settings.target_switch_travel_ratio(), 0.12), "标准灵敏度沿用当前鼠标行程")
-		settings.target_switch_sensitivity = 2
-		check(is_equal_approx(settings.target_switch_travel_ratio(), 0.08), "高灵敏度缩短鼠标行程")
-	check(settings.has_method("godot_window_mode"), "设置服务提供窗口模式映射")
-	if settings.has_method("godot_window_mode"):
-		settings.window_mode = 0
-		check(settings.godot_window_mode() == DisplayServer.WINDOW_MODE_WINDOWED,
-			"窗口档映射为窗口模式")
-		settings.window_mode = 1
-		check(settings.godot_window_mode() == DisplayServer.WINDOW_MODE_FULLSCREEN,
-			"全屏档映射为无边框全屏")
-		settings.window_mode = 2
-		if OS.get_name() == "macOS":
-			check(settings.godot_window_mode() == DisplayServer.WINDOW_MODE_FULLSCREEN,
-				"独占档在 macOS 回退为无边框全屏")
-		else:
-			check(settings.godot_window_mode() == DisplayServer.WINDOW_MODE_EXCLUSIVE_FULLSCREEN,
-				"独占档映射为独占全屏")
-	check(settings.has_method("available_window_modes"), "设置服务提供平台可用窗口模式")
-	if settings.has_method("available_window_modes"):
-		var modes: Array = settings.available_window_modes()
-		check(modes.has(0) and modes.has(1), "所有平台都提供窗口和无边框全屏")
-		if OS.get_name() == "macOS":
-			check(not modes.has(2), "macOS 不提供不可兑现的独占全屏选项")
-		else:
-			check(modes.has(2), "支持独占全屏的平台保留该选项")
-	var persistence_ready: bool = settings.get("config_path") != null \
-		and settings.has_method("save_settings") \
-		and settings.has_method("load_settings")
-	check(persistence_ready, "设置服务提供独立配置文件读写")
-	if persistence_ready:
-		settings.config_path = test_config
-		settings.mouse_target_assist_enabled = false
-		settings.target_switch_sensitivity = 2
-		settings.window_mode = 2
-		settings.vsync_enabled = false
-		check(settings.save_settings() == OK and FileAccess.file_exists(test_config),
-			"更改后的设置写入用户配置文件")
+	check(settings.mouse_target_assist_enabled, "默认战斗设置开启鼠标辅助")
+	check(settings.target_switch_sensitivity == 1, "默认战斗设置使用标准灵敏度")
+	var persisted_state_ready: bool = settings.get("has_saved_settings") != null
+	check(persisted_state_ready, "设置服务记录是否已有保存配置")
+	if persisted_state_ready:
+		check(not settings.has_saved_settings, "新实例默认标记为尚未保存")
+	var resolution_ready: bool = settings.get("resolution_index") != null \
+		and settings.has_method("resolution") \
+		and settings.has_method("available_resolutions")
+	check(resolution_ready, "设置服务提供基础分辨率")
+	if resolution_ready:
+		check(settings.resolution_index == 0 and settings.resolution() == Vector2i(1280, 720),
+			"默认分辨率为1280×720")
+		check(settings.available_resolutions().size() == 3, "提供三档基础分辨率")
+	check(settings.available_window_modes().has(0)
+		and settings.available_window_modes().has(1), "提供窗口与无边框全屏")
+	if OS.get_name() == "macOS":
+		check(not settings.available_window_modes().has(2), "macOS 隐藏独占全屏")
+	else:
+		check(settings.available_window_modes().has(2), "支持的平台保留独占全屏")
+	check(not settings.has_method("set_mouse_target_assist_enabled"),
+		"战斗设置修改不再触发自动保存")
+	check(not settings.has_method("set_window_mode"),
+		"基础设置修改不再触发自动保存")
+
+	settings.config_path = test_config
+	var commit_ready: bool = settings.has_method("commit_settings")
+	check(commit_ready, "设置服务提供显式保存入口")
+	if commit_ready:
+		check(settings.commit_settings(true, 2, 1, 2, false) == OK,
+			"保存设置写入文件并提交全部候选值")
+		check(FileAccess.file_exists(test_config), "保存设置创建用户配置文件")
+		check(settings.mouse_target_assist_enabled
+			and settings.target_switch_sensitivity == 2
+			and settings.window_mode == 1
+			and settings.resolution_index == 2
+			and not settings.vsync_enabled,
+			"保存后设置服务采用候选值")
+		if persisted_state_ready:
+			check(settings.has_saved_settings, "保存成功后标记为已持久化")
 		var restored = settings_script.new()
 		restored.config_path = test_config
-		restored.load_settings()
-		check(not restored.mouse_target_assist_enabled and restored.target_switch_sensitivity == 2,
-			"重载恢复鼠标辅助与换锁灵敏度")
-		var expected_window_mode := 1 if OS.get_name() == "macOS" else 2
-		check(restored.window_mode == expected_window_mode and not restored.vsync_enabled,
-			"重载恢复平台可用的窗口模式与垂直同步")
+		check(restored.load_settings() == OK, "保存后的设置可以重新读取")
+		check(restored.mouse_target_assist_enabled
+			and restored.target_switch_sensitivity == 2
+			and restored.window_mode == 1
+			and restored.resolution_index == 2
+			and not restored.vsync_enabled,
+			"重载恢复基础与战斗设置")
+		if persisted_state_ready:
+			check(restored.has_saved_settings, "重载成功标记为已持久化")
 		restored.free()
+
 		var invalid_config := ConfigFile.new()
+		invalid_config.set_value("display", "window_mode", 999)
+		invalid_config.set_value("display", "resolution_index", 99)
+		invalid_config.set_value("display", "vsync_enabled", "false")
 		invalid_config.set_value("input_assist", "mouse_target_assist_enabled", "false")
 		invalid_config.set_value("input_assist", "target_switch_sensitivity", 99)
-		invalid_config.set_value("display", "window_mode", 999)
 		check(invalid_config.save(test_config) == OK, "测试写入错误类型与越界值")
 		var invalid = settings_script.new()
 		invalid.config_path = test_config
@@ -108,9 +106,29 @@ func _run() -> void:
 		check(invalid.mouse_target_assist_enabled
 			and invalid.target_switch_sensitivity == 1
 			and invalid.window_mode == 0
+			and invalid.resolution_index == 0
 			and invalid.vsync_enabled,
 			"错误类型、越界枚举与缺失键全部回退默认值")
 		invalid.free()
+
+		var player = load("res://scenes/player/player.tscn").instantiate()
+		root.add_child(player)
+		await process_frame
+		var combat = player.get_node("Combat")
+		var live_settings := root.get_node_or_null("UserSettings")
+		check(live_settings != null, "设置服务可从项目根节点访问")
+		if live_settings != null:
+			live_settings.config_path = test_config
+			check(live_settings.commit_settings(false, 2, 1, 2, false) == OK,
+				"运行中的设置服务保存候选值")
+			check(not combat.mouse_target_assist_enabled
+				and is_equal_approx(combat.target_switch_travel_ratio, 0.08),
+				"保存战斗设置后同步当前玩家")
+			live_settings.commit_settings(true, 1, 0, 0, true)
+			live_settings.config_path = live_settings.DEFAULT_CONFIG_PATH
+		player.queue_free()
+		await process_frame
+
 		var missing = settings_script.new()
 		missing.config_path = test_config + ".missing"
 		check(missing.load_settings() == ERR_FILE_NOT_FOUND,
@@ -118,48 +136,30 @@ func _run() -> void:
 		check(missing.mouse_target_assist_enabled
 			and missing.target_switch_sensitivity == 1
 			and missing.window_mode == 0
+			and missing.resolution_index == 0
 			and missing.vsync_enabled,
 			"缺失配置文件保持默认值")
+		if persisted_state_ready:
+			check(not missing.has_saved_settings, "缺失配置不标记为已保存")
 		missing.free()
-	var player = load("res://scenes/player/player.tscn").instantiate()
-	root.add_child(player)
-	await process_frame
-	var combat = player.get_node("Combat")
-	var combat_apply_ready: bool = settings.has_method("apply_to_combat")
-	check(combat_apply_ready, "设置服务可应用到真实玩家战斗组件")
-	if combat_apply_ready:
-		settings.apply_to_combat(combat)
-		check(not combat.mouse_target_assist_enabled,
-			"运行时应用鼠标辅助开关")
-		check(is_equal_approx(combat.target_switch_travel_ratio, 0.08),
-			"运行时应用高灵敏度换算后的鼠标行程")
-	player.queue_free()
-	await process_frame
-	var live_settings := root.get_node_or_null("UserSettings")
-	check(live_settings != null, "设置服务可从项目根节点访问")
-	if live_settings != null:
-		live_settings.config_path = test_config
-		live_settings.mouse_target_assist_enabled = false
-		live_settings.target_switch_sensitivity = 2
-		var auto_player = load("res://scenes/player/player.tscn").instantiate()
-		root.add_child(auto_player)
-		await process_frame
-		var auto_combat = auto_player.get_node("Combat")
-		check(not auto_combat.mouse_target_assist_enabled
-			and is_equal_approx(auto_combat.target_switch_travel_ratio, 0.08),
-			"新加载玩家自动采用当前用户设置")
-		auto_player.queue_free()
-		await process_frame
-		live_settings.reset_to_defaults()
-		live_settings.config_path = live_settings.DEFAULT_CONFIG_PATH
+
+		var failure = settings_script.new()
+		failure.config_path = OS.get_temp_dir().path_join(
+			"dsr-settings-missing-%d" % OS.get_process_id()).path_join("settings.cfg")
+		var window_before: int = failure.window_mode
+		check(failure.commit_settings(false, 0, 1, 2, false) != OK,
+			"写入失败返回错误")
+		check(failure.window_mode == window_before
+			and failure.mouse_target_assist_enabled,
+			"写入失败不提交候选值")
+		failure.free()
 	settings.free()
 	_finish()
 
 
 func _remove_test_config() -> void:
-	var absolute := ProjectSettings.globalize_path(test_config)
 	if FileAccess.file_exists(test_config):
-		DirAccess.remove_absolute(absolute)
+		DirAccess.remove_absolute(test_config)
 
 
 func _finish() -> void:

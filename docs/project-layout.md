@@ -142,7 +142,7 @@ Equipment 交接当前枪给 Combat；相机订阅 `weapon_changed`，表现订�
 
 `scenes/ui/pause_menu.tscn` 与 `scripts/ui/pause_menu.gd` 由场景导演核心在运行时装配，提供 Esc 暂停、用户设置、操作说明和退出确认，只展示界面并回传意图。`SceneDirector.request_pause_menu()`／`resume_from_pause_menu()` 持有和释放共享暂停协调器的独立令牌；关闭子页不释放世界暂停。说明复用原 `play_guide.tscn`，保留原 `LevelFlow/PlayGuide` 节点路径与显式教程接口，入口 `guide_path` 默认留空，酒馆和五关不再自动显示说明。
 
-`scripts/systems/user_settings.gd` 作为 `UserSettings` 自动加载，只保存鼠标辅助、换锁灵敏度、窗口模式和垂直同步，默认路径为 `user://settings.cfg`。设置页调用该服务的公开设置方法，服务负责校验配置、即时应用、保存并通知；玩家战斗组件入场时读取当前值，运行中的设置变更通过 `user_settings_combat` 组同步到玩家。错误类型、越界枚举与缺失键回退默认值；保存失败保留错误状态并由设置页提示，不伪装成已持久化。窗口模式按平台生成选项，macOS 只提供窗口与无边框全屏；headless 验证跳过真实窗口调用。脚本测试模式默认不读取开发者本机配置，只有显式设置 `DSR_USER_SETTINGS_CONFIG` 时才启用隔离配置。该配置文件与 `GameState` 的本次运行关卡、货币、装备及恢复点快照相互独立。
+`scripts/systems/user_settings.gd` 作为 `UserSettings` 自动加载，保存基础设置的窗口模式、分辨率和垂直同步，以及战斗设置的鼠标辅助和换锁灵敏度，默认路径为 `user://settings.cfg`。设置页将基础与战斗偏好分为两栏，控件变化只保留在待保存状态；统一点击“保存设置”后才调用 `commit_settings()` 校验、写入、应用并通知。返回、Esc 或关闭菜单丢弃未保存值；进入操作说明再返回则保留待保存值。首次没有配置文件时显示“默认设置，尚未保存”，不会把未应用的内置值伪装成已保存。玩家战斗组件入场时读取已保存值，成功保存后通过 `user_settings_combat` 组同步当前玩家。错误类型、越界枚举与缺失键回退默认值；保存失败不提交候选值，并由设置页提示“设置未应用”。窗口模式按平台生成选项，macOS 只提供窗口与无边框全屏；headless 验证跳过真实窗口调用。脚本测试模式默认不读取开发者本机配置，只有显式设置 `DSR_USER_SETTINGS_CONFIG` 时才启用隔离配置。该配置文件与 `GameState` 的本次运行关卡、货币、装备及恢复点快照相互独立。
 
 相机根 `systems/player_camera.gd` 统一绑定玩家、读取武器 Aim Range、控制视野过渡；`camera_occlusion.gd` 仅处理显式标记装饰的材质副本与还原。CameraGroundAnchor 过滤翻越抬升。保持原 Phantom Camera 跟随和更新关系。
 
