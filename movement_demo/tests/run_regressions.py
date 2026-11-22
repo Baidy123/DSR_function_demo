@@ -16,6 +16,7 @@ SYSTEM_TESTS = [
     "cinematic_shot_test",
     "cinematic_camera_test",
     "cinematic_controller_test",
+    "cinematic_wave_trigger_test",
     "scene_request_test", "scene_interaction_test", "scene_script_cancellation_test", "scene_transition_request_test", "scene_director_authority_test",
     "scene_director_test", "scene_event_node_test", "scene_reinforcement_test",
     "movement_test", "sprint_test", "interaction_test", "hearing_test",

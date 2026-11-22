@@ -469,6 +469,16 @@ func _on_wave_committed(wave: Node, _deployment_focus: Vector3) -> void:
 
 func _present_committed_wave(wave: Node) -> void:
 	if state not in [&"running", &"guide"]: return
+	var shot_path: NodePath = wave.get("cinematic_shot_path") if wave.get("cinematic_shot_path") != null else NodePath()
+	if not shot_path.is_empty():
+		var shot := wave.get_node_or_null(shot_path)
+		var controller = _bindings.get("cinematic_controller")
+		if controller != null and shot is CinematicShot3D:
+			var admission: Dictionary = controller.play_shot(shot)
+			if not admission.accepted and admission.result != &"busy":
+				report_action_error("camera", "Cinematic shot rejected: %s" % admission.reason)
+			return
+		report_action_error("camera", "Cinematic shot path is missing or invalid; falling back to legacy presentation")
 	var armed: Dictionary = _armed_presentations.get(wave.get_instance_id(), {})
 	_armed_presentations.erase(wave.get_instance_id())
 	var owner: Node = wave
@@ -803,6 +813,12 @@ func execute_cinematic_shot_request(request: Request) -> void:
 			or not _cinematic_controller.has_method("execute_request"):
 		request.fail("no_cinematic_controller")
 		return
+	if not request.parameters.get("snapshot") is Dictionary:
+		var shot := request.node(&"target")
+		if not shot is CinematicShot3D:
+			request.fail("invalid_shot")
+			return
+		request.parameters["snapshot"] = shot.runtime_snapshot()
 	_cinematic_request = request
 	var result: Dictionary = _cinematic_controller.execute_request(request)
 	if not result.get("accepted", false):

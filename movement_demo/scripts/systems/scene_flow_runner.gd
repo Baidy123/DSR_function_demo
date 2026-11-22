@@ -146,6 +146,8 @@ func _step(entry: Dictionary, delta: float) -> void:
 					"arguments": action.arguments, "completed_trigger": action.completed_trigger, "cancel_method": action.cancel_method})
 			Action.Kind.RUN_SCRIPT:
 				_submit(entry, &"script", target, {"arguments": action.arguments})
+			Action.Kind.PLAY_CINEMATIC_SHOT:
+				_submit(entry, &"cinematic_shot", target, {})
 	if not entry.error.is_empty() or not entry.active: return
 	if entry.request != null:
 		if entry.request.is_terminal():
