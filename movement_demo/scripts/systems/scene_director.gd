@@ -45,6 +45,8 @@ var _pauses
 var _pause_menu: CanvasLayer
 var _menu_token := 0
 var _camera: Camera3D
+var _cinematic_controller: Node
+var _cinematic_request
 var _owns_camera := false
 var _initialized := false
 var _generation := 0
@@ -113,6 +115,7 @@ func initialize() -> void:
 		_waves.bind_authority(_schedule_wave, authorize_wave_deployment)
 		_link(_waves, &"deployment_failed", _on_wave_deployment_failed)
 	_camera = _bindings.get("camera")
+	_cinematic_controller = _bindings.get("cinematic_controller")
 	_result_view = _bindings.get("result_view")
 	if _result_view == null:
 		_result_view = ResultView.new()
@@ -157,6 +160,12 @@ func _process(delta: float) -> void:
 func advance(delta: float) -> void:
 	if not _initialized or not is_inside_tree(): return
 	if _menu_token != 0: return
+	if is_instance_valid(_cinematic_controller) \
+			and _cinematic_controller.get_snapshot().get("phase", &"idle") != &"idle" \
+			and state not in [&"dead", &"loading"]:
+		var token: int = _cinematic_controller.pause_token()
+		if token == 0 or _pauses.can_advance_cinematic(token):
+			_cinematic_controller.advance(delta)
 	_requests.advance(delta)
 	if _active_presentation != 0 and _pauses.can_advance_presentation(_camera_token):
 		if is_instance_valid(_camera): _camera.advance_presentation(delta)
@@ -172,6 +181,9 @@ func can_run_actions() -> bool:
 ## 普通暂停只在可游玩、没有其他界面或演出占用控制时打开。
 func request_pause_menu() -> void:
 	if not _initialized or _menu_token != 0 or _load_failed: return
+	if is_instance_valid(_cinematic_controller) \
+			and _cinematic_controller.get_snapshot().get("phase", &"idle") != &"idle":
+		return
 	if state not in [&"running", &"completed"] or get_tree().paused: return
 	if _requests.snapshot().foreground != 0 or _pauses.snapshot().count != 0: return
 	_menu_token = _pauses.acquire(self, &"pause_menu", true)
@@ -560,6 +572,8 @@ func reset_region(owner: Node = null) -> void:
 	var retiring := owner if owner != null else region_owner()
 	_requests.cancel_scope(retiring, &"region_reset")
 	if retiring != region_owner(): return
+	if _cinematic_request != null:
+		_requests.cancel(_cinematic_request.id, &"region_reset")
 	_armed_presentations.clear()
 	if _active_presentation != 0 and _presentation_scope == 1 and (_camera_request == null or _camera_request.node(&"scope_owner") == retiring): _cancel_presentation()
 	if _guide != null and _guide_scope == 1 and (_guide_request == null or _guide_request.node(&"scope_owner") == retiring):
@@ -652,7 +666,7 @@ func request_action(kind: StringName, context: Dictionary = {}) -> Request:
 	if not _initialized or _requests == null or not available:
 		request._settle(&"rejected", &"scene_unavailable")
 		return request
-	if kind not in [&"guide", &"presentation", &"completion", &"dialogue", &"shop", &"interact", &"script", &"wave", &"transition"]:
+	if kind not in [&"guide", &"presentation", &"completion", &"dialogue", &"shop", &"interact", &"script", &"wave", &"transition", &"cinematic_shot"]:
 		request._settle(&"rejected", &"unsupported_kind")
 		return request
 	for key in request._nodes:
@@ -663,13 +677,23 @@ func request_action(kind: StringName, context: Dictionary = {}) -> Request:
 	if request.parent_id != 0 and (_issuing_parent == null or _issuing_parent.id != request.parent_id or not _issuing_parent.is_current()):
 		request._settle(&"rejected", &"invalid_parent")
 		return request
-	if kind in [&"wave", &"completion"]: request._background = true
+	if kind in [&"wave", &"completion", &"cinematic_shot"]: request._background = true
 	if kind == &"wave" and request.node(&"target") != null:
 		request.dedupe_key = StringName("wave_%d" % request.node(&"target").get_instance_id())
 	if kind == &"script":
 		var target := request.node(&"target")
 		if target != null and target.has_method("scene_action_is_background"):
 			request._background = target.scene_action_is_background() == true
+	var cinematic_active: bool = is_instance_valid(_cinematic_controller) \
+		and _cinematic_controller.get_snapshot().get("phase", &"idle") != &"idle"
+	if cinematic_active and not request._background \
+			and kind not in [&"dialogue", &"transition"]:
+		request._settle(&"rejected", &"cinematic_busy")
+		return request
+	if kind == &"cinematic_shot" \
+			and _requests.foreground_kind() not in [&"", &"dialogue"]:
+		request._settle(&"rejected", &"busy")
+		return request
 	var previous = _requests.duplicate_for(request)
 	if previous != null: return previous
 	_requests.submit(request)
@@ -717,6 +741,8 @@ func execute_request(request: Request) -> void:
 			if _execute_presentation(focus, request.parameters, request.scope) == 0:
 				_camera_request = null
 				request.complete({"skipped": true})
+		&"cinematic_shot":
+			execute_cinematic_shot_request(request)
 		&"completion":
 			_completion_request = request
 			_execute_completion()
@@ -735,6 +761,8 @@ func cancel_request_execution(request: Request, _reason: StringName) -> void:
 	if _camera_request == request:
 		_camera_request = null
 		_cancel_presentation()
+	if _cinematic_request == request and is_instance_valid(_cinematic_controller):
+		_cinematic_controller.cancel_shot(_reason)
 
 func find_request(id: int) -> Request:
 	return _requests.find(id) if _requests != null else null
@@ -763,6 +791,27 @@ func release_request_controls(request: Request) -> void:
 		player.set_dialogue_active(controls.previous)
 		player.set("is_facing_npc", false)
 	_pauses.release(controls.token)
+
+func execute_cinematic_shot_request(request: Request) -> void:
+	_cinematic_request = request
+	if not is_instance_valid(_cinematic_controller) \
+			or not _cinematic_controller.has_method("execute_request"):
+		_cinematic_request = null
+		request.fail("no_cinematic_controller")
+		return
+	var result: Dictionary = _cinematic_controller.execute_request(request)
+	if not result.get("accepted", false):
+		_cinematic_request = null
+		request.fail(String(result.get("reason", &"failed")))
+
+func complete_cinematic_request(id: int, result: StringName) -> void:
+	if _cinematic_request == null or _cinematic_request.id != id: return
+	var request = _cinematic_request
+	_cinematic_request = null
+	if result == &"completed":
+		request.complete({"cinematic_result": result})
+	else:
+		request.fail(String(result))
 
 func region_owner() -> Node:
 	return _host.get_parent() if _host.has_method("capture_templates") else _host

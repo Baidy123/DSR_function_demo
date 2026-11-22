@@ -118,6 +118,11 @@ func owns(request: Request) -> bool:
 func find(id: int) -> Request:
 	return _requests.get(id)
 
+func foreground_kind() -> StringName:
+	if _foreground == 0: return &""
+	var request: Request = _requests.get(_foreground)
+	return request.kind if request != null else &""
+
 func snapshot() -> Dictionary:
 	var requests: Array[Dictionary] = []
 	for request in _requests.values():

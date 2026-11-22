@@ -73,6 +73,13 @@ func can_advance_presentation(token: int) -> bool:
 		if entry.pause: count += 1
 	return _tokens.has(token) and _tokens[token].pause and count == 1 and not _previous_pause
 
+func can_advance_cinematic(token: int) -> bool:
+	if not _tokens.has(token) or not _tokens[token].pause or _previous_pause: return false
+	for entry in _tokens.values():
+		if entry.pause and entry.reason not in [&"cinematic_shot", &"dialogue"]:
+			return false
+	return true
+
 func _has_pause_owner() -> bool:
 	for entry in _tokens.values():
 		if entry.pause: return true

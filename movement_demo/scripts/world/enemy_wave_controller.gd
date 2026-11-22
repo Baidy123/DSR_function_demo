@@ -36,6 +36,8 @@ signal encounter_completed
 ## 可选的专用PresentationCamera节点。留空时首次需要镜头会创建同级内部实例。
 ## 不要选玩家Camera3D；它继续由原Phantom跟随，演出使用第二台相机。
 @export_node_path("Camera3D") var presentation_camera_path: NodePath
+## 可见的单 Shot 控制器。保留在 SceneDirector 外层，内部调度核心负责暂停和取消。
+@export_node_path("Node") var cinematic_controller_path: NodePath = ^"CinematicCameraController"
 @export_group("场景规则")
 ## 添加元素→新建SceneFlowRule。Event Nodes选事件节点，Actions按顺序放动作。
 ## 只想事件刷怪可直接配Wave.Event Nodes，不必先写规则。无Wave也可使用提示/镜头等动作。
@@ -56,6 +58,8 @@ signal encounter_completed
 
 var _runtime
 var director: Node
+var cinematic_controller: Node:
+	get: return get_node_or_null(cinematic_controller_path)
 var _corpse_root: Node3D:
 	get: return _runtime._corpse_root if _runtime != null else null
 var _pending: Array[Dictionary]:
@@ -84,6 +88,7 @@ func _ready() -> void:
 		"guide": get_node_or_null(guide_path) if not guide_path.is_empty() else null,
 		"guide_required": guide_required, "guide_pauses_world": guide_pauses_world,
 		"camera": get_node_or_null(presentation_camera_path) if not presentation_camera_path.is_empty() else null,
+		"cinematic_controller": cinematic_controller,
 		"rules": scene_rules, "wave_runtime": _runtime,
 		"auto_complete_waves": complete_when_all_waves_cleared
 			and not result_view_path.is_empty() and get_node_or_null(result_view_path) != null,
@@ -92,6 +97,8 @@ func _ready() -> void:
 		"presentation_options": {"move_seconds": camera_move_seconds, "hold_seconds": camera_hold_seconds, "return_seconds": camera_return_seconds}})
 	# Never make the host Always: enemy descendants must remain pausable.
 	add_child(director, false, Node.INTERNAL_MODE_BACK)
+	if cinematic_controller != null:
+		cinematic_controller.bind_director(director)
 	# Reserve explicit ownership before legacy region deferred setup runs.
 	var health := get_node_or_null(health_path) if not health_path.is_empty() else null
 	if health != null and not health.has_meta(&"scene_director"):

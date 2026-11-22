@@ -9,6 +9,7 @@ const Actor = preload("res://scripts/enemy/enemy_actor.gd")
 const SpawnCheck = preload("res://scripts/world/enemy_wave_spawn_check.gd")
 const CorpseVisual = preload("res://scripts/enemy/enemy_corpse_visual.gd")
 const SearchHints = preload("res://scripts/enemy/services/enemy_search_hints.gd")
+const INFRASTRUCTURE_META := &"scene_director_infrastructure"
 
 ## 信号中的波次编号从1开始，与检查器中的出场顺序一致。
 signal wave_started(index: int)
@@ -119,6 +120,7 @@ func _collect_configuration(region: Node) -> Dictionary:
 	if not is_finite(_host.spawn_retry_seconds) or _host.spawn_retry_seconds <= 0.0:
 		errors.append("重试间隔必须大于0秒。")
 	for child in _host.get_children():
+		if child.has_meta(INFRASTRUCTURE_META): continue
 		if not child is Wave:
 			errors.append("%s：控制器下面请放 enemy_wave.tscn 波次节点。" % child.name)
 			invalid_roots.append(child)
