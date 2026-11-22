@@ -3,6 +3,8 @@ extends Node
 ## 仅负责调试总开关；视图和生命组件各自响应，不介入 AI 决策。
 signal changed(enabled: bool)
 
+const CinematicCameraDebugScene = preload("res://scenes/debug/cinematic_camera_debug.tscn")
+
 var _navigation_requested: bool = false
 
 var enabled: bool = false:
@@ -24,6 +26,9 @@ func _ready() -> void:
 		var paths := preload("res://scripts/debug/coordinator_paths.gd").new()
 		paths.name = "CoordinatorPaths"
 		add_child(paths)
+		var cinematic_debug = CinematicCameraDebugScene.instantiate()
+		cinematic_debug.name = "CinematicCameraDebug"
+		add_child(cinematic_debug)
 
 
 func set_enabled(value: bool) -> void:
