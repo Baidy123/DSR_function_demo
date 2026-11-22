@@ -5,6 +5,7 @@
 # Godot 导入缓存、插件更新备份和编辑器临时文件
 .godot/
 .godot_ai_update/
+.worktrees/
 *.tmp
 *.log
 .DS_Store
