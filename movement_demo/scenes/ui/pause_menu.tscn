@@ -50,7 +50,7 @@ grow_horizontal = 2
 grow_vertical = 2
 
 [node name="Panel" type="PanelContainer" parent="Backdrop/Center"]
-custom_minimum_size = Vector2(360, 0)
+custom_minimum_size = Vector2(420, 0)
 layout_mode = 2
 theme_override_styles/panel = SubResource("PanelStyle")
 
@@ -93,25 +93,103 @@ text = "退出游戏"
 [node name="Settings" type="VBoxContainer" parent="Backdrop/Center/Panel/Content"]
 visible = false
 layout_mode = 2
-theme_override_constants/separation = 12
+theme_override_constants/separation = 8
+
+[node name="MouseAssistRow" type="HBoxContainer" parent="Backdrop/Center/Panel/Content/Settings"]
+layout_mode = 2
+
+[node name="Label" type="Label" parent="Backdrop/Center/Panel/Content/Settings/MouseAssistRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_font_sizes/font_size = 18
+text = "鼠标辅助锁定"
+
+[node name="MouseAssist" type="CheckButton" parent="Backdrop/Center/Panel/Content/Settings/MouseAssistRow"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 18
+text = "开启"
+
+[node name="SensitivityRow" type="HBoxContainer" parent="Backdrop/Center/Panel/Content/Settings"]
+layout_mode = 2
+
+[node name="Label" type="Label" parent="Backdrop/Center/Panel/Content/Settings/SensitivityRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_font_sizes/font_size = 18
+text = "换锁灵敏度"
+
+[node name="Sensitivity" type="OptionButton" parent="Backdrop/Center/Panel/Content/Settings/SensitivityRow"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 18
+item_count = 3
+selected = 1
+popup/item_0/text = "低"
+popup/item_0/id = 0
+popup/item_1/text = "标准"
+popup/item_1/id = 1
+popup/item_2/text = "高"
+popup/item_2/id = 2
+
+[node name="WindowModeRow" type="HBoxContainer" parent="Backdrop/Center/Panel/Content/Settings"]
+layout_mode = 2
+
+[node name="Label" type="Label" parent="Backdrop/Center/Panel/Content/Settings/WindowModeRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_font_sizes/font_size = 18
+text = "窗口模式"
+
+[node name="WindowMode" type="OptionButton" parent="Backdrop/Center/Panel/Content/Settings/WindowModeRow"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 18
+item_count = 3
+popup/item_0/text = "窗口"
+popup/item_0/id = 0
+popup/item_1/text = "无边框全屏"
+popup/item_1/id = 1
+popup/item_2/text = "独占全屏"
+popup/item_2/id = 2
+
+[node name="VSyncRow" type="HBoxContainer" parent="Backdrop/Center/Panel/Content/Settings"]
+layout_mode = 2
+
+[node name="Label" type="Label" parent="Backdrop/Center/Panel/Content/Settings/VSyncRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_font_sizes/font_size = 18
+text = "垂直同步"
+
+[node name="VSync" type="CheckButton" parent="Backdrop/Center/Panel/Content/Settings/VSyncRow"]
+layout_mode = 2
+button_pressed = true
+theme_override_font_sizes/font_size = 18
+text = "开启"
 
 [node name="Guide" type="Button" parent="Backdrop/Center/Panel/Content/Settings"]
 layout_mode = 2
 mouse_default_cursor_shape = 2
-theme_override_font_sizes/font_size = 20
+theme_override_font_sizes/font_size = 18
 theme_override_styles/normal = SubResource("ButtonStyle")
 text = "操作说明"
 
 [node name="Notice" type="Label" parent="Backdrop/Center/Panel/Content/Settings"]
 layout_mode = 2
 theme_override_colors/font_color = Color(0.6, 0.7, 0.75, 1)
-text = "更多设置暂未开放"
+theme_override_font_sizes/font_size = 14
+text = "更改会立即应用并保存"
 horizontal_alignment = 1
+
+[node name="RestoreDefaults" type="Button" parent="Backdrop/Center/Panel/Content/Settings"]
+layout_mode = 2
+mouse_default_cursor_shape = 2
+theme_override_font_sizes/font_size = 18
+theme_override_styles/normal = SubResource("ButtonStyle")
+text = "恢复默认设置"
 
 [node name="Back" type="Button" parent="Backdrop/Center/Panel/Content/Settings"]
 layout_mode = 2
 mouse_default_cursor_shape = 2
-theme_override_font_sizes/font_size = 20
+theme_override_font_sizes/font_size = 18
 theme_override_styles/normal = SubResource("ButtonStyle")
 text = "返回"
 

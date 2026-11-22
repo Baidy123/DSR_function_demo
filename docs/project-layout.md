@@ -42,7 +42,7 @@ movement_demo/
 │   │   └── interactions/  交互效果基类、注入上下文与各效果实现
 │   ├── ui/                对话、锁定准星、任务面板、货币商店、关卡流程与游玩说明
 │   ├── debug/             调试开关、协调器路径；声音圈及旧攻击区域预览默认关闭
-│   └── systems/           场景调度、关卡流程、相机、公共状态、声音数据与正式场景切换
+│   └── systems/           场景调度、关卡流程、相机、公共状态、用户设置、声音数据与正式场景切换
 │       ├── stage/         阶段、任务与 NPC 状态控制器
 │       ├── presentation/  模型挂载、动画配置与表现状态
 │       └── effects/       命中快照、表面配置与特效生命周期
@@ -140,7 +140,9 @@ Equipment 交接当前枪给 Combat；相机订阅 `weapon_changed`，表现订�
 
 ## 相机、表现与内容
 
-`scenes/ui/pause_menu.tscn` 与 `scripts/ui/pause_menu.gd` 由场景导演核心在运行时装配，提供 Esc 暂停、设置内操作说明和退出确认，只展示界面并回传意图。`SceneDirector.request_pause_menu()`／`resume_from_pause_menu()` 持有和释放共享暂停协调器的独立令牌；关闭子页不释放世界暂停。说明复用原 `play_guide.tscn`，保留原 `LevelFlow/PlayGuide` 节点路径与显式教程接口，入口 `guide_path` 默认留空，酒馆和五关不再自动显示说明。设置页当前只开放操作说明，其他设置尚未接入。
+`scenes/ui/pause_menu.tscn` 与 `scripts/ui/pause_menu.gd` 由场景导演核心在运行时装配，提供 Esc 暂停、用户设置、操作说明和退出确认，只展示界面并回传意图。`SceneDirector.request_pause_menu()`／`resume_from_pause_menu()` 持有和释放共享暂停协调器的独立令牌；关闭子页不释放世界暂停。说明复用原 `play_guide.tscn`，保留原 `LevelFlow/PlayGuide` 节点路径与显式教程接口，入口 `guide_path` 默认留空，酒馆和五关不再自动显示说明。
+
+`scripts/systems/user_settings.gd` 作为 `UserSettings` 自动加载，只保存鼠标辅助、换锁灵敏度、窗口模式和垂直同步，默认路径为 `user://settings.cfg`。设置页调用该服务的公开设置方法，服务负责校验配置、即时应用、保存并通知；玩家战斗组件入场时读取当前值，运行中的设置变更通过 `user_settings_combat` 组同步到玩家。错误类型、越界枚举与缺失键回退默认值；保存失败保留错误状态并由设置页提示，不伪装成已持久化。窗口模式按平台生成选项，macOS 只提供窗口与无边框全屏；headless 验证跳过真实窗口调用。脚本测试模式默认不读取开发者本机配置，只有显式设置 `DSR_USER_SETTINGS_CONFIG` 时才启用隔离配置。该配置文件与 `GameState` 的本次运行关卡、货币、装备及恢复点快照相互独立。
 
 相机根 `systems/player_camera.gd` 统一绑定玩家、读取武器 Aim Range、控制视野过渡；`camera_occlusion.gd` 仅处理显式标记装饰的材质副本与还原。CameraGroundAnchor 过滤翻越抬升。保持原 Phantom Camera 跟随和更新关系。
 

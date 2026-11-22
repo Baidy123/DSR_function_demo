@@ -130,6 +130,10 @@ func _ready() -> void:
 	debug_settings.changed.connect(_apply_debug_mode)
 	player.get_node("Health").died.connect(cancel_melee)
 	add_to_group("shot_listener")
+	add_to_group(&"user_settings_combat")
+	var user_settings = get_node_or_null("/root/UserSettings")
+	if user_settings != null and user_settings.has_method(&"apply_to_combat"):
+		user_settings.apply_to_combat(self)
 	equip_weapon(weapon)
 	_apply_debug_mode(debug_settings.enabled)
 

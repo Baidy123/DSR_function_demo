@@ -4,6 +4,8 @@
 
 ## 当前五关定向记录
 
+2026-11-22 首批用户设置：`user_settings_test` headless 35/35，覆盖默认值、三档换锁灵敏度换算、平台窗口模式、错误类型／越界枚举／缺失键回退、独立配置写入与重载、测试脚本隔离、自动加载注册、真实玩家战斗组件即时应用及新加载玩家自动采用设置。`settings_menu_test` 真实 OpenGL 27/27、headless 23/23，覆盖设置页控件、开关状态文字、鼠标辅助与灵敏度即时生效、无边框全屏与垂直同步实际切换、macOS 隐藏独占全屏、保存失败提示、配置持久化、恢复默认同步控件与玩家，以及 640×480 全控件可见。风险回归 `pause_menu_test` 50/50、`target_switch_test` 250/250，`run_regressions.py --check` 为 `Catalog OK`。macOS 仍有既有 root certificate store 诊断，加载主场景仍有 `camera_occlusion_demo.tscn` 的既有 UID 回退警告，保存失败专项输出一条预期警告；不记作干净输出。
+
 2026-11-14 Esc 暂停菜单：`pause_menu_test` 最终真实 OpenGL 渲染 52/52、headless 50/50，覆盖酒馆与五关无自动说明、Esc／按钮导航、设置和说明保持暂停、其他暂停拥有者／对话／死亡优先、打开菜单时卸载、640×480 布局，以及真实第一关按住瞄准时恢复鼠标捕获、清除 GUI 焦点且继续按钮不误开火。headless 后端不支持真实鼠标捕获，两条捕获断言仅在真实渲染下执行，瞄准／焦点／弹药断言仍在两种模式验证。`-- --confirm-exit` 独立进程确认退出前仍运行、实际点击确认后以 0 退出。截图与日志在本地 `logs/pause-menu-capture/`、`logs/pause-menu-rendered-final.log` 和 `logs/pause-menu-exit.log`，不提交。
 
 相关定向回归：`scene_director_test` 151/151、`level_flow_test` 97/97、`shop_flow_test` 通过；登记检查为 `Catalog OK`。关卡专项只按新需求调整入场／重开不弹说明、手动打开和返回设置的断言，原清场、返酒馆、A 解锁、恢复点及独立教程合同保留。商店的故意缺少面板／目录夹具仍输出预期警告，没有脚本／资源错误。未运行全量回归，未据此重判旧记录中的其他失败。
@@ -118,6 +120,7 @@ python movement_demo/tests/run_combat_regressions.py --godot E:/Godot/Godot_v4.7
 | 装备、弹药、装填 | 武器槽、玩家换弹／接续、霰弹装填、`ammo_drop_test` |
 | 生命与治疗 | `player_health_test`、`player_medkit_test`、`player_medkit_lifecycle_test` |
 | 相机与独立复用 | `player_camera_test`、`player_scene_reuse_test`、`camera_occlusion_test` |
+| 用户设置与暂停 | `user_settings_test`、`settings_menu_test`、`pause_menu_test`；设置持久化、即时应用、全屏/Vsync、恢复默认及 640×480 布局 |
 | 五关、检查点与波次 | `campaign_checkpoint_test`、`campaign_flow_test`、`level_flow_test`、敌人波次专项；使用真实保存场景验证 |
 | 场景调度与编辑器接线 | `scene_director_test`、`scene_event_node_test`、`enemy_wave_events_test`；无Wave/无Guide、暂停拥有者、事件过滤/失效、两个死亡按钮、加载失败重试 |
 | 统一请求与取消 | `scene_request_test`、`scene_interaction_test`、`scene_script_cancellation_test`、`scene_transition_request_test`；身份、真实停止、子交互与加载事务 |
@@ -126,7 +129,7 @@ python movement_demo/tests/run_combat_regressions.py --godot E:/Godot/Godot_v4.7
 | 任务与交互 | systems 中条件、任务、阶段、面板、唱片机与交互专项 |
 | 货币商店与任务金额 | `shop_catalog_test`、`shop_state_test`、`shop_weapon_test`、`shop_board_test`、`shop_flow_test`、`quest_money_reward_test` |
 | UI、检查器、美术 | 对应编辑器／渲染入口，不能只用 headless 代替 |
-| `systems` | 移动、奔跑、NPC 交互、听觉、声音模式、Debug、表现接口／复位、对话文件扫描，以及任务条件、五关任务链、阶段接线、任务面板、唱片机支线、五关酒馆往返、跨关玩家状态、货币商店（目录／状态／武器／面板／流程）、任务金额、Debug 一键通关、奖励板兼容；由统一入口登记 |
+| `systems` | 用户设置与设置菜单、移动、奔跑、NPC 交互、听觉、声音模式、Debug、表现接口／复位、对话文件扫描，以及任务条件、五关任务链、阶段接线、任务面板、唱片机支线、五关酒馆往返、跨关玩家状态、货币商店（目录／状态／武器／面板／流程）、任务金额、Debug 一键通关、奖励板兼容；由统一入口登记 |
 | `combat` | `tests/run_combat_regressions.py` 的原玩家战斗清单 |
 | `enemy` | `tests/enemy/run_enemy_regressions.py` 的原敌人清单 |
 

@@ -12,6 +12,7 @@ DIRECTORY = Path(__file__).resolve().parent
 PROJECT = DIRECTORY.parent
 SYSTEM_TESTS = [
     "pause_menu_test",
+    "user_settings_test", "settings_menu_test",
     "scene_request_test", "scene_interaction_test", "scene_script_cancellation_test", "scene_transition_request_test", "scene_director_authority_test",
     "scene_director_test", "scene_event_node_test", "scene_reinforcement_test",
     "movement_test", "sprint_test", "interaction_test", "hearing_test",
