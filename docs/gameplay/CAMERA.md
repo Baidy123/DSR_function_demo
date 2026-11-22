@@ -90,7 +90,7 @@ DebugSettings 开启且运行 Debug 构建时，`CinematicCameraDebug` 枚举当
   --script res://tests/cinematic_interruption_test.gd -- --capture
 ```
 
-截图保存到 `movement_demo/logs/cinematic-camera-capture/`，不提交。当前证据包含玩家原画面、自由机位、正交缩放、确定性抖动中点和返回画面；最终数量与基线失败见[测试说明](../testing.md)。
+截图保存到 `movement_demo/logs/cinematic-camera-capture/`，不提交。当前证据包含玩家原画面、自由机位、正交缩放、确定性抖动中点和返回画面；最终数量与失败出生夹具的稳定基线说明见[测试说明](../testing.md)。
 
 ## 独立演出相机与手动目标
 

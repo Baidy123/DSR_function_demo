@@ -10,6 +10,8 @@ const CameraScene := preload("res://scenes/player/player_camera_rig.tscn")
 const SquadScene := preload("res://scenes/world/squad.tscn")
 const EnemyScene := preload("res://scenes/enemy/levels/lvl_1/melee.tscn")
 const CAPTURE_DIR := "res://logs/cinematic-camera-capture/"
+const VIEW_SETTLE_STABLE_FRAMES := 3
+const VIEW_SETTLE_MAX_FRAMES := 240
 
 class PlayerSource extends Node3D:
 	var is_in_dialogue := false
@@ -43,6 +45,13 @@ class DialogueSource extends Node:
 		var id := active_id
 		active_id = 0
 		scene_action_finished.emit(id, &"completed")
+
+class PresentationTakeoverProbe extends RefCounted:
+	var created_count := 0
+
+	func _on_node_added(node: Node) -> void:
+		if node is Camera3D and node.name == &"PresentationCamera":
+			created_count += 1
 
 var checks := 0
 var failures := 0
@@ -387,11 +396,24 @@ func _case_no_pause_load_cancel() -> void:
 
 func _case_failed_spawn_has_no_shot() -> void:
 	var f := await _failed_wave_fixture()
+	_check(f.get("view_settled", false),
+		"failed-spawn fixture settles natural player/camera state before baseline")
 	_check(f.shot is CinematicShot3D
 			and f.wave.get_node_or_null(f.wave.cinematic_shot_path) == f.shot,
 		"failed-spawn Wave resolves its configured valid CinematicShot3D path")
+	var presentation: Camera3D = f.presentation
+	var presentation_id := presentation.get_instance_id() if is_instance_valid(presentation) else 0
+	var presentation_ever_current := is_instance_valid(presentation) \
+		and presentation.is_current()
+	var probe := PresentationTakeoverProbe.new()
+	var probe_connected: bool = node_added.connect(probe._on_node_added) == OK
 	var request: bool = f.host.request_wave(f.wave)
-	await _steps(8)
+	for _frame in 8:
+		await _steps(1)
+		presentation_ever_current = presentation_ever_current \
+			or (is_instance_valid(presentation) and presentation.is_current())
+	if node_added.is_connected(probe._on_node_added):
+		node_added.disconnect(probe._on_node_added)
 	_check(not request and f.controller.get_snapshot().phase == &"idle",
 		"failed Wave deployment creates no empty Shot")
 	var requests: Dictionary = f.director.debug_snapshot().requests
@@ -400,6 +422,13 @@ func _case_failed_spawn_has_no_shot() -> void:
 			and (requests.requests as Array).is_empty()
 			and int(requests.foreground) == 0,
 		"failed Wave deployment acquires no Shot request, pause, or camera takeover")
+	var presentation_cameras: Array[Node] = f.region.find_children(
+		"PresentationCamera", "Camera3D", true, false)
+	_check(probe_connected and probe.created_count == 0 and not presentation_ever_current
+			and presentation_cameras.size() == 1
+			and presentation_cameras[0].get_instance_id() == presentation_id
+			and is_instance_valid(presentation) and not presentation.is_current(),
+		"failed Wave never creates, replaces, or activates a PresentationCamera")
 	_assert_clean(f, "failed spawn")
 	await _dispose_wave_fixture(f)
 
@@ -601,6 +630,25 @@ func _view_baseline(source: Camera3D, player: Node3D) -> Dictionary:
 		"player_transform": player.global_transform,
 	}
 
+func _await_view_settled(source: Camera3D, player: Node3D) -> bool:
+	var previous := _view_baseline(source, player)
+	var stable_frames := 0
+	for _frame in VIEW_SETTLE_MAX_FRAMES:
+		await _steps(1)
+		var current := _view_baseline(source, player)
+		if current.source_transform.is_equal_approx(previous.source_transform) \
+				and current.source_lens == previous.source_lens \
+				and current.player_transform.is_equal_approx(previous.player_transform):
+			stable_frames += 1
+			if stable_frames >= VIEW_SETTLE_STABLE_FRAMES:
+				return true
+		else:
+			stable_frames = 0
+		previous = current
+	print("DIAGNOSTIC failed-spawn source camera did not settle within %d frames"
+			% VIEW_SETTLE_MAX_FRAMES)
+	return false
+
 func _presentation_clean(presentation) -> bool:
 	if not is_instance_valid(presentation): return true
 	var options = presentation.get("_shot_options")
@@ -687,15 +735,18 @@ func _failed_wave_fixture() -> Dictionary:
 	current_scene = region
 	await _steps(4)
 	source.make_current()
+	var view_settled: bool = await _await_view_settled(source, player)
 	return {
 		"region": region,
 		"host": host,
 		"director": host.get("director"),
 		"controller": host.get_node("CinematicCameraController"),
+		"presentation": host.get_node("CinematicCameraController/PresentationCamera"),
 		"wave": wave,
 		"shot": failed_shot,
 		"source": source,
 		"player": player,
+		"view_settled": view_settled,
 		"view_baseline": _view_baseline(source, player),
 	}
 
