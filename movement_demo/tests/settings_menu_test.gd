@@ -110,6 +110,7 @@ func _run() -> void:
 	var mode_before := DisplayServer.window_get_mode()
 	var vsync_before := DisplayServer.window_get_vsync_mode()
 	var size_before := DisplayServer.window_get_size()
+	var content_scale_before := root.content_scale_size
 	mouse_assist.button_pressed = false
 	mouse_assist.toggled.emit(false)
 	sensitivity.select(2)
@@ -128,6 +129,8 @@ func _run() -> void:
 		and settings.vsync_enabled,
 		"编辑控件不会自动提交设置")
 	check(not FileAccess.file_exists(test_config), "编辑控件不会自动写入配置")
+	check(root.content_scale_size == content_scale_before,
+		"编辑分辨率不会立即改变渲染画布")
 	var combat: Node = scene.get_node("Player/Combat")
 	check(combat.mouse_target_assist_enabled
 		and is_equal_approx(combat.target_switch_travel_ratio, 0.12),
@@ -153,6 +156,10 @@ func _run() -> void:
 		"点击保存后同步当前玩家")
 	check(notice.text.contains("已保存") and not notice.text.contains("未保存"),
 		"保存成功后显示明确状态")
+	check(root.content_scale_size == Vector2i(1920, 1080),
+		"保存后应用1920×1080渲染画布")
+	check(root.get_visible_rect().size == Vector2(1920, 1080),
+		"保存后可见画布使用1920×1080坐标")
 	if rendered:
 		check(DisplayServer.window_get_mode() == DisplayServer.WINDOW_MODE_FULLSCREEN,
 			"保存后应用无边框全屏")
@@ -167,6 +174,10 @@ func _run() -> void:
 	await _settle()
 	check(settings.window_mode == 0 and settings.resolution_index == 1,
 		"保存后提交窗口分辨率")
+	check(root.content_scale_size == Vector2i(1600, 900),
+		"保存后应用1600×900渲染画布")
+	check(root.get_visible_rect().size == Vector2(1600, 900),
+		"保存后可见画布使用1600×900坐标")
 	if rendered:
 		check(DisplayServer.window_get_mode() == DisplayServer.WINDOW_MODE_WINDOWED
 			and DisplayServer.window_get_size() == Vector2i(1600, 900),
@@ -247,6 +258,8 @@ func _run() -> void:
 	check(combat.mouse_target_assist_enabled
 		and is_equal_approx(combat.target_switch_travel_ratio, 0.12),
 		"保存失败不改变当前战斗设置")
+	check(root.content_scale_size == Vector2i(1280, 720),
+		"保存失败不改变渲染画布")
 	if rendered:
 		check(DisplayServer.window_get_mode() == failed_mode_before
 			and DisplayServer.window_get_size() == failed_size_before

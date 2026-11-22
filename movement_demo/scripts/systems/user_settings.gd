@@ -141,6 +141,9 @@ func apply_to_combat(combat: Node) -> void:
 
 
 func apply_display_settings() -> void:
+	var window := get_window()
+	if window != null:
+		window.content_scale_size = resolution()
 	if DisplayServer.get_name() == "headless":
 		return
 	DisplayServer.window_set_mode(godot_window_mode())

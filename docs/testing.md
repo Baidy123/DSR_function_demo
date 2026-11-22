@@ -4,7 +4,7 @@
 
 ## 当前五关定向记录
 
-2026-11-22 首批用户设置：`user_settings_test` headless 37/37，覆盖基础与战斗默认值、首次未保存状态、三档分辨率、三档换锁灵敏度、平台窗口模式、错误类型／越界枚举／缺失键回退、显式保存与重载、保存失败不提交、测试脚本隔离、自动加载注册，以及真实玩家组件同步。`settings_menu_test` 真实 OpenGL 37/37、headless 32/32，覆盖基础设置与战斗设置分栏、首次运行明确提示默认值尚未保存、控件变化不自动提交、统一保存后应用配置/玩家/全屏/1600×900/垂直同步、返回或 Esc 丢弃未保存改动、操作说明返回保留待保存值、恢复默认先待保存、保存失败不改变配置/玩家/显示服务、macOS 隐藏独占全屏，以及 640×480 两栏控件可见。风险回归 `pause_menu_test` 50/50、`target_switch_test` 250/250，`run_regressions.py --check` 为 `Catalog OK`。macOS 仍有既有 root certificate store 诊断，加载主场景仍有 `camera_occlusion_demo.tscn` 的既有 UID 回退警告，保存失败专项输出一条预期警告；不记作干净输出。
+2026-11-22 首批用户设置：`user_settings_test` headless 37/37，覆盖基础与战斗默认值、首次未保存状态、三档分辨率、三档换锁灵敏度、平台窗口模式、错误类型／越界枚举／缺失键回退、显式保存与重载、保存失败不提交、测试脚本隔离、自动加载注册，以及真实玩家组件同步。`settings_menu_test` 真实 OpenGL 43/43、headless 38/38，覆盖基础设置与战斗设置分栏、首次运行明确提示默认值尚未保存、控件变化不自动提交、统一保存后同步更新窗口尺寸/`content_scale_size`/可见2D画布坐标、配置/玩家/全屏/1600×900/垂直同步、返回或 Esc 丢弃未保存改动、操作说明返回保留待保存值、恢复默认先待保存、保存失败不改变配置/玩家/画布/显示服务、macOS 隐藏独占全屏，以及 640×480 两栏控件可见。风险回归 `pause_menu_test` 50/50、`target_switch_test` 250/250，`run_regressions.py --check` 为 `Catalog OK`。macOS 仍有既有 root certificate store 诊断，加载主场景仍有 `camera_occlusion_demo.tscn` 的既有 UID 回退警告，保存失败专项输出一条预期警告；不记作干净输出。
 
 2026-11-14 Esc 暂停菜单：`pause_menu_test` 最终真实 OpenGL 渲染 52/52、headless 50/50，覆盖酒馆与五关无自动说明、Esc／按钮导航、设置和说明保持暂停、其他暂停拥有者／对话／死亡优先、打开菜单时卸载、640×480 布局，以及真实第一关按住瞄准时恢复鼠标捕获、清除 GUI 焦点且继续按钮不误开火。headless 后端不支持真实鼠标捕获，两条捕获断言仅在真实渲染下执行，瞄准／焦点／弹药断言仍在两种模式验证。`-- --confirm-exit` 独立进程确认退出前仍运行、实际点击确认后以 0 退出。截图与日志在本地 `logs/pause-menu-capture/`、`logs/pause-menu-rendered-final.log` 和 `logs/pause-menu-exit.log`，不提交。
 
