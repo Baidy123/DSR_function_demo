@@ -92,7 +92,11 @@ func execute_request(request: SceneRequest) -> Dictionary:
 	_elapsed = 0.0
 	_last_error = &""
 	shot_started.emit(request.id, shot)
+	if not _request_is_active(request):
+		return _request_outcome(request)
 	shot_phase_changed.emit(request.id, _phase)
+	if not _request_is_active(request):
+		return _request_outcome(request)
 	return {"accepted": true, "request_id": request.id, "result": &"started", "reason": &""}
 
 func cancel_shot(reason: StringName = &"manual") -> bool:
@@ -143,6 +147,18 @@ func _source_camera() -> Camera3D:
 			or not source.is_inside_tree() or source.is_queued_for_deletion():
 		return null
 	return source
+
+func _request_is_active(request: SceneRequest) -> bool:
+	return _request == request and _phase != &"idle" and not request.is_terminal()
+
+func _request_outcome(request: SceneRequest) -> Dictionary:
+	var result: StringName = request.status if request.is_terminal() else &"cancelled"
+	return {
+		"accepted": false,
+		"request_id": request.id,
+		"result": result,
+		"reason": request.reason if not request.reason.is_empty() else result,
+	}
 
 func _snapshot_error(snapshot: Dictionary) -> StringName:
 	var transform_value: Variant = snapshot.get("transform")

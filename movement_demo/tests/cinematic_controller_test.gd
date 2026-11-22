@@ -98,6 +98,8 @@ func _run() -> void:
 	await _test_explicit_cancel_settles_request_cancelled()
 	await _test_controller_unload_settles_request_cancelled()
 	await _test_direct_duplicate_preserves_active_request()
+	await _test_start_listener_cancel_settles_request()
+	await _test_phase_listener_director_cancel_settles_request()
 	var host := Node.new()
 	host.name = "SceneDirector"
 	root.add_child(host)
@@ -527,6 +529,59 @@ func _test_direct_duplicate_preserves_active_request() -> void:
 			and f.controller.get_snapshot().phase == &"idle"
 			and f.source.is_current(),
 		"The original direct request still completes normally")
+	await _dispose(f)
+
+func _test_start_listener_cancel_settles_request() -> void:
+	var f := await _fixture()
+	var requests: Array = []
+	var cancellations: Array[bool] = []
+	var callback := func(id: int, _shot: CinematicShot3D) -> void:
+		requests.append(f.director.find_request(id))
+		cancellations.append(f.controller.cancel_shot(&"start_listener"))
+	f.controller.shot_started.connect(callback)
+	var admission: Dictionary = f.controller.play_shot(f.shot)
+	if f.controller.shot_started.is_connected(callback):
+		f.controller.shot_started.disconnect(callback)
+	var request = requests[0] if not requests.is_empty() else null
+	check(cancellations == [true]
+			and request != null and request.status == &"cancelled"
+			and request.get_result().get("status") == &"cancelled",
+		"shot_started cancellation settles the request as cancelled")
+	check(not admission.get("accepted", true)
+			and f.controller.get_snapshot().phase == &"idle"
+			and f.source.is_current() and not paused
+			and Pauses.for_tree(self).snapshot().count == 0,
+		"shot_started cancellation returns camera and pause ownership")
+	var next: Dictionary = f.controller.play_shot(f.shot)
+	check(next.get("accepted", false)
+			and f.controller.get_snapshot().request_id == next.get("request_id", 0),
+		"A start-listener cancellation leaves no stale request slot")
+	f.controller.cancel_shot(&"test_cleanup")
+	await _dispose(f)
+
+func _test_phase_listener_director_cancel_settles_request() -> void:
+	var f := await _fixture()
+	var requests: Array = []
+	var callback := func(id: int, phase: StringName) -> void:
+		if phase != &"enter": return
+		requests.append(f.director.find_request(id))
+		f.director.cancel_request(id, &"phase_listener")
+	f.controller.shot_phase_changed.connect(callback)
+	f.controller.play_shot(f.shot)
+	if f.controller.shot_phase_changed.is_connected(callback):
+		f.controller.shot_phase_changed.disconnect(callback)
+	var request = requests[0] if not requests.is_empty() else null
+	check(request != null and request.status == &"cancelled"
+			and request.get_result().get("status") == &"cancelled",
+		"Director cancellation from a phase listener settles the request")
+	check(f.controller.get_snapshot().phase == &"idle" and f.source.is_current()
+			and not paused and Pauses.for_tree(self).snapshot().count == 0,
+		"Phase-listener director cancellation stops the camera and releases ownership")
+	var next: Dictionary = f.controller.play_shot(f.shot)
+	check(next.get("accepted", false)
+			and f.controller.get_snapshot().request_id == next.get("request_id", 0),
+		"Phase-listener cancellation cannot poison future cinematic admission")
+	f.controller.cancel_shot(&"test_cleanup")
 	await _dispose(f)
 
 func _fixture() -> Dictionary:

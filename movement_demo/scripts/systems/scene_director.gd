@@ -803,11 +803,16 @@ func execute_cinematic_shot_request(request: Request) -> void:
 			or not _cinematic_controller.has_method("execute_request"):
 		request.fail("no_cinematic_controller")
 		return
+	_cinematic_request = request
 	var result: Dictionary = _cinematic_controller.execute_request(request)
 	if not result.get("accepted", false):
-		request.fail(String(result.get("reason", &"failed")))
+		if _cinematic_request == request:
+			_cinematic_request = null
+		if not request.is_terminal():
+			request.fail(String(result.get("reason", &"failed")))
 		return
-	_cinematic_request = request
+	if request.is_terminal() and _cinematic_request == request:
+		_cinematic_request = null
 
 func complete_cinematic_request(id: int, result: StringName) -> void:
 	if _cinematic_request == null or _cinematic_request.id != id: return
