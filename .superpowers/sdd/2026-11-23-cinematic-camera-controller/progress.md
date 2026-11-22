@@ -100,4 +100,4 @@ Deferred minors for final triage:
 
 Final review ❌ — Critical queued foreground can start during active Shot; Important completion does not wait for unpaused Shot; region reset cancels SCENE-scoped Shot; Shot can start while pause menu active; unpaused occlusion target stays frozen. Minor shake fade/frequency edge cases, ledger boxes, unrelated UID.
 Final fix wave: one fresh deepseek-flash implementer dispatched with all findings; one scoped re-review will follow.
-Final fix wave: all Critical and Important findings plus public Minors fixed with focused tests; cinematic suites pass headless, interruption passes real-render capture, related scene/pause/presentation/reinforcement/catalog checks pass.
+Final fix wave: all Critical and Important findings plus public Minors fixed with focused tests; cinematic suites pass headless, interruption passes 233/233 real-render capture, related scene/pause/presentation/reinforcement/catalog checks pass. Implementation commit `05456b5`; full report: `.superpowers/sdd/2026-11-23-cinematic-camera-controller/final-review-fix-report.md`.
