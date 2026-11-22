@@ -690,6 +690,9 @@ func request_action(kind: StringName, context: Dictionary = {}) -> Request:
 			and kind not in [&"dialogue", &"transition"]:
 		request._settle(&"rejected", &"cinematic_busy")
 		return request
+	if kind == &"cinematic_shot" and (cinematic_active or _cinematic_request != null):
+		request._settle(&"rejected", &"busy")
+		return request
 	if kind == &"cinematic_shot" \
 			and _requests.foreground_kind() not in [&"", &"dialogue"]:
 		request._settle(&"rejected", &"busy")
@@ -793,16 +796,18 @@ func release_request_controls(request: Request) -> void:
 	_pauses.release(controls.token)
 
 func execute_cinematic_shot_request(request: Request) -> void:
-	_cinematic_request = request
+	if _cinematic_request != null and _cinematic_request != request:
+		request.fail("busy")
+		return
 	if not is_instance_valid(_cinematic_controller) \
 			or not _cinematic_controller.has_method("execute_request"):
-		_cinematic_request = null
 		request.fail("no_cinematic_controller")
 		return
 	var result: Dictionary = _cinematic_controller.execute_request(request)
 	if not result.get("accepted", false):
-		_cinematic_request = null
 		request.fail(String(result.get("reason", &"failed")))
+		return
+	_cinematic_request = request
 
 func complete_cinematic_request(id: int, result: StringName) -> void:
 	if _cinematic_request == null or _cinematic_request.id != id: return
@@ -810,6 +815,9 @@ func complete_cinematic_request(id: int, result: StringName) -> void:
 	_cinematic_request = null
 	if result == &"completed":
 		request.complete({"cinematic_result": result})
+	elif result == &"cancelled":
+		if request.status != &"cancelling":
+			request._settle(&"cancelled", &"cancelled")
 	else:
 		request.fail(String(result))
 

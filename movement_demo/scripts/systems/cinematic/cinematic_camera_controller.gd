@@ -132,9 +132,9 @@ func _on_presentation_finished(id: int, result: StringName) -> void:
 	var request = _request
 	if result not in [&"completed", &"cancelled"]: _last_error = result
 	_reset_active()
-	shot_finished.emit(id, result)
 	if is_instance_valid(_director) and _director.has_method("complete_cinematic_request"):
 		_director.complete_cinematic_request(id, result)
+	shot_finished.emit(id, result)
 
 func _source_camera() -> Camera3D:
 	if not is_inside_tree(): return null

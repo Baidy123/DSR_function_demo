@@ -94,6 +94,10 @@ func _run() -> void:
 	await _test_shot_removal_cancels()
 	await _test_stale_camera_completion_ignored()
 	await _test_unstarted_admission_is_not_queued()
+	await _test_finished_listener_can_start_next_shot()
+	await _test_explicit_cancel_settles_request_cancelled()
+	await _test_controller_unload_settles_request_cancelled()
+	await _test_direct_duplicate_preserves_active_request()
 	var host := Node.new()
 	host.name = "SceneDirector"
 	root.add_child(host)
@@ -425,6 +429,104 @@ func _test_unstarted_admission_is_not_queued() -> void:
 	check(f.controller.get_snapshot().phase == &"idle" and f.source.is_current()
 			and f.director.debug_snapshot().requests.requests.is_empty(),
 		"Busy re-entrant admission is cancelled rather than left in the scheduler queue")
+	await _dispose(f)
+
+func _test_finished_listener_can_start_next_shot() -> void:
+	var f := await _fixture()
+	var second := ShotScene.instantiate()
+	second.name = "SecondShot"
+	f.host.get_node("CinematicShots").add_child(second)
+	f.shot.enter_seconds = 0.05
+	f.shot.hold_seconds = 0.05
+	f.shot.return_seconds = 0.05
+	second.enter_seconds = 0.0
+	second.hold_seconds = 1.0
+	second.return_seconds = 0.0
+	var first: Dictionary = f.controller.play_shot(f.shot)
+	var first_request = f.director.find_request(first.request_id)
+	var second_admissions: Array[Dictionary] = []
+	var finished: Array[Dictionary] = []
+	var callback := func(id: int, result: StringName) -> void:
+		finished.append({"id": id, "result": result})
+		second_admissions.append(f.controller.play_shot(second))
+	f.controller.shot_finished.connect(callback)
+	f.director.advance(1.0)
+	if f.controller.shot_finished.is_connected(callback):
+		f.controller.shot_finished.disconnect(callback)
+	check(first_request != null and first_request.status == &"completed"
+			and first_request.get_result().get("status") == &"completed",
+		"Shot completion settles the old request before the public signal")
+	var waiter: Dictionary = {}
+	if first_request != null and first_request.is_terminal():
+		waiter = await first_request.wait_result()
+	check(waiter.get("status") == &"completed",
+		"A first-request waiter resumes instead of hanging")
+	check(not second_admissions.is_empty()
+			and second_admissions[0].get("accepted", false),
+		"A completion listener can immediately start the next Shot")
+	check(f.controller.get_snapshot().shot == second,
+		"The listener-started Shot becomes the controller's active Shot")
+	check(not second_admissions.is_empty()
+			and f.controller.get_snapshot().request_id
+				== second_admissions[0].get("request_id", 0),
+		"The listener-started Shot owns a clean request id")
+	f.controller.cancel_shot(&"test_cleanup")
+	await _dispose(f)
+
+func _test_explicit_cancel_settles_request_cancelled() -> void:
+	var f := await _fixture()
+	var admission: Dictionary = f.controller.play_shot(f.shot)
+	var request = f.director.find_request(admission.request_id)
+	var cancelled: bool = f.controller.cancel_shot(&"manual")
+	check(cancelled and f.controller.get_snapshot().phase == &"idle"
+			and f.source.is_current(),
+		"Explicit cancel restores the player camera and clears controller state")
+	check(request != null and request.status == &"cancelled"
+			and request.get_result().get("status") == &"cancelled",
+		"Explicit cancel settles the SceneRequest as cancelled, not failed")
+	check(not paused and Pauses.for_tree(self).snapshot().count == 0,
+		"Explicit cancel releases its pause token")
+	await _dispose(f)
+
+func _test_controller_unload_settles_request_cancelled() -> void:
+	var f := await _fixture()
+	var admission: Dictionary = f.controller.play_shot(f.shot)
+	var request = f.director.find_request(admission.request_id)
+	f.controller.free()
+	await process_frame
+	check(request != null and request.status == &"cancelled"
+			and request.get_result().get("status") == &"cancelled",
+		"Controller-only unload settles its SceneRequest as cancelled")
+	check(f.source.is_current() and not paused
+			and Pauses.for_tree(self).snapshot().count == 0,
+		"Controller-only unload restores the camera and releases its pause")
+	await _dispose(f)
+
+func _test_direct_duplicate_preserves_active_request() -> void:
+	var f := await _fixture()
+	f.shot.enter_seconds = 0.05
+	f.shot.hold_seconds = 0.05
+	f.shot.return_seconds = 0.05
+	var context := {
+		"source": f.controller,
+		"target": f.shot,
+		"origin": &"system",
+		"parameters": {"snapshot": f.shot.runtime_snapshot()},
+	}
+	var first = f.director.request_action(&"cinematic_shot", context)
+	var second = f.director.request_action(&"cinematic_shot", context)
+	check(first.status == &"running"
+			and f.controller.get_snapshot().request_id == first.id,
+		"The first direct cinematic request owns the active slot")
+	check(second.status == &"rejected" and second.reason == &"busy",
+		"A duplicate direct cinematic request is rejected as busy")
+	check(f.controller.get_snapshot().request_id == first.id,
+		"Rejected duplicate admission cannot overwrite the first request id")
+	f.director.advance(1.0)
+	check(first.status == &"completed" and first.get_result().get("status") == &"completed"
+			and f.controller.get_snapshot().phase == &"idle"
+			and f.source.is_current(),
+		"The original direct request still completes normally")
 	await _dispose(f)
 
 func _fixture() -> Dictionary:
