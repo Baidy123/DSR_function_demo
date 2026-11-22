@@ -48,10 +48,64 @@ class DialogueSource extends Node:
 
 class PresentationTakeoverProbe extends RefCounted:
 	var created_count := 0
+	var watch_failures := 0
+	var _watched: Dictionary = {}
+	var _callbacks: Dictionary = {}
+	var _activation_counts: Dictionary = {}
 
 	func _on_node_added(node: Node) -> void:
 		if node is Camera3D and node.name == &"PresentationCamera":
 			created_count += 1
+			if not watch_camera(node):
+				watch_failures += 1
+
+	func watch_camera(camera: Camera3D) -> bool:
+		if not is_instance_valid(camera) or not camera.has_signal(&"became_current"):
+			return false
+		var instance_id := camera.get_instance_id()
+		if _watched.has(instance_id):
+			return true
+		var callback := _on_became_current.bind(instance_id)
+		if camera.connect(&"became_current", callback) != OK:
+			return false
+		_watched[instance_id] = camera
+		_callbacks[instance_id] = callback
+		return true
+
+	func activation_count(instance_id: int) -> int:
+		return int(_activation_counts.get(instance_id, 0))
+
+	func total_activations() -> int:
+		var total := 0
+		for count in _activation_counts.values():
+			total += int(count)
+		return total
+
+	func clear_activations() -> void:
+		_activation_counts.clear()
+
+	func connection_count() -> int:
+		var count := 0
+		for instance_id in _watched:
+			var camera: Camera3D = _watched[instance_id]
+			var callback: Callable = _callbacks[instance_id]
+			if is_instance_valid(camera) \
+					and camera.is_connected(&"became_current", callback):
+				count += 1
+		return count
+
+	func disconnect_all() -> void:
+		for instance_id in _watched:
+			var camera: Camera3D = _watched[instance_id]
+			var callback: Callable = _callbacks[instance_id]
+			if is_instance_valid(camera) \
+					and camera.is_connected(&"became_current", callback):
+				camera.disconnect(&"became_current", callback)
+		_watched.clear()
+		_callbacks.clear()
+
+	func _on_became_current(instance_id: int) -> void:
+		_activation_counts[instance_id] = activation_count(instance_id) + 1
 
 var checks := 0
 var failures := 0
@@ -407,6 +461,17 @@ func _case_failed_spawn_has_no_shot() -> void:
 		and presentation.is_current()
 	var probe := PresentationTakeoverProbe.new()
 	var probe_connected: bool = node_added.connect(probe._on_node_added) == OK
+	probe_connected = probe.watch_camera(presentation) and probe_connected
+	var self_test_started: bool = is_instance_valid(presentation) and probe_connected \
+		and presentation.start_cinematic_shot(
+			f.source, f.shot.runtime_snapshot(), 900001)
+	var self_test_activations := probe.activation_count(presentation_id)
+	if is_instance_valid(presentation):
+		presentation.cancel_presentation()
+	probe.clear_activations()
+	_check(probe_connected and self_test_started and self_test_activations == 1
+			and f.source.is_current() and not presentation.is_current(),
+		"takeover activity probe counts one synchronous cinematic PresentationCamera activation and restores the source")
 	var request: bool = f.host.request_wave(f.wave)
 	for _frame in 8:
 		await _steps(1)
@@ -414,6 +479,8 @@ func _case_failed_spawn_has_no_shot() -> void:
 			or (is_instance_valid(presentation) and presentation.is_current())
 	if node_added.is_connected(probe._on_node_added):
 		node_added.disconnect(probe._on_node_added)
+	probe.disconnect_all()
+	var takeover_probe_clear := probe.connection_count() == 0
 	_check(not request and f.controller.get_snapshot().phase == &"idle",
 		"failed Wave deployment creates no empty Shot")
 	var requests: Dictionary = f.director.debug_snapshot().requests
@@ -424,11 +491,13 @@ func _case_failed_spawn_has_no_shot() -> void:
 		"failed Wave deployment acquires no Shot request, pause, or camera takeover")
 	var presentation_cameras: Array[Node] = f.region.find_children(
 		"PresentationCamera", "Camera3D", true, false)
-	_check(probe_connected and probe.created_count == 0 and not presentation_ever_current
+	_check(takeover_probe_clear and probe_connected and probe.watch_failures == 0
+			and probe.created_count == 0 and probe.total_activations() == 0
+			and not presentation_ever_current
 			and presentation_cameras.size() == 1
 			and presentation_cameras[0].get_instance_id() == presentation_id
 			and is_instance_valid(presentation) and not presentation.is_current(),
-		"failed Wave never creates, replaces, or activates a PresentationCamera")
+		"failed Wave emits zero PresentationCamera became_current activations and creates no replacement")
 	_assert_clean(f, "failed spawn")
 	await _dispose_wave_fixture(f)
 

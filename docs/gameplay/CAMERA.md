@@ -76,6 +76,7 @@ SceneDirector
 
 - 玩家 Camera3D 仍是 Phantom Camera 的跟随宿主，武器 `Aim Range`、视野过渡和遮挡透明继续由原组件负责。
 - 演出只复制运行画面所需的 Transform、投影和镜头参数；不把 `PresentationCamera` 变成玩家跟随器。
+- `PresentationCamera` 在 `start_presentation()`／`start_cinematic_shot()` 真正切换为当前相机后同步发出 `became_current`；验证可据此捕获同一调用内随即恢复的短暂接管，信号不改变相机所有权。
 - 玩家相机不是当前相机、跨 Viewport、离树或删除时，演出结束为 `camera_lost`／`source_lost`，不伪造源画面。
 - 旧式 Wave Marker 演出继续兼容；Wave 同时配置新 `Cinematic Shot Path` 时，新 Shot 优先且旧配置不重复播放。
 

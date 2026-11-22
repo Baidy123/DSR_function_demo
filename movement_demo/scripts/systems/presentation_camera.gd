@@ -3,6 +3,8 @@ extends Camera3D
 ## Explicitly ticked by the presentation owner, including while the scene is paused.
 ## This node never changes the source rig, follow target, or scene pause state.
 signal presentation_finished(request_id: int, result: StringName)
+## Emitted synchronously after this presentation camera actually becomes current.
+signal became_current
 
 enum Phase { IDLE, MOVE, HOLD, RETURN }
 
@@ -103,6 +105,7 @@ func start_presentation(source: Camera3D, focus: Vector3, options: Dictionary, r
 	reset_physics_interpolation()
 	_occlusion_target.global_position = _start_focus
 	make_current()
+	became_current.emit()
 	return true
 
 
@@ -211,6 +214,7 @@ func start_cinematic_shot(source: Camera3D, snapshot: Dictionary, request_id: in
 	_create_shake_noise(snapshot)
 	source.tree_exiting.connect(_on_source_tree_exiting)
 	make_current()
+	became_current.emit()
 	return true
 
 
