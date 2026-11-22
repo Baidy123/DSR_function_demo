@@ -118,10 +118,14 @@ func _case_death_during_phase(phase_name: String) -> void:
 
 func _case_scene_load_cancel() -> void:
 	var f := await _fixture()
+	_enable_cinematic_shake(f.shot)
 	var admission: Dictionary = f.controller.play_shot(f.shot)
 	var request = f.director.find_request(admission.request_id)
 	f.director.advance(0.1)
 	var elapsed: float = f.controller.get_snapshot().elapsed
+	_check(f.presentation.is_cinematic_shot()
+			and f.presentation.get("_shake_position_noise") != null,
+		"scene load interrupts an active deterministic-shake Shot")
 	f.director.scene_loader = func(_path: String, _reload: bool) -> Error:
 		return ERR_CANT_OPEN
 	f.director.request_change_scene("res://tests/cinematic_missing.tscn")
@@ -130,7 +134,8 @@ func _case_scene_load_cancel() -> void:
 	_check(request != null and request.status == &"cancelled",
 		"scene load cancellation settles the cinematic request")
 	_check(after.phase == &"idle" and f.source.is_current()
-			and is_equal_approx(f.controller.get_snapshot().elapsed, 0.0),
+			and is_equal_approx(f.controller.get_snapshot().elapsed, 0.0)
+			and _presentation_clean(f.presentation),
 		"scene load stops the Shot clock and restores the player camera")
 	var replacement := Camera3D.new()
 	replacement.name = "LoadedSceneCamera"
@@ -165,13 +170,17 @@ func _case_controller_unload_cancel() -> void:
 	f.controller.free()
 	await _steps(2)
 	var requests: Dictionary = f.director.debug_snapshot().requests
+	var baseline: Dictionary = f.view_baseline
 	_check(request != null and request.status == &"cancelled",
 		"controller unload settles the cinematic request as cancelled")
 	_check(f.source.is_current()
-			and (not is_instance_valid(presentation) or not presentation.is_presenting())
+			and _presentation_clean(presentation)
 			and Pauses.for_tree(self).snapshot().count == 0
 			and (requests.requests as Array).is_empty()
-			and int(requests.foreground) == 0,
+			and int(requests.foreground) == 0
+			and f.source.global_transform.is_equal_approx(baseline.source_transform)
+			and _source_lens(f.source) == baseline.source_lens
+			and f.player.global_transform.is_equal_approx(baseline.player_transform),
 		"controller unload clears camera, subscriptions, scheduler requests, and pause")
 	_check(Input.mouse_mode == Input.MOUSE_MODE_VISIBLE and not paused,
 		"controller unload leaves mouse and world state clean")
@@ -185,16 +194,17 @@ func _case_source_camera_removed() -> void:
 	source.queue_free()
 	await _steps(2)
 	var requests: Dictionary = f.director.debug_snapshot().requests
+	var baseline: Dictionary = f.view_baseline
 	_check(request != null and request.status == &"failed"
 			and request.reason == &"source_lost",
 		"removing the player camera ends playback with source_lost")
 	_check(f.controller.get_snapshot().phase == &"idle"
 			and not f.presentation.is_current()
-			and f.presentation.get("_shake_position_noise") == null
-			and f.presentation.get("_shake_rotation_noise") == null
+			and _presentation_clean(f.presentation)
 			and Pauses.for_tree(self).snapshot().count == 0 and not paused
 			and (requests.requests as Array).is_empty()
-			and int(requests.foreground) == 0,
+			and int(requests.foreground) == 0
+			and f.player.global_transform.is_equal_approx(baseline.player_transform),
 		"source removal releases camera and pause ownership without stealing another camera")
 	_check(Input.mouse_mode == Input.MOUSE_MODE_VISIBLE,
 		"source removal restores visible mouse state")
@@ -356,8 +366,13 @@ func _case_no_pause_death_cancel() -> void:
 func _case_no_pause_load_cancel() -> void:
 	var f := await _fixture()
 	f.shot.pause_world = false
+	_enable_cinematic_shake(f.shot)
 	var admission: Dictionary = f.controller.play_shot(f.shot)
 	var request = f.director.find_request(admission.request_id)
+	f.director.advance(0.1)
+	_check(admission.accepted and f.presentation.is_cinematic_shot()
+			and f.presentation.get("_shake_position_noise") != null,
+		"unpaused scene load interrupts an active deterministic-shake Shot")
 	f.director.scene_loader = func(_path: String, _reload: bool) -> Error:
 		return ERR_CANT_OPEN
 	f.director.request_change_scene("res://tests/cinematic_missing.tscn")
@@ -474,16 +489,17 @@ func _case_return_source_lost() -> void:
 	var source: Camera3D = f.source
 	source.free()
 	var requests: Dictionary = f.director.debug_snapshot().requests
+	var baseline: Dictionary = f.view_baseline
 	_check(request != null and request.status == &"failed"
 			and request.reason == &"source_lost",
 		"losing the player camera during RETURN safely cancels as source_lost")
 	_check(f.controller.get_snapshot().phase == &"idle"
 			and not f.presentation.is_current()
-			and f.presentation.get("_shake_position_noise") == null
-			and f.presentation.get("_shake_rotation_noise") == null
+			and _presentation_clean(f.presentation)
 			and not paused and Pauses.for_tree(self).snapshot().count == 0
 			and (requests.requests as Array).is_empty()
-			and int(requests.foreground) == 0,
+			and int(requests.foreground) == 0
+			and f.player.global_transform.is_equal_approx(baseline.player_transform),
 		"RETURN source loss releases presentation and pause without invalid access")
 	await _dispose(f)
 
@@ -537,6 +553,7 @@ func _fixture() -> Dictionary:
 		"controller": host.get_node("CinematicCameraController"),
 		"presentation": host.get_node("CinematicCameraController/PresentationCamera"),
 		"shot": shot,
+		"view_baseline": _view_baseline(source, player),
 	}
 
 func _configure_long_shot(shot: Camera3D) -> void:
@@ -561,6 +578,7 @@ func _enable_cinematic_shake(shot: Camera3D) -> void:
 func _source_lens(source: Camera3D) -> Dictionary:
 	return {
 		"projection": source.projection,
+		"keep_aspect": source.keep_aspect,
 		"size": source.size,
 		"fov": source.fov,
 		"h_offset": source.h_offset,
@@ -568,17 +586,44 @@ func _source_lens(source: Camera3D) -> Dictionary:
 		"frustum_offset": source.frustum_offset,
 		"near": source.near,
 		"far": source.far,
+		"cull_mask": source.cull_mask,
+		"environment": source.environment,
+		"attributes": source.attributes,
+		"compositor": source.compositor,
 	}
+
+func _view_baseline(source: Camera3D, player: Node3D) -> Dictionary:
+	return {
+		"source_transform": source.global_transform,
+		"source_lens": _source_lens(source),
+		"player_transform": player.global_transform,
+	}
+
+func _presentation_clean(presentation) -> bool:
+	if not is_instance_valid(presentation): return true
+	var options = presentation.get("_shot_options")
+	return not presentation.is_presenting() \
+		and presentation.get("_shake_position_noise") == null \
+		and presentation.get("_shake_rotation_noise") == null \
+		and options is Dictionary and (options as Dictionary).is_empty()
 
 func _assert_clean(f: Dictionary, label: String, expected_reasons: Array[StringName] = [],
 		expected_camera: Camera3D = null) -> void:
 	var snapshot: Dictionary = f.controller.get_snapshot()
 	var pauses: Dictionary = Pauses.for_tree(self).snapshot()
 	var requests: Dictionary = f.director.debug_snapshot().requests
+	var baseline: Dictionary = f.get("view_baseline", {})
+	var source = f.get("source")
+	var player = f.get("player")
 	var camera: Camera3D = expected_camera if expected_camera != null else f.get("source")
 	_check(snapshot.phase == &"idle", label + ": controller idle")
 	_check(is_instance_valid(camera) and camera.is_current(),
 		label + ": expected camera restored")
+	_check(not baseline.is_empty() and is_instance_valid(source) and is_instance_valid(player)
+			and source.global_transform.is_equal_approx(baseline.source_transform)
+			and _source_lens(source) == baseline.source_lens
+			and player.global_transform.is_equal_approx(baseline.player_transform),
+		label + ": player camera Transform/lens and player Transform unchanged")
 	_check((requests.get("requests", []) as Array).is_empty()
 			and int(requests.get("foreground", 0)) == 0,
 		label + ": no cinematic or foreground request retained")
@@ -593,11 +638,7 @@ func _assert_clean(f: Dictionary, label: String, expected_reasons: Array[StringN
 	if not is_instance_valid(presentation) and is_instance_valid(f.controller):
 		presentation = f.controller.get_node_or_null("PresentationCamera")
 	if is_instance_valid(presentation):
-		var options = presentation.get("_shot_options")
-		presentation_clear = not presentation.is_presenting() \
-			and presentation.get("_shake_position_noise") == null \
-			and presentation.get("_shake_rotation_noise") == null \
-			and options is Dictionary and (options as Dictionary).is_empty()
+		presentation_clear = _presentation_clean(presentation)
 	_check(presentation_clear,
 		label + ": PresentationCamera inactive with no retained shake state")
 
@@ -652,6 +693,8 @@ func _failed_wave_fixture() -> Dictionary:
 		"wave": wave,
 		"shot": failed_shot,
 		"source": source,
+		"player": player,
+		"view_baseline": _view_baseline(source, player),
 	}
 
 func _two_wave_fixture() -> Dictionary:
@@ -693,6 +736,8 @@ func _two_wave_fixture() -> Dictionary:
 		"director": host.get("director"),
 		"controller": host.get_node("CinematicCameraController"),
 		"source": source,
+		"player": player,
+		"view_baseline": _view_baseline(source, player),
 		"first_wave": first_wave,
 		"second_wave": second_wave,
 		"first_shot": first_shot,

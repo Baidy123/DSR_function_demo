@@ -80,7 +80,7 @@ func _run() -> void:
 	await _test_accepted_shot()
 	await _test_paused_clock_advances()
 	await _test_second_shot_is_busy()
-	await _test_dialogue_and_shot_share_pause()
+	await _test_dialogue_and_shot_coexist()
 	await _test_reset_cancels_shot()
 	await _test_death_cancels_shot()
 	await _test_loading_cancels_shot()
@@ -196,7 +196,7 @@ func _test_second_shot_is_busy() -> void:
 	f.controller.cancel_shot(&"test_cleanup")
 	await _dispose(f)
 
-func _test_dialogue_and_shot_share_pause() -> void:
+func _test_dialogue_and_shot_coexist() -> void:
 	var f := await _fixture()
 	f.shot.enter_seconds = 0.0
 	f.shot.hold_seconds = 0.1
@@ -206,18 +206,17 @@ func _test_dialogue_and_shot_share_pause() -> void:
 		"source": f.dialogue_provider, "target": f.dialogue_provider,
 		"player": f.player, "origin": &"interaction",
 	})
-	var dialogue_pause: int = Pauses.for_tree(self).acquire(
-		f.dialogue_provider, &"dialogue", true, true)
-	check(admission.accepted and dialogue.has_started() and dialogue.status == &"running",
-		"Dialogue can start while a cinematic Shot is active")
+	check(admission.accepted and dialogue.has_started() and dialogue.status == &"running"
+			and f.player.is_in_dialogue
+			and int(f.director.debug_snapshot().requests.foreground) == dialogue.id
+			and Pauses.for_tree(self).snapshot().reasons == [&"cinematic_shot", &"dialogue"],
+		"Production dialogue can start during a Shot, locks the player, and adds no world pause")
 	f.director.advance(0.1)
 	check(f.controller.get_snapshot().phase == &"idle" and f.source.is_current(),
 		"Dialogue plus Shot advances the Shot clock to completion")
-	check(paused and Pauses.for_tree(self).snapshot().reasons.count(&"dialogue") == 2,
-		"Shot completion releases only its own pause and retains dialogue ownership")
-	Pauses.for_tree(self).release(dialogue_pause)
-	check(dialogue.status == &"running" and not paused,
-		"Dialogue remains a foreground request after the Shot finishes")
+	check(not paused and dialogue.status == &"running" and f.player.is_in_dialogue
+			and Pauses.for_tree(self).snapshot().reasons == [&"dialogue"],
+		"Shot completion resumes the world while production dialogue stays locked")
 	f.dialogue_provider.complete()
 	check(dialogue.status == &"completed" and not f.player.is_in_dialogue,
 		"Dialogue completion releases its own deferred controls")
@@ -229,8 +228,10 @@ func _test_dialogue_and_shot_share_pause() -> void:
 	})
 	admission = f.controller.play_shot(f.shot)
 	check(dialogue.has_started() and admission.accepted
-			and f.controller.get_snapshot().phase == &"enter",
-		"A cinematic Shot can start behind an already active dialogue request")
+			and f.controller.get_snapshot().phase == &"enter"
+			and f.player.is_in_dialogue and paused
+			and Pauses.for_tree(self).snapshot().reasons == [&"dialogue", &"cinematic_shot"],
+		"A pausing Shot adds the sole world pause behind production dialogue")
 	f.controller.cancel_shot(&"test_cleanup")
 	f.dialogue_provider.complete()
 	await _dispose(f)
