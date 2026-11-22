@@ -116,6 +116,10 @@ func _run() -> void:
 	await process_frame
 	check(panel.visible and panel.current_status().begins_with("enter"),
 		"Re-enabling Debug rebinds the active controller state")
+	shot_list.select(2)
+	shot_list.item_selected.emit(2)
+	check(panel.current_status().contains("pause_world=true"),
+		"Debug status reads the active controller pause_world instead of the selected Shot")
 	fixture.scene.free()
 	await process_frame
 	check(not paused and Pauses.for_tree(self).snapshot().count == 0,
@@ -131,6 +135,26 @@ func _run() -> void:
 	check(panel.find_children("*", "Camera3D", true, false).is_empty()
 			and Pauses.for_tree(self).snapshot().count == 0,
 		"Debug UI does not own a camera or pause")
+
+	var replacement := await _create_fixture("CinematicDebugReplacement")
+	await process_frame
+	panel.refresh()
+	check(panel.shot_names() == expected,
+		"Debug panel refreshes its Shot list when scene A is replaced by scene B")
+	shot_list.select(0)
+	shot_list.item_selected.emit(0)
+	play_button.pressed.emit()
+	check(replacement.controller.get_snapshot().phase == &"enter"
+			and replacement.source.is_current() == false,
+		"Debug panel rebinds playback to the replacement scene controller")
+	cancel_button.pressed.emit()
+	await process_frame
+	check(replacement.controller.get_snapshot().phase == &"idle"
+			and replacement.source.is_current()
+			and Pauses.for_tree(self).snapshot().count == 0,
+		"Replacement scene cancellation restores its camera and releases pause")
+	replacement.scene.free()
+	await process_frame
 
 	settings.enabled = false
 	current_scene = null

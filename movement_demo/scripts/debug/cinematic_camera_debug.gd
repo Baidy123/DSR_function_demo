@@ -216,8 +216,8 @@ func _phase() -> StringName:
 func _status_text() -> String:
 	var phase := _phase()
 	var parts := PackedStringArray([String(phase)])
-	var shot := _selected_shot()
-	if phase != &"idle" and shot != null and shot.pause_world:
+	if phase != &"idle" and is_instance_valid(_controller) \
+			and bool(_controller.get_snapshot().get("pause_world", false)):
 		parts.append("pause_world=true")
 	if not _notice.is_empty():
 		parts.append(String(_notice))

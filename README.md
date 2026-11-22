@@ -27,6 +27,7 @@ Dialogue Manager、Phantom Camera 和 Godot AI 插件源码及许可证随工程
 | 货币商店与任务金额 | 资源配置的医疗包、弹药、旗标与武器商品；关卡解锁、任务发钱与死亡恢复点 |
 | 敌人 AI | 巡逻、视觉／听觉、追踪与搜索、掩体、近远程攻击；个人决策与三档小队配合 |
 | 场景调度 | SceneDirector 统一对话、商店、交互、事件演出、波次、镜头、出口与切场景，支持排队和真实取消 |
+| 剧情演出相机 | 单 Shot、自由机位、正交缩放、确定性抖动和返回玩家最新视野；Wave、SceneFlowAction 与 Debug 面板共用控制器 |
 | 交互与任务 | 对话、场景交互效果、条件驱动任务、阶段与 NPC 状态；任务演示与五关流程各自独立 |
 | 设置与偏好 | Esc 设置分为基础设置与战斗设置；调整窗口模式、分辨率、垂直同步、鼠标辅助和换锁灵敏度后显式保存到 `user://settings.cfg` |
 | 表现与诊断 | 可替换模型／动画、命中特效、血条与尸体、准星／状态提示、相机遮挡透明和调试视图 |
@@ -76,6 +77,7 @@ Dialogue Manager、Phantom Camera 和 Godot AI 插件源码及许可证随工程
 | Player → Equipment | 主副武器、初始槽、初始共享备弹、医疗包资源与数量 | [装备](docs/gameplay/WEAPON_SLOTS.md) |
 | Player → Health | 最大生命、Debug 入口 | [生命与治疗](docs/gameplay/PLAYER_HEALTH.md) |
 | Camera3D | `Player Path`、视野过渡、遮挡透明；视野范围跟随武器 `Aim Range` | [相机](docs/gameplay/CAMERA.md) |
+| SceneDirector → CinematicShots → CinematicShot3D | 机位、投影／Size／FOV、ENTER／HOLD／RETURN、`pause_world`、缓动和抖动 | [演出镜头](docs/gameplay/CAMERA.md#剧情演出-shot) |
 
 ### 武器与补给
 
@@ -127,6 +129,7 @@ Dialogue Manager、Phantom Camera 和 Godot AI 插件源码及许可证随工程
 | Combat | `get_effective_accuracy()`、`get_target_headshot_chance(target)`、`is_turning_to_target()` | UI 读取基础准度、目标爆头率和转身状态 |
 | Combat | `weapon_changed`、`shot_fired`、`headshot_resolved` 信号 | 相机、表现或统计订阅真实装备／射击结果 |
 | Health | `receive_hit(damage)`、`restore_health(amount)`、`died` 信号 | 伤害、治疗与死亡通知 |
+| CinematicCameraController | `play_shot(shot)`、`cancel_shot(reason)`、`get_snapshot()` | 单 Shot 请求、显式取消和只读阶段／错误状态 |
 | GameState | `record_campaign_checkpoint(level, player_snapshot)`、`restore_campaign_checkpoint()` | 保存并恢复最近完成关卡时的酒馆进度与玩家快照 |
 | GameState | `add_money(amount)`、`spend_money(amount)`、`claim_task_reward(id, amount, level)`、`has_purchased_shop_item(id)` | 货币增减、一次性任务发奖与商店购买记录 |
 | ShopController | `open_shop_for_player(player)`、`purchase(item_id, slot)`、`close_shop()` | 打开／关闭货币商店、复核并执行购买；面板只回传意图 |
@@ -142,6 +145,7 @@ Dialogue Manager、Phantom Camera 和 Godot AI 插件源码及许可证随工程
 - **新增弹种**：创建 AmmoDefinition，填写唯一 ID；让武器引用它，并在 Equipment 的 `Initial Ammo` 中添加 AmmoSupply。掉落开关、数量和模型在弹种资源内设置。
 - **新增商店商品**：在 `resources/shop/shop_catalog.tres` 的 `Items` 中新建 `ShopItemDefinition`，按效果拖入医疗包／枪械资源或填写旗标。数量、一次性购买与校验规则见[商店配置](docs/gameplay/REWARDS.md)。
 - **新增敌人或波次**：兵种放入Squad，再放到Wave；选择原顺序模式、事件节点模式或显式请求。事件和手摆镜头按[SceneDirector教程](docs/gameplay/SCENE_DIRECTOR.md)配置，无需迁移部署层。
+- **新增剧情镜头**：在 SceneDirector 的 `CinematicShots` 下放入 `cinematic_shot_3d.tscn`，在关卡内直接摆相机；Wave 的 `Cinematic Shot Path` 或规则动作 `PLAY_CINEMATIC_SHOT` 引用它。一次只播放一条，新请求忙时拒绝。
 - **接入新战斗地图**：复用带区域控制器的结构，保留CombatZone与导航；放入玩家、独立相机及SceneDirector，设置相机Player Path、部署并烘焙导航。见[关卡](docs/gameplay/LEVEL_MAPS.md)和[波次](docs/gameplay/ENEMY_WAVES.md)。
 - **新增交互或表现**：交互物组合已有 InteractionEffect，新增效果通过 InteractionContext 使用注入的状态；模型、动画与特效通过表现组件接入。具体资源契约见对应专项说明。
 

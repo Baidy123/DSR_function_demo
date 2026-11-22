@@ -25,13 +25,78 @@
 
 持枪即按锁定距离计算视野，不要求按住瞄准。出生直接应用初始装备；切枪平滑过渡，快速来回切换从当前大小接续。空武器、非正交投影、锁定距离非正数或非有限值时回到场景原 Size。相机过渡时间为非有限值时沿用0.25秒，负值按0处理。暂停冻结过渡，死亡沿用原暂停，重开重新读取初始装备。武器资源不保存相机大小、相机开关或过渡参数。
 
-当前 `PhantomCamera3D` 的 `Camera3D Resource` 留空，由插件控制跟随位置、由 `Camera3D` 脚本控制 Size。不要同时给 Phantom Camera 配置另一套镜头覆盖；以后需要多镜头切换时，应统一视野的控制入口。本轮不修改插件源码或原 `Follow Offset`。
+当前 `PhantomCamera3D` 的 `Camera3D Resource` 留空，由插件控制跟随位置、由 `Camera3D` 脚本控制 Size。不要同时给 Phantom Camera 配置另一套镜头覆盖；剧情演出统一走 SceneDirector 的 `CinematicCameraController`，不修改插件源码或原 `Follow Offset`。
+
+## 剧情演出 Shot
+
+SceneDirector 场景已带唯一的 `CinematicCameraController` 执行器，其子节点 `PresentationCamera` 只在播放时成为活动相机。作者镜头放在可见的 `CinematicShots` 容器下，每个镜头实例化 `scenes/cinematic/cinematic_shot_3d.tscn`。Wave 和 SceneFlowAction 只引用 Shot，不直接移动 `PresentationCamera`。
+
+```text
+SceneDirector
+├─ CinematicCameraController
+│  └─ PresentationCamera
+├─ CinematicShots
+│  └─ BossEntranceShot        CinematicShot3D
+└─ Wave1 / Wave2 / Scene Rules
+```
+
+控制器同一时刻只接受一个 Shot。已有镜头播放时，新请求返回 `busy`；不替换、不排队，也不会自动播放“下一条”。`completed`、`cancelled`、`busy`、`invalid_shot`、`no_source_camera`、`camera_lost`、`source_lost` 和 `failed` 是公开结果。Debug 面板会显示阶段、`pause_world` 和最近结果。
+
+### Shot 字段
+
+| 字段 | 作用 |
+| --- | --- |
+| `enter_seconds` / `hold_seconds` / `return_seconds` | ENTER、HOLD、RETURN 的独立时长；0 表示该阶段瞬时完成 |
+| 相机 Transform | 自由机位位置与朝向；不修改原玩家相机 |
+| `projection`、`keep_aspect`、`size`、`fov` | 正交 Size 或透视 FOV；切换属性在切入时确定 |
+| `h_offset`、`v_offset`、`frustum_offset`、`near`、`far`、`cull_mask` | 与机位一起插值或切入复制 |
+| `environment`、`attributes`、`compositor` | 只读引用，不从源相机写入，也不反向修改玩家资源 |
+| `pause_world` | 默认开启；只在本次 Shot 持有 SceneDirector 的 `cinematic_shot` 暂停令牌 |
+| `transition_easing` | LINEAR、SMOOTH、EASE_IN、EASE_OUT、EASE_IN_OUT |
+| `shake_enabled` | 开启确定性局部抖动 |
+| `shake_position_amplitude` / `shake_rotation_degrees` | Shot 局部空间中的最大位置和旋转幅度 |
+| `shake_frequency`、`shake_fade_in_seconds`、`shake_fade_out_seconds` | 噪声频率与 ENTER／RETURN 包络 |
+| `shake_seed` | 固定切片与截图复现；相同 seed、阶段和时间得到相同偏移 |
+
+### 阶段、返回边界与抖动
+
+1. **ENTER** 从玩家当前实际可见画面切入，并移向 Shot 机位及镜头参数。
+2. **HOLD** 固定在作者机位。抖动只叠加在运行中的 `PresentationCamera` 上，不写 Shot、玩家相机或共享资源。
+3. **RETURN** 持续读取玩家最新 Transform、武器视野和遮挡焦点，结束后再切回源相机。
+
+抖动位置与旋转都使用 Shot 局部基，seed 固定；遮罩资源只被引用。镜头中途死亡、加载、区域复位、控制器卸载、玩家相机删除／失效、活动 Shot 删除或外部相机接管都会停止采样并清理。外部系统已经取得的相机不会被旧镜头抢回。
+
+### 暂停、对话与鼠标
+
+`pause_world=true` 时，控制器通过 `scene_pause_coordinator` 取得自己的令牌；对话也可同时取得令牌，两者独立释放。镜头先结束不会解除对话暂停，对话先结束也不会提前解除镜头暂停。`pause_world=false` 不取得镜头暂停，但死亡或加载仍会取消镜头。镜头播放期间普通暂停菜单不叠加，Esc 不会抢走演出控制。
+
+控制器切入前先验证 Shot 和当前源相机，再创建 SceneRequest、取得暂停并切换相机。任一步失败都会释放已经取得的令牌。取消统一走 `cancel_shot()`，死亡、切场、区域复位和卸载不另写一套恢复逻辑。
+
+### 玩家相机边界
+
+- 玩家 Camera3D 仍是 Phantom Camera 的跟随宿主，武器 `Aim Range`、视野过渡和遮挡透明继续由原组件负责。
+- 演出只复制运行画面所需的 Transform、投影和镜头参数；不把 `PresentationCamera` 变成玩家跟随器。
+- 玩家相机不是当前相机、跨 Viewport、离树或删除时，演出结束为 `camera_lost`／`source_lost`，不伪造源画面。
+- 旧式 Wave Marker 演出继续兼容；Wave 同时配置新 `Cinematic Shot Path` 时，新 Shot 优先且旧配置不重复播放。
+
+### Debug 面板与验证
+
+DebugSettings 开启且运行 Debug 构建时，`CinematicCameraDebug` 枚举当前场景 `cinematic_shot` 组的 Shot，可播放和取消。面板只调用控制器公开接口；场景 A 替换为 B 或 Debug 关闭时会清理旧控制器、Shot 引用和显示状态，不持有相机或暂停。
+
+专项入口为 `cinematic_shot_test`、`cinematic_camera_test`、`cinematic_controller_test`、`cinematic_wave_trigger_test`、`cinematic_debug_test` 和 `cinematic_interruption_test`。真实渲染分支：
+
+```bash
+/Applications/Godot.app/Contents/MacOS/Godot --path movement_demo \
+  --script res://tests/cinematic_interruption_test.gd -- --capture
+```
+
+截图保存到 `movement_demo/logs/cinematic-camera-capture/`，不提交。当前证据包含玩家原画面、自由机位、正交缩放、确定性抖动中点和返回画面；最终数量与基线失败见[测试说明](../testing.md)。
 
 ## 独立演出相机与手动目标
 
 SceneDirector的Wave“出场镜头”可选择Marker3D或现有Node3D作为画面中心，并配置移过去、停留、返回时间。缺少绑定时诊断并跳过，不自动替用户选敌人中心。详细摆放和路径见[场景调度教程](SCENE_DIRECTOR.md#三手摆目标展示真实增援)。
 
-专用 `presentation_camera.tscn` 初始非当前，默认首次展示时由入口创建同级内部实例，也可手动绑定。它复制原相机实际可见transform、投影、Size/FOV、偏移、裁剪、环境等参数后切入，保持俯视倾角并移动；返回时对齐玩家最新画面再切回。原Phantom绑定不变，也不复制整个玩家相机子树。
+旧式专用 `presentation_camera.tscn` 初始非当前，默认首次展示时由入口创建同级内部实例，也可手动绑定。新场景优先使用上面的 CinematicShot3D；旧 Wave 配置保留兼容执行。它复制原相机实际可见transform、投影、Size/FOV、偏移、裁剪、环境等参数后切入，保持俯视倾角并移动；返回时对齐玩家最新画面再切回。原Phantom绑定不变，也不复制整个玩家相机子树。
 
 树暂停期间，演出只由场景核心显式advance推进。返回前由相机侧有限同步锚点/Host/武器视野，不短暂恢复战斗；遮挡辅助通过原相机适配器交接，不能两套缓存争写材质。原相机失效或其他相机接管时取消旧演出，不抢回显示。镜头看到敌人不构成AI感知证据。
 

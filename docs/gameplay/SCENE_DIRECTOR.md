@@ -10,7 +10,8 @@
 2. 在 **Health Path** 选择本场玩家的 Health；同级 Player 的路径是 `../Player/Health`。
 3. 有 LevelFlow 时设置 **Result View Path**。**Guide Path** 默认留空，操作说明统一从 **Esc → 设置** 手动打开；只有另需开场教程时才显式绑定。没有 Wave 也能运行，不会自动通关。
 4. 战斗场景沿用 CombatZone、Player、Camera3D 和 Wave → Squad → Enemy。Wave 放在导演入口下，第一关原根节点 Squad 仍由 Wave1 引用，无需移动。
-5. 事件、动作和手摆镜头按后文配置。不要把整个区域或敌人设成 Always；内部调度器会处理暂停期间的 UI 和取消。
+5. `scene_director.tscn` 已带 `CinematicCameraController/PresentationCamera` 和 `CinematicShots`。剧情 Shot 放进 `CinematicShots`，不要移动或删除控制器子层级。
+6. 事件、动作和演出镜头按后文配置。不要把整个区域或敌人设成 Always；内部调度器会处理暂停期间的 UI 和取消。
 
 导演入口的 `director` 属性指向内部核心；代码用 `SceneDirector.for_node(self)` 查找本场核心。区域不会再暗中创建导演，缺少入口时会给出节点路径诊断。旧 `enemy_waves.tscn` 与脚本 UID 保留兼容，不要和新入口同时放置。
 
@@ -45,11 +46,23 @@ if result.status == &"completed":
 
 `origin = interaction` 忙碌时拒绝，`rule` 排队。`parameters` 只放数据，节点分别放在 source／target／player／scope_owner；跨场节点和参数中藏入的节点会被拒绝。请求状态为 queued／running／completed／failed／cancelled／rejected；`wait_result()` 也可读取已同步完成的结果。用 `director.cancel_request(request.id, &"reason")` 取消；自定义持续逻辑见第五节，不要在批准前自行锁住玩家。
 
+播放剧情 Shot 可直接调用可见控制器：
+
+```gdscript
+var controller = $CinematicCameraController
+var result: Dictionary = controller.play_shot($CinematicShots/BossEntranceShot)
+if not result.accepted:
+    print("镜头未播放：", result.result)
+```
+
+控制器只接受一个 Shot。`busy` 不改当前镜头；`get_snapshot()` 提供 phase、request id、`pause_world`、elapsed、remaining 和最近错误。`cancel_shot()` 与死亡／切场清理走同一取消路径。
+
 ## 编辑器里主要操作什么
 
 | 对象 | 怎么创建 | 配置内容 |
 | --- | --- | --- |
 | SceneDirector | 酒馆与五关已有；新场景拖入 `scene_director.tscn` | 玩家/UI绑定、可选引导、场景规则 |
+| CinematicShot3D | 把 `scenes/cinematic/cinematic_shot_3d.tscn` 放到 SceneDirector/CinematicShots | 自由机位、投影/Size/FOV、三阶段时间、`pause_world`、抖动 |
 | SceneEvent | 拖入 `scenes/world/scene_event.tscn`，自行改名 | 来源节点、来源信号、可选过滤；也可手动触发 |
 | Wave | 原 `enemy_wave.tscn`，部署方式不变 | 出场模式、事件节点列表、延迟、出场镜头 |
 | Marker3D | 在3D编辑器创建并手动摆放 | 镜头画面中心；也可直接绑定已有 Node3D |
@@ -60,6 +73,10 @@ if result.status == &"completed":
 Lvl1
 ├─ CombatZone
 ├─ SceneDirector
+│  ├─ CinematicCameraController
+│  │  └─ PresentationCamera
+│  ├─ CinematicShots
+│  │  └─ ReinforcementShot
 │  ├─ Wave1
 │  └─ Wave2
 │     └─ Squad
@@ -122,7 +139,7 @@ $SceneEvents/CallReinforcements.trigger()
 
 ## 三、手摆目标，展示真实增援
 
-只需要增援镜头时，直接配 Wave，不必先建场景规则：
+旧式 Marker 演出仍保留。新场景优先在 `CinematicShots` 放一条 Shot，再在 Wave 填 **Cinematic Shot Path**；两种配置同时存在时，新 Shot 优先，旧手摆目标不重复播放。只需要旧式增援镜头时，也可直接配 Wave：
 
 1. 在 CameraPoints 下创建 `Marker3D`，改名 `ReinforcementLookAt`，在3D视图摆到想关注的地方。
 2. 选中对应 Wave，展开 **出场镜头**，开启 **Show Spawn Presentation**。
@@ -133,6 +150,8 @@ $SceneEvents/CallReinforcements.trigger()
 标记表示 **画面看哪里**，不是把相机机身放在这里；保留原俯视倾角。不会自动替你选敌人中心或摆锚点。未绑定、目标删除或不在树内时，诊断并跳过镜头，不重刷已生成敌人。
 
 执行顺序：真实生成成功 → 在公开出场通知前冻结战斗 → 第二台相机复制玩家当前画面并切入 → 移到手选目标 → 返回玩家最新画面并切回 → 释放本次暂停。出生点受阻时不提前看空位置。原玩家相机仍由 Phantom 和武器视野组件控制。
+
+新式 `Cinematic Shot Path` 同样只在真实生成后开始，且 Shot BARRIER 在公开 `spawned` 前建立。镜头忙时只跳过相机，已经提交的敌人不回滚；出生失败或出生点被占时不会创建空镜头。两条 Wave 同帧请求时，第一条成功镜头执行，其余 `busy`。
 
 **不用手放第二台相机。**默认首次需要时创建内部 PresentationCamera；想手动装配，可拖入 `scenes/player/presentation_camera.tscn` 并在 SceneDirector 的 **Presentation Camera Path** 选择它。不要选原玩家 Camera3D。
 
@@ -147,7 +166,7 @@ SceneDirector 另有可选“统一出场镜头”，适合所有波使用同一
 3. **Scope = REGION**：本轮区域战斗一次，复位可重播；**SCENE**：本场一次，出入区域不重播。
 4. **Actions** 按顺序添加 `SceneFlowAction`，先选 **Kind**，再填相关字段。
 
-将鼠标悬停在 **Kind** 属性名上查看用途与必填参数；新增 RUN_SCRIPT 后共有11种动作，旧资源编号保持。
+将鼠标悬停在 **Kind** 属性名上查看用途与必填参数；现有12种动作，`RUN_SCRIPT` 与 `PLAY_CINEMATIC_SHOT` 追加在原枚举末尾，旧资源编号保持。
 
 例如“事件 → 等1秒 → 请求Wave2 → 等清空 → 调已有公开方法”：
 
@@ -168,6 +187,7 @@ REQUEST_WAVE 等真实生成才继续；若勾选 **Present Spawn**，动作的 
 | COMPLETE_SCENE | 请求完成，必要镜头结束后显示结果，同帧死亡优先 |
 | RESTART | 编排者配置的重载动作；当前五关未配置，不是玩家平时的重试入口 |
 | CHANGE_SCENE | 请求 Scene Path 指定场景，失败可重试原目标 |
+| PLAY_CINEMATIC_SHOT | Target Path 选 CinematicShot3D；等 Shot 完成、取消或失败后再继续 |
 
 CALL_METHOD 不接受以下划线开头的私有方法，并检查参数数量和基础类型。即时方法留空 Completed Trigger；需要等待异步完成时，必须同时配置 **Completed Trigger** 与 **Cancel Method**（公开、无参停止方法），缺少取消契约会在执行前拒绝。订阅先于方法调用，不遗漏同步完成；滑门状态改变不等于 Tween 已经结束。
 
@@ -219,6 +239,8 @@ func _finished() -> void:
 | --- | --- | --- |
 | Wave 的 Event Nodes / Triggers / 镜头 | 此 Wave | `../../SceneEvents/CallReinforcements` |
 | SceneFlowRule / SceneFlowAction | SceneDirector | `../CameraPoints/ReinforcementLookAt` |
+| Wave 的 Cinematic Shot Path | 此 Wave | `../../CinematicShots/ReinforcementShot` |
+| PLAY_CINEMATIC_SHOT 的 Target Path | SceneDirector | `CinematicShots/ReinforcementShot` |
 | SceneEvent.Source Path | 此事件节点 | `../../CombatZone` |
 | 全局状态来源 | 可用绝对路径 | `/root/GameState` |
 
@@ -239,6 +261,7 @@ String 不等于 StringName，整数1不等于布尔true。需要“事件发生
 - **Guide Path** 默认留空，当前五关进入与死亡重开不自动弹出操作说明；保留 `LevelFlow/PlayGuide` 节点路径，显式绑定的独立教程仍适配 `begin()/cancel()/finished`。允许走动的教程关闭 Guide Pauses World，核心不依赖 PlayGuide 类型。
 - 导演初始化时装配一个 `PauseMenu`，不改变地图的 Wave／Squad 层级。`request_pause_menu()` 仅在可游玩、无加载失败、世界未暂停且没有前台请求／其他控制拥有者时取得 `pause_menu` 暂停；`resume_from_pause_menu()` 只释放该令牌。菜单回传暂停、继续和确认退出意图，设置／说明子页不自行恢复世界。菜单打开时不推进导演排队请求、普通规则或演出计时；死亡／加载等状态变化及卸载关闭菜单并保留其他暂停所有权。
 - Health 只结算生命、停止玩家自身动作并发 `died`。调度器先取得死亡暂停，再取消镜头/动作，独立视图控制原 `Player/Health/DeathScreen`；“重新挑战”准备入关状态并重载当前场景，“返回酒馆”准备恢复最近酒馆检查点，再通过 `LevelFlow.next_scene_path()` 加载酒馆。两者均在加载接受后提交。没有 `LevelFlow` 适配器的通用场景隐藏“返回酒馆”，保留当前场景重开。
+- 剧情 Shot 的 `cinematic_shot` 暂停与对话暂停独立；死亡、加载、区域复位、控制器卸载、活动 Shot 删除、源相机丢失和外部相机接管都会结束当前 Shot。切场后的新相机不会被旧镜头重新抢走。
 - 配置了 `LevelFlow.return_portal_path` 的五关在全部波次完成后只开放本关 `TavernReturnPortal`，不暂停世界，也不显示直接进入下一关的按钮。没有返程门的结果界面仍可暂停并显示原按钮；没有任何 Wave 不自动通关。
 - `LevelFlow.completion_pauses_world()` 决定完成时是否取得暂停所有权：有返程门时返回 false，保留结果按钮时返回 true。该接口只影响完成，不改变死亡暂停。
 - 离区仍由区域服务清理敌人、掉落与协同，调度器取消 REGION 规则和镜头。SCENE 开场和结果不重播；若 SCENE 规则正等旧轮波次，该等待明确取消诊断，不自动跨轮重投。
@@ -260,7 +283,9 @@ String 不等于 StringName，整数1不等于布尔true。需要“事件发生
 | ALL永远等 | 是否包含不会发生的条件或依赖自己的出场/清空；检查诊断 |
 | 占位时镜头不动 | 正常，必须先真实生成；不要单独播放镜头冒充增援已到 |
 | 已刷敌人却无镜头 | 检查开关、手动目标、目标是否在树内及最近诊断 |
+| Wave 镜头配置了新路径却没有播放 | 路径必须相对 Wave 且指向 `CinematicShot3D`；检查控制器是否 `busy`、源相机是否当前 |
 | 构图不合意 | 移动Marker3D的世界位置，调整Size；不要移动玩家相机 |
+| Shot 构图或抖动不合意 | 直接移动 Shot 节点，检查投影／Size／FOV、三阶段时间和局部抖动幅度；不要写入玩家相机 |
 | 说明关闭后仍暂停 | 检查pause.reasons是否还有死亡、结果或其他拥有者 |
 | 请求被拒绝／没有导演 | 检查本场唯一入口、Health Path、核心是否准备好、目标是否仍在本场；查看 request.reason |
 | 换关没继承装备 | 检查是否通过 QuestPortal／TavernReturnPortal、加载是否成功、一次性快照是否已被消费；plain 切换不自动准备战役快照 |

@@ -25,7 +25,9 @@ movement_demo/
 │   │   ├── levels/        Lvl_1–5 独立地图，含区域、导航、已保存小队／波次及地图实体
 │   │   └── objects/       具体交互物：酒馆关卡门、五关返程门、酒杯、终端、唱片机
 │   ├── presentation/      模型包装场景和独立接口演示
+│   ├── cinematic/         CinematicShot3D 单镜头数据场景
 │   ├── effects/           共用命中特效管理器和粒子场景
+│   ├── debug/             可选 Debug CanvasLayer，含 CinematicCameraDebug
 │   └── ui/                对话、任务面板、货币商店、关卡流程与游玩说明场景
 ├── scripts/
 │   ├── enemy/             身体、AI 协调、装配与评分入口
@@ -41,8 +43,9 @@ movement_demo/
 │   │   ├── tavern_return_portal.gd 记录关卡完成、玩家快照与酒馆检查点并返回酒馆
 │   │   └── interactions/  交互效果基类、注入上下文与各效果实现
 │   ├── ui/                对话、锁定准星、任务面板、货币商店、关卡流程与游玩说明
-│   ├── debug/             调试开关、协调器路径；声音圈及旧攻击区域预览默认关闭
+│   ├── debug/             调试开关、协调器路径与 CinematicCameraDebug；声音圈及旧攻击区域预览默认关闭
 │   └── systems/           场景调度、关卡流程、相机、公共状态、用户设置、声音数据与正式场景切换
+│       ├── cinematic/     CinematicCameraController 单 Shot 请求、阶段和结果
 │       ├── stage/         阶段、任务与 NPC 状态控制器
 │       ├── presentation/  模型挂载、动画配置与表现状态
 │       └── effects/       命中快照、表面配置与特效生命周期
@@ -63,6 +66,7 @@ movement_demo/
 │   ├── stages/            阶段／任务／NPC 状态规则配置表
 │   └── dialogue/          NPC 对话、导入元数据与原有剧情源文件
 ├── tests/
+│   ├── cinematic_*_test.gd 镜头数据、执行器、控制器、Wave/场景动作、Debug 与打断矩阵
 │   ├── enemy/             敌人测试、公共辅助和回归运行器
 │   ├── run_regressions.py  统一清单检查与分组回归入口
 │   ├── regression_runner.py 共用进程执行与失败判定
@@ -131,6 +135,7 @@ Equipment 交接当前枪给 Combat；相机订阅 `weapon_changed`，表现订�
 排队规则通过内部启动条件复核，条件失效时取消本次执行。Runtime 的 deployment_failed 将实际部署错误传回导演，结束仍在等待的请求。加载父链在引擎接受前保留独立取消入口和弱来源监听，接受后的旧场景退出由加载适配完成收尾。
 
 - `world/enemy_wave_controller.gd` 是 SceneDirector 场景入口兼容脚本，原 UID 保留；五关入口已按用户要求改名，Wave/Squad层级不动。`enemy_wave_runtime.gd` 执行模板、合法出生、各波状态、搜索与清理；`enemy_wave_definition.gd` 保存部署、事件节点与手选镜头配置。
+- `enemy_wave_definition.gd` 的 `cinematic_shot_path` 在真实部署后提交单 Shot；SceneDirector 负责“新 Shot → 旧 Wave 手摆 → 整场默认”的优先级，控制器忙时不回滚已部署敌人。
 - `systems/scene_director.gd` 是入口内部的场景核心，不依赖Wave或PlayGuide；`scene_flow_runner.gd` 推进资源规则与动作，`scene_pause_coordinator.gd` 统一记录拥有者。仅内部核心使用Always，区域和敌人保持可暂停。
 - `systems/scene_event.gd` 是可放入场景的事件节点，来源信号或trigger()统一发triggered；`scene_event_trigger/filter/subscription.gd` 适配和过滤，`scene_flow_rule/action.gd` 保存静态配置。接线见[教程](gameplay/SCENE_DIRECTOR.md)。
 - `systems/level_flow.gd` 保留五关表和结果视图，`ui/play_guide.gd` 提供可选begin/cancel/finished，`ui/scene_result_view.gd` 绑定原Health死亡UI；它们只显示并报告请求，暂停与加载由核心决定。五关当前只走返程门闭环；酒馆任务系统读取关卡进度，但不参与 LevelFlow 的返程门与解锁动作。
@@ -146,7 +151,16 @@ Equipment 交接当前枪给 Combat；相机订阅 `weapon_changed`，表现订�
 
 相机根 `systems/player_camera.gd` 统一绑定玩家、读取武器 Aim Range、控制视野过渡；`camera_occlusion.gd` 仅处理显式标记装饰的材质副本与还原。CameraGroundAnchor 过滤翻越抬升。保持原 Phantom Camera 跟随和更新关系。
 
-`systems/presentation_camera.gd` 和 `scenes/player/presentation_camera.tscn` 是独立演出相机。目的地由编辑器绑定Marker3D/Node3D；复制可见画面后切入，返回前通过玩家相机的有限同步接口刷新，再切回。原玩家相机不交给总调度每帧移动，遮挡辅助同一时刻只有一个拥有者。
+| 文件／组件 | 职责与接口边界 |
+| --- | --- |
+| `systems/cinematic/cinematic_shot_3d.gd` / `scenes/cinematic/` | 作者单镜头数据：机位、镜头参数、三阶段时间、暂停和确定性抖动；运行时不自行切换活动相机 |
+| `systems/cinematic/cinematic_camera_controller.gd` | SceneDirector 可见子控制器；单 Shot 准入、SceneRequest、暂停令牌、阶段推进、取消和只读 snapshot |
+| `systems/presentation_camera.gd` | 玩家相机与演出相机之间的通用执行器；复制可见画面、执行旧式移动或新式 Cinematic Shot、返回最新玩家视野并交接遮挡 |
+| `debug/cinematic_camera_debug.gd` | Debug 构建下枚举当前场 Shot，只调用控制器 `play_shot`／`cancel_shot`；不拥有相机或暂停 |
+
+`SceneDirector/CinematicCameraController/PresentationCamera` 是固定执行层级，`SceneDirector/CinematicShots` 是可见作者容器。Wave 的 `cinematic_shot_path` 与 `PLAY_CINEMATIC_SHOT` 都提交同一单 Shot API；`busy` 不排队、不替换、不回滚敌人。玩家相机仍由 Phantom 和武器视野组件控制，原相机不交给总调度每帧移动。旧式 Marker3D／Node3D 演出继续由同一执行器兼容，新 Shot 优先，遮挡辅助同一时刻只有一个拥有者。
+
+控制器在死亡、加载、区域复位、控制器／场景卸载、源相机失效、活动 Shot 删除、调试取消和外部相机接管时统一结束；暂停、鼠标与相机所有权分别由共享协调器与原相机恢复。专项为 `cinematic_controller_test`、`cinematic_camera_test`、`cinematic_wave_trigger_test`、`cinematic_debug_test` 和 `cinematic_interruption_test`。
 
 `systems/presentation/` 读取实际状态驱动模型／动画，`systems/effects/` 管理命中快照、表面配置与特效生命周期。表现不改变伤害、枪口、碰撞或 AI；UI 不替代业务状态的唯一写入者。
 
@@ -159,7 +173,7 @@ Equipment 交接当前枪给 Combat；相机订阅 `weapon_changed`，表现订�
 3. 用户确认的方向是实现依据。不能为了迁就实现改写原设计、放宽测试，或把默认值／建议写成用户逐项确认要求。
 4. 功能、接口或职责变化时更新相应当前章节和使用说明。README 保持项目入口，详细参数放专项文档，逐次验证和历史过程单独记录，避免再次堆积成更新流水。
 5. 资源只保存配置，实例组件保存运行状态；同一状态只保留一个权威写入入口，UI、相机和诊断读取或订阅。
-6. 验证覆盖实际行为及结构约束；历史通过数、运行无错误或一次成功不能替代完整验收。
+6. 验证覆盖实际行为及结构约束；历史通过数、运行无错误或一次成功不能替代完整验收。新脚本与测试保留 Godot 生成的 `.uid` sidecar，但不得顺带提交与当前任务无关的 UID。
 7. 普通阶段提交、推送及本地修改保护遵循仓库 [AGENTS.md](../AGENTS.md)；不得借文档整理同步远端、覆盖其他任务或改写历史计划。
 
 ## 货币商店与旧奖励接口

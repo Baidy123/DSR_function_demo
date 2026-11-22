@@ -1,6 +1,6 @@
 # 敌人波次配置
 
-SEQUENCE／EVENTS／REQUEST 均向本场导演申请 wave 执行；Runtime 保留部署与空间业务，最终提交前只查询许可，不在二次空间检查与提交之间发信号或 await。请求在真实生成后完成；镜头在公开 spawned 通知前由导演建立屏障。已有对话／商店占用前台时，需要展示的增援等待当前交互结束。无关等待与合法波次保持独立，旧资源编号、出生检查与本地敌人数值保持。
+SEQUENCE／EVENTS／REQUEST 均向本场导演申请 wave 执行；Runtime 保留部署与空间业务，最终提交前只查询许可，不在二次空间检查与提交之间发信号或 await。请求在真实生成后完成；镜头在公开 spawned 通知前由导演建立屏障。已有对话／商店占用前台时，传统手摆演出等待当前交互结束；新式剧情 Shot 可与对话独立暂停。无关等待与合法波次保持独立，旧资源编号、出生检查与本地敌人数值保持。
 
 实例化或出生检查发生错误时，Runtime 报告原因，导演把仍在等待的波次请求结束为 failed，规则会显示失败原因。出生点暂时被占只是 blocked 并继续等待，两者不要混淆。
 
@@ -22,6 +22,7 @@ SEQUENCE／EVENTS／REQUEST 均向本场导演申请 wave 执行；Runtime 保�
 | 增加波次 | 复制独立部署的 Wave2，或添加 `scenes/world/enemy_wave.tscn` |
 | 改顺序模式的先后 | 调整SceneDirector下同一层Wave的顺序；事件/请求模式各自等待 |
 | 删除一波 | 删除对应 Wave，保留有效部署并核对引用 |
+| 增加真实生成后的剧情镜头 | 在 SceneDirector/CinematicShots 放 Shot，再把 Wave 的 **Cinematic Shot Path** 指向它 |
 
 复制Wave1会复制同一个外部Squad引用。创建独立新波时，应清空新副本的 Existing Squads 并放入独立小队；同一小队只能属于一波。移动敌人时拖到目标波的Squad下，再改3D位置。节点属性可单实例覆盖，武器／训练／Profile资源则可能共享，单独修改前先设为唯一或另存。
 
@@ -36,6 +37,7 @@ SEQUENCE／EVENTS／REQUEST 均向本场导演申请 wave 执行；Runtime 保�
 | Start Delay Seconds | 0秒 | 条件满足后的等待时间 |
 | Search On Spawn | 开启 | 后续波实际出生时取得一次玩家大概位置并进入搜索 |
 | Spawn Search Error Radius | 3米 | 该一次性提示的最大水平误差，0为精确快照 |
+| Cinematic Shot Path | 空 | 相对 Wave 指向 `CinematicShot3D`；真实生成成功后才播放，优先于旧手摆演出 |
 
 SEQUENCE模式关闭Wait For Previous Clear时，从紧邻上一波实际出场起计时；开启则等全灭清理。其首波从战斗开始计时，后波不越过未出场的前波。EVENTS/REQUEST独立满足条件后才开始自己的延时，不受这项前波条件约束；暂停、对话、死亡等区域不可运行期间不累计时间。
 
@@ -46,6 +48,14 @@ SEQUENCE模式关闭Wait For Previous Clear时，从紧邻上一波实际出场�
 出生搜索复用原TRACK／SEARCH与团队搜索：先快速追查，再持续警戒搜索。**Training → Profile → Search** 的 `combat_pursuit_seconds` 默认4秒、`combat_pursuit_speed_multiplier` 默认1.8，前者为0关闭快速阶段。按提示原始捕获时刻计算，换轮、重排、到点或暂停恢复不续期。它不是目击、压制或开火许可，不跟踪玩家后续隐蔽移动，也不推断其速度。
 
 无法取得有效玩家或合法误差点时仍生成本波，保留原出生行为并输出诊断，不无限等待或退回无误差坐标。未建立交战警戒的普通声音调查仍可能结束回巡逻，与出生搜索不同。
+
+## 剧情镜头与旧式演出优先级
+
+新场景优先使用 **Cinematic Shot Path**。镜头由 SceneDirector 下的单 Shot 控制器执行，支持自由机位、正交 Size 或透视 FOV、ENTER／HOLD／RETURN、确定性抖动和返回玩家最新视野。目标必须相对当前 Wave，且最终解析为 `CinematicShot3D`；无效的非空路径会诊断并停止本次镜头，不回退到旧字段。
+
+优先级为：`Cinematic Shot Path` → Wave 自己的 **Show Spawn Presentation** 与手摆目标 → SceneDirector 整场统一出场镜头。新路径存在时，旧 Wave 字段、动作 Present Spawn 和全场默认都不重复播放。镜头只在真实部署提交后开始，并在公开 `spawned` 前建立屏障；出生点暂时被占、部署失败或区域复位不会创建空镜头。
+
+控制器忙时，Wave 的敌人仍保留，只跳过该次相机表现，不排队等当前 Shot 结束后补播。同帧多个 Wave 请求只允许第一条获得活动 Shot，其余返回 `busy`；不会因此回滚已提交敌人。`pause_world=false` 的 Wave Shot 不暂停世界，但仍受死亡、加载、区域复位和源相机失效取消。
 
 ## 给新战斗区域接入
 
@@ -85,8 +95,9 @@ SEQUENCE模式关闭Wait For Previous Clear时，从紧邻上一波实际出场�
 | `debug_snapshot()` | 只读状态；alive是总人数，active_waves是仍存活波次，wave不是唯一在场波 |
 | `wave_started(index)`／`wave_cleared(index)` | 从1计数的波次事件 |
 | `encounter_completed` | 全部波次完成，由关卡流程接后续界面 |
+| Wave.`cinematic_shot_path` | 新式单 Shot；真实部署后由控制器播放，优先于旧式出场镜头 |
 
-拾取/交互/区域/脚本信号可用SceneEvent或高级Triggers接入，不需重写刷新代码。Wave的“出场镜头”可直接绑定手摆Marker3D/Node3D，未绑定不自动猜目的地；出生成功时才冻结和展示。配置步骤见[教程](SCENE_DIRECTOR.md)。专项为enemy_wave_test、enemy_wave_search_test、enemy_wave_events_test及scene_reinforcement_test；五关流程由level_flow_test验证。
+拾取/交互/区域/脚本信号可用SceneEvent或高级Triggers接入，不需重写刷新代码。旧式“出场镜头”仍可绑定手摆 Marker3D/Node3D；新式 Shot 配置步骤见[SceneDirector教程](SCENE_DIRECTOR.md)和[相机说明](CAMERA.md#剧情演出-shot)。专项为 `cinematic_wave_trigger_test`、`cinematic_interruption_test`、`enemy_wave_test`、`enemy_wave_search_test`、`enemy_wave_events_test` 及 `scene_reinforcement_test`；五关流程由 `level_flow_test` 验证。
 
 ## 旧章节引用
 
