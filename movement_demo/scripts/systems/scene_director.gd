@@ -205,11 +205,12 @@ func save_game() -> Dictionary:
 	if in_tavern:
 		var player := get_tree().get_first_node_in_group(&"player")
 		snapshot = state.capture_save_state(PlayerState.capture(player))
-		state.remember_tavern_state(snapshot)
 	else:
 		snapshot = state.last_tavern_state.duplicate(true)
 	if service.save_game(snapshot) != OK:
 		return {"ok": false, "result": &"save_failed"}
+	if in_tavern:
+		state.remember_tavern_state(snapshot)
 	return {"ok": true, "result": &"tavern_saved" if in_tavern else &"level_saved"}
 
 func _save_game_from_menu() -> void:

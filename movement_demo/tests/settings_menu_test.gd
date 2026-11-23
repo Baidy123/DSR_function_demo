@@ -26,6 +26,15 @@ func _settle(frames: int = 3) -> void:
 		await process_frame
 
 
+func _await_window_state(mode: int, size: Vector2i, max_frames: int = 180) -> bool:
+	for _frame in range(max_frames):
+		if DisplayServer.window_get_mode() == mode \
+				and DisplayServer.window_get_size() == size:
+			return true
+		await process_frame
+	return false
+
+
 func _escape() -> void:
 	for pressed in [true, false]:
 		var event := InputEventKey.new()
@@ -201,8 +210,9 @@ func _run() -> void:
 	check(root.get_visible_rect().size == Vector2(1600, 900),
 		"保存后可见画布使用1600×900坐标")
 	if rendered:
-		check(DisplayServer.window_get_mode() == DisplayServer.WINDOW_MODE_WINDOWED
-			and DisplayServer.window_get_size() == Vector2i(1600, 900),
+		var window_applied := await _await_window_state(
+			DisplayServer.WINDOW_MODE_WINDOWED, Vector2i(1600, 900))
+		check(window_applied,
 			"窗口模式保存后应用1600×900分辨率")
 
 	vsync.button_pressed = true

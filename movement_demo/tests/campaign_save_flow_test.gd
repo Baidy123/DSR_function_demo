@@ -22,8 +22,32 @@ func _run() -> void:
 	var state := root.get_node("GameState")
 	var service := root.get_node("CampaignSaveService")
 	state.reset_game_progress()
-	service.save_path = OS.get_temp_dir().path_join(
+	var save_path := OS.get_temp_dir().path_join(
 		"dsr-level-save-%d.cfg" % OS.get_process_id())
+	service.save_path = OS.get_temp_dir().path_join(
+		"dsr-level-save-missing-%d" % OS.get_process_id()).path_join("save.cfg")
+	var tavern_scene: Node = load("res://scenes/main.tscn").instantiate()
+	root.add_child(tavern_scene)
+	current_scene = tavern_scene
+	for _frame in range(3):
+		await process_frame
+	var tavern_director := Director.for_node(tavern_scene)
+	state.money = 88
+	var remembered: Dictionary = state.capture_save_state(
+		{"health": {"health": 70.0}})
+	state.remember_tavern_state(remembered)
+	var unchanged_tavern: Dictionary = state.last_tavern_state.duplicate(true)
+	state.money = 999
+	var failed_result: Dictionary = tavern_director.save_game()
+	check(failed_result.result == &"save_failed", "无效存档路径返回保存失败")
+	check(state.last_tavern_state == unchanged_tavern,
+		"保存失败不替换最后酒馆状态")
+	tavern_scene.free()
+	current_scene = null
+	await process_frame
+
+	state.reset_game_progress()
+	service.save_path = save_path
 	if FileAccess.file_exists(service.save_path):
 		DirAccess.remove_absolute(service.save_path)
 
