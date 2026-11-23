@@ -2,6 +2,18 @@ extends SceneTree
 
 const ServiceScript := preload("res://scripts/systems/campaign_save_service.gd")
 
+
+class InterruptedReplacementService extends "res://scripts/systems/campaign_save_service.gd":
+	var rename_calls := 0
+
+	func _rename(from_path: String, to_path: String) -> Error:
+		rename_calls += 1
+		# Fail temp -> formal and the following rollback, leaving only a valid .bak.
+		if rename_calls in [2, 3]:
+			return ERR_CANT_CREATE
+		return super._rename(from_path, to_path)
+
+
 var checks := 0
 var failures := 0
 var save_path := ""
@@ -66,8 +78,25 @@ func _run() -> void:
 	var temp_directory := save_path + ".tmp"
 	DirAccess.make_dir_absolute(temp_directory)
 	check(service.save_game(snapshot) != OK and service.load_game().get("money") == 125,
-		"替换失败保留旧存档")
+		"临时文件写入失败保留旧存档")
 	DirAccess.remove_absolute(temp_directory)
+
+	state.money = 250
+	var replacement_snapshot: Dictionary = state.capture_save_state(
+		{"health": {"health": 100.0}})
+	var interrupted = InterruptedReplacementService.new()
+	interrupted.save_path = save_path
+	check(interrupted.save_game(replacement_snapshot) != OK
+			and interrupted.last_error_code == &"rollback_failed"
+			and FileAccess.file_exists(save_path + ".bak")
+			and not FileAccess.file_exists(save_path),
+		"替换与回滚失败后保留有效备份")
+	state.money = 0
+	check(interrupted.apply_saved_game() == OK and state.money == 125
+			and FileAccess.file_exists(save_path),
+		"启动从有效备份恢复旧存档")
+	interrupted.free()
+
 	check(service.stage_reset() == OK and not FileAccess.file_exists(save_path),
 		"重置暂存移走正式存档")
 	check(service.restore_staged_reset() == OK and FileAccess.file_exists(save_path),

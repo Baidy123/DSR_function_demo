@@ -30,7 +30,6 @@ func save_game(snapshot: Dictionary) -> Error:
 	var temp_path := save_path + ".tmp"
 	var backup_path := save_path + ".bak"
 	_remove_file(temp_path)
-	_remove_file(backup_path)
 	var error := _encode(snapshot).save(temp_path)
 	if error != OK:
 		return _fail(error, &"write_failed")
@@ -39,13 +38,19 @@ func save_game(snapshot: Dictionary) -> Error:
 		_remove_file(temp_path)
 		return _fail(ERR_FILE_CORRUPT, &"verify_failed")
 	if FileAccess.file_exists(save_path):
+		if _remove_file(backup_path) != OK:
+			_remove_file(temp_path)
+			return _fail(ERR_CANT_CREATE, &"replace_failed")
 		if _rename(save_path, backup_path) != OK:
 			_remove_file(temp_path)
 			return _fail(ERR_CANT_CREATE, &"replace_failed")
 	if _rename(temp_path, save_path) != OK:
+		var rollback_error := OK
 		if FileAccess.file_exists(backup_path):
-			_rename(backup_path, save_path)
+			rollback_error = _rename(backup_path, save_path)
 		_remove_file(temp_path)
+		if rollback_error != OK:
+			return _fail(rollback_error, &"rollback_failed")
 		return _fail(ERR_CANT_CREATE, &"replace_failed")
 	_remove_file(backup_path)
 	return _ok()
@@ -53,11 +58,22 @@ func save_game(snapshot: Dictionary) -> Error:
 
 func load_game() -> Dictionary:
 	if not FileAccess.file_exists(save_path):
+		var backup_path := save_path + ".bak"
+		if FileAccess.file_exists(backup_path):
+			var backup_snapshot := _read_snapshot(backup_path)
+			if backup_snapshot.is_empty():
+				return {}
+			_rename(backup_path, save_path)
+			return backup_snapshot
 		last_error = OK
 		last_error_code = &""
 		return {}
+	return _read_snapshot(save_path)
+
+
+func _read_snapshot(path: String) -> Dictionary:
 	var config := ConfigFile.new()
-	var error := config.load(save_path)
+	var error := config.load(path)
 	if error != OK:
 		last_error = error
 		last_error_code = &"read_failed"
