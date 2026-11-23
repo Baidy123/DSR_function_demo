@@ -19,6 +19,7 @@ var _next_request := 0
 var _guide_request
 var _camera_request
 var _completion_request
+var _reset_request
 var _interactions
 var _scripts
 var _load_request
@@ -216,6 +217,41 @@ func save_game() -> Dictionary:
 func _save_game_from_menu() -> void:
 	var result := save_game()
 	_pause_menu.show_game_save_result(result.result)
+
+func request_debug_reset_progress() -> bool:
+	if not OS.is_debug_build() or not _initialized or _load_failed \
+			or _load_request != null or state == &"loading":
+		return false
+	var debug_settings := get_node_or_null("/root/DebugSettings")
+	var service := get_node_or_null("/root/CampaignSaveService")
+	if debug_settings == null or not debug_settings.enabled or service == null:
+		return false
+	if service.stage_reset() != OK:
+		report_action_error("reset", "Unable to stage save deletion")
+		return false
+	var main_path := str(ProjectSettings.get_setting("application/run/main_scene", MAIN_SCENE_PATH))
+	_reset_request = _request_transition({
+		"path": main_path,
+		"mode": &"reset_progress",
+		"return_control_on_failure": true,
+	})
+	_reset_request.finished.connect(_on_debug_reset_finished)
+	if _reset_request.is_terminal():
+		_on_debug_reset_finished(_reset_request)
+	return _reset_request.status not in [&"failed", &"cancelled", &"rejected"]
+
+
+func _on_debug_reset_finished(request) -> void:
+	if request != _reset_request:
+		return
+	_reset_request = null
+	var service := get_node_or_null("/root/CampaignSaveService")
+	if service == null:
+		return
+	if request.status == &"completed":
+		service.finish_staged_reset()
+	else:
+		service.restore_staged_reset()
 
 ## 普通暂停只在可游玩、没有其他界面或演出占用控制时打开。
 func request_pause_menu() -> void:

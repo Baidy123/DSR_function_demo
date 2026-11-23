@@ -1,5 +1,7 @@
 extends CanvasLayer
 
+const DirectorAuthority = preload("res://scripts/systems/scene_director.gd")
+
 ## 通用有效命中通知，医疗中断等仍订阅此信号；武器效果由携带攻击快照的独立入口处理。
 signal hit_received(damage: float)
 ## 结算后通知表现层；无敌不产生 damage_applied，但保留上方的原通知。
@@ -35,6 +37,8 @@ var is_dead: bool = false
 @onready var invincible_toggle: CheckBox = $Debug/Controls/Invincible
 @onready var damage_button: Button = $Debug/Controls/Damage
 @onready var complete_level_button: Button = $Debug/Controls/CompleteLevel
+@onready var reset_progress_button: Button = $Debug/Controls/ResetProgress
+@onready var reset_progress_confirm: ConfirmationDialog = $ResetProgressConfirm
 
 
 func _ready() -> void:
@@ -48,6 +52,8 @@ func _ready() -> void:
 	_apply_debug_mode(debug_settings.enabled)
 	damage_button.pressed.connect(_debug_damage)
 	complete_level_button.pressed.connect(_debug_complete_level)
+	reset_progress_button.pressed.connect(reset_progress_confirm.popup_centered)
+	reset_progress_confirm.confirmed.connect(_debug_reset_progress)
 	_update_display()
 	_update_stamina_display()
 
@@ -129,6 +135,7 @@ func _apply_debug_mode(enabled: bool) -> void:
 	debug_mode = enabled
 	$Debug/Controls/NoiseRanges.disabled = not enabled
 	complete_level_button.disabled = not enabled
+	reset_progress_button.disabled = not enabled or is_dead
 	_update_display()
 
 
@@ -148,6 +155,14 @@ func _debug_complete_level() -> void:
 		waves = scene.get_node_or_null("EnemyWaves")
 	if waves != null and waves.has_method(&"debug_complete_encounter"):
 		waves.debug_complete_encounter()
+
+func _debug_reset_progress() -> void:
+	if not OS.is_debug_build() or not debug_settings.enabled:
+		return
+	var scene := get_tree().current_scene
+	var director = DirectorAuthority.for_node(scene)
+	if director != null:
+		director.request_debug_reset_progress()
 
 
 func _update_display() -> void:

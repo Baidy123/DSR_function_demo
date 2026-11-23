@@ -6,7 +6,7 @@ extends SceneTree
 const LEVEL_ONE := preload("res://scenes/world/levels/lvl_1.tscn")
 
 const WATCHDOG_SECONDS := 20.0
-const EXPECTED_CHECKS := 10
+const EXPECTED_CHECKS := 13
 
 var failures := 0
 var checks_run := 0
@@ -46,12 +46,20 @@ func _run() -> void:
 		_finish(scene)
 		return
 	check(button.visible and button.disabled, "Debug 总开关关闭时一键通关不可用")
+	var reset_button := health.get_node_or_null("Debug/Controls/ResetProgress") as Button
+	check(reset_button != null, "Debug 控制栏提供重置全部进度按钮")
+	if reset_button == null:
+		_finish(scene)
+		return
+	check(reset_button.visible and reset_button.disabled,
+		"Debug 总开关关闭时重置按钮不可用")
 	var completed := [0]
 	director.encounter_completed.connect(func() -> void: completed[0] += 1)
 
 	health.debug_invincible = true
 	await process_frame
 	check(not button.disabled, "Debug 总开关开启后一键通关可用")
+	check(not reset_button.disabled, "Debug 总开关开启后重置按钮可用")
 	button.pressed.emit()
 	await process_frame
 	await process_frame

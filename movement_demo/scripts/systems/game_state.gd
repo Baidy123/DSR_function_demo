@@ -63,7 +63,7 @@ func validate_save_state(snapshot: Dictionary) -> bool:
 
 
 func prepare_scene_transition(mode: StringName, player_snapshot: Dictionary = {}, level_number: int = 0) -> Dictionary:
-	if mode not in [&"enter_level", &"return_tavern", &"retry_level", &"death_return", &"plain"]: return {}
+	if mode not in [&"enter_level", &"return_tavern", &"retry_level", &"death_return", &"reset_progress", &"plain"]: return {}
 	if mode == &"return_tavern" and (level_number < 1 or level_number > 5): return {}
 	var before := _transition_snapshot()
 	var target := before.duplicate(true)
@@ -91,6 +91,27 @@ func prepare_scene_transition(mode: StringName, player_snapshot: Dictionary = {}
 					"rewarded_task_ids": {}, "purchased_shop_item_ids": {}, "player_state": {}}
 				for key in defaults:
 					target[key] = _transition_copy(campaign_checkpoint.get(key, defaults[key]))
+		&"reset_progress":
+			target = {
+				"completed_level": 0,
+				"available_level": 1,
+				"claimed_reward_levels": {},
+				"task_a_returned": "",
+				"money": 0,
+				"rewarded_task_ids": {},
+				"purchased_shop_item_ids": {},
+				"campaign_checkpoint": {},
+				"level_entry_player_state": {},
+				"last_tavern_state": {},
+				"talked_to_a": false,
+				"help_choice": "",
+				"music_quest_choice": "",
+				"music_quest_turnin": "",
+				"items": {},
+				"flags": {},
+				"shop_flag_keys": {},
+				"player_state": {},
+			}
 	_transition_sequence += 1
 	var prepared := {"id": _transition_sequence, "base": before, "target": target, "mode": mode}
 	_transition_prepared[_transition_sequence] = prepared.duplicate(true)
@@ -110,9 +131,12 @@ func commit_scene_transition(prepared: Dictionary) -> bool:
 	_transition_prepared.erase(prepared.id)
 	var target: Dictionary = prepared.target
 	_transition_committing = true
-	campaign_checkpoint = target.campaign_checkpoint.duplicate(true)
-	level_entry_player_state = target.level_entry_player_state.duplicate(true)
-	restore_campaign_state(target)
+	if prepared.get("mode") == &"reset_progress":
+		reset_game_progress()
+	else:
+		campaign_checkpoint = target.campaign_checkpoint.duplicate(true)
+		level_entry_player_state = target.level_entry_player_state.duplicate(true)
+		restore_campaign_state(target)
 	_transition_committing = false
 	if target.has("last_tavern_state"):
 		remember_tavern_state(target.last_tavern_state)
