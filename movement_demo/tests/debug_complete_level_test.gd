@@ -6,7 +6,7 @@ extends SceneTree
 const LEVEL_ONE := preload("res://scenes/world/levels/lvl_1.tscn")
 
 const WATCHDOG_SECONDS := 20.0
-const EXPECTED_CHECKS := 10
+const EXPECTED_CHECKS := 14
 
 var failures := 0
 var checks_run := 0
@@ -46,12 +46,20 @@ func _run() -> void:
 		_finish(scene)
 		return
 	check(button.visible and button.disabled, "Debug 总开关关闭时一键通关不可用")
+	var reset_button := health.get_node_or_null("Debug/Controls/ResetProgress") as Button
+	check(reset_button != null, "Debug 控制栏提供重置全部进度按钮")
+	if reset_button == null:
+		_finish(scene)
+		return
+	check(reset_button.visible and reset_button.disabled,
+		"Debug 总开关关闭时重置按钮不可用")
 	var completed := [0]
 	director.encounter_completed.connect(func() -> void: completed[0] += 1)
 
 	health.debug_invincible = true
 	await process_frame
 	check(not button.disabled, "Debug 总开关开启后一键通关可用")
+	check(not reset_button.disabled, "Debug 总开关开启后重置按钮可用")
 	button.pressed.emit()
 	await process_frame
 	await process_frame
@@ -66,11 +74,19 @@ func _run() -> void:
 	check(completed[0] == 1, "重复点击不重复发出完成信号")
 	check(not scene.get_node("LevelFlow/Result").visible, "一键通关仍走返程门而不是旧按钮面板")
 	check(current_scene == scene, "一键通关不直接切换或跳过酒馆")
+	health.is_dead = true
+	health._update_display()
+	check(reset_progress_button_disabled(health), "死亡后重置按钮由显示刷新路径禁用")
 
 	if checks_run != EXPECTED_CHECKS:
 		failures += 1
 		push_error("检查数量不符：期望 %d，实际 %d（脚本报错会中断后续检查）" % [EXPECTED_CHECKS, checks_run])
 	_finish(scene)
+
+
+func reset_progress_button_disabled(health: Node) -> bool:
+	var reset_button := health.get_node_or_null("Debug/Controls/ResetProgress") as Button
+	return reset_button != null and reset_button.disabled
 
 
 func _on_watchdog() -> void:

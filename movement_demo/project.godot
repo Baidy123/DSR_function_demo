@@ -19,6 +19,7 @@ config/features=PackedStringArray("4.7", "GL Compatibility")
 PhantomCameraManager="*uid://duq6jhf6unyis"
 DialogueManager="*uid://c3rodes2l3gxb"
 GameState="*res://scripts/systems/game_state.gd"
+CampaignSaveService="*res://scripts/systems/campaign_save_service.gd"
 UserSettings="*res://scripts/systems/user_settings.gd"
 DebugSettings="*res://scripts/debug/debug_settings.gd"
 _mcp_game_helper="*res://addons/godot_ai/runtime/game_helper.gd"

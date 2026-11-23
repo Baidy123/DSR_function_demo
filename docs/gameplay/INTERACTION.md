@@ -21,7 +21,7 @@
 
 ## 状态与调试
 
-`GameState` 保存 `items` 与 `flags`，提供 `add_item`、`has_item`、`get_item_count`、`item_display_name`、`set_flag`、`get_flag`、`is_flag_set`，并在变化时发出 `item_gained`、`flag_changed`。与对话选择一样，死亡重开场景不清空，重新运行游戏才重置。
+`GameState` 保存 `items` 与 `flags`，提供 `add_item`、`has_item`、`get_item_count`、`item_display_name`、`set_flag`、`get_flag`、`is_flag_set`，并在变化时发出 `item_gained`、`flag_changed`。与对话选择一样，死亡重开场景不清空；状态可随设置页“保存游戏”写入单槽存档，未手动保存就退出游戏时不会跨会话保留。
 
 交互物还有稳定标识 `interact_id`（留空回退节点名），与 NPC 的 `npc_id` 同一套思路：任务条件用
 `INTERACTED` 来源按它记录“曾经交互过”。显式填写稳定 ID 后，修改节点名不会打断配置表；依赖空值回退时则需同步维护引用。见

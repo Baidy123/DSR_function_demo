@@ -3,6 +3,7 @@ extends SceneTree
 const Director = preload("res://scripts/systems/scene_director.gd")
 
 var test_config := ""
+var test_game_save := ""
 var checks := 0
 var failures := 0
 
@@ -23,6 +24,15 @@ func check(value: bool, label: String) -> void:
 func _settle(frames: int = 3) -> void:
 	for _frame in range(frames):
 		await process_frame
+
+
+func _await_window_state(mode: int, size: Vector2i, max_frames: int = 180) -> bool:
+	for _frame in range(max_frames):
+		if DisplayServer.window_get_mode() == mode \
+				and DisplayServer.window_get_size() == size:
+			return true
+		await process_frame
+	return false
 
 
 func _escape() -> void:
@@ -82,6 +92,8 @@ func _run() -> void:
 	var save := settings_page.get_node_or_null("SaveSettings")
 	var restore := settings_page.get_node_or_null("RestoreDefaults")
 	var notice := settings_page.get_node_or_null("Notice")
+	var save_game := settings_page.get_node_or_null("SaveGame") as Button
+	var game_save_notice := settings_page.get_node_or_null("GameSaveNotice") as Label
 	check(categories is TabContainer and categories.get_tab_count() == 2,
 		"设置页分为基础设置和战斗设置")
 	check(window_mode is OptionButton and resolution_choice is OptionButton
@@ -90,6 +102,10 @@ func _run() -> void:
 		"战斗设置栏保留鼠标辅助和换锁灵敏度")
 	check(save is Button and restore is Button and notice is Label,
 		"设置页提供统一保存、恢复默认和状态提示")
+	check(save_game != null and game_save_notice != null,
+		"设置页提供独立保存游戏按钮和提示")
+	check(not settings_page.has_node("LoadGame"),
+		"设置页不提供读取游戏按钮")
 	var setup_ready: bool = categories is TabContainer \
 		and window_mode is OptionButton and resolution_choice is OptionButton \
 		and vsync is CheckButton and mouse_assist is CheckButton \
@@ -160,6 +176,21 @@ func _run() -> void:
 		"保存后应用1920×1080渲染画布")
 	check(root.get_visible_rect().size == Vector2(1920, 1080),
 		"保存后可见画布使用1920×1080坐标")
+	var save_service := root.get_node_or_null("CampaignSaveService")
+	check(save_service != null, "设置页可访问单槽存档服务")
+	test_game_save = OS.get_temp_dir().path_join(
+		"dsr-settings-game-save-%d.cfg" % OS.get_process_id())
+	save_service.save_path = test_game_save
+	if FileAccess.file_exists(save_service.save_path):
+		DirAccess.remove_absolute(save_service.save_path)
+	save_game.pressed.emit()
+	await _settle()
+	check(FileAccess.file_exists(save_service.save_path),
+		"酒馆内点击保存游戏创建存档")
+	check(game_save_notice.text.contains("酒馆进度已保存"),
+		"保存游戏显示独立成功提示")
+	check(notice.text.contains("设置已保存"),
+		"保存游戏不改变独立的设置提示")
 	if rendered:
 		check(DisplayServer.window_get_mode() == DisplayServer.WINDOW_MODE_FULLSCREEN,
 			"保存后应用无边框全屏")
@@ -179,8 +210,9 @@ func _run() -> void:
 	check(root.get_visible_rect().size == Vector2(1600, 900),
 		"保存后可见画布使用1600×900坐标")
 	if rendered:
-		check(DisplayServer.window_get_mode() == DisplayServer.WINDOW_MODE_WINDOWED
-			and DisplayServer.window_get_size() == Vector2i(1600, 900),
+		var window_applied := await _await_window_state(
+			DisplayServer.WINDOW_MODE_WINDOWED, Vector2i(1600, 900))
+		check(window_applied,
 			"窗口模式保存后应用1600×900分辨率")
 
 	vsync.button_pressed = true
@@ -277,7 +309,8 @@ func _run() -> void:
 	await _settle()
 	var basic_visible := true
 	for control in [window_mode, resolution_choice, vsync, save, restore,
-			settings_page.get_node("Guide"), settings_page.get_node("Back")]:
+			save_game, game_save_notice, settings_page.get_node("Guide"),
+			settings_page.get_node("Back")]:
 		basic_visible = basic_visible and viewport.encloses(control.get_global_rect())
 	categories.current_tab = 1
 	await _settle()
@@ -300,5 +333,7 @@ func _remove_test_config() -> void:
 
 func _finish() -> void:
 	_remove_test_config()
+	if not test_game_save.is_empty() and FileAccess.file_exists(test_game_save):
+		DirAccess.remove_absolute(test_game_save)
 	print("SETTINGS MENU: %d/%d passed" % [checks - failures, checks])
 	quit(1 if failures else 0)

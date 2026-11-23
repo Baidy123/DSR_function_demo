@@ -4,6 +4,7 @@ extends CanvasLayer
 signal pause_requested
 signal resume_requested
 signal quit_requested
+signal save_game_requested
 
 @onready var _main: VBoxContainer = $Backdrop/Center/Panel/Content/Main
 @onready var _settings: VBoxContainer = $Backdrop/Center/Panel/Content/Settings
@@ -17,6 +18,8 @@ signal quit_requested
 @onready var _mouse_assist: CheckButton = $Backdrop/Center/Panel/Content/Settings/Categories/CombatSettings/MouseAssistRow/MouseAssist
 @onready var _sensitivity: OptionButton = $Backdrop/Center/Panel/Content/Settings/Categories/CombatSettings/SensitivityRow/Sensitivity
 @onready var _save: Button = $Backdrop/Center/Panel/Content/Settings/SaveSettings
+@onready var _save_game: Button = $Backdrop/Center/Panel/Content/Settings/SaveGame
+@onready var _game_save_notice: Label = $Backdrop/Center/Panel/Content/Settings/GameSaveNotice
 @onready var _restore_defaults: Button = $Backdrop/Center/Panel/Content/Settings/RestoreDefaults
 @onready var _notice: Label = $Backdrop/Center/Panel/Content/Settings/Notice
 
@@ -36,6 +39,7 @@ func _ready() -> void:
 	_sensitivity.item_selected.connect(_on_setting_changed)
 	_save.pressed.connect(_save_settings)
 	_restore_defaults.pressed.connect(_restore_settings)
+	_save_game.pressed.connect(func() -> void: save_game_requested.emit())
 	_quit.get_node("Cancel").pressed.connect(_show_main)
 	_quit.get_node("Confirm").pressed.connect(func(): quit_requested.emit())
 	_guide.finished.connect(_return_to_settings_after_guide)
@@ -44,6 +48,24 @@ func _ready() -> void:
 	_categories.set_tab_title(0, "基础设置")
 	_categories.set_tab_title(1, "战斗设置")
 	close_menu()
+
+
+func set_game_save_available(value: bool) -> void:
+	_save_game.disabled = not value
+	if not value:
+		_game_save_notice.text = "没有可保存的酒馆进度"
+
+
+func show_game_save_result(result: StringName) -> void:
+	match result:
+		&"tavern_saved":
+			_game_save_notice.text = "酒馆进度已保存"
+		&"level_saved":
+			_game_save_notice.text = "已保存离开酒馆时的进度"
+		&"unavailable":
+			_game_save_notice.text = "没有可保存的酒馆进度"
+		_:
+			_game_save_notice.text = "游戏进度保存失败"
 
 
 func _unhandled_key_input(event: InputEvent) -> void:

@@ -131,11 +131,26 @@ disabled = true
 tooltip_text = "Debug 总开关开启后，跳过当前关卡剩余全部波次并开放返酒馆传送门。"
 text = "一键通关当前关"
 
+[node name="ResetProgress" type="Button" parent="Debug/Controls"]
+layout_mode = 2
+focus_mode = 0
+disabled = true
+tooltip_text = "Debug 总开关开启后删除存档并清空全部游戏进度。"
+text = "重置全部进度"
+
 [node name="NoiseRanges" type="CheckBox" parent="Debug/Controls"]
 layout_mode = 2
 focus_mode = 0
 tooltip_text = "默认关闭，仅影响声音范围显示。手动开启后，玩家蓝色、敌人橙色；不改变实际声音和 AI 听觉。"
 text = "声音范围"
+
+[node name="ResetProgressConfirm" type="ConfirmationDialog" parent="."]
+title = "重置全部进度"
+dialog_text = "将删除游戏存档并回到最开始。
+用户设置不会改变。
+确定重置？"
+ok_button_text = "确认重置"
+cancel_button_text = "取消"
 
 [node name="DeathScreen" type="ColorRect" parent="."]
 visible = false

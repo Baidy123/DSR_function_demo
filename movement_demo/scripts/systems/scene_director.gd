@@ -10,6 +10,8 @@ const Interactions = preload("res://scripts/systems/scene_interaction_executor.g
 const Scripts = preload("res://scripts/systems/scene_script_executor.gd")
 const Transitions = preload("res://scripts/systems/scene_transition_executor.gd")
 const PauseMenuScene = preload("res://scenes/ui/pause_menu.tscn")
+const PlayerState = preload("res://scripts/player/player_campaign_state.gd")
+const MAIN_SCENE_PATH := "res://scenes/main.tscn"
 const REGISTRATION := &"scene_director_root"
 var _scene_root: Node
 var _requests
@@ -17,6 +19,9 @@ var _next_request := 0
 var _guide_request
 var _camera_request
 var _completion_request
+var _reset_request
+var _reset_service: WeakRef
+var _reset_debug_settings: WeakRef
 var _interactions
 var _scripts
 var _load_request
@@ -137,6 +142,7 @@ func initialize() -> void:
 	_link(_pause_menu, &"pause_requested", request_pause_menu)
 	_link(_pause_menu, &"resume_requested", resume_from_pause_menu)
 	_link(_pause_menu, &"quit_requested", _quit_game)
+	_link(_pause_menu, &"save_game_requested", _save_game_from_menu)
 	var guide: Node = _bindings.get("guide")
 	if guide != null:
 		_set_state(&"running")
@@ -181,6 +187,97 @@ func advance(delta: float) -> void:
 func can_run_actions() -> bool:
 	return _initialized and not _load_failed and state in [&"running", &"guide"] and not get_tree().paused
 
+func can_save_game() -> bool:
+	if not _initialized or _load_failed:
+		return false
+	var state := get_node_or_null("/root/GameState")
+	if state == null:
+		return false
+	return _scene_root.scene_file_path == MAIN_SCENE_PATH \
+		or not state.last_tavern_state.is_empty()
+
+func save_game() -> Dictionary:
+	if not can_save_game():
+		return {"ok": false, "result": &"unavailable"}
+	var state := get_node("/root/GameState")
+	var service := get_node_or_null("/root/CampaignSaveService")
+	if service == null:
+		return {"ok": false, "result": &"save_failed"}
+	var in_tavern := _scene_root.scene_file_path == MAIN_SCENE_PATH
+	var snapshot: Dictionary
+	if in_tavern:
+		var player := get_tree().get_first_node_in_group(&"player")
+		snapshot = state.capture_save_state(PlayerState.capture(player))
+	else:
+		snapshot = state.last_tavern_state.duplicate(true)
+	if service.save_game(snapshot) != OK:
+		return {"ok": false, "result": &"save_failed"}
+	if in_tavern:
+		state.remember_tavern_state(snapshot)
+	return {"ok": true, "result": &"tavern_saved" if in_tavern else &"level_saved"}
+
+func _save_game_from_menu() -> void:
+	var result := save_game()
+	_pause_menu.show_game_save_result(result.result)
+
+func request_debug_reset_progress() -> bool:
+	if not OS.is_debug_build() or not _initialized or _load_failed \
+			or _load_request != null or state == &"loading":
+		return false
+	var debug_settings := get_node_or_null("/root/DebugSettings")
+	var service := get_node_or_null("/root/CampaignSaveService")
+	if debug_settings == null or not debug_settings.enabled or service == null:
+		return false
+	if service.stage_reset() != OK:
+		report_action_error("reset", "Unable to stage save deletion")
+		return false
+	_reset_service = weakref(service)
+	_reset_debug_settings = weakref(debug_settings)
+	if debug_settings.has_method(&"preserve_enabled_once"):
+		debug_settings.preserve_enabled_once()
+	var main_path := str(ProjectSettings.get_setting("application/run/main_scene", MAIN_SCENE_PATH))
+	_reset_request = _request_transition({
+		"path": main_path,
+		"mode": &"reset_progress",
+		"return_control_on_failure": true,
+	})
+	_reset_request.finished.connect(_on_debug_reset_finished)
+	if _reset_request.is_terminal():
+		_on_debug_reset_finished(_reset_request)
+	return _reset_request.status not in [&"failed", &"cancelled", &"rejected"]
+
+
+func _on_debug_reset_finished(request) -> void:
+	if request != _reset_request:
+		return
+	_reset_request = null
+	var debug_settings = _reset_debug_settings.get_ref() if _reset_debug_settings != null else null
+	if request.status != &"completed" and is_instance_valid(debug_settings) \
+			and debug_settings.has_method(&"cancel_preserved_enabled"):
+		debug_settings.cancel_preserved_enabled()
+	_reset_debug_settings = null
+	var service = _reset_service.get_ref() if _reset_service != null else null
+	_reset_service = null
+	if not is_instance_valid(service):
+		report_action_error("reset", "CampaignSaveService unavailable after reset")
+		return
+	var error: Error
+	if request.status == &"completed":
+		error = service.finish_staged_reset()
+		if error != OK:
+			_report_reset_maintenance_error(
+				"Unable to remove staged reset save: %s" % error_string(error))
+	else:
+		error = service.restore_staged_reset()
+		if error != OK:
+			_report_reset_maintenance_error(
+				"Unable to restore staged reset save: %s" % error_string(error))
+
+
+func _report_reset_maintenance_error(reason: String) -> void:
+	report_action_error("reset", reason)
+	push_warning("reset: %s" % reason)
+
 ## 普通暂停只在可游玩、没有其他界面或演出占用控制时打开。
 func request_pause_menu() -> void:
 	if not _initialized or _menu_token != 0 or _load_failed: return
@@ -191,6 +288,7 @@ func request_pause_menu() -> void:
 	if _requests.snapshot().foreground != 0 or _pauses.snapshot().count != 0: return
 	_menu_token = _pauses.acquire(self, &"pause_menu", true)
 	_pause_menu.open_menu()
+	_pause_menu.set_game_save_available(can_save_game())
 
 func resume_from_pause_menu() -> void:
 	if is_instance_valid(_pause_menu): _pause_menu.close_menu()
