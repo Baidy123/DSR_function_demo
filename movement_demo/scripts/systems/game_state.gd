@@ -21,6 +21,47 @@ func _transition_snapshot() -> Dictionary:
 	snapshot["level_entry_player_state"] = level_entry_player_state.duplicate(true)
 	return snapshot
 
+
+func capture_save_state(player_snapshot: Dictionary = {}) -> Dictionary:
+	var snapshot := {
+		"completed_level": completed_level,
+		"available_level": available_level,
+		"claimed_reward_levels": claimed_reward_levels.duplicate(true),
+		"task_a_returned": task_a_returned,
+		"money": money,
+		"rewarded_task_ids": rewarded_task_ids.duplicate(true),
+		"purchased_shop_item_ids": purchased_shop_item_ids.duplicate(true),
+		"campaign_checkpoint": campaign_checkpoint.duplicate(true),
+		"level_entry_player_state": level_entry_player_state.duplicate(true),
+		"talked_to_a": talked_to_a,
+		"help_choice": help_choice,
+		"music_quest_choice": music_quest_choice,
+		"music_quest_turnin": music_quest_turnin,
+		"items": items.duplicate(true),
+		"flags": flags.duplicate(true),
+		"shop_flag_keys": _shop_flag_keys.duplicate(true),
+		"player_state": player_snapshot.duplicate(true),
+	}
+	return snapshot
+
+
+func validate_save_state(snapshot: Dictionary) -> bool:
+	for key in [&"completed_level", &"available_level", &"money"]:
+		if not snapshot.get(key) is int:
+			return false
+	for key in [&"claimed_reward_levels", &"rewarded_task_ids",
+			&"purchased_shop_item_ids", &"campaign_checkpoint",
+			&"level_entry_player_state", &"items", &"flags",
+			&"shop_flag_keys", &"player_state"]:
+		if not snapshot.get(key) is Dictionary:
+			return false
+	for key in [&"task_a_returned", &"help_choice",
+			&"music_quest_choice", &"music_quest_turnin"]:
+		if not snapshot.get(key) is String:
+			return false
+	return snapshot.get(&"talked_to_a") is bool
+
+
 func prepare_scene_transition(mode: StringName, player_snapshot: Dictionary = {}, level_number: int = 0) -> Dictionary:
 	if mode not in [&"enter_level", &"return_tavern", &"retry_level", &"death_return", &"plain"]: return {}
 	if mode == &"return_tavern" and (level_number < 1 or level_number > 5): return {}
@@ -30,6 +71,8 @@ func prepare_scene_transition(mode: StringName, player_snapshot: Dictionary = {}
 		&"enter_level":
 			target.player_state = player_snapshot.duplicate(true)
 			target.level_entry_player_state = player_snapshot.duplicate(true)
+			target["last_tavern_state"] = capture_save_state(
+				player_snapshot.duplicate(true))
 		&"return_tavern":
 			target.completed_level = level_number
 			if level_number == 1: target.task_a_returned = "returned"
@@ -49,7 +92,7 @@ func prepare_scene_transition(mode: StringName, player_snapshot: Dictionary = {}
 				for key in defaults:
 					target[key] = _transition_copy(campaign_checkpoint.get(key, defaults[key]))
 	_transition_sequence += 1
-	var prepared := {"id": _transition_sequence, "base": before, "target": target}
+	var prepared := {"id": _transition_sequence, "base": before, "target": target, "mode": mode}
 	_transition_prepared[_transition_sequence] = prepared.duplicate(true)
 	return prepared
 
@@ -71,6 +114,8 @@ func commit_scene_transition(prepared: Dictionary) -> bool:
 	level_entry_player_state = target.level_entry_player_state.duplicate(true)
 	restore_campaign_state(target)
 	_transition_committing = false
+	if target.has("last_tavern_state"):
+		remember_tavern_state(target.last_tavern_state)
 	var notifications := _transition_signals
 	_transition_signals = []
 	for notification in notifications:
@@ -163,6 +208,8 @@ var available_level: int = 1:
 var pending_player_state: Dictionary = {}
 ## 最近一次正常完成关卡时的酒馆状态；死亡后选择回酒馆时恢复，不随一次性玩家快照消费。
 var campaign_checkpoint: Dictionary = {}
+## 最近一次进入关卡前离开酒馆时的完整快照；只用于酒馆安全状态保存。
+var last_tavern_state: Dictionary = {}
 ## 已领取任务奖励的任务 ID；与检查点同步，保证死亡回酒馆后不重复领取。
 var rewarded_task_ids: Dictionary = {}
 ## 一次性商店商品购买记录；与检查点同步，保证死亡回酒馆后恢复未购买状态。
@@ -384,6 +431,61 @@ func restore_campaign_state(snapshot: Dictionary) -> bool:
 	var player_snapshot: Dictionary = snapshot.get("player_state", {})
 	pending_player_state = player_snapshot.duplicate(true)
 	return true
+
+
+func apply_save_state(snapshot: Dictionary, rebuild_last_tavern: bool = true) -> bool:
+	if not validate_save_state(snapshot):
+		return false
+	reset_game_progress()
+	completed_level = int(snapshot.completed_level)
+	available_level = int(snapshot.available_level)
+	claimed_reward_levels = snapshot.claimed_reward_levels.duplicate(true)
+	task_a_reward_claimed = bool(claimed_reward_levels.get(1, false))
+	task_a_returned = str(snapshot.task_a_returned)
+	money = int(snapshot.money)
+	rewarded_task_ids = snapshot.rewarded_task_ids.duplicate(true)
+	purchased_shop_item_ids = snapshot.purchased_shop_item_ids.duplicate(true)
+	campaign_checkpoint = snapshot.campaign_checkpoint.duplicate(true)
+	level_entry_player_state = snapshot.level_entry_player_state.duplicate(true)
+	talked_to_a = bool(snapshot.talked_to_a)
+	help_choice = str(snapshot.help_choice)
+	music_quest_choice = str(snapshot.music_quest_choice)
+	music_quest_turnin = str(snapshot.music_quest_turnin)
+	items = snapshot.items.duplicate(true)
+	flags = snapshot.flags.duplicate(true)
+	_shop_flag_keys = snapshot.shop_flag_keys.duplicate(true)
+	pending_player_state = snapshot.player_state.duplicate(true)
+	if rebuild_last_tavern:
+		last_tavern_state = snapshot.duplicate(true)
+	return true
+
+
+func remember_tavern_state(snapshot: Dictionary) -> void:
+	if validate_save_state(snapshot):
+		last_tavern_state = snapshot.duplicate(true)
+
+
+func reset_game_progress() -> void:
+	completed_level = 0
+	available_level = 1
+	claimed_reward_levels = {}
+	task_a_reward_claimed = false
+	task_a_returned = ""
+	money = 0
+	rewarded_task_ids = {}
+	purchased_shop_item_ids = {}
+	pending_player_state = {}
+	campaign_checkpoint = {}
+	level_entry_player_state = {}
+	last_tavern_state = {}
+	talked_to_a = false
+	help_choice = ""
+	music_quest_choice = ""
+	music_quest_turnin = ""
+	items = {}
+	flags = {}
+	_shop_flag_keys = {}
+	opening_cinematic_played = false
 
 
 func has_claimed_reward(level_number: int) -> bool:
