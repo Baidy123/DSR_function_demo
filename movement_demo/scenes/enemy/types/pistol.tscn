@@ -1,0 +1,6 @@
+[gd_scene format=3 uid="uid://bwornjdb2w16d"]
+
+[ext_resource type="PackedScene" uid="uid://cu5pdeu3u7v5m" path="res://scenes/enemy/enemy.tscn" id="1_akpld"]
+
+[node name="Enemy" unique_id=205767877 instance=ExtResource("1_akpld")]
+max_health = 75.0

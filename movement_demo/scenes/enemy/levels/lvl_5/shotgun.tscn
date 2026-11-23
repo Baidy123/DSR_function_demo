@@ -1,0 +1,13 @@
+[gd_scene format=3 uid="uid://dx0b2fd7linwk"]
+
+[ext_resource type="PackedScene" uid="uid://cm7oex5skvuo5" path="res://scenes/enemy/types/shotgun.tscn" id="1_ppmfo"]
+[ext_resource type="Resource" uid="uid://d1lquyw1j7upa" path="res://resources/enemy/training/levels/lvl_5/shotgun.tres" id="2_361yo"]
+
+[node name="Enemy" unique_id=205767877 instance=ExtResource("1_ppmfo")]
+
+[node name="Training" parent="." index="1" unique_id=740728946]
+profile = ExtResource("2_361yo")
+
+[node name="AI" parent="." index="2" unique_id=1624589162]
+utility_fire_weight = 5.0
+utility_risk_weight = 2.0

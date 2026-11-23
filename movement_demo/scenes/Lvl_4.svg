@@ -1,0 +1,78 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1220" height="972" viewBox="0 0 1220 972">
+  <title>第五关地图布局草案：开阔交火区与半封闭建筑区</title>
+  <desc>左侧开阔区域与右侧单一半封闭空间，通过向左的入口A及向下的入口B连接，底部保留绕行空间。全部墙体和掩体由矩形组成。</desc>
+  <rect width="1220" height="972" fill="#ffffff"/>
+  <text x="60" y="48" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="26" font-weight="700" fill="#29343e">第五关 · 初版平面布局</text>
+  <text x="1160" y="47" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="17" text-anchor="end" fill="#79838b">建议尺寸约 55m × 40m</text>
+  <!-- Map floor base, 1100x800: x60..1160, y85..885 -->
+  <rect x="60" y="85" width="1100" height="800" fill="#fcfcfb"/>
+  <!-- Distinct, but quiet ground zoning. -->
+  <rect x="703" y="105" width="435" height="528" fill="#f2f5f7"/>
+  <rect x="680" y="654" width="480" height="231" fill="#f7f8f6"/>
+  <!-- Building, one large interior, with two true openings -->
+  <g fill="#505c66" stroke="#36414c" stroke-width="1.6">
+    <rect x="682" y="85" width="22" height="263"/>
+    <rect x="682" y="474" width="22" height="178"/>
+    <rect x="682" y="631" width="268" height="23"/>
+    <rect x="1042" y="631" width="118" height="23"/>
+  </g>
+  <!-- Exterior full-height cover (F): shields only part of the front approach -->
+  <g fill="#677580" stroke="#364550" stroke-width="2">
+    <rect x="402" y="351" width="124" height="116"/>
+    <!-- Two separate rectangular solid covers in building -->
+    <rect x="855" y="279" width="142" height="107"/>
+    <rect x="944" y="478" width="134" height="76"/>
+  </g>
+  <!-- Half-height cover, located at deliberate firing/transition positions -->
+  <g fill="#cad3dc" stroke="#84929f" stroke-width="2">
+    <!-- Outdoor front and main approach -->
+    <rect x="225" y="258" width="21" height="128"/>
+    <rect x="364" y="197" width="136" height="20"/>
+    <rect x="577" y="467" width="20" height="118"/>
+    <rect x="171" y="576" width="127" height="20"/>
+    <!-- Lower flanking route, exposed at last approach -->
+    <rect x="394" y="720" width="139" height="20"/>
+    <rect x="769" y="747" width="122" height="20"/>
+    <!-- Building single interior, cover related to both entrances -->
+    <rect x="764" y="171" width="127" height="20"/>
+    <rect x="1042" y="307" width="20" height="106"/>
+    <rect x="778" y="518" width="111" height="20"/>
+  </g>
+  <!-- Map boundary, continuous. Building top/right share map boundary -->
+  <rect x="60" y="85" width="1100" height="800" fill="none" stroke="#303943" stroke-width="5"/>
+  <!-- F / L symbols -->
+  <g font-family="Arial, sans-serif" font-weight="700" text-anchor="middle" dominant-baseline="central">
+    <g font-size="26" fill="#fff">
+      <text x="464" y="409">F</text>
+      <text x="926" y="332">F</text>
+      <text x="1011" y="516">F</text>
+    </g>
+    <g font-size="17" fill="#465663">
+      <text x="235.5" y="322">L</text>
+      <text x="432" y="207">L</text>
+      <text x="587" y="526">L</text>
+      <text x="234.5" y="586">L</text>
+      <text x="463.5" y="730">L</text>
+      <text x="830" y="757">L</text>
+      <text x="827" y="181">L</text>
+      <text x="1052" y="360">L</text>
+      <text x="833" y="528">L</text>
+    </g>
+  </g>
+  <!-- Entryways, marked with small low-key labels only -->
+  <g font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="18" font-weight="600" fill="#416f9b">
+    <text x="622" y="413">入口 A</text>
+    <text x="992" y="683" text-anchor="middle">入口 B</text>
+  </g>
+  <!-- Player start in lower-left, arrow points into playfield -->
+  <circle cx="153" cy="821" r="12" fill="#248e62" stroke="#166e48" stroke-width="2"/>
+  <path d="M175 810 L221 774 M221 774 L204 779 M221 774 L213 790" stroke="#248e62" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+  <!-- Legend -->
+  <g font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="17" fill="#38434b">
+    <rect x="62" y="918" width="23" height="23" fill="#677580"/><text x="95" y="937">F：全身掩体</text>
+    <rect x="278" y="923" width="38" height="14" fill="#cad3dc" stroke="#84929f"/><text x="326" y="937">L：半身掩体</text>
+    <rect x="526" y="918" width="35" height="23" fill="#505c66"/><text x="571" y="937">固定墙体</text>
+    <circle cx="770" cy="930" r="10" fill="#248e62"/><text x="791" y="937">玩家起点</text>
+    <text x="1160" y="937" text-anchor="end" font-size="15" fill="#77818a">矩形体块 · 单层 · 未配置敌人</text>
+  </g>
+</svg>

@@ -13,6 +13,98 @@ var _remaining: float = 0.0
 var _waypoint: Vector3
 var _best_distance: float = INF
 var _stuck: float = 0.0
+var _cells_signature := -1
+var _cells: Array = []
+
+func command_roles() -> Array[StringName]:
+	return [&"engage"] if actor.can_use_firearms() else []
+
+func command_default_assignment() -> bool:
+	return false
+
+func prepare_command_offers(query: Dictionary, cursor: Dictionary, deadline_usec: int) -> Dictionary:
+	if query.objective.phase != &"contact" or not query.body.visible or query.body.reloading or query.body.rounds <= 0:
+		return {"done": true, "offers": [], "reason": &"no_visible_attack"}
+	var work := cursor.duplicate(true)
+	if work.is_empty():
+		var regions: Array = context.spatial.regions()
+		regions.sort_custom(func(a, b): return query.body.position.distance_squared_to(a.global_position) < query.body.position.distance_squared_to(b.global_position))
+		var ids := PackedInt64Array()
+		for region in regions: ids.append(region.get_instance_id())
+		work = {"regions": ids, "region_index": 0, "positions": PackedVector3Array(), "index": 0, "count": 0, "checked": 0}
+	if work.index >= work.positions.size() and work.region_index < work.regions.size():
+		var region = instance_from_id(work.regions[work.region_index])
+		work.region_index += 1
+		work.index = 0
+		work.positions = PackedVector3Array()
+		if is_instance_valid(region):
+			# Refine a bounded nearby batch, not every cell of every cover in one call.
+			var cells: Array[Dictionary] = region.get_attack_cells().filter(func(cell): return query.body.position.distance_to(cell.position) <= 10.0)
+			cells.sort_custom(func(a, b): return query.body.position.distance_squared_to(a.position) < query.body.position.distance_squared_to(b.position))
+			cells = selection.attack_geometry.refine(context, region, context.known_target_point(query.objective.position), cells.slice(0, 24))
+			cells.sort_custom(func(a, b): return query.body.position.distance_squared_to(a.position) < query.body.position.distance_squared_to(b.position))
+			for cell in cells.slice(0, 32): work.positions.append(cell.position)
+		return {"offers": [], "next_cursor": work, "done": false}
+	var offers: Array[Dictionary] = []
+	if work.index < work.positions.size() and Time.get_ticks_usec() < deadline_usec:
+		var point := {"position": work.positions[work.index], "cover_id": work.regions[work.region_index - 1]}
+		work.index += 1
+		work.checked += 1
+		var cover = instance_from_id(point.cover_id)
+		if is_instance_valid(cover) and context.navigation_region.is_ancestor_of(cover):
+			point.body = cover
+			var assessment := _assess_position(point)
+			if not assessment.is_empty():
+				var site := {"position": point.position, "role": &"engage", "look_position": query.objective.position,
+					"prepared_route": assessment.destination.path, "site_key": "attack:%s:%s" % [point.cover_id, point.position]}
+				var offer := super.command_site_offer(query, site)
+				if not offer.is_empty() and not offer.get("retry_detour", false):
+					offer.attack_cover_id = point.cover_id
+					offer.estimate = maxf(0.0, float(assessment.unavailable)) + maxf(0.0, float(assessment.exposed))
+					offer.tactical.protected = true
+					offers.append(offer)
+					work.count += 1
+	return {"offers": offers, "next_cursor": work, "done": (work.index >= work.positions.size() and work.region_index >= work.regions.size()) or work.count >= 6 or work.checked >= 96}
+
+func validate_command_offer(query: Dictionary, offer: Dictionary) -> Dictionary:
+	var result := super.validate_command_offer(query, offer)
+	var cover = instance_from_id(offer.get("attack_cover_id", 0))
+	result.valid = result.valid and query.body.visible and is_instance_valid(cover) and context.navigation_region.is_ancestor_of(cover)
+	if result.valid:
+		var target: Vector3 = context.known_target_point(context.last_known_position)
+		if cover.is_low_cover(): target = selection.low_cover_attack_target(offer.position, context.known_target_points(context.last_known_position))
+		result.valid = target.is_finite() and selection.assess_attack_point(offer.position, cover, target, target).usable
+	return result
+
+func begin_command(task: Dictionary) -> bool:
+	if not super.begin_command(task): return false
+	active_cover = instance_from_id(task.get("attack_cover_id", 0)) as StaticBody3D
+	destination = task.position
+	_query_target = task.look_position
+	_using_hit_memory = false
+	_remaining = float(task.get("travel_seconds", 0.0)) + 3.0
+	_recheck = 0.0
+	phase = Phase.MOVE
+	return is_instance_valid(active_cover)
+
+func command_work(delta: float, visible: bool, arrived: bool) -> Dictionary:
+	_recheck -= delta
+	if _recheck <= 0.0:
+		_recheck = 0.25
+		if not _unusable_reason(actor.global_position if arrived else command.position).is_empty():
+			context.report_command(command, &"blocked", {"reason": &"attack_position_invalid"})
+			return {}
+	if arrived:
+		phase = Phase.HOLD
+		if not visible:
+			context.report_command(command, &"complete")
+			return {}
+	else:
+		_remaining -= delta
+		if _remaining <= 0.0:
+			context.report_command(command, &"blocked", {"reason": &"attack_position_timeout"})
+			return {}
+	return {"fire": {"owner": action_id, "mode": &"visible"}} if visible else {}
 
 
 
@@ -113,7 +205,7 @@ func start_evaluated(candidate: Dictionary, known_position: Vector3) -> bool:
 	reset()
 	destination = candidate.position
 	active_cover = candidate.body
-	_query_target = known_position + Vector3.UP * 0.8
+	_query_target = known_position
 	_using_hit_memory = true
 	if not _usable(destination):
 		reset()
@@ -137,13 +229,16 @@ func _unusable_reason(point: Vector3) -> String:
 		return "所属掩体失效"
 	if not _within_sight_range(point, _known_position()):
 		return "超过感知距离"
-	var target: Vector3 = _known_position() + Vector3.UP * 0.8
+	var target: Vector3 = context.known_target_point(_known_position())
+	if active_cover.is_low_cover():
+		target = selection.low_cover_attack_target(point, context.known_target_points(_known_position()))
+		if not target.is_finite(): return "射界受阻"
 	var result: Dictionary = selection.assess_attack_point(point, active_cover, target, target)
 	return "" if result.usable else result.reason
 
 
 func _known_position() -> Vector3:
-	return _query_target - Vector3.UP * 0.8 if _using_hit_memory else context.last_seen_position
+	return _query_target if _using_hit_memory else context.last_seen_position
 
 
 # 射程够但感知距离不够的点，到位仍不能发现／攻击目标，不作为主动占位目的地。
@@ -171,15 +266,21 @@ func _finish(sees_player: bool, reason: String = "结束行动") -> void:
 
 
 func state_label() -> String:
+	if is_instance_valid(active_cover) and active_cover.is_low_cover():
+		return ["", "前往半身掩体", "半身掩体后架枪"][phase]
 	return ["", "前往墙角攻击位置", "墙角占位射击"][phase]
 
 
 func evaluation_points() -> Array:
-	var points: Array = []
-	if not context._known_reload_threat().is_finite() or actor.move_speed <= 0.0: return points
-	for region in context.spatial.regions():
-		points.append_array(region.get_attack_cells())
-	return points
+	if not context._known_reload_threat().is_finite() or actor.move_speed <= 0.0: return []
+	if _cells_signature != context.spatial._geometry:
+		_cells_signature = context.spatial._geometry
+		_cells = []
+		for region in context.spatial.regions():
+			_cells.append_array(region.get_attack_cells())
+	# The evaluator owns and clears its work queue during action/lifecycle resets.
+	# Share immutable cell dictionaries, never the mutable queue array itself.
+	return _cells.duplicate()
 
 func evaluation_weight() -> int:
 	return 6
@@ -189,7 +290,7 @@ func evaluate_point(point: Variant) -> Dictionary:
 		# 调度单位保持固定，细分在本区域的预算查询内完成，目标移动不重排扫描队列。
 		var source: Array[Dictionary] = [point]
 		var best: Dictionary = {}
-		for cell in selection.attack_geometry.refine(context, point.body, context.last_known_position + Vector3.UP * 0.8, source):
+		for cell in selection.attack_geometry.refine(context, point.body, context.known_target_point(context.last_known_position), source):
 			var result := _assess_position(cell)
 			if not result.is_empty() and (best.is_empty() or result.cost < best.cost): best = result
 		return best
@@ -198,10 +299,13 @@ func evaluate_point(point: Variant) -> Dictionary:
 func _assess_position(point: Dictionary) -> Dictionary:
 	var threat: Vector3 = context.last_known_position
 	if not is_instance_valid(point.body) or point.position.distance_to(threat) > maxf(context.perception.sight_distance, context.perception.close_awareness_radius): return {}
-	var target := threat + Vector3.UP * 0.8
-	var checked: Dictionary = selection.assess_attack_point(point.position, point.body, target, target)
+	var target: Vector3 = context.known_target_point(threat)
+	if point.body.is_low_cover():
+		target = selection.low_cover_attack_target(point.position, context.known_target_points(threat))
+		if not target.is_finite(): return {}
+	var checked: Dictionary = selection.assess_attack_point(point.position, point.body, target, target, false)
 	if not checked.usable: return {}
-	var path: PackedVector3Array = selection._path_to(actor.global_position, point.position)
+	var path: PackedVector3Array = context.routes.planning_path(actor.global_position, point.position)
 	if path.is_empty(): return {}
 	var route: Dictionary = context.spatial.assess_route(context, path, threat, 1.0, context.spatial._reload_seconds(context), context.sees_player)
 	var remaining: float = maxf(0.0, context.utility_horizon_seconds - route.seconds)
@@ -238,3 +342,8 @@ func tick(delta: float, visible: bool) -> Dictionary:
 	context.state = context.State.HOLD_POSITION if phase == Phase.HOLD else context.State.REPOSITION
 	_running = is_active()
 	return motion(direction, 1.0, Vector3.INF, {"owner": action_id, "mode": &"visible"})
+
+func route_tick(delta: float, visible: bool) -> Dictionary:
+	_remaining = maxf(0.0, _remaining - delta)
+	if _remaining <= 0.0 or not valid(visible): _running = false
+	return motion(Vector3.ZERO)

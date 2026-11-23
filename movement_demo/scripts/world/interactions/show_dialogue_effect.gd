@@ -9,12 +9,21 @@ class_name ShowDialogueEffect
 
 
 func apply(context: InteractionContext) -> void:
+	execute(context)
+
+func execute(context: InteractionContext) -> Dictionary:
 	if dialogue_resource == null or context.player == null:
-		push_warning("ShowDialogueEffect 缺少对话资源或玩家，已跳过")
-		return
+		return {"status": &"failed", "reason": &"missing_dialogue_resource_or_player"}
 	var tree := context.tree()
-	var ui: Node = tree.get_first_node_in_group(ui_group) if tree != null else null
-	if ui == null or not ui.has_method(&"open_dialogue"):
-		push_warning("场景中没有可用的对话界面（组：%s）" % ui_group)
-		return
-	ui.open_dialogue(context.player, dialogue_resource, dialogue_start)
+	var ui: Node
+	var director = load("res://scripts/systems/scene_director.gd").for_node(context.host)
+	if tree != null and director != null:
+		for candidate in tree.get_nodes_in_group(ui_group):
+			if load("res://scripts/systems/scene_director.gd").for_node(candidate) == director:
+				ui = candidate
+				break
+	if ui == null: return {"status": &"failed", "reason": &"missing_dialogue_ui"}
+	var request = context.request_action(&"dialogue", {"target": ui,
+		"parameters": {"resource": dialogue_resource, "start": dialogue_start}})
+	if request == null: return {"status": &"failed", "reason": &"missing_director"}
+	return await request.wait_result()

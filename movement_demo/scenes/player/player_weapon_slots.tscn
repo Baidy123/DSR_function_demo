@@ -1,13 +1,26 @@
-[gd_scene load_steps=4 format=3]
+[gd_scene format=3]
 
-[ext_resource type="Script" path="res://scripts/player/player_weapon_slots.gd" id="1_slots"]
-[ext_resource type="Resource" path="res://resources/weapons/test_pistol.tres" id="2_primary"]
-[ext_resource type="Resource" path="res://resources/weapons/test_sidearm.tres" id="3_secondary"]
+[ext_resource type="Script" uid="uid://dsup06rkp2mli" path="res://scripts/player/player_weapon_slots.gd" id="1_slots"]
+[ext_resource type="Resource" uid="uid://b6bap6hpl63cp" path="res://resources/weapons/test_pistol.tres" id="2_primary"]
+[ext_resource type="Resource" uid="uid://l7t4snve8h85" path="res://resources/weapons/test_smg.tres" id="3_secondary"]
+[ext_resource type="Script" uid="uid://bfibmwmeqttxw" path="res://scripts/ui/medkit_stock_label.gd" id="4_medkit_stock"]
+[ext_resource type="Script" uid="uid://d34eejhle2uqr" path="res://scripts/player/player_medkit.gd" id="3_medkit"]
+[ext_resource type="Script" uid="uid://srwhldqj0bcw" path="res://scripts/ui/medkit_indicator.gd" id="4_medkit_indicator"]
+[ext_resource type="Resource" path="res://resources/player/default_medkit.tres" id="5_medkit_settings"]
 
-[node name="WeaponSlots" type="CanvasLayer"]
+[node name="Equipment" type="CanvasLayer"]
 script = ExtResource("1_slots")
 primary_weapon = ExtResource("2_primary")
 secondary_weapon = ExtResource("3_secondary")
+medkit = ExtResource("5_medkit_settings")
+
+[node name="Medkit" type="Node" parent="."]
+script = ExtResource("3_medkit")
+
+[node name="MedkitIndicator" type="Control" parent="."]
+visible = false
+mouse_filter = 2
+script = ExtResource("4_medkit_indicator")
 
 [node name="Panel" type="PanelContainer" parent="."]
 anchors_preset = 3
@@ -16,7 +29,7 @@ anchor_top = 1.0
 anchor_right = 1.0
 anchor_bottom = 1.0
 offset_left = -380.0
-offset_top = -140.0
+offset_top = -170.0
 offset_right = -20.0
 offset_bottom = -20.0
 grow_horizontal = 0
@@ -64,3 +77,12 @@ text = "1 / 2 或滚轮切换武器"
 horizontal_alignment = 1
 theme_override_font_sizes/font_size = 16
 mouse_filter = 2
+
+[node name="MedkitCount" type="Label" parent="Panel/Content"]
+layout_mode = 2
+mouse_filter = 2
+theme_override_colors/font_color = Color(0.6, 0.95, 0.8, 1)
+theme_override_font_sizes/font_size = 18
+horizontal_alignment = 1
+text = "医疗包 [H]  × 3"
+script = ExtResource("4_medkit_stock")

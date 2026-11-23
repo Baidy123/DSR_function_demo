@@ -14,12 +14,12 @@ func check(ok: bool, label: String) -> void:
 	print("PASS " if ok else "FAIL ", label)
 
 func _run() -> void:
-	scene = load("res://scenes/main.tscn").instantiate()
+	scene = preload("res://tests/enemy/enemy_fire_fixture.gd").unbound_scene()
 	root.add_child(scene)
 	current_scene = scene
 	player = scene.get_node("Player")
 	combat = player.get_node("Combat")
-	slots = player.get_node("WeaponSlots")
+	slots = player.get_node("Equipment")
 	player.set_physics_process(false)
 	var configurable_weapon := false
 	for property in combat.get_property_list():

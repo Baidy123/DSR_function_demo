@@ -7,7 +7,7 @@ func test_enemy_probability_inspector_01_select() -> void:
 	var root := EditorInterface.get_edited_scene_root()
 	var enemy := root.get_node_or_null("Enemy")
 	if enemy == null:
-		enemy = root.get_node("Arena/Enemy")
+		enemy = preload("res://tests/enemy/enemy_fire_fixture.gd").primary_enemy(root)
 	EditorInterface.edit_node(enemy)
 	EditorInterface.get_base_control().set_meta("enemy_probability_inspector_weapon", enemy.get("weapon"))
 	assert_true(EditorInterface.is_plugin_enabled("weapon_mode_inspector"), "概率检查器插件已启用")

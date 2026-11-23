@@ -31,23 +31,25 @@ overridden = PackedStringArray()
 
 [sub_resource type="Resource" id="perception"]
 script = ExtResource("perception")
-sight_distance = 8.0
+sight_distance = 20.0
 overridden = PackedStringArray("sight_distance")
 
 [sub_resource type="Resource" id="search"]
 script = ExtResource("search")
 lost_target_hint_chance = 1.0
-search_hint_decay_mode = 3
-search_hint_min_multiplier = 0.4
+search_hint_chance = 1.0
+search_hint_decay_mode = 0
+search_hint_min_multiplier = 1.0
 search_hint_distance_falloff = 10.0
 debug_tracking_cheat = true
 track_seconds = 10.0
 search_pause_seconds = 0.6
 search_stuck_repath_seconds = 0.8
-overridden = PackedStringArray("lost_target_hint_chance", "search_hint_decay_mode", "search_hint_min_multiplier", "search_hint_distance_falloff", "debug_tracking_cheat", "track_seconds", "search_pause_seconds", "search_stuck_repath_seconds")
+overridden = PackedStringArray("lost_target_hint_chance", "search_hint_decay_mode", "search_hint_min_multiplier", "search_hint_distance_falloff", "debug_tracking_cheat", "track_seconds", "search_pause_seconds", "search_stuck_repath_seconds", "search_hint_chance")
 
 [sub_resource type="Resource" id="selection"]
 script = ExtResource("selection")
+vault_preference = 6.0
 cover_lateral_test_distance = 0.3
 minimum_cover_quality = 0.1
 overridden = PackedStringArray("cover_lateral_test_distance", "minimum_cover_quality")
@@ -58,16 +60,15 @@ overridden = PackedStringArray()
 
 [sub_resource type="Resource" id="tactics"]
 script = ExtResource("tactics")
-nearby_shot_accuracy_penalty = 0.1
 fire_stability_target = 0.6
 burst_shot_count = 10
-burst_pause_seconds = 1.5
-overridden = PackedStringArray("fire_stability_target", "burst_shot_count", "burst_pause_seconds", "damage_accuracy_penalty", "nearby_shot_accuracy_penalty")
+support_burst_shot_count = 10
+overridden = PackedStringArray("fire_stability_target", "burst_shot_count", "burst_pause_seconds", "support_burst_shot_count", "headshot_protection")
 
 [resource]
 script = ExtResource("profile")
 display_name = "竞技场现有训练"
-selected_tactics = Array[StringName]([&"cover"])
+selected_tactics = Array[StringName]([&"melee_rush", &"cover", &"suppression", &"covering_retreat", &"melee_cover", &"melee_intercept", &"attack_position"])
 ai = SubResource("ai")
 tactics = SubResource("tactics")
 search = SubResource("search")

@@ -1,0 +1,62 @@
+[gd_scene load_steps=9 format=3]
+
+[ext_resource type="PackedScene" path="res://scenes/player/player.tscn" id="1"]
+[ext_resource type="PackedScene" path="res://scenes/player/player_camera_rig.tscn" id="2"]
+[ext_resource type="PackedScene" path="res://scenes/world/combat_test.tscn" id="3"]
+[ext_resource type="Resource" path="res://resources/weapons/test_shotgun.tres" id="4"]
+
+[sub_resource type="BoxShape3D" id="FloorShape"]
+size = Vector3(50, 1, 50)
+
+[sub_resource type="BoxMesh" id="FloorMesh"]
+size = Vector3(50, 1, 50)
+
+[sub_resource type="Environment" id="Environment"]
+background_mode = 1
+background_color = Color(0.08, 0.11, 0.16, 1)
+ambient_light_source = 3
+ambient_light_color = Color(0.8, 0.86, 1, 1)
+ambient_light_energy = 0.65
+
+[sub_resource type="StandardMaterial3D" id="FloorMaterial"]
+albedo_color = Color(0.16, 0.21, 0.27, 1)
+
+[node name="ShotgunRange" type="Node3D"]
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="."]
+environment = SubResource("Environment")
+
+[node name="Sun" type="DirectionalLight3D" parent="."]
+rotation_degrees = Vector3(-55, -25, 0)
+shadow_enabled = true
+
+[node name="Floor" type="StaticBody3D" parent="."]
+position = Vector3(0, -0.5, 0)
+
+[node name="Shape" type="CollisionShape3D" parent="Floor"]
+shape = SubResource("FloorShape")
+
+[node name="Mesh" type="MeshInstance3D" parent="Floor"]
+mesh = SubResource("FloorMesh")
+material_override = SubResource("FloorMaterial")
+
+[node name="CombatTest" parent="." instance=ExtResource("3")]
+
+[node name="Player" parent="." instance=ExtResource("1")]
+position = Vector3(0, 0, -1)
+
+[node name="Equipment" parent="Player" index="3"]
+primary_weapon = ExtResource("4")
+
+[node name="Camera3D" parent="." instance=ExtResource("2")]
+
+[node name="Instructions" type="CanvasLayer" parent="."]
+
+[node name="Label" type="Label" parent="Instructions"]
+offset_left = 24.0
+offset_top = 18.0
+theme_override_font_sizes/font_size = 19
+text = "独立霰弹试玩 · 右键瞄准 + 左键开枪 · R 换弹 · 1 霰弹 / 2 原副武器\n图样与精度对照请打开 shotgun_pattern_preview.tscn（F6）"
+mouse_filter = 2
+
+[editable path="Player"]

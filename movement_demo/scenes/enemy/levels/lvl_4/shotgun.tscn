@@ -1,0 +1,9 @@
+[gd_scene format=3 uid="uid://l8cy4pvrajd0"]
+
+[ext_resource type="PackedScene" uid="uid://cm7oex5skvuo5" path="res://scenes/enemy/types/shotgun.tscn" id="1_x88ce"]
+
+[node name="Enemy" unique_id=205767877 instance=ExtResource("1_x88ce")]
+
+[node name="AI" parent="." index="2" unique_id=1624589162]
+utility_fire_weight = 5.0
+utility_risk_weight = 2.0

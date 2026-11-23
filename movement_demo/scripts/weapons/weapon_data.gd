@@ -2,44 +2,196 @@
 class_name WeaponData
 extends Resource
 
-enum FireMode { SEMI_AUTO, AUTOMATIC, MELEE }
+enum FireMode { SEMI_AUTO, AUTOMATIC, MELEE, SHOTGUN }
 enum AmmoType { RIFLE, PISTOL, SMG, SHOTGUN }
+enum StaggerRefresh { KEEP_LONGER, RESTART }
+enum ConvergenceModel { LINEAR, QUADRATIC, EXPONENTIAL }
 
-@export_group("弹匣与换弹")
+const ShotgunConfig = preload("res://scripts/weapons/shotgun_settings.gd")
+const DEFAULT_CONVERGENCE_SECONDS := 4.0
+
+func get_ammo_definition() -> AmmoDefinition:
+	var definition := ammo_definition if ammo_definition != null else AmmoDefinition.legacy(ammo_type)
+	if definition == null or not definition.has_valid_id():
+		push_warning("WeaponData %s：弹药定义无有效 ammo_id，请修正配置后重开。" % display_name)
+		return null
+	return definition
+
+func get_ammo_key() -> StringName:
+	var definition := get_ammo_definition()
+	return definition.ammo_id if definition != null else &""
+
+func _validate_property(property: Dictionary) -> void:
+	if property.name == "ammo_type" and ammo_definition != null:
+		property.usage &= ~PROPERTY_USAGE_EDITOR
+
+@export_group("基本信息")
+## 武器显示名称。
+@export var display_name: String = "测试手枪"
+## 单发每次按下一枪，自动按住持续射击；近战仅允许近战兵装备，不使用枪械参数。
+## 单发0、自动1、近战2保留原编号；霰弹3为半自动，每按一次打一组弹丸。
+## 调大射击间隔可模拟泵动节奏；敌人的射击请求仍由原 AI 控制。
+@export_enum("单发:0", "自动:1", "近战:2", "霰弹:3") var fire_mode: int = FireMode.SEMI_AUTO:
+	set(value):
+		fire_mode = value
+		if value == FireMode.SHOTGUN and shotgun == null: shotgun = ShotgunConfig.new()
+		notify_property_list_changed()
+
+@export_group("射击与弹药")
+## 实际射线命中后的单发伤害。
+@export_range(1.0, 1000.0, 1.0) var damage: float = 25.0
+## 两次射击的最短间隔（秒）。
+@export_range(0.05, 3.0, 0.05) var shot_interval: float = 0.2
+## 子弹射线的最大距离（米）。
+@export_range(0.5, 200.0, 0.5) var fire_range: float = 30.0
 ## 玩家使用对应类型的共享备弹池；敌人仍使用有限弹匣、无限备弹。
 @export_enum("步枪弹药:0", "手枪弹药:1", "冲锋枪弹药:2", "霰弹枪弹药:3") var ammo_type: int = AmmoType.PISTOL
+## 新弹药拖入 AmmoDefinition；优先于旧 Ammo Type。留空继续使用原四类配置。
+## 展开资源可设置缺弹掉落开关、数量范围与模型；运行中的类型在装备时冻结。
+@export var ammo_definition: AmmoDefinition:
+	set(value):
+		ammo_definition = value
+		notify_property_list_changed()
 ## 每把枪独立保存弹匣余量；12发为可调试玩初值。
 @export_range(1, 300, 1) var magazine_capacity: int = 12
 ## 正常换弹耗时（秒）。玩家奔跑倍率在Combat调整；敌人不受移动影响。
 @export_range(0.1, 20.0, 0.1) var reload_seconds: float = 2.0
 
-@export_group("共用参数")
-## 武器显示名称。
-@export var display_name: String = "测试手枪"
-## 玩家或敌人实际开枪产生的逻辑声源；留空关闭。Audio Stream仅预留，不播放音频。
-@export var shot_noise: NoiseData = preload("res://resources/noise/gunshot_noise.tres")
-## 成功开火产生的声音半径（米），玩家和敌人都读取各自武器；0关闭枪声事件。
-@export_range(0.0, 100.0, 0.5) var shot_noise_radius: float = 14.0
-## 实际射线命中后的单发伤害。
-@export_range(1.0, 1000.0, 1.0) var damage: float = 25.0
-## 玩家锁定目标的最大距离（米）；敌人视野仍由 Perception 决定。
+@export_group("Shotgun")
+## Fire Mode 选霰弹后自动提供默认九点图样；展开配置每颗伤害、图样与稳定度。
+## 切回原模式时保留此配置但不使用，不修改原单发／自动参数或弹药类型。
+@export var shotgun: ShotgunSettings
+
+@export_group("瞄准与散布")
+@export_subgroup("锁定")
+## 锁定距离（米）：玩家相机据此计算视野；远程敌人默认以此距离加训练中的感知余量作为视距。
 @export_range(0.5, 50.0, 0.5) var aim_range: float = 8.0
-## 子弹射线的最大距离（米）。
-@export_range(0.5, 200.0, 0.5) var fire_range: float = 30.0
 ## 玩家索敌扇形总角度，不是子弹散布角，也不修改敌人的视野。
 @export_range(1.0, 180.0, 1.0) var cone_angle_degrees: float = 70.0
 ## 玩家锁定时的走路速度倍率，锁定期间禁跑；敌人移动由 AI 决定。
 @export_range(0.1, 1.0, 0.05) var locked_move_multiplier: float = 0.5
-## 单发每次按下一枪，自动按住持续射击；近战仅允许近战兵装备，不使用枪械参数。
-## 单发0、自动1保留原编号；敌人射击节奏仍由 AI 控制。
-@export_enum("单发:0", "自动:1", "近战:2") var fire_mode: int = FireMode.SEMI_AUTO:
-	set(value):
-		fire_mode = value
-		notify_property_list_changed()
-## 两次射击的最短间隔（秒）。
-@export_range(0.05, 3.0, 0.05) var shot_interval: float = 0.2
 
-@export_group("近战参数")
+## 仅玩家持枪时生效：目标沿瞄准连线靠近／远离的免罚半角，默认两侧各25°，合计50°。
+## 范围内不扣目标移动精度；超出后连续增加损失。0使用纯横向投影，敌人不读取。
+@export_range(0.0, 45.0, 0.5, "suffix:°") var tracking_parallel_tolerance_degrees: float = 25.0:
+	set(value):
+		tracking_parallel_tolerance_degrees = clampf(value, 0.0, 45.0) if is_finite(value) else 25.0
+
+@export_subgroup("玩家收敛")
+## 最大散布到最小散布的函数：线性匀速，二次／指数前快后慢。只改变恢复，不改变惩罚或等待。
+@export_enum("线性:0", "二次:1", "指数:2") var convergence_model: int = ConvergenceModel.LINEAR:
+	set(value):
+		convergence_model = value
+		notify_property_list_changed()
+## 从最大到最小散布的完整用时，不含等待；当前状态从曲线对应位置继续。
+## 三种公式、概率模式与霰弹统一使用此时间，敌人不读取。默认4秒，最小0.01秒。
+## 旧资源的0（原兼容标记）及非法值使用默认4秒，不再读取角速度或敌人恢复时间。
+@export_range(0.01, 60.0, 0.01, "or_greater", "suffix:s") var convergence_seconds: float = DEFAULT_CONVERGENCE_SECONDS:
+	set(value):
+		convergence_seconds = maxf(0.01, value) if is_finite(value) and value > 0.0 else DEFAULT_CONVERGENCE_SECONDS
+## 指数前后速度差异，越大前段越快、尾段越慢。0按线性；默认3，只在指数公式下显示。
+@export_range(0.0, 10.0, 0.1) var convergence_exponent_k: float = 3.0
+@export_subgroup("恢复等待")
+## 新的精度损失后等多久开始收拢（秒）；比移动最大散布更散时，继续走路不会反复刷新等待。
+@export_range(0.0, 3.0, 0.05) var spread_recovery_delay: float = 0.6
+## 新的精度损失后等多久开始恢复中心概率（秒）；低于移动下限时，继续走路不会反复刷新等待。
+@export_range(0.0, 3.0, 0.05) var accuracy_recovery_delay: float = 0.6
+
+@export_subgroup("散布锥（角度）")
+## 完全稳定时的最小散布半角；0度可完全收拢，大于0仍会随机射偏。
+@export_range(0.0, 45.0, 0.1, "suffix:°") var min_spread_angle_degrees: float = 0.0
+## 最不稳定时的最大散布半角，通常不小于最小半角；全开角是半角两倍。
+@export_range(0.0, 45.0, 0.1, "suffix:°") var max_spread_angle_degrees: float = 12.0
+## 装备时的散布半角；松开瞄准后，散布也不会比本值更小。
+@export_range(0.0, 45.0, 0.1, "suffix:°") var initial_spread_angle_degrees: float = 6.0
+## 每枪结束后扩大多少度，连续射击累积；例如1表示半角增加1度。
+@export_range(0.0, 45.0, 0.05, "suffix:°") var shot_spread_penalty_degrees: float = 3.0
+## 仅连射惩罚最多把半角扩大到多少度；不会收拢其他因素已经扩得更大的散布。
+@export_range(0.0, 45.0, 0.1, "suffix:°") var shot_max_spread_angle_degrees: float = 10.8
+## 持枪者实际水平移动每米扩大多少度；随距离逐渐累积，0表示不增加移动散布。
+@export_range(0.0, 45.0, 0.05, "suffix:°/m") var player_move_spread_degrees_per_meter: float = 3.0
+## 持枪者移动惩罚最多把半角扩大到多少度；不会瞬间收拢其他原因造成的更大散布。
+## 玩家受击等造成额外散布时，经过恢复延迟后可边走边逐渐收拢到此值，未瞄准不比初始散布更小。
+@export_range(0.0, 45.0, 0.1, "suffix:°") var moving_spread_angle_degrees: float = 7.8
+## 目标慢速移动时，每米扩大多少度。
+## 玩家按平行容差处理后的有效横向距离计算；敌人沿用原目标位移。
+@export_range(0.0, 45.0, 0.01, "suffix:°/m") var target_move_spread_degrees_per_meter_slow: float = 0.36
+## 目标高速移动时，每米扩大多少度。
+## 玩家按有效横向距离和速度计算；敌人沿用原目标位移和速度。
+@export_range(0.0, 45.0, 0.01, "suffix:°/m") var target_move_spread_degrees_per_meter_fast: float = 1.2
+## 仅跟枪惩罚最多把半角扩大到多少度；不会把其他原因造成的更大散布继续扩大。
+@export_range(0.0, 45.0, 0.1, "suffix:°") var target_move_max_spread_angle_degrees: float = 8.4
+## 目标达到此速度（米/秒）时使用高速每米扩散；较慢时在慢/高速扩散之间插值。
+## 玩家使用有效横向速度，迎面／背离的径向速度不增加惩罚；敌人规则保留。
+@export_range(0.1, 30.0, 0.1) var spread_target_move_fast_speed: float = 6.0
+
+@export_subgroup("概率模式（百分比）")
+## 初始直射中心概率：0.5表示50%；松开瞄准也将概率限制到不超过本值。
+@export_range(0.0, 1.0, 0.01) var initial_accuracy: float = 0.5
+## 每枪结束后降低多少中心概率：0.05表示5个百分点，连续射击累积。
+@export_range(0.0, 1.0, 0.01) var shot_accuracy_penalty: float = 0.25
+## 射击惩罚的中心概率下限：0.1表示10%；不会抬高其他因素造成的更低概率。
+@export_range(0.0, 1.0, 0.01) var minimum_accuracy: float = 0.1
+## 玩家实际水平移动每米降低多少概率；0.15表示15个百分点，0表示不增加移动惩罚。
+@export_range(0.0, 1.0, 0.005) var player_move_accuracy_loss_per_meter: float = 0.15
+## 玩家移动惩罚最多将中心概率降到此值：0.35表示35%；不会瞬间抬高已经更低的概率。
+## 若受击等造成更低概率，经过恢复延迟后可边走边逐渐恢复到此值；未瞄准仍不超过初始概率。
+@export_range(0.0, 1.0, 0.01) var moving_accuracy_cap: float = 0.35
+## 目标慢速移动时，每米扣除的中心概率：0.03表示每米3个百分点。
+## 玩家按平行容差处理后的有效横向距离计算；敌人沿用原目标位移。
+@export_range(0.0, 0.5, 0.005) var target_move_accuracy_loss_per_meter_slow: float = 0.03
+## 目标高速移动时，每米扣除的中心概率：0.10表示每米10个百分点。
+## 玩家按有效横向距离和速度计算；敌人沿用原目标位移和速度。
+@export_range(0.0, 0.5, 0.005) var target_move_accuracy_loss_per_meter_fast: float = 0.10
+## 跟枪惩罚的概率下限，至少比射击下限高1个百分点，最高100%。
+@export_range(0.0, 1.0, 0.01) var target_move_minimum_accuracy: float = 0.30
+## 目标达到此速度（米/秒）时使用高速惩罚，较慢时在两种每米惩罚间插值。
+## 玩家使用有效横向速度，迎面／背离的径向速度不增加惩罚；敌人规则保留。
+@export_range(0.1, 30.0, 0.1) var target_move_fast_speed: float = 6.0
+
+@export_subgroup("敌人恢复（原算法）")
+## 仅供原散布锥恢复接口：每秒收拢的角度，0不恢复。玩家不再读取此速度。
+## 当前敌人身体使用概率模式，因此通常配置下方概率恢复时间；保存键和旧数值保留。
+@export_range(0.0, 90.0, 0.1, "suffix:°/s") var spread_recovery_degrees_per_second: float = 3.0
+## 敌人从初始概率恢复到100%的秒数，不含恢复等待；初始100%时按0到100%计算。
+## 同时保留原 AI 掩体阶段估时用途。玩家的公式和收敛时间不会覆盖或禁用本项。
+@export_range(0.1, 10.0, 0.1, "suffix:s") var stabilize_seconds: float = 2.0
+
+@export_group("命中效果")
+@export_subgroup("枪击与压制")
+## 命中目标时扣除的基础精度；按百分点扣减。20%×受方倍率0.5=扣10个百分点，80%变70%；0关闭。
+## 这是给目标的干扰，不是持枪者自己的后坐力；射击命中时冻结本次值。
+@export_range(0.0, 1.0, 0.01) var hit_accuracy_loss: float = 0.15
+## 子弹擦过敌方目标时扣除的基础精度；再乘受方被压制精度倍率。0只关闭精度损失，不取消真实警戒事实。
+@export_range(0.0, 1.0, 0.01) var suppression_accuracy_loss: float = 0.02
+## 从目标胸部到本次真实弹道线段的最大擦过距离（米）；0关闭擦过检测。墙后的延长线无效，与枪声半径无关。
+@export_range(0.0, 10.0, 0.1, "suffix:m") var near_miss_radius: float = 1.5
+## 子弹命中后目标损失的自主速度比例；30%×受方速度损失倍率0.5=减速15%，保留85%速度。0关闭。
+## 不影响击退或重力，也不作用于擦过；附带近战的基础减速仍在近战参数中配置。
+@export_range(0.0, 1.0, 0.01) var hit_speed_loss: float = 0.5
+## 子弹命中减速持续时间（秒）；0关闭。有效新命中刷新强度和时长，不叠乘；受方倍率不缩放时长。
+@export_range(0.0, 5.0, 0.05, "suffix:s") var hit_speed_loss_seconds: float = 0.5
+
+@export_subgroup("精准爆头（仅玩家）")
+## 玩家真实命中后按基础准度线性计算爆头；不分身体部位，不额外等待。敌人和近战不使用。
+@export var headshot_enabled: bool = true
+## 在此基础准度时爆头率为0，至满准度线性增加到100%；仍须实际命中。0不是关闭，请使用启用爆头开关。
+@export_range(0.0, 0.99, 0.01) var headshot_accuracy_threshold: float = 0.9
+## 开启且敌人没有训练“爆头防护”时，爆头走原死亡流程。关闭仍使用倍率伤害和被爆头状态。
+@export var headshot_instant_kill_enabled: bool = true
+## 未秒杀时的总伤害倍率，3表示普通伤害的300%；霰弹乘实际命中弹丸总伤害。旧资源显式保存的倍率保留。
+@export_range(1.0, 10.0, 0.05, "suffix:×") var headshot_damage_multiplier: float = 3.0
+## 存活敌人的被爆头状态秒数，默认1秒：通过原受击流程应用下方移速与精度限制；不禁射、不取消AI动作。0关闭。
+@export_range(0.0, 10.0, 0.05, "or_greater", "suffix:s") var headshot_stagger_seconds: float = 1.0
+## 被爆头状态内保留的自主移速比例，默认0即不能走动；1不减速。与已有受击减速取较强者，不限制重力或击退。
+@export_range(0.0, 1.0, 0.01) var headshot_movement_multiplier: float = 0.0
+## 被爆头状态内的精度上限，默认0%；不会抬高更差的精度，不禁止开枪，结束后按原规则恢复。
+@export_range(0.0, 1.0, 0.01) var headshot_accuracy_cap: float = 0.0
+## 连续爆头时保留较长剩余时间，或从本次秒数重新计时；均不累加，每目标每枪只处理一次。
+@export_enum("保留较长剩余时间:0", "按本次时长重新计时:1") var headshot_stagger_refresh_mode: int = StaggerRefresh.KEEP_LONGER
+
+@export_group("近战")
+@export_subgroup("攻击与动作")
 ## 远程武器的附带近战或近战武器的攻击开关；不消耗弹药。
 @export var melee_enabled: bool = true
 ## 近战伤害，与单发子弹伤害分别配置。
@@ -59,66 +211,49 @@ enum AmmoType { RIFLE, PISTOL, SMG, SHOTGUN }
 @export_range(0.0, 2.0, 0.01) var melee_recovery_seconds: float = 0.25
 ## 两次近战开始的最短间隔；实际至少覆盖前摇与收招。
 @export_range(0.05, 5.0, 0.01) var melee_interval: float = 0.6
+
+@export_subgroup("命中反馈")
+## 近战眩晕持续秒数：原移动减速与敌人头顶眩晕使用本次时长，0关闭持续效果。
+## 重复命中仍刷新原减速，但不延长当前敌人眩晕／破绽；不禁射或暂停AI。
+@export_range(0.0, 5.0, 0.05, "suffix:s") var melee_slow_seconds: float = 0.5
+## 眩晕时目标自主移动保留比例；损失再乘受方速度损失倍率，100%只关闭减速，不关闭破绽。
+@export_range(0.0, 1.0, 0.05) var melee_slow_multiplier: float = 0.5
+## 附带近战／专用近战命中时的基础精度损失；乘与射击共用的受方命中精度倍率。
+## 100%且倍率1可降到0；倍率0.5只扣50个百分点，不会再额外强制清零。0关闭精度损失。
+@export_range(0.0, 1.0, 0.01) var melee_accuracy_loss: float = 1.0
+## 仅玩家近战命中的敌人获得一次爆头门槛优惠；不附加到玩家，不改变射手准度。
+@export var melee_headshot_opening_enabled: bool = true:
+	set(value):
+		melee_headshot_opening_enabled = value
+		notify_property_list_changed()
+## 玩家枪击此眩晕敌人时，射击武器的普通爆头起始准度乘此倍率；80%×0.8=64%，不增加玩家准度。
+## 0将门槛降至0，1不降低门槛。本次近战冻结倍率；首次有效枪击后消费，当前眩晕期间不能重新授予。
+@export_range(0.0, 1.0, 0.01, "suffix:×") var melee_headshot_threshold_multiplier: float = 0.8
 ## 无遮挡且目标不主动移动时的击退参考距离（米）。
 @export_range(0.0, 5.0, 0.05) var melee_knockback_distance: float = 1.0
 ## 击退外力衰减至零的时间（秒）。
 @export_range(0.05, 2.0, 0.01) var melee_knockback_seconds: float = 0.2
 
-@export_group("概率模式参数（百分比）")
-## 初始直射中心概率：0.5表示50%；松开瞄准也将概率限制到不超过本值。
-@export_range(0.0, 1.0, 0.01) var initial_accuracy: float = 0.5
-## 从初始概率恢复到100%需要的秒数，不含恢复延迟；初始为100%时按从0到100%计算。
-@export_range(0.1, 10.0, 0.1) var stabilize_seconds: float = 2.0
-## 玩家移动惩罚最多将中心概率降到此值：0.35表示35%；不会抬高已经更低的概率。
-@export_range(0.0, 1.0, 0.01) var moving_accuracy_cap: float = 0.35
-## 玩家实际水平移动每米降低多少概率；0.15表示15个百分点，0表示不增加移动惩罚。
-@export_range(0.0, 1.0, 0.005) var player_move_accuracy_loss_per_meter: float = 0.15
-## 每枪结束后降低多少中心概率：0.05表示5个百分点，连续射击累积。
-@export_range(0.0, 1.0, 0.01) var shot_accuracy_penalty: float = 0.25
-## 射击惩罚的中心概率下限：0.1表示10%；不会抬高其他因素造成的更低概率。
-@export_range(0.0, 1.0, 0.01) var minimum_accuracy: float = 0.1
-## 玩家停步、停火后等多久开始恢复中心概率（秒）。
-@export_range(0.0, 3.0, 0.05) var accuracy_recovery_delay: float = 0.6
-## 目标慢速移动时，每米扣除的中心概率：0.03表示每米3个百分点。
-@export_range(0.0, 0.5, 0.005) var target_move_accuracy_loss_per_meter_slow: float = 0.03
-## 目标高速移动时，每米扣除的中心概率：0.10表示每米10个百分点。
-@export_range(0.0, 0.5, 0.005) var target_move_accuracy_loss_per_meter_fast: float = 0.10
-## 跟枪惩罚的概率下限，至少比射击下限高1个百分点，最高100%。
-@export_range(0.0, 1.0, 0.01) var target_move_minimum_accuracy: float = 0.30
-## 目标达到此速度（米/秒）时使用高速惩罚，较慢时在两种每米惩罚间插值。
-@export_range(0.1, 30.0, 0.1) var target_move_fast_speed: float = 6.0
+@export_group("外观与声音")
+@export_subgroup("模型")
+## 可选纯外观场景；留空显示方块占位，不参与弹道、命中或装备资格。
+@export var visual_model: PackedScene
+## 相对于角色武器挂点的模型偏移；同一资源可由多个持有者独立显示。
+@export var visual_position: Vector3 = Vector3.ZERO
+@export var visual_rotation_degrees: Vector3 = Vector3.ZERO
+@export var visual_scale: Vector3 = Vector3.ONE
 
-@export_group("散布锥模式参数（角度）")
-## 完全稳定时的最小散布半角；0度可完全收拢，大于0仍会随机射偏。
-@export_range(0.0, 45.0, 0.1, "suffix:°") var min_spread_angle_degrees: float = 0.0
-## 最不稳定时的最大散布半角，通常不小于最小半角；全开角是半角两倍。
-@export_range(0.0, 45.0, 0.1, "suffix:°") var max_spread_angle_degrees: float = 12.0
-## 装备时的散布半角；松开瞄准后，散布也不会比本值更小。
-@export_range(0.0, 45.0, 0.1, "suffix:°") var initial_spread_angle_degrees: float = 6.0
-## 停稳并经过恢复延迟后，每秒收拢多少度；0表示不自动收拢。
-@export_range(0.0, 90.0, 0.1, "suffix:°/s") var spread_recovery_degrees_per_second: float = 3.0
-## 持枪者移动惩罚最多把半角扩大到多少度；若已经更散，不会反过来收拢。
-@export_range(0.0, 45.0, 0.1, "suffix:°") var moving_spread_angle_degrees: float = 7.8
-## 持枪者实际水平移动每米扩大多少度；随距离逐渐累积，0表示不增加移动散布。
-@export_range(0.0, 45.0, 0.05, "suffix:°/m") var player_move_spread_degrees_per_meter: float = 3.0
-## 每枪结束后扩大多少度，连续射击累积；例如1表示半角增加1度。
-@export_range(0.0, 45.0, 0.05, "suffix:°") var shot_spread_penalty_degrees: float = 3.0
-## 仅连射惩罚最多把半角扩大到多少度；不会收拢其他因素已经扩得更大的散布。
-@export_range(0.0, 45.0, 0.1, "suffix:°") var shot_max_spread_angle_degrees: float = 10.8
-## 持枪者停步、停火后等多久开始收拢（秒）。
-@export_range(0.0, 3.0, 0.05) var spread_recovery_delay: float = 0.6
-## 目标慢速移动时，每米扩大多少度。
-@export_range(0.0, 45.0, 0.01, "suffix:°/m") var target_move_spread_degrees_per_meter_slow: float = 0.36
-## 目标高速移动时，每米扩大多少度。
-@export_range(0.0, 45.0, 0.01, "suffix:°/m") var target_move_spread_degrees_per_meter_fast: float = 1.2
-## 仅跟枪惩罚最多把半角扩大到多少度；不会把其他原因造成的更大散布继续扩大。
-@export_range(0.0, 45.0, 0.1, "suffix:°") var target_move_max_spread_angle_degrees: float = 8.4
-## 目标达到此速度（米/秒）时使用高速每米扩散；较慢时在慢/高速扩散之间插值。
-@export_range(0.1, 30.0, 0.1) var spread_target_move_fast_speed: float = 6.0
+@export_subgroup("枪声")
+## 玩家或敌人实际开枪产生的逻辑声源；留空关闭。Audio Stream仅预留，不播放音频。
+@export var shot_noise: NoiseData = preload("res://resources/noise/gunshot_noise.tres")
+## 成功开火产生的声音半径（米），玩家和敌人都读取各自武器；0关闭枪声事件。
+@export_range(0.0, 100.0, 0.5) var shot_noise_radius: float = 14.0
 
-
-## 两套输入在这里换算，战斗脚本继续共用惩罚、等待、恢复流程。
+## 两套输入在这里换算，双方共用惩罚与等待；recovery仅供敌人原算法。
+## 玩家恢复只调用 recover_player_accuracy()，不再读取此字典的recovery。
 func get_aim_settings(use_spread: bool) -> Dictionary:
+	if fire_mode == FireMode.SHOTGUN:
+		return get_shotgun_settings().get_aim_settings(use_spread)
 	if not use_spread:
 		# 初始100%也会因换弹/受伤下降，恢复速度不能因此永久变成零。
 		var recovery_span := 1.0 - clampf(initial_accuracy, 0.0, 1.0)
@@ -156,7 +291,90 @@ func get_aim_settings(use_spread: bool) -> Dictionary:
 	}
 
 
+## 只做玩家恢复的纯值计算；当前进度、等待和恢复上限仍由 Combat 持有。
+## 相位由当前稳定度反求，所以受击／射击后接续曲线，不重新等待完整总时长。
+func recover_player_accuracy(current: float, delta: float) -> float:
+	var base := _valid_fraction(current)
+	if not is_finite(delta) or delta <= 0.0 or base >= 1.0:
+		return base
+	var step := delta / convergence_seconds
+	var remaining := 1.0 - base
+	match convergence_model:
+		ConvergenceModel.QUADRATIC:
+			var phase := 1.0 - sqrt(remaining)
+			if phase + step >= 1.0: return 1.0
+			return maxf(base, 1.0 - pow(1.0 - phase - step, 2.0))
+		ConvergenceModel.EXPONENTIAL:
+			var k := clampf(convergence_exponent_k, 0.0, 10.0) if is_finite(convergence_exponent_k) else 3.0
+			# k趋近0时直接使用极限，避免相近数相减后再相除。
+			if k < 0.001: return minf(1.0, base + step)
+			var tail := exp(-k)
+			var phase := -log(remaining * (1.0 - tail) + tail) / k
+			if phase + step >= 1.0: return 1.0
+			return clampf(1.0 - (exp(-k * (phase + step)) - tail) / (1.0 - tail), base, 1.0)
+		_:
+			return minf(1.0, base + step)
+
+
+## 正常由 Fire Mode 创建配置；外部代码清空时只读使用默认值，不写回共享资源。
+func get_shotgun_settings() -> ShotgunSettings:
+	return shotgun if shotgun != null else ShotgunConfig.new()
+
+
+## 只返回配置与精度资格；是否实际命中、掷概率及伤害由玩家原射击流程负责。
+func get_headshot_chance(stability: float) -> float:
+	if not headshot_enabled or fire_mode == FireMode.MELEE: return 0.0
+	return headshot_probability(stability, headshot_accuracy_threshold)
+
+
+## 唯一准度→爆头概率公式；普通命中、破绽命中及UI预览共用，不持有目标或资源状态。
+static func headshot_probability(stability: float, threshold: float) -> float:
+	if not is_finite(stability) or not is_finite(threshold): return 0.0
+	if stability >= 1.0 - 0.000001: return 1.0
+	var start := clampf(threshold, 0.0, 0.99)
+	return clampf((stability - start) / (1.0 - start), 0.0, 1.0)
+
+
+func get_headshot_damage_multiplier() -> float:
+	return maxf(1.0, headshot_damage_multiplier) if is_finite(headshot_damage_multiplier) else 1.0
+
+
+## 一枪一次的纯值快照；外部修改资源从下一枪生效，不改变本枪后续目标。
+func get_headshot_settings(stability: float) -> Dictionary:
+	return {"enabled": headshot_enabled and fire_mode != FireMode.MELEE,
+		"stability": stability, "accuracy_threshold": headshot_accuracy_threshold,
+		"instant_kill": headshot_instant_kill_enabled,
+		"multiplier": get_headshot_damage_multiplier(), "stagger_seconds": _valid_seconds(headshot_stagger_seconds),
+		"movement_multiplier": clampf(headshot_movement_multiplier, 0.0, 1.0) if is_finite(headshot_movement_multiplier) else 0.0,
+		"accuracy_cap": clampf(headshot_accuracy_cap, 0.0, 1.0) if is_finite(headshot_accuracy_cap) else 0.0,
+		"stagger_refresh_mode": StaggerRefresh.RESTART if headshot_stagger_refresh_mode == StaggerRefresh.RESTART else StaggerRefresh.KEEP_LONGER}
+
+
+## 仅玩家近战入口传给敌人；共享武器的敌方攻击不携带此项，玩家受击也不读取它。
+func get_melee_stun_settings() -> Dictionary:
+	return {"seconds": _valid_seconds(melee_slow_seconds), "opening_enabled": melee_headshot_opening_enabled,
+		"threshold_multiplier": clampf(melee_headshot_threshold_multiplier, 0.0, 1.0) if is_finite(melee_headshot_threshold_multiplier) else 1.0}
+
+
 func _angle_to_stability(angle: float, minimum: float, span: float) -> float:
 	if span <= 0.00001:
 		return 1.0
 	return 1.0 - clampf((angle - minimum) / span, 0.0, 1.0)
+
+
+## 攻击者在开火／近战起手时取得纯值快照；之后切枪或修改资源不改变这一击。
+func get_attack_effects(melee: bool = false) -> Dictionary:
+	return {
+		"melee": melee,
+		"hit_accuracy_loss": _valid_fraction(melee_accuracy_loss if melee else hit_accuracy_loss),
+		"suppression_accuracy_loss": 0.0 if melee else _valid_fraction(suppression_accuracy_loss),
+		"near_miss_radius": 0.0 if melee or not is_finite(near_miss_radius) else maxf(0.0, near_miss_radius),
+		"hit_speed_loss": _valid_fraction(1.0 - melee_slow_multiplier if melee else hit_speed_loss),
+		"hit_speed_loss_seconds": _valid_seconds(melee_slow_seconds if melee else hit_speed_loss_seconds),
+	}
+
+func _valid_fraction(value: float) -> float:
+	return clampf(value, 0.0, 1.0) if is_finite(value) else 0.0
+
+func _valid_seconds(value: float) -> float:
+	return maxf(0.0, value) if is_finite(value) else 0.0

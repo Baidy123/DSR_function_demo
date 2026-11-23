@@ -1,0 +1,171 @@
+@tool
+extends SceneTree
+
+var checks := 0
+var failures := 0
+
+func _initialize() -> void:
+	_run.call_deferred()
+
+func _run() -> void:
+	await create_timer(3.0).timeout
+	while EditorInterface.get_resource_filesystem().is_scanning(): await process_frame
+	var gun := WeaponData.new()
+	gun.damage = 17
+	EditorInterface.edit_resource(gun)
+	for frame in 20: await process_frame
+	check(_fields(gun).has("damage") and not _fields(gun).has("shotgun"), "Legacy weapon inspector stays unchanged")
+	var critical_fields := _fields(gun)
+	check(critical_fields.has("headshot_enabled") and critical_fields.has("headshot_accuracy_threshold") and critical_fields.has("headshot_damage_multiplier"), "Headshot settings are exposed on the original weapon resource")
+	for property in _descendants(EditorInterface.get_inspector(), "EditorProperty"):
+		if property.get_edited_object() == gun and property.get_edited_property() == "headshot_accuracy_threshold":
+			var spin: SpinBox = _descendants(property, "SpinBox")[0]
+			check(spin.value == 90 and not spin.tooltip_text.is_empty(), "Headshot threshold displays 90 percent with hover help")
+	var option: OptionButton
+	for property in _descendants(EditorInterface.get_inspector(), "EditorProperty"):
+		if property.get_edited_object() == gun and property.get_edited_property() == "fire_mode":
+			option = _descendants(property, "OptionButton")[0]
+	check(option != null and option.item_count == 4 and option.get_item_text(3) == "霰弹" and option.get_item_id(3) == 3, "Fire Mode appends exactly one option named 霰弹")
+	option.select(3)
+	option.item_selected.emit(3)
+	for frame in 20: await process_frame
+	var fields := _fields(gun)
+	check(gun.fire_mode == WeaponData.FireMode.SHOTGUN and gun.shotgun != null and gun.shotgun.get_pattern_points().size() == 9, "Choosing 霰弹 initializes a usable nine-pellet configuration")
+	check(fields.has("shotgun") and fields.has("magazine_capacity") and fields.has("fire_mode"), "Shotgun mode keeps common controls and exposes its settings")
+	check(fields.has("headshot_accuracy_threshold") and fields.has("headshot_damage_multiplier"), "Shotgun retains the same headshot settings")
+	check(not fields.has("damage") and not fields.has("initial_accuracy") and not fields.has("min_spread_angle_degrees"), "Shotgun mode hides unused single-projectile parameters")
+	gun.shotgun.pellet_damage = 11
+	var saved_settings = gun.shotgun
+	EditorInterface.edit_resource(gun.shotgun)
+	for frame in 20: await process_frame
+	fields = _fields(gun.shotgun)
+	check(fields.has("pattern") and fields.has("pellet_damage") and fields.has("stable_jitter_degrees") and fields.has("starting_stability"), "Expanded settings expose pattern, pellet damage and stability")
+	gun.fire_mode = WeaponData.FireMode.SEMI_AUTO
+	EditorInterface.edit_resource(gun)
+	for frame in 20: await process_frame
+	check(_fields(gun).has("damage") and not _fields(gun).has("shotgun") and gun.damage == 17, "Switching back restores original parameters without overwriting them")
+	gun.fire_mode = WeaponData.FireMode.SHOTGUN
+	check(gun.shotgun == saved_settings and gun.shotgun.pellet_damage == 11, "Returning to shotgun preserves its settings")
+	var bridge := EditorPlugin.new()
+	var manager = bridge.get_undo_redo()
+	var history = manager.get_history_undo_redo(manager.get_object_history_id(gun))
+	check(history.undo() and gun.fire_mode == WeaponData.FireMode.SEMI_AUTO, "Native inspector undo restores original Fire Mode")
+	check(history.redo() and gun.fire_mode == WeaponData.FireMode.SHOTGUN, "Native inspector redo restores shotgun mode")
+	await _check_opening_controls(gun, manager)
+	await _check_spread_mode(gun.shotgun, manager)
+	EditorInterface.edit_resource(gun)
+	for frame in 20: await process_frame
+	fields = _fields(gun)
+	check(fields.has("headshot_instant_kill_enabled") and fields.has("headshot_stagger_seconds") and fields.has("headshot_stagger_refresh_mode"), "All execution and stagger options are editable in the original weapon resource")
+	check(fields.has("headshot_movement_multiplier") and fields.has("headshot_accuracy_cap"), "Movement and accuracy effects are exposed on the attacking weapon")
+	for entry in [["headshot_movement_multiplier", 40.0], ["headshot_accuracy_cap", 20.0]]:
+		var effect_property = _property(gun, entry[0])
+		if effect_property != null:
+			var spin: SpinBox = _descendants(effect_property, "SpinBox")[0]
+			spin.value = entry[1]
+			for frame in 5: await process_frame
+			check(is_equal_approx(gun.get(entry[0]), entry[1] / 100.0) and not spin.tooltip_text.is_empty(), "Weapon effect percentage editor writes normalized data: " + entry[0])
+	var training := EnemyTrainingProfile.new()
+	EditorInterface.edit_resource(training)
+	for frame in 20: await process_frame
+	var tactics_property = _property(training, "tactics")
+	check(tactics_property != null and tactics_property.label == "作战能力", "Original tactics resource uses the combat-capabilities display label")
+	var tactics = training.tactics
+	EditorInterface.edit_resource(tactics)
+	for frame in 20: await process_frame
+	var protection = _property(tactics, "headshot_protection")
+	check(protection != null and protection.label == "爆头防护" and protection.get_edited_object() == tactics, "Protection is a direct boolean property without a nested resource or inverse switch")
+	if protection != null:
+		protection.emit_changed(&"headshot_protection", true)
+		for frame in 5: await process_frame
+		check(tactics.headshot_protection and tactics.overridden.has("headshot_protection"), "Inspector edit applies protection and preserves explicit training overrides")
+		var protection_history = manager.get_history_undo_redo(manager.get_object_history_id(tactics))
+		check(protection_history.undo() and not tactics.headshot_protection, "Native undo restores the protection value")
+		check(protection_history.redo() and tactics.headshot_protection, "Native redo enables protection again")
+	EditorInterface.get_inspector().edit(null)
+	bridge.free()
+	for frame in 5: await process_frame
+	print("SHOTGUN INSPECTOR: %d/%d passed" % [checks - failures, checks])
+	quit(1 if failures else 0)
+
+func _check_opening_controls(gun: WeaponData, manager: EditorUndoRedoManager) -> void:
+	EditorInterface.edit_resource(gun)
+	for frame in 20: await process_frame
+	var fields := _fields(gun)
+	check(not fields.has("headshot_chance") and not fields.has("headshot_curve") and not fields.has("headshot_exponent"), "Fixed probability and non-linear probability controls are absent")
+	check(fields.has("melee_headshot_opening_enabled") and fields.has("melee_headshot_threshold_multiplier"), "Original weapon melee section exposes the opening switch and multiplier")
+	var multiplier = _property(gun, "melee_headshot_threshold_multiplier")
+	check(multiplier != null, "Opening multiplier has a real inspector editor")
+	if multiplier == null: return
+	var spin: SpinBox = _descendants(multiplier, "SpinBox")[0]
+	check(is_equal_approx(spin.value, 0.8) and spin.max_value == 1 and spin.suffix == "×" and not spin.tooltip_text.is_empty(), "Opening multiplier displays 0.8 times, caps at one and explains its target")
+	spin.value = 0.61
+	for frame in 5: await process_frame
+	check(is_equal_approx(gun.melee_headshot_threshold_multiplier, 0.61), "Opening editor writes multiplier into the original resource")
+	var history = manager.get_history_undo_redo(manager.get_object_history_id(gun))
+	check(history.undo() and is_equal_approx(gun.melee_headshot_threshold_multiplier, 0.8), "Native undo restores the opening multiplier")
+	check(history.redo() and is_equal_approx(gun.melee_headshot_threshold_multiplier, 0.61), "Native redo restores the edited opening multiplier")
+	var toggle = _property(gun, "melee_headshot_opening_enabled")
+	toggle.emit_changed(&"melee_headshot_opening_enabled", false)
+	for frame in 20: await process_frame
+	multiplier = _property(gun, "melee_headshot_threshold_multiplier")
+	var unavailable := multiplier == null
+	if multiplier != null: unavailable = not _descendants(multiplier, "SpinBox")[0].editable
+	check(unavailable and is_equal_approx(gun.melee_headshot_threshold_multiplier, 0.61), "Disabling the opening hides or disables its editor without losing the saved multiplier")
+	var data_fields := []
+	for entry in gun.get_property_list(): data_fields.append(entry.name)
+	check(not data_fields.has("headshot_chance"), "Old fixed-probability property is removed from the resource, not merely hidden")
+	check(not data_fields.has("melee_headshot_accuracy_threshold") and not fields.has("melee_headshot_accuracy_threshold"), "Old absolute opening threshold is removed from both resource and inspector")
+	DirAccess.make_dir_recursive_absolute("res://logs/shotgun_inspector")
+	var path := "res://logs/shotgun_inspector/opening.tres"
+	var saved := ResourceSaver.save(gun, path)
+	var restored = ResourceLoader.load(path, "", ResourceLoader.CACHE_MODE_IGNORE)
+	check(saved == OK and not restored.melee_headshot_opening_enabled and is_equal_approx(restored.melee_headshot_threshold_multiplier, 0.61) and is_equal_approx(restored.headshot_accuracy_threshold, 0.9), "Normal threshold, opening multiplier and disabled opening survive save and reload")
+	gun.melee_headshot_opening_enabled = true
+
+func _check_spread_mode(settings: ShotgunSettings, manager: EditorUndoRedoManager) -> void:
+	EditorInterface.edit_resource(settings)
+	for frame in 20: await process_frame
+	var property = _property(settings, "spread_mode")
+	check(property != null and property.label == "偏移方式" and not property.tooltip_text.is_empty(), "Spread mode has a Chinese label and direction help")
+	if property == null: return
+	var option: OptionButton = _descendants(property, "OptionButton")[0]
+	check(option.item_count == 2 and option.get_item_text(0) == "随机偏移" and option.get_item_text(1) == "不向圆心偏移", "Native dropdown retains legacy mode and offers no-inward mode")
+	option.select(1)
+	option.item_selected.emit(1)
+	for frame in 5: await process_frame
+	check(settings.spread_mode == ShotgunSettings.SpreadMode.NO_INWARD and settings.pellet_damage == 11, "Mode edit preserves other weapon values")
+	var history = manager.get_history_undo_redo(manager.get_object_history_id(settings))
+	check(history.undo() and settings.spread_mode == ShotgunSettings.SpreadMode.RANDOM, "Native undo restores legacy mode")
+	check(history.redo() and settings.spread_mode == ShotgunSettings.SpreadMode.NO_INWARD, "Native redo restores no-inward mode")
+	property.set_read_only(true)
+	check(option.disabled, "Native read-only property disables mode selection")
+	property.set_read_only(false)
+	DirAccess.make_dir_recursive_absolute("res://logs/shotgun_inspector")
+	var path := "res://logs/shotgun_inspector/mode.tres"
+	var saved := ResourceSaver.save(settings, path)
+	var restored = ResourceLoader.load(path, "", ResourceLoader.CACHE_MODE_IGNORE)
+	check(saved == OK and restored.spread_mode == ShotgunSettings.SpreadMode.NO_INWARD and restored.pellet_damage == 11, "Inspector-edited mode survives save and reload")
+
+func _fields(gun: Resource) -> Array:
+	var fields := []
+	for property in _descendants(EditorInterface.get_inspector(), "EditorProperty"):
+		if property.get_edited_object() == gun: fields.append(property.get_edited_property())
+	return fields
+
+func _property(resource: Resource, path: String):
+	for property in _descendants(EditorInterface.get_inspector(), "EditorProperty"):
+		if property.get_edited_object() == resource and property.get_edited_property() == path: return property
+	return null
+
+func _descendants(node: Node, type: String) -> Array:
+	var result := []
+	for child in node.get_children(true):
+		if child.is_class(type): result.append(child)
+		result.append_array(_descendants(child, type))
+	return result
+
+func check(ok: bool, label: String) -> void:
+	checks += 1
+	if not ok: failures += 1
+	print("PASS " if ok else "FAIL ", label)

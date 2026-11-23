@@ -1,0 +1,191 @@
+extends RefCounted
+
+## Frozen-clue walking geometry. No target body reads, fire requests or leases.
+const BodyGeometry = preload("res://scripts/systems/character_geometry.gd")
+
+## Freeze only geometry and the original approach side of a committed entry.
+## No navigation queries, target reads or tactical authority.
+static func preparation_geometry(context, cover_id: int, observer: Vector3) -> Dictionary:
+	var cover = instance_from_id(cover_id)
+	if not is_instance_valid(cover) or not cover is StaticBody3D or not cover.is_in_group("cover_region") or not context.navigation_region.is_ancestor_of(cover): return {}
+	var box := cover.get_node_or_null("CollisionShape3D") as CollisionShape3D
+	if box == null or box.disabled or not box.shape is BoxShape3D or (cover.collision_layer & 1) == 0: return {}
+	if box.global_basis.y.normalized().dot(Vector3.UP) < 0.999: return {}
+	return {"cover": weakref(cover), "cover_transform": box.global_transform,
+		"cover_size": box.shape.size, "observer_position": observer}
+
+## A newly observed point still belongs to this cover's corner/back region.
+## This does not confirm hidden occupancy or authorize fire.
+static func same_preparation_cover(context, geometry: Dictionary, position: Vector3) -> bool:
+	if not position.is_finite() or not valid(context, geometry): return false
+	var box: CollisionShape3D = geometry.cover.get_ref().get_node("CollisionShape3D")
+	var half: Vector3 = geometry.cover_size * 0.5
+	if absf(box.to_global(Vector3(0, -half.y, 0)).y - position.y) > 0.5: return false
+	var origin: Vector3 = box.to_local(geometry.observer_position)
+	var known: Vector3 = box.to_local(position)
+	var surface: Vector3 = box.to_global(Vector3(clampf(known.x, -half.x, half.x), known.y, clampf(known.z, -half.z, half.z)))
+	if context._horizontal_distance_between(surface, position) > float(context.setting(&"selection", &"cover_inference_distance", 1.75)): return false
+	var along_x := absf(origin.z) / maxf(0.01, half.z) >= absf(origin.x) / maxf(0.01, half.x)
+	var front := signf(origin.z if along_x else origin.x)
+	if is_zero_approx(front): return false
+	return not ((known.z if along_x else known.x) * front > (half.z if along_x else half.x) and absf(known.x if along_x else known.z) < (half.x if along_x else half.z))
+
+## A range/FOV loss can happen just before a known cover corner. This is a
+## bounded investigation hypothesis from observed motion, never a hidden-body
+## read or a replacement for the original visual/suppression evidence.
+static func nearby_investigation_cover(context, evidence: Dictionary) -> Dictionary:
+	var feet: Vector3 = evidence.get("position", Vector3.INF)
+	var direction: Vector3 = evidence.get("direction", Vector3.ZERO)
+	var velocity: Vector3 = evidence.get("velocity", Vector3.ZERO)
+	var observed_from: Vector3 = evidence.get("observer_position", Vector3.INF)
+	if not feet.is_finite() or not direction.is_finite() or not velocity.is_finite() or not observed_from.is_finite(): return {}
+	direction.y = 0.0
+	if direction.length_squared() < 0.01: return {}
+	direction = direction.normalized()
+	# Same finite motion projection as the existing personal search, frozen
+	# once by the coordinator. It is never recomputed from a hidden actor.
+	var distance: float = minf(float(context.setting(&"search", &"track_distance", 4.0)), velocity.length() * 1.25)
+	var predicted: Vector3 = feet + direction * distance
+	var best: Dictionary = {}
+	var nearest: float = float(context.setting(&"selection", &"cover_inference_distance", 1.75))
+	for cover in context.actor.get_tree().get_nodes_in_group("cover_region"):
+		if not cover is StaticBody3D or not context.navigation_region.is_ancestor_of(cover) or (cover.collision_layer & 1) == 0: continue
+		var box := cover.get_node_or_null("CollisionShape3D") as CollisionShape3D
+		if box == null or box.disabled or not box.shape is BoxShape3D or box.global_basis.y.normalized().dot(Vector3.UP) < 0.999: continue
+		var half: Vector3 = box.shape.size * 0.5
+		if absf(box.to_global(Vector3(0, -half.y, 0)).y - feet.y) > 0.5: continue
+		var observer: Vector3 = box.to_local(observed_from)
+		var along_x: bool = absf(observer.z) / maxf(0.01, half.z) >= absf(observer.x) / maxf(0.01, half.x)
+		var front: float = signf(observer.z if along_x else observer.x)
+		# Distance to the wall CENTER can select an earlier point in front of
+		# its middle and miss a later corner on the very same observed trail.
+		# Test both segment endpoints and the closest approach to each corner;
+		# these bound the rectangle's corner/back investigation zones without
+		# reading the hidden target or lengthening the motion projection.
+		var candidates: Array[Vector3] = [feet, predicted]
+		for x in [-half.x, half.x]:
+			for z in [-half.z, half.z]:
+				var corner: Vector3 = box.to_global(Vector3(x, -half.y, z))
+				corner.y = feet.y
+				candidates.append(Geometry3D.get_closest_point_to_segment(corner, feet, predicted))
+		for investigation: Vector3 in candidates:
+			var local: Vector3 = box.to_local(investigation)
+			var surface: Vector3 = box.to_global(Vector3(clampf(local.x, -half.x, half.x), local.y, clampf(local.z, -half.z, half.z)))
+			var toward: Vector3 = surface - investigation
+			toward.y = 0.0
+			if toward.length() > nearest or (surface - feet).dot(direction) <= 0.0: continue
+			# Merely approaching the front middle still does not imply a corner.
+			var across: float = local.z if along_x else local.x
+			if across * front > (half.z if along_x else half.x) and absf(local.x if along_x else local.z) < (half.x if along_x else half.z): continue
+			var hit: Dictionary = context.cover_selection.environment_ray(investigation + Vector3.UP * 0.15, surface + Vector3.UP * 0.15)
+			if not hit.is_empty() and hit.get("collider") != cover: continue
+			best = {"cover": weakref(cover), "cover_id": cover.get_instance_id(), "inference_position": investigation}
+			nearest = toward.length()
+	return best
+
+static func describe(context, evidence: Dictionary, require_both_ends: bool = true) -> Dictionary:
+	if evidence.is_empty() or not evidence.get("position", Vector3.INF).is_finite(): return {}
+	var cover = evidence.get("cover")
+	if cover is WeakRef: cover = cover.get_ref()
+	if not is_instance_valid(cover): cover = context.cover_selection.confirmed_suppression_cover(evidence.position)
+	if not is_instance_valid(cover) or not cover is StaticBody3D or not cover.is_in_group("cover_region") or not context.navigation_region.is_ancestor_of(cover): return {}
+	var box := cover.get_node_or_null("CollisionShape3D") as CollisionShape3D
+	if box == null or box.disabled or not box.shape is BoxShape3D or (cover.collision_layer & 1) == 0: return {}
+	if box.global_basis.y.normalized().dot(Vector3.UP) < 0.999: return {}
+	var half: Vector3 = box.shape.size * 0.5
+	var observer: Vector3 = evidence.get("observer_position", Vector3.INF)
+	if not observer.is_finite(): return {}
+	var origin: Vector3 = box.to_local(observer)
+	var inference: Vector3 = evidence.get("inference_position", evidence.position)
+	var known: Vector3 = box.to_local(inference)
+	var surface: Vector3 = box.to_global(Vector3(clampf(known.x, -half.x, half.x), known.y, clampf(known.z, -half.z, half.z)))
+	if context._horizontal_distance_between(surface, inference) > float(context.setting(&"selection", &"cover_inference_distance", 1.75)): return {}
+	var along_x := absf(origin.z) / maxf(0.01, half.z) >= absf(origin.x) / maxf(0.01, half.x)
+	var side := signf(origin.z if along_x else origin.x)
+	if is_zero_approx(side): return {}
+	var across := half.z if along_x else half.x
+	var along := half.x if along_x else half.z
+	var known_across: float = known.z if along_x else known.x
+	# A remembered point in front of the middle of a wall is not evidence of
+	# somebody behind it. End/corner clues remain a legitimate investigation.
+	if known_across * side > across and absf(known.x if along_x else known.z) < along: return {}
+	var shape: CollisionShape3D = context.actor.get_node("CollisionShape3D")
+	var radius: float = shape.shape.radius * maxf(shape.global_basis.x.length(), shape.global_basis.z.length())
+	var along_scale: float = (box.global_basis.x if along_x else box.global_basis.z).length()
+	var across_scale: float = (box.global_basis.z if along_x else box.global_basis.x).length()
+	var margin_along: float = (radius + 0.25) / along_scale
+	var margin_across: float = (radius + 0.25) / across_scale
+	var ends: Dictionary = {}
+	for end in [-1, 1]:
+		var entry_local := Vector3(end * (along + margin_along), -half.y, side * (across + margin_across))
+		var peek_local := Vector3(entry_local.x, entry_local.y, -entry_local.z)
+		if not along_x:
+			entry_local = Vector3(entry_local.z, entry_local.y, entry_local.x)
+			peek_local = Vector3(peek_local.z, peek_local.y, peek_local.x)
+		var entry: Vector3 = box.to_global(entry_local)
+		var peek: Vector3 = box.to_global(peek_local)
+		entry.y = context.actor.global_position.y
+		peek.y = entry.y
+		if not _on_navigation(context, entry) or not _on_navigation(context, peek): continue
+		if not BodyGeometry.can_sweep(context.actor, entry, peek, context.actor.get_body_height(), radius, true): continue
+		ends[end] = {"entry": entry, "peek": peek}
+	if ends.is_empty() or (require_both_ends and ends.size() != 2): return {}
+	return {"cover": weakref(cover), "cover_id": cover.get_instance_id(), "cover_transform": box.global_transform,
+		"cover_size": box.shape.size, "known": evidence.position, "observer_position": observer, "along_x": along_x,
+		"front_sign": side, "half_along": along, "half_across": across, "radius": radius,
+		"ends": ends, "inspection_id": int(evidence.get("id", 0)), "target_id": evidence.target_id}
+
+static func valid(context, geometry: Dictionary) -> bool:
+	if geometry.is_empty(): return false
+	if geometry.get("kind") == &"point":
+		return geometry.navigation_iteration == NavigationServer3D.map_get_iteration_id(context.agent.get_navigation_map()) and geometry.known.is_finite()
+	var cover = geometry.cover.get_ref()
+	if not is_instance_valid(cover) or not context.navigation_region.is_ancestor_of(cover): return false
+	var box := cover.get_node_or_null("CollisionShape3D") as CollisionShape3D
+	return box != null and not box.disabled and box.shape is BoxShape3D and (cover.collision_layer & 1) != 0 and box.global_transform == geometry.cover_transform and box.shape.size == geometry.cover_size
+
+static func route(context, geometry: Dictionary, end: int) -> Dictionary:
+	if not valid(context, geometry) or not geometry.ends.has(end): return {}
+	var endpoints: Dictionary = geometry.ends[end]
+	var approach: PackedVector3Array = context.cover_selection._path_to(context.actor.global_position, endpoints.entry)
+	var inspect: PackedVector3Array = context.cover_selection._path_to(endpoints.entry, endpoints.peek)
+	if approach.is_empty() or inspect.is_empty(): return {}
+	# A different endpoint is insufficient: the actual approach cannot already
+	# wrap around the opposite end and enter through the other inspector's lane.
+	if not approach_uses_assigned_end(geometry, approach, end): return {}
+	var path := approach.duplicate()
+	for point in inspect:
+		if path.is_empty() or path[-1].distance_to(point) > 0.01: path.append(point)
+	if not _walkable_path(context, path, geometry.radius): return {}
+	var length: float = context.cover_selection._path_length_from_path(path)
+	return {"entry": endpoints.entry, "peek": endpoints.peek, "path": path,
+		"approach": approach, "length": length, "end": end, "geometry": geometry}
+
+## A path to the correct entry can still circle behind the opposite end first.
+## Share this constraint between legacy pairs and coordinator-owned queues.
+static func approach_uses_assigned_end(geometry: Dictionary, approach: PackedVector3Array, end: int) -> bool:
+	if geometry.get("kind") == &"point": return true
+	var box: CollisionShape3D = geometry.cover.get_ref().get_node("CollisionShape3D")
+	for point in approach:
+		var local: Vector3 = box.to_local(point)
+		var across: float = local.z if geometry.along_x else local.x
+		var along: float = local.x if geometry.along_x else local.z
+		if across * float(geometry.front_sign) < -float(geometry.half_across) and along * end < 0.0: return false
+	return true
+
+static func _on_navigation(context, point: Vector3) -> bool:
+	var projected: Vector3 = NavigationServer3D.region_get_closest_point(context.navigation_region.get_rid(), point)
+	return context._horizontal_distance_between(point, projected) <= 0.05 and absf(point.y - projected.y) <= 0.5
+
+static func _walkable_path(context, path: PackedVector3Array, radius: float) -> bool:
+	var previous: Vector3 = context.actor.global_position
+	for index in path.size():
+		var vertex: Vector3 = path[index]
+		var point := Vector3(vertex.x, previous.y, vertex.z)
+		# The measured starting body may be just outside the baked margin after
+		# combat. Query paths already connect it to their first projected vertex;
+		# explicitly including that same origin must not reject the connection.
+		var actual_origin: bool = index == 0 and point.distance_to(context.actor.global_position) <= 0.001
+		if (not actual_origin and not _on_navigation(context, point)) or not BodyGeometry.can_sweep(context.actor, previous, point, context.actor.get_body_height(), radius, true): return false
+		previous = point
+	return true

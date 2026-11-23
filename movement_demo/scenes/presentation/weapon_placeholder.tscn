@@ -1,0 +1,15 @@
+[gd_scene load_steps=3 format=3]
+
+[sub_resource type="StandardMaterial3D" id="WeaponMaterial"]
+albedo_color = Color(0.16, 0.18, 0.22, 1)
+roughness = 0.7
+
+[sub_resource type="BoxMesh" id="WeaponMesh"]
+material = SubResource("WeaponMaterial")
+size = Vector3(0.14, 0.14, 0.42)
+
+[node name="WeaponPlaceholder" type="Node3D"]
+
+[node name="Mesh" type="MeshInstance3D" parent="."]
+position = Vector3(0, 0, -0.16)
+mesh = SubResource("WeaponMesh")

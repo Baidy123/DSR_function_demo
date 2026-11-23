@@ -2,6 +2,7 @@
 extends VBoxContainer
 
 const Library = preload("res://scripts/enemy/enemy_action_library.gd")
+const TeamBinding = preload("res://scripts/enemy/config/team_cooperation_binding.gd")
 var inspected: Object
 var undo_redo: EditorUndoRedoManager
 var preview_unit: EnemyUnitProfile
@@ -44,10 +45,15 @@ func unit() -> EnemyUnitProfile:
 	var node = inspected.get_node_or_null("../UnitType")
 	return node.profile if node != null else null
 
+func team_binding() -> Dictionary:
+	return TeamBinding.find_for_member(inspected.get_parent()) if is_instance_valid(inspected) and inspected is Node else {}
+
 func refresh(force: bool = false) -> void:
 	var training := profile()
 	var source := unit()
-	var value := hash([source.fingerprint() if source != null else 0, training.selected_tactics if training != null else [], training])
+	var team := team_binding()
+	var value := hash([source.fingerprint() if source != null else 0, training.selected_tactics if training != null else [], training,
+		team.get("squad_key"), team.get("level"), team.get("diagnostic"), team.binding.fingerprint() if not team.is_empty() else 0])
 	if not force and signature == value: return
 	signature = value
 	for child in rows.get_children():
@@ -56,7 +62,19 @@ func refresh(force: bool = false) -> void:
 	if source == null or training == null:
 		_note("配置兵种与训练资源后显示可选战术。")
 		return
-	var resolved := Library.resolve(source, training)
+	if team.is_empty():
+		if inspected is Node: _note("未绑定小队：仅共享合法情报，使用个人 Utility。")
+	else:
+		_note("小队 %s：%s；普通与强配合由协调器指挥；可选战术仍须个人解锁。" % [team.squad_key, TeamBinding.LEVEL_NAMES[team.level]])
+		if not String(team.diagnostic).is_empty(): _note(team.diagnostic)
+		var button := Button.new()
+		button.text = "编辑整队团队意识配置"
+		button.disabled = team.binding.profile == null and not team.has("squad")
+		button.pressed.connect(func():
+			if team.has("squad"): EditorInterface.edit_node(team.squad)
+			else: EditorInterface.edit_resource(team.binding.profile))
+		rows.add_child(button)
+	var resolved := Library.resolve(source, training, team)
 	var seen: Array[StringName] = []
 	for definition in source.tactical_actions:
 		if definition == null or seen.has(definition.action_id): continue
@@ -79,7 +97,7 @@ func refresh(force: bool = false) -> void:
 			checkbox.text += "（由 %s 包含）" % "、".join(names)
 			checkbox.tooltip_text = "取消相应高级项后才可单独修改；原有手动选择会保留。"
 		else:
-			checkbox.tooltip_text = "手动启用" if training.selected_tactics.has(id) else "尚未解锁"
+			checkbox.tooltip_text = "手动启用" if Library.selected_tactics(training, source).has(id) else "尚未解锁"
 		checkbox.toggled.connect(_toggle.bind(training, id))
 		rows.add_child(checkbox)
 		if invalid: _note(checkbox.tooltip_text)
@@ -89,6 +107,7 @@ func _toggle(enabled: bool, training: EnemyTrainingProfile, id: StringName) -> v
 	var before: Array[StringName] = training.selected_tactics.duplicate()
 	var after: Array[StringName] = before.duplicate()
 	after.erase(id)
+	if id == &"suppression": after.erase(&"exit_suppression")
 	if enabled: after.append(id)
 	undo_redo.create_action("更改敌人战术解锁", UndoRedo.MERGE_DISABLE, training)
 	undo_redo.add_do_property(training, &"selected_tactics", after)

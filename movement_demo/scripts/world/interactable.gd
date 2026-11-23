@@ -1,6 +1,11 @@
 extends Area3D
 class_name Interactable
 
+const Director = preload("res://scripts/systems/scene_director.gd")
+const Request = preload("res://scripts/systems/scene_request.gd")
+var _active_request: Request
+var _request_hint := ""
+
 ## 场景交互物基类：玩家靠近显示提示，按 E 执行装配好的效果资源。
 ## 本脚本只负责范围、提示、输入守卫与条件判定，不引用任何具体系统：
 ## 条件读取 state_path 指向的状态节点（鸭子类型），结果由 InteractionEffect 实现。
@@ -8,6 +13,8 @@ class_name Interactable
 signal interacted(interactable: Interactable, player: Node3D)
 signal blocked(interactable: Interactable, player: Node3D)
 
+## 任务条件等系统使用的稳定 id；留空时回退到节点名，场景里换名字不会打断配置表。
+@export var interact_id: StringName = &""
 ## 提示文本与调试日志使用的名字；留空时回退到节点名。
 @export var display_name: String = ""
 ## 提示动词，例如 查看 / 拾取 / 使用。
@@ -49,6 +56,8 @@ var _player_inside: Node3D = null
 
 func _ready() -> void:
 	add_to_group(&"interactable")
+	if interact_id == &"":
+		interact_id = StringName(name)
 	_refresh_prompt()
 
 
@@ -73,25 +82,56 @@ func _unhandled_input(event: InputEvent) -> void:
 
 ## 外部（例如对话结果）也可以直接调用；返回是否真正执行了效果。
 func interact(player: Node3D) -> bool:
+	_request_hint = ""
 	if not can_interact(player):
 		blocked.emit(self, player)
 		_refresh_prompt()
 		return false
-	has_interacted = true
-	var context := InteractionContext.new(self, player, state())
+	var director = Director.for_node(self)
+	if director == null: return false
+	_active_request = director.request_action(&"interact", {"source": self, "target": self,
+		"player": player, "origin": &"interaction"})
+	if _active_request.is_terminal(): _on_request_finished(_active_request)
+	else: _active_request.finished.connect(_on_request_finished, CONNECT_ONE_SHOT)
+	if not _active_request.has_started():
+		blocked.emit(self, player)
+		_refresh_prompt()
+	return _active_request.has_started()
+
+func _on_request_finished(request: Request) -> void:
+	if not is_inside_tree(): return
+	if request.status == &"failed": _request_hint = "交互失败，请重试"
+	elif request.reason == &"busy": _request_hint = "当前忙碌，请稍后再试"
+	_refresh_prompt()
+
+func execute_scene_interaction(context: InteractionContext) -> Request:
+	_run_scene_interaction(context)
+	return context.execution
+
+func _run_scene_interaction(context: InteractionContext) -> void:
 	for effect in effects:
 		if effect != null:
-			effect.apply(context)
-	interacted.emit(self, player)
+			var result: Dictionary = await effect.execute(context)
+			if not context.execution.is_current(): return
+			if result.get("status") != &"completed":
+				context.execution.fail(String(result.get("reason", &"effect_failed")))
+				return
+	if not context.execution.is_current(): return
+	has_interacted = true
+	interacted.emit(self, context.player)
 	if hide_on_interact:
 		_player_inside = null
 		monitoring = false
 		hide()
 	_refresh_prompt()
-	return true
+	context.execution.complete()
+
+func transition_parameters(_player: Node3D) -> Dictionary:
+	return {"mode": &"plain"}
 
 
 func can_interact(_player: Node3D) -> bool:
+	if _active_request != null and not _active_request.is_terminal(): return false
 	if not enabled or not is_inside_tree():
 		return false
 	if has_interacted and (one_shot or hide_on_interact):
@@ -139,7 +179,8 @@ func _refresh_prompt() -> void:
 	prompt.visible = enabled and _player_inside != null
 	if not prompt.visible:
 		return
-	if not conditions_met():
+	if not _request_hint.is_empty(): prompt.text = _request_hint
+	elif not conditions_met():
 		prompt.text = blocked_hint
 	elif has_interacted and one_shot:
 		prompt.text = used_hint

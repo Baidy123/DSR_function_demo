@@ -12,14 +12,14 @@ func _initialize() -> void:
 	_run.call_deferred()
 
 func _run() -> void:
-	scene = load("res://scenes/main.tscn").instantiate()
+	scene = preload("res://tests/enemy/enemy_fire_fixture.gd").unbound_scene()
 	root.add_child(scene)
 	current_scene = scene
 	player = scene.get_node("Player")
 	combat = player.get_node("Combat")
-	slots = player.get_node("WeaponSlots")
+	slots = player.get_node("Equipment")
 	player.set_physics_process(false)
-	scene.get_node("Arena/Enemy/AI").set_physics_process(false)
+	preload("res://tests/enemy/enemy_fire_fixture.gd").primary_enemy(scene).get_node("AI").set_physics_process(false)
 	player.get_node("Health").debug_invincible = false
 	weapon = WeaponData.new()
 	weapon.reload_seconds = 2.0
@@ -53,7 +53,7 @@ func _run() -> void:
 		player.is_sprinting = true
 		combat.end_frame(0.5, true)
 		check(not combat.ammo.is_reloading and close(combat.ammo.reload_progress, 0.5) and close(combat.ammo.reload_checkpoint, 0.5), "%d%%中断只保留半程" % int(fraction * 100))
-		check(combat.ammo.magazine_rounds == 3 and slots.reserve_ammo[weapon.ammo_type] == 60 and not combat.ammo.can_fire(), "已保留半程不会提前补弹或扣备弹，余弹也不能开火")
+		check(combat.ammo.magazine_rounds == 3 and slots.reserve_ammo[weapon.get_ammo_key()] == 60 and not combat.ammo.can_fire(), "已保留半程不会提前补弹或扣备弹，余弹也不能开火")
 		combat.end_frame(2.0, true)
 		check(close(combat.ammo.reload_progress, 0.5) and not combat.request_reload(), "快速换弹在持续奔跑中暂停，R不能绕过强制续换阶段")
 		slots._update_display()
@@ -73,7 +73,7 @@ func _run() -> void:
 		combat.end_frame(0.99, false)
 		check(combat.ammo.is_reloading and combat.ammo.magazine_rounds == 3, "续换不足剩余时长不会提前完成")
 		combat.end_frame(0.01, false)
-		check(not combat.ammo.is_reloading and combat.ammo.reload_checkpoint == 0.0 and combat.ammo.magazine_rounds == 12 and slots.reserve_ammo[weapon.ammo_type] == 51, "续换足够一秒才补满，且只扣一次缺口备弹")
+		check(not combat.ammo.is_reloading and combat.ammo.reload_checkpoint == 0.0 and combat.ammo.magazine_rounds == 12 and slots.reserve_ammo[weapon.get_ammo_key()] == 51, "续换足够一秒才补满，且只扣一次缺口备弹")
 
 	prepare()
 	combat.request_reload()
@@ -124,11 +124,11 @@ func _run() -> void:
 	combat.end_frame(1.6, false)
 	first = combat.ammo
 	slots.select_slot(1)
-	slots.reserve_ammo[weapon.ammo_type] = 0
+	slots.reserve_ammo[weapon.get_ammo_key()] = 0
 	slots.select_slot(0)
 	check(first.is_reloading and not first.can_fire(), "共享备弹耗尽仍能继续已保留阶段，不永久卡住")
 	combat.end_frame(1.0, false)
-	check(first.magazine_rounds == 3 and first.can_fire() and slots.reserve_ammo[weapon.ammo_type] == 0, "无备弹完成动作后不凭空补弹并恢复原有余弹可用")
+	check(first.magazine_rounds == 3 and first.can_fire() and slots.reserve_ammo[weapon.get_ammo_key()] == 0, "无备弹完成动作后不凭空补弹并恢复原有余弹可用")
 
 	prepare()
 	combat.request_reload()
@@ -150,7 +150,7 @@ func _run() -> void:
 	combat.end_frame(0.1, true)
 	player.receive_hit(player.get_node("Health").max_health * 2.0)
 	check(player.is_dead() and combat.ammo.reload_checkpoint == 0.0 and not combat.ammo.is_reloading, "死亡清理保留阶段")
-	player.get_node("Health")._request_restart()
+	player.get_node("Health/DeathScreen/Center/Panel/Content/Restart").pressed.emit()
 	for frame in range(8): await process_frame
 	var restarted = current_scene.get_node("Player/Combat")
 	check(not paused and restarted.ammo.reload_checkpoint == 0.0 and restarted.ammo.magazine_rounds == restarted.weapon.magazine_capacity, "真实重开恢复满匣且无旧阶段残留")
@@ -164,7 +164,7 @@ func prepare() -> void:
 	slots.select_slot(0)
 	combat.cancel_reload()
 	combat.ammo.magazine_rounds = 3
-	slots.reserve_ammo[weapon.ammo_type] = 60
+	slots.reserve_ammo[weapon.get_ammo_key()] = 60
 
 func close(a: float, b: float) -> bool:
 	return absf(a - b) < 0.00001

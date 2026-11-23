@@ -12,11 +12,11 @@ func _run() -> void:
 	if settings == null:
 		finish()
 		return
-	var scene = load("res://scenes/main.tscn").instantiate()
+	var scene = preload("res://tests/enemy/enemy_fire_fixture.gd").unbound_scene()
 	root.add_child(scene)
 	current_scene = scene
 	var player = scene.get_node("Player")
-	var enemy = scene.get_node("Arena/Enemy")
+	var enemy = preload("res://tests/enemy/enemy_fire_fixture.gd").primary_enemy(scene)
 	var health = player.get_node("Health")
 	var combat = player.get_node("Combat")
 	var noise = health.get_node("NoiseRanges")
@@ -33,14 +33,22 @@ func _run() -> void:
 	check(settings.enabled and health.is_invincible(), "界面总开关同时开启无敌")
 	check(debug_navigation_hint == OS.get_cmdline_user_args().has("--expect-navigation"), "开启总开关保留编辑器原导航显示选择")
 	check(enemy.get_node("Label").visible and combat.get_node("HUD/Panel").visible, "开启立即显示文字和战斗信息")
-	check(noise.enabled, "开启总开关自动允许声音范围")
+	check(not noise.enabled, "开启总开关不再自动开启声音范围")
 	noise.receive_noise(player, player.global_position, 6.0, 0.4)
-	check(noise.get_child_count() == 1, "开启时实际声音生成范围圈")
+	check(noise.get_child_count() == 0, "默认声音事件不创建范围图形")
+	var preview = enemy.get_node("AI").cover_selection.get_node("AttackPreview")
+	check(not preview.is_physics_processing() and preview.assessments.is_empty(), "默认不再额外扫描和绘制掩体选择区域")
+	var paths = settings.get_node("CoordinatorPaths")
+	check(paths.is_processing() and paths.get_node("Overlay").visible, "开启总开关显示协调器规划视图")
+	noise.set_enabled(true)
+	noise.receive_noise(player, player.global_position, 6.0, 0.4)
+	check(noise.get_child_count() == 1, "声音范围仅显式开启后绘制，保留独立诊断入口")
 	health.receive_hit(25.0)
 	check(health.health == health.max_health - 25.0, "无敌不扣血也不回血")
-	check(health.get_node("Status").visible and player.get_node("WeaponSlots/Panel").visible, "开启时保留正常状态和弹药界面")
+	check(health.get_node("Status").visible and player.get_node("Equipment/Panel").visible, "开启时保留正常状态和弹药界面")
 	toggle.button_pressed = false
 	check(not settings.enabled and not health.is_invincible(), "关闭总开关同时关闭无敌")
+	check(not paths.is_processing() and paths.snapshots.is_empty() and not paths.get_node("Overlay").visible, "关闭总开关清空路径快照并停止刷新")
 	check(noise.get_child_count() == 0 and not noise.enabled, "关闭立即清理声音圈")
 	noise.set_enabled(true)
 	noise.receive_noise(player, player.global_position, 6.0, 0.4)
@@ -55,7 +63,7 @@ func _run() -> void:
 	check(not combat.get_node("HUD/Panel").visible, "对话时仍隐藏战斗信息")
 	player.set_dialogue_active(false)
 	health.debug_mode = false
-	check(health.get_node("Status").visible and player.get_node("WeaponSlots/Panel").visible, "关闭 Debug 仍保留正常生命体力弹药")
+	check(health.get_node("Status").visible and player.get_node("Equipment/Panel").visible, "关闭 Debug 仍保留正常生命体力弹药")
 	finish()
 
 func check(ok: bool, label: String) -> void:

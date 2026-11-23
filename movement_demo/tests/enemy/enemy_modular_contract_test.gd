@@ -23,8 +23,8 @@ func _run() -> void:
 	check(base.definitions.has(&"reload") and not base.definitions.has(&"cover"), "基础換弹独立于掩体战术")
 	training.selected_tactics = [&"exit_suppression"]
 	var advanced := Library.resolve(unit, training)
-	check(advanced.definitions.has(&"suppression") and advanced.definitions.has(&"exit_suppression"), "高级项自动包含基础项且两者共存")
-	check(advanced.included_by[&"suppression"] == [&"exit_suppression"], "包含来源可供检查器解释")
+	check(advanced.definitions.has(&"suppression") and not advanced.definitions.has(&"exit_suppression"), "旧出口选择迁移为唯一压制实例")
+	check(advanced.included_by.is_empty(), "合并后的压制没有虚构父子包含关系")
 	check(training.selected_tactics == [&"exit_suppression"], "解析不改写显式选择")
 	training.selected_tactics.clear()
 	check(not Library.resolve(unit, training).definitions.has(&"suppression"), "取消高级项撤销仅由它带来的基础权限")
@@ -35,12 +35,12 @@ func _run() -> void:
 	var source: EnemyActionDefinition = unit.definition(&"suppression")
 	unit.tactical_actions.erase(source)
 	var missing := Library.resolve(unit, training)
-	check(not missing.definitions.has(&"exit_suppression") and not missing.errors.is_empty(), "缺少关联基础项使高级项失效")
+	check(not missing.definitions.has(&"exit_suppression") and not missing.definitions.has(&"suppression"), "目录没有压制时旧选择不能绕过目录装配")
 	unit.tactical_actions.append(source)
-	check(Library.resolve(unit, training).definitions.has(&"exit_suppression"), "恢复兵种目录后恢复原有选择")
+	check(Library.resolve(unit, training).definitions.has(&"suppression"), "恢复兵种目录后恢复原有选择")
 	var melee: EnemyUnitProfile = load("res://resources/enemy/units/melee.tres")
 	check(not Library.resolve(melee, training).definitions.has(&"exit_suppression") and training.selected_tactics == [&"exit_suppression"], "更换兵种保留隐藏选择但不装配")
-	source.includes = [&"exit_suppression"]
+	source.includes = [&"suppression"]
 	check(not Library.resolve(unit, training).errors.is_empty(), "包含关系成环被拒绝")
 	source.includes.clear()
 	unit.tactical_actions.append(source)
@@ -52,7 +52,7 @@ func _run() -> void:
 	check(not Library.resolve(unit, training).definitions.has(&"misplaced_tactic"), "战术定义错放在默认板块不会绕过授权")
 	unit.default_behaviors.erase(misplaced)
 	unit.capabilities.erase(&"firearms")
-	check(not Library.resolve(unit, training).definitions.has(&"exit_suppression"), "身体能力要求不能由训练绕过")
+	check(not Library.resolve(unit, training).definitions.has(&"suppression"), "身体能力要求不能由训练绕过")
 	unit.capabilities.append(&"firearms")
 	check(training.setting(&"tactics", &"ranged_min_distance", 0.0, {&"ranged_min_distance": 8.0}) == 8.0, "未显式覆盖时保留兵种动作参数")
 	training.set_setting(&"tactics", &"ranged_min_distance", 3.0)
@@ -62,17 +62,17 @@ func _run() -> void:
 	var reloaded = ResourceLoader.load(saved, "", ResourceLoader.CACHE_MODE_IGNORE)
 	check(reloaded.selected_tactics == training.selected_tactics and reloaded.setting(&"tactics", &"ranged_min_distance") == 3.0, "保存重载保留选择与显式参数")
 	check(reloaded.setting(&"tactics", &"ranged_max_distance", 0.0, {&"ranged_max_distance": 12.0}) == 12.0, "保存不能把未设置的默认数值变成显式覆盖")
-	var scene = load("res://scenes/main.tscn").instantiate()
+	var scene = preload("res://tests/enemy/enemy_fire_fixture.gd").unbound_scene()
 	root.add_child(scene)
 	current_scene = scene
-	var enemy = scene.get_node("Arena/Enemy")
+	var enemy = preload("res://tests/enemy/enemy_fire_fixture.gd").primary_enemy(scene)
 	var ai = enemy.get_node("AI")
 	ai.set_physics_process(false)
 	scene.get_node("Player").set_physics_process(false)
 	ai.unit_type.profile = unit
 	ai.training.profile = training.duplicate(true)
 	ai.refresh_configuration(true)
-	check(ai.actions.has(&"exit_suppression") and ai.actions[&"exit_suppression"] != ai.actions[&"suppression"], "父子动作拥有不同执行实例")
+	check(ai.actions.has(&"suppression") and not ai.actions.has(&"exit_suppression"), "旧训练仅创建统一压制执行实例")
 	check(not ai.actions.has(&"cover") and not ai.actions.has(&"attack_position"), "未授权动作完全不创建")
 	var search_before = ai.actions[&"search"]
 	ai.training.profile.selected_tactics.clear()
@@ -119,6 +119,15 @@ func _run() -> void:
 	for id in [&"suppression", &"exit_suppression", &"attack_position", &"covering_retreat"]:
 		check(not controller.contains('&"' + String(id) + '"') and not selector.contains('&"' + String(id) + '"'), "协调器和评分器无具体战术分支：" + String(id))
 	check(not context.contains("var actions") and not context.contains("var controller"), "共享上下文不暴露动作注册表")
+	var area_source := FileAccess.get_file_as_string("res://scripts/enemy/services/enemy_cooperation.gd")
+	var squad_source := FileAccess.get_file_as_string("res://scripts/enemy/services/squad_coordination.gd")
+	var search_source := FileAccess.get_file_as_string("res://scripts/enemy/actions/enemy_search.gd")
+	var cooperation_source := FileAccess.get_file_as_string("res://scripts/enemy/actions/enemy_cooperation_action.gd")
+	check(not area_source.contains("_legacy_coordinator") and not context.contains('2 if can_use_action(&"cooperate")'), "个人训练不能隐式创建或升级小队协调器")
+	for removed in ["func claim(", "func update_claim(", "func release(", "_flank_rounds", "var _recommendations"]:
+		check(not area_source.contains(removed) and not squad_source.contains(removed), "删除旧团队控制入口：" + removed)
+	check(not search_source.contains("_search_claim") and not context.contains("cooperation_claim_search"), "普通搜索只使用公共空间预约，不重复申请强配合许可")
+	check(not cooperation_source.contains("var _claim") and not cooperation_source.contains("_overwatch_candidate") and not cooperation_source.contains("_begin_recommended"), "协作模块只保留统一团队任务执行")
 	scene.queue_free()
 	await process_frame
 	print("MODULAR CONTRACT: %d/%d passed" % [checks - failed, checks])

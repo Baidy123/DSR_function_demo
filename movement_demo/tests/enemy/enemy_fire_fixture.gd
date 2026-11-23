@@ -1,5 +1,84 @@
 extends RefCounted
 
+## Personal-action fixtures have no implicit team authority. Team tests explicitly
+## attach a Squad or bind configuration; saved-scene integration loads Main directly.
+static func unbound_scene() -> Node:
+	var scene = load("res://scenes/main.tscn").instantiate()
+	var arena: Node = scene.get_node("Arena")
+	# Remove team configuration only from this instantiated fixture.
+	if arena.get("team_cooperation_bindings") is Array:
+		arena.team_cooperation_bindings.clear()
+	# These fixtures explicitly exercise unbound personal behavior.
+	# Unwrap only the test instance; saved scene integration loads Main directly.
+	for member in members(arena):
+		if member.get_parent() == arena: continue
+		var pose: Transform3D = member.transform
+		var parent: Node = member.get_parent()
+		while parent != arena:
+			if parent is Node3D: pose = parent.transform * pose
+			parent = parent.get_parent()
+		member.owner = null
+		member.reparent(arena, false)
+		member.transform = pose
+	for node in arena.find_children("*", "Node3D", true, false):
+		if node.has_method("squad_configuration"): node.set_script(null)
+	return scene
+
+## Opt-in fixture for a solo benchmark, or a benchmark that spawns N-1 peers.
+## Preserve the primary actor's complete behavior; remove unmeasured saved peers
+## before they enter the tree so the declared population is the real population.
+static func single_member_scene() -> Node:
+	var scene := unbound_scene()
+	var arena := scene.get_node("Arena")
+	var primary := primary_enemy(scene)
+	for child in arena.get_children():
+		if child != primary and child.has_node("AI"): child.free()
+	return scene
+
+## Locate the saved test member without assuming the user's instance name.
+## Do not rename, spawn, remove, or reconfigure any scene node here.
+static func primary_enemy(scene: Node) -> Node:
+	var arena := scene.get_node_or_null("Arena")
+	if arena == null: arena = scene
+	var original := arena.get_node_or_null("Enemy")
+	if original != null: return original
+	for child in members(arena): return child
+	push_error("The fixture requires an AI member in its arena.")
+	return null
+
+static func members(area: Node) -> Array[Node]:
+	var result: Array[Node] = []
+	for child in area.get_children():
+		if child.has_method("enemy_environment"): continue
+		if child.has_node("AI") and child.has_node("UnitType") and child.has_node("Training"):
+			result.append(child)
+		else: result.append_array(members(child))
+	return result
+
+static func attach_squad(area: Node, actors: Array, level: int) -> Node3D:
+	var squad = preload("res://scenes/world/squad.tscn").instantiate()
+	squad.profile.level = level
+	area.add_child(squad)
+	for actor in actors: actor.reparent(squad)
+	return squad
+
+## Explicit conversion input for tests that must retain direct-child node paths.
+## It exercises the same coordinator protocol as a scene Squad.
+static func bind_team(area: Node, level: int, group: StringName = &"") -> void:
+	var binding := EnemyTeamCooperationBinding.new()
+	binding.communication_group = group
+	binding.profile.level = level
+	area.team_cooperation_bindings.append(binding)
+	if area.is_inside_tree(): area.enemy_environment()
+
+static func reserve_position(context, point: Vector3, duration: float = 1.0, owner: StringName = &"search") -> Dictionary:
+	context.prepare_coordination_evaluation()
+	var offer: Dictionary = context._basic_coordination_offer({"id": owner, "destination": {"position": point}})
+	var token: Dictionary = context.cooperation.prepare_reservation(context, offer, duration)
+	if not token.is_empty() and context.cooperation.commit_reservation(context, token): return token
+	context.cooperation.rollback_reservation(context, token)
+	return {}
+
 static func advance_evaluation(ai, visible: bool) -> void:
 	ai.context.sees_player = visible
 	ai.context.spatial.advance_evaluation()
@@ -28,6 +107,13 @@ static func configure_timing(enemy: Node) -> void:
 	weapon.target_move_accuracy_loss_per_meter_slow = 0.0
 	weapon.target_move_accuracy_loss_per_meter_fast = 0.0
 	enemy.equip_weapon(weapon)
+
+## 固定射击夹具会把玩家传送到竞技场；先让真实跟随镜头入位，再测机械计时。
+static func wait_for_camera(member: Node3D) -> bool:
+	for frame in 120:
+		if preload("res://scripts/systems/combat_view.gd").contains_actor(member, 8.0): return true
+		await member.get_tree().physics_frame
+	return false
 
 
 # 决策测试主动制造低于70%的跟枪状态，检查等待压力能否让AI继续开火。
@@ -67,6 +153,9 @@ static func _configure_common(enemy: Node) -> void:
 	training.profile.set_setting(&"tactics", &"fire_reaction_seconds", 0.5)
 	training.profile.set_setting(&"tactics", &"burst_shot_count", 3)
 	training.profile.set_setting(&"tactics", &"burst_pause_seconds", 1.0)
+	# These legacy timing fixtures describe the mechanical cadence explicitly.
+	# The slower production default and covering bursts have a separate runtime test.
+	training.profile.set_setting(&"tactics", &"shot_interval_multiplier", 1.0)
 	training.profile.set_setting(&"tactics", &"fire_stability_target", 0.7)
 	training.profile.set_setting(&"tactics", &"ranged_min_distance", 4.0)
 	training.profile.set_setting(&"tactics", &"ranged_max_distance", 6.0)

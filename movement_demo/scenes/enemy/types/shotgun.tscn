@@ -1,0 +1,12 @@
+[gd_scene format=3 uid="uid://cm7oex5skvuo5"]
+
+[ext_resource type="PackedScene" uid="uid://cu5pdeu3u7v5m" path="res://scenes/enemy/enemy.tscn" id="1_524ur"]
+[ext_resource type="Resource" uid="uid://bghwoavvclxoj" path="res://resources/weapons/enemy_test_shotgun.tres" id="2_hitlr"]
+[ext_resource type="Resource" uid="uid://vdd25la1rfk" path="res://resources/enemy/training/levels/lvl_4/shotgun.tres" id="3_hitlr"]
+
+[node name="Enemy" unique_id=205767877 instance=ExtResource("1_524ur")]
+max_health = 80.0
+weapon = ExtResource("2_hitlr")
+
+[node name="Training" parent="." index="1" unique_id=740728946]
+profile = ExtResource("3_hitlr")

@@ -9,13 +9,13 @@ func _initialize() -> void:
 
 
 func _run() -> void:
-	var scene = load("res://scenes/main.tscn").instantiate()
+	var scene = preload("res://tests/enemy/enemy_fire_fixture.gd").unbound_scene()
 	# 固定本测试实例的伤害边界，不能假定用户场景一直保留100点生命。
 	scene.get_node("Player/Health").max_health = 100.0
 	root.add_child(scene)
 	current_scene = scene
 	# 本组只验证原行为；射击与玩家死亡联动由 enemy_shooting_test 覆盖。
-	scene.get_node("Arena/Enemy").shooting_enabled = false
+	preload("res://tests/enemy/enemy_fire_fixture.gd").primary_enemy(scene).shooting_enabled = false
 	await process_frame
 	var player = scene.get_node("Player")
 	var health = player.get_node_or_null("Health")
@@ -28,27 +28,31 @@ func _run() -> void:
 	_check("初始生命显示", health.get_node("Status/Content/HealthLabel").text.contains("100 / 100"))
 	player.receive_hit(25.0)
 	_check("真实受伤入口扣血", health.health == 75.0)
+	player.receive_hit(60.0)
+	var healed: float = health.heal(35.0)
+	_check("急救包恢复35点生命", healed == 35.0 and health.health == 50.0)
+	_check("急救包不超过最大生命", health.heal(1000.0) == 50.0 and health.health == health.max_health)
 	player.receive_hit(0.0)
 	player.receive_hit(-10.0)
 	player.receive_hit(NAN)
 	player.receive_hit(INF)
-	_check("无效伤害不改变生命", health.health == 75.0)
+	_check("无效伤害不改变生命", health.health == 100.0)
 	health.debug_invincible = true
 	player.receive_hit(1000.0)
-	_check("无敌阻止致死伤害且不回血", health.health == 75.0 and not player.is_dead())
+	_check("无敌阻止致死伤害且不回血", health.health == 100.0 and not player.is_dead())
 	_check("无敌状态同步显示", health.get_node("Status/Content/HealthLabel").text.contains("无敌"))
 	_check("无敌勾选同步", health.get_node("Debug/Controls/Invincible").button_pressed)
 	health.get_node("Debug/Controls/Invincible").set_pressed(false)
 	_check("界面可以关闭无敌", not health.debug_invincible)
 	health.get_node("Debug/Controls/Damage").pressed.emit()
-	_check("测试受伤按钮走伤害入口", health.health == 50.0)
+	_check("测试受伤按钮走伤害入口", health.health == 75.0)
 	# 通过真实玩家移动与靶子伤害留下需要重置的战斗状态。
 	player.global_position = Vector3(20.0, 0.0, 0.0)
 	for frame in range(5):
 		await physics_frame
 	_check("死亡前实际进入战斗区", player.get_node("Combat").can_combat() and scene.get_node("Arena").players_inside.has(player))
 	player.stamina = 10.0
-	var enemy = scene.get_node("Arena/Enemy")
+	var enemy = preload("res://tests/enemy/enemy_fire_fixture.gd").primary_enemy(scene)
 	enemy.receive_hit(10000.0, player.global_position)
 	var target_a = scene.get_node("CombatTest/TargetA")
 	var target_b = scene.get_node("CombatTest/TargetB")
@@ -64,6 +68,7 @@ func _run() -> void:
 	player.current_speed = 2.0
 	player.receive_hit(1000.0)
 	_check("超量伤害归零并死亡", health.health == 0.0 and player.is_dead())
+	_check("死亡后不能恢复生命", health.heal(10.0) == 0.0 and health.health == 0.0)
 	_check("死亡暂停世界", paused and not enemy.can_process())
 	_check("死亡清掉移动和射击", player.velocity.is_zero_approx() and player.current_speed == 0.0 and not combat.is_aiming and not combat.shot_requested)
 	_check("死亡界面与按钮可处理", health.get_node("DeathScreen").visible and health.get_node("DeathScreen/Center/Panel/Content/Restart").can_process())
@@ -95,7 +100,7 @@ func _run() -> void:
 	_check("重开回出生点与朝向", player.global_transform.is_equal_approx(spawn))
 	_check("重开隐藏死亡界面", not health.get_node("DeathScreen").visible)
 	_check("重开保留对话选择", game_state.talked_to_a and game_state.help_choice == "accepted")
-	enemy = scene.get_node("Arena/Enemy")
+	enemy = preload("res://tests/enemy/enemy_fire_fixture.gd").primary_enemy(scene)
 	_check("重开恢复敌人且场外不激活", not enemy.is_dead and enemy.health == enemy.max_health and not enemy.get_node("AI").is_arena_active())
 	target_a = scene.get_node("CombatTest/TargetA")
 	target_b = scene.get_node("CombatTest/TargetB")

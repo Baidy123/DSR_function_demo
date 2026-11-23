@@ -1,0 +1,397 @@
+[gd_scene format=3]
+
+[ext_resource type="PackedScene" path="res://scenes/access_denied/hub/lounge_sofa.tscn" id="sofa"]
+
+[sub_resource type="StandardMaterial3D" id="Wood"]
+albedo_color = Color(0.29, 0.15, 0.105, 1)
+
+[sub_resource type="StandardMaterial3D" id="Steel"]
+albedo_color = Color(0.13, 0.105, 0.115, 1)
+
+[sub_resource type="StandardMaterial3D" id="Brass"]
+albedo_color = Color(0.46, 0.26, 0.13, 1)
+
+[sub_resource type="StandardMaterial3D" id="Marker"]
+albedo_color = Color(0.86, 0.37, 0.13, 1)
+emission_enabled = true
+emission = Color(0.86, 0.37, 0.13, 1)
+
+[sub_resource type="BoxMesh" id="Box4"]
+material = SubResource("Steel")
+size = Vector3(4.08, 1.1600, 0.1300)
+
+[sub_resource type="BoxShape3D" id="Box4Shape"]
+size = Vector3(4.08, 1.1600, 0.1300)
+
+[sub_resource type="BoxMesh" id="Box6"]
+material = SubResource("Brass")
+size = Vector3(4.085, 0.0430, 0.1650)
+
+[sub_resource type="BoxMesh" id="Box7"]
+material = SubResource("Steel")
+size = Vector3(0.1600, 1.2800, 0.1600)
+
+[sub_resource type="BoxMesh" id="Box8"]
+material = SubResource("Marker")
+size = Vector3(0.1640, 0.2300, 0.1640)
+
+[sub_resource type="BoxMesh" id="Box9"]
+material = SubResource("Steel")
+size = Vector3(4.11, 1.1600, 0.1300)
+
+[sub_resource type="BoxShape3D" id="Box9Shape"]
+size = Vector3(4.11, 1.1600, 0.1300)
+
+[sub_resource type="BoxMesh" id="Box11"]
+material = SubResource("Brass")
+size = Vector3(4.115, 0.0430, 0.1650)
+
+[sub_resource type="BoxMesh" id="Box12"]
+material = SubResource("Steel")
+size = Vector3(15.5500, 1.1600, 0.1300)
+
+[sub_resource type="BoxShape3D" id="Box12Shape"]
+size = Vector3(15.5500, 1.1600, 0.1300)
+
+[sub_resource type="BoxMesh" id="Box14"]
+material = SubResource("Brass")
+size = Vector3(15.5550, 0.0430, 0.1650)
+
+[sub_resource type="BoxMesh" id="Box15"]
+material = SubResource("Steel")
+size = Vector3(0.1300, 1.1600, 5.0300)
+
+[sub_resource type="BoxShape3D" id="Box15Shape"]
+size = Vector3(0.1300, 1.1600, 5.0300)
+
+[sub_resource type="BoxMesh" id="Box17"]
+material = SubResource("Brass")
+size = Vector3(0.1350, 0.0430, 5.0650)
+
+[sub_resource type="BoxMesh" id="Box18"]
+material = SubResource("Wood")
+size = Vector3(1.99, 0.14, 0.95)
+
+[sub_resource type="BoxShape3D" id="Box18Shape"]
+size = Vector3(1.99, 0.14, 0.95)
+
+[sub_resource type="BoxMesh" id="Box20"]
+material = SubResource("Steel")
+size = Vector3(0.15, 0.64, 0.6)
+
+[sub_resource type="BoxMesh" id="NorthCenterMesh"]
+material = SubResource("Steel")
+size = Vector3(2.84, 1.16, 0.13)
+
+[sub_resource type="BoxShape3D" id="NorthCenterShape"]
+size = Vector3(2.84, 1.16, 0.13)
+
+[sub_resource type="BoxMesh" id="NorthCenterRail"]
+material = SubResource("Brass")
+size = Vector3(2.845, 0.043, 0.165)
+
+[node name="SouthLounge" type="Node3D"]
+
+[node name="Enclosure" type="Node3D" parent="."]
+
+[node name="NorthWest" type="Node3D" parent="Enclosure"]
+position = Vector3(4.64, 0.0000, 1.7500)
+
+[node name="Barrier" type="StaticBody3D" parent="Enclosure/NorthWest"]
+position = Vector3(0.0000, 0.5800, 0.0000)
+
+[node name="Mesh" type="MeshInstance3D" parent="Enclosure/NorthWest/Barrier"]
+mesh = SubResource("Box4")
+
+[node name="Collision" type="CollisionShape3D" parent="Enclosure/NorthWest/Barrier"]
+shape = SubResource("Box4Shape")
+
+[node name="Rail1" type="MeshInstance3D" parent="Enclosure/NorthWest"]
+position = Vector3(0.0000, 0.1700, 0.0000)
+mesh = SubResource("Box6")
+
+[node name="Rail2" type="MeshInstance3D" parent="Enclosure/NorthWest"]
+position = Vector3(0.0000, 0.5200, 0.0000)
+mesh = SubResource("Box6")
+
+[node name="Rail3" type="MeshInstance3D" parent="Enclosure/NorthWest"]
+position = Vector3(0.0000, 1.1700, 0.0000)
+mesh = SubResource("Box6")
+
+[node name="Post1" type="MeshInstance3D" parent="Enclosure/NorthWest"]
+position = Vector3(-2.04, 0.6400, 0.0000)
+mesh = SubResource("Box7")
+
+[node name="PostLight1" type="MeshInstance3D" parent="Enclosure/NorthWest"]
+position = Vector3(-2.04, 1.0200, 0.0000)
+mesh = SubResource("Box8")
+
+[node name="Post2" type="MeshInstance3D" parent="Enclosure/NorthWest"]
+position = Vector3(2.04, 0.6400, 0.0000)
+mesh = SubResource("Box7")
+
+[node name="PostLight2" type="MeshInstance3D" parent="Enclosure/NorthWest"]
+position = Vector3(2.04, 1.0200, 0.0000)
+mesh = SubResource("Box8")
+
+[node name="NorthCenter" type="Node3D" parent="Enclosure"]
+position = Vector3(10.36, 0, 1.75)
+
+[node name="Barrier" type="StaticBody3D" parent="Enclosure/NorthCenter"]
+position = Vector3(0.0000, 0.5800, 0.0000)
+
+[node name="Mesh" type="MeshInstance3D" parent="Enclosure/NorthCenter/Barrier"]
+mesh = SubResource("NorthCenterMesh")
+
+[node name="Collision" type="CollisionShape3D" parent="Enclosure/NorthCenter/Barrier"]
+shape = SubResource("NorthCenterShape")
+
+[node name="Rail1" type="MeshInstance3D" parent="Enclosure/NorthCenter"]
+position = Vector3(0.0000, 0.1700, 0.0000)
+mesh = SubResource("NorthCenterRail")
+
+[node name="Rail2" type="MeshInstance3D" parent="Enclosure/NorthCenter"]
+position = Vector3(0.0000, 0.5200, 0.0000)
+mesh = SubResource("NorthCenterRail")
+
+[node name="Rail3" type="MeshInstance3D" parent="Enclosure/NorthCenter"]
+position = Vector3(0.0000, 1.1700, 0.0000)
+mesh = SubResource("NorthCenterRail")
+
+[node name="Post1" type="MeshInstance3D" parent="Enclosure/NorthCenter"]
+position = Vector3(-1.42, 0.6400, 0.0000)
+mesh = SubResource("Box7")
+
+[node name="PostLight1" type="MeshInstance3D" parent="Enclosure/NorthCenter"]
+position = Vector3(-1.42, 1.0200, 0.0000)
+mesh = SubResource("Box8")
+
+[node name="Post2" type="MeshInstance3D" parent="Enclosure/NorthCenter"]
+position = Vector3(1.42, 0.6400, 0.0000)
+mesh = SubResource("Box7")
+
+[node name="PostLight2" type="MeshInstance3D" parent="Enclosure/NorthCenter"]
+position = Vector3(1.42, 1.0200, 0.0000)
+mesh = SubResource("Box8")
+
+[node name="NorthEast" type="Node3D" parent="Enclosure"]
+position = Vector3(16.095, 0, 1.75)
+
+[node name="Barrier" type="StaticBody3D" parent="Enclosure/NorthEast"]
+position = Vector3(0.0000, 0.5800, 0.0000)
+
+[node name="Mesh" type="MeshInstance3D" parent="Enclosure/NorthEast/Barrier"]
+mesh = SubResource("Box9")
+
+[node name="Collision" type="CollisionShape3D" parent="Enclosure/NorthEast/Barrier"]
+shape = SubResource("Box9Shape")
+
+[node name="Rail1" type="MeshInstance3D" parent="Enclosure/NorthEast"]
+position = Vector3(0.0000, 0.1700, 0.0000)
+mesh = SubResource("Box11")
+
+[node name="Rail2" type="MeshInstance3D" parent="Enclosure/NorthEast"]
+position = Vector3(0.0000, 0.5200, 0.0000)
+mesh = SubResource("Box11")
+
+[node name="Rail3" type="MeshInstance3D" parent="Enclosure/NorthEast"]
+position = Vector3(0.0000, 1.1700, 0.0000)
+mesh = SubResource("Box11")
+
+[node name="Post1" type="MeshInstance3D" parent="Enclosure/NorthEast"]
+position = Vector3(-2.055, 0.6400, 0.0000)
+mesh = SubResource("Box7")
+
+[node name="PostLight1" type="MeshInstance3D" parent="Enclosure/NorthEast"]
+position = Vector3(-2.055, 1.0200, 0.0000)
+mesh = SubResource("Box8")
+
+[node name="Post2" type="MeshInstance3D" parent="Enclosure/NorthEast"]
+position = Vector3(2.055, 0.6400, 0.0000)
+mesh = SubResource("Box7")
+
+[node name="PostLight2" type="MeshInstance3D" parent="Enclosure/NorthEast"]
+position = Vector3(2.055, 1.0200, 0.0000)
+mesh = SubResource("Box8")
+
+[node name="South" type="Node3D" parent="Enclosure"]
+position = Vector3(10.3750, 0.0000, 6.6500)
+
+[node name="Barrier" type="StaticBody3D" parent="Enclosure/South"]
+position = Vector3(0.0000, 0.5800, 0.0000)
+
+[node name="Mesh" type="MeshInstance3D" parent="Enclosure/South/Barrier"]
+mesh = SubResource("Box12")
+
+[node name="Collision" type="CollisionShape3D" parent="Enclosure/South/Barrier"]
+shape = SubResource("Box12Shape")
+
+[node name="Rail1" type="MeshInstance3D" parent="Enclosure/South"]
+position = Vector3(0.0000, 0.1700, 0.0000)
+mesh = SubResource("Box14")
+
+[node name="Rail2" type="MeshInstance3D" parent="Enclosure/South"]
+position = Vector3(0.0000, 0.5200, 0.0000)
+mesh = SubResource("Box14")
+
+[node name="Rail3" type="MeshInstance3D" parent="Enclosure/South"]
+position = Vector3(0.0000, 1.1700, 0.0000)
+mesh = SubResource("Box14")
+
+[node name="Post1" type="MeshInstance3D" parent="Enclosure/South"]
+position = Vector3(-7.7750, 0.6400, 0.0000)
+mesh = SubResource("Box7")
+
+[node name="Post2" type="MeshInstance3D" parent="Enclosure/South"]
+position = Vector3(7.7750, 0.6400, 0.0000)
+mesh = SubResource("Box7")
+
+[node name="West" type="Node3D" parent="Enclosure"]
+position = Vector3(2.6000, 0.0000, 4.2000)
+
+[node name="Barrier" type="StaticBody3D" parent="Enclosure/West"]
+position = Vector3(0.0000, 0.5800, 0.0000)
+
+[node name="Mesh" type="MeshInstance3D" parent="Enclosure/West/Barrier"]
+mesh = SubResource("Box15")
+
+[node name="Collision" type="CollisionShape3D" parent="Enclosure/West/Barrier"]
+shape = SubResource("Box15Shape")
+
+[node name="Rail1" type="MeshInstance3D" parent="Enclosure/West"]
+position = Vector3(0.0000, 0.1700, 0.0000)
+mesh = SubResource("Box17")
+
+[node name="Rail2" type="MeshInstance3D" parent="Enclosure/West"]
+position = Vector3(0.0000, 0.5200, 0.0000)
+mesh = SubResource("Box17")
+
+[node name="Rail3" type="MeshInstance3D" parent="Enclosure/West"]
+position = Vector3(0.0000, 1.1700, 0.0000)
+mesh = SubResource("Box17")
+
+[node name="Post1" type="MeshInstance3D" parent="Enclosure/West"]
+position = Vector3(0.0000, 0.6400, -2.5150)
+mesh = SubResource("Box7")
+
+[node name="Post2" type="MeshInstance3D" parent="Enclosure/West"]
+position = Vector3(0.0000, 0.6400, 2.5150)
+mesh = SubResource("Box7")
+
+[node name="East" type="Node3D" parent="Enclosure"]
+position = Vector3(18.1500, 0.0000, 4.2000)
+
+[node name="Barrier" type="StaticBody3D" parent="Enclosure/East"]
+position = Vector3(0.0000, 0.5800, 0.0000)
+
+[node name="Mesh" type="MeshInstance3D" parent="Enclosure/East/Barrier"]
+mesh = SubResource("Box15")
+
+[node name="Collision" type="CollisionShape3D" parent="Enclosure/East/Barrier"]
+shape = SubResource("Box15Shape")
+
+[node name="Rail1" type="MeshInstance3D" parent="Enclosure/East"]
+position = Vector3(0.0000, 0.1700, 0.0000)
+mesh = SubResource("Box17")
+
+[node name="Rail2" type="MeshInstance3D" parent="Enclosure/East"]
+position = Vector3(0.0000, 0.5200, 0.0000)
+mesh = SubResource("Box17")
+
+[node name="Rail3" type="MeshInstance3D" parent="Enclosure/East"]
+position = Vector3(0.0000, 1.1700, 0.0000)
+mesh = SubResource("Box17")
+
+[node name="Post1" type="MeshInstance3D" parent="Enclosure/East"]
+position = Vector3(0.0000, 0.6400, -2.5150)
+mesh = SubResource("Box7")
+
+[node name="Post2" type="MeshInstance3D" parent="Enclosure/East"]
+position = Vector3(0.0000, 0.6400, 2.5150)
+mesh = SubResource("Box7")
+
+[node name="Tables" type="Node3D" parent="."]
+
+[node name="Setting1" type="Node3D" parent="Tables"]
+position = Vector3(5.2200, 0.0000, 4.2400)
+
+[node name="NorthSofa" parent="Tables/Setting1" instance=ExtResource("sofa")]
+position = Vector3(0.0000, 0.0000, -1.4500)
+rotation_degrees = Vector3(0.0000, 0.0000, 0.0000)
+
+[node name="SouthSofa" parent="Tables/Setting1" instance=ExtResource("sofa")]
+position = Vector3(0.0000, 0.0000, 1.4500)
+rotation_degrees = Vector3(0.0000, 180.0000, 0.0000)
+
+[node name="Table" type="StaticBody3D" parent="Tables/Setting1"]
+position = Vector3(0, 0.71, 0)
+
+[node name="Mesh" type="MeshInstance3D" parent="Tables/Setting1/Table"]
+mesh = SubResource("Box18")
+
+[node name="Collision" type="CollisionShape3D" parent="Tables/Setting1/Table"]
+shape = SubResource("Box18Shape")
+
+[node name="Pedestal1" type="MeshInstance3D" parent="Tables/Setting1"]
+position = Vector3(-0.5200, 0.2500, 0.0000)
+mesh = SubResource("Box20")
+
+[node name="Pedestal2" type="MeshInstance3D" parent="Tables/Setting1"]
+position = Vector3(0.62, 0.32, 0)
+mesh = SubResource("Box20")
+
+[node name="Setting2" type="Node3D" parent="Tables"]
+position = Vector3(10.3600, 0.0000, 4.2400)
+
+[node name="NorthSofa" parent="Tables/Setting2" instance=ExtResource("sofa")]
+position = Vector3(0.0000, 0.0000, -1.4500)
+rotation_degrees = Vector3(0.0000, 0.0000, 0.0000)
+
+[node name="SouthSofa" parent="Tables/Setting2" instance=ExtResource("sofa")]
+position = Vector3(0.0000, 0.0000, 1.4500)
+rotation_degrees = Vector3(0.0000, 180.0000, 0.0000)
+
+[node name="Table" type="StaticBody3D" parent="Tables/Setting2"]
+position = Vector3(0, 0.71, 0)
+
+[node name="Mesh" type="MeshInstance3D" parent="Tables/Setting2/Table"]
+mesh = SubResource("Box18")
+
+[node name="Collision" type="CollisionShape3D" parent="Tables/Setting2/Table"]
+shape = SubResource("Box18Shape")
+
+[node name="Pedestal1" type="MeshInstance3D" parent="Tables/Setting2"]
+position = Vector3(-0.5200, 0.2500, 0.0000)
+mesh = SubResource("Box20")
+
+[node name="Pedestal2" type="MeshInstance3D" parent="Tables/Setting2"]
+position = Vector3(0.62, 0.32, 0)
+mesh = SubResource("Box20")
+
+[node name="Setting3" type="Node3D" parent="Tables"]
+position = Vector3(15.5200, 0.0000, 4.2400)
+
+[node name="NorthSofa" parent="Tables/Setting3" instance=ExtResource("sofa")]
+position = Vector3(0.0000, 0.0000, -1.4500)
+rotation_degrees = Vector3(0.0000, 0.0000, 0.0000)
+
+[node name="SouthSofa" parent="Tables/Setting3" instance=ExtResource("sofa")]
+position = Vector3(0.0000, 0.0000, 1.4500)
+rotation_degrees = Vector3(0.0000, 180.0000, 0.0000)
+
+[node name="Table" type="StaticBody3D" parent="Tables/Setting3"]
+position = Vector3(0, 0.71, 0)
+
+[node name="Mesh" type="MeshInstance3D" parent="Tables/Setting3/Table"]
+mesh = SubResource("Box18")
+
+[node name="Collision" type="CollisionShape3D" parent="Tables/Setting3/Table"]
+shape = SubResource("Box18Shape")
+
+[node name="Pedestal1" type="MeshInstance3D" parent="Tables/Setting3"]
+position = Vector3(-0.5200, 0.2500, 0.0000)
+mesh = SubResource("Box20")
+
+[node name="Pedestal2" type="MeshInstance3D" parent="Tables/Setting3"]
+position = Vector3(0.62, 0.32, 0)
+mesh = SubResource("Box20")

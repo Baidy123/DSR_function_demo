@@ -99,7 +99,7 @@ show_percentage = false
 anchors_preset = 1
 anchor_left = 1.0
 anchor_right = 1.0
-offset_left = -430.0
+offset_left = -620.0
 offset_top = 16.0
 offset_right = -16.0
 offset_bottom = 67.0
@@ -124,11 +124,17 @@ focus_mode = 0
 tooltip_text = "模拟受到 25 点伤害，用于测试生命、无敌与死亡重开。"
 text = "测试受伤 -25"
 
+[node name="CompleteLevel" type="Button" parent="Debug/Controls"]
+layout_mode = 2
+focus_mode = 0
+disabled = true
+tooltip_text = "Debug 总开关开启后，跳过当前关卡剩余全部波次并开放返酒馆传送门。"
+text = "一键通关当前关"
+
 [node name="NoiseRanges" type="CheckBox" parent="Debug/Controls"]
 layout_mode = 2
 focus_mode = 0
-button_pressed = true
-tooltip_text = "实际发声时短暂显示：玩家蓝色、敌人橙色。外圈为无遮挡半径，内虚线圈为隔墙半径；不代表按墙裁切的精确形状。"
+tooltip_text = "默认关闭，仅影响声音范围显示。手动开启后，玩家蓝色、敌人橙色；不改变实际声音和 AI 听觉。"
 text = "声音范围"
 
 [node name="DeathScreen" type="ColorRect" parent="."]
@@ -150,12 +156,12 @@ grow_vertical = 2
 mouse_filter = 2
 
 [node name="Panel" type="PanelContainer" parent="DeathScreen/Center"]
-custom_minimum_size = Vector2(440, 180)
+custom_minimum_size = Vector2(480, 260)
 layout_mode = 2
 
 [node name="Content" type="VBoxContainer" parent="DeathScreen/Center/Panel"]
 layout_mode = 2
-theme_override_constants/separation = 16
+theme_override_constants/separation = 12
 alignment = 1
 
 [node name="Title" type="Label" parent="DeathScreen/Center/Panel/Content"]
@@ -167,12 +173,19 @@ horizontal_alignment = 1
 [node name="Message" type="Label" parent="DeathScreen/Center/Panel/Content"]
 layout_mode = 2
 theme_override_font_sizes/font_size = 20
-text = "回到出生点，重置战斗；保留对话选择。"
+text = "重新挑战当前关，或恢复上次通关返酒馆时的状态。"
 horizontal_alignment = 1
 
 [node name="Restart" type="Button" parent="DeathScreen/Center/Panel/Content"]
-custom_minimum_size = Vector2(200, 44)
+custom_minimum_size = Vector2(320, 44)
 layout_mode = 2
 size_flags_horizontal = 4
-theme_override_font_sizes/font_size = 24
-text = "重新开始"
+theme_override_font_sizes/font_size = 20
+text = "重新挑战当前关卡"
+
+[node name="ReturnToTavern" type="Button" parent="DeathScreen/Center/Panel/Content"]
+custom_minimum_size = Vector2(320, 44)
+layout_mode = 2
+size_flags_horizontal = 4
+theme_override_font_sizes/font_size = 20
+text = "返回酒馆（通关返程状态）"

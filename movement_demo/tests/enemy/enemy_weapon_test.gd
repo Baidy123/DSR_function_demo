@@ -6,10 +6,11 @@ func _initialize() -> void:
 	_run.call_deferred()
 
 func _run() -> void:
-	var scene = load("res://scenes/main.tscn").instantiate()
+	var scene = preload("res://tests/enemy/enemy_fire_fixture.gd").single_member_scene()
+	var saved_weapon: WeaponData = preload("res://tests/enemy/enemy_fire_fixture.gd").primary_enemy(scene).weapon
 	root.add_child(scene)
 	current_scene = scene
-	var enemy = scene.get_node("Arena/Enemy")
+	var enemy = preload("res://tests/enemy/enemy_fire_fixture.gd").primary_enemy(scene)
 	enemy.get_node("AI").set_physics_process(false)
 	var player = scene.get_node("Player")
 	player.set_physics_process(false)
@@ -18,7 +19,7 @@ func _run() -> void:
 		_finish()
 		return
 	# 场景检查资源接线和按当前配置初始化；具体数值行为由下面独立武器验证。
-	_check("场景挂载独立敌人武器并读取当前初始概率", enemy.weapon is WeaponData and enemy.weapon == load("res://resources/weapons/enemy_test_pistol.tres") and is_equal_approx(enemy.get_center_probability(), enemy.weapon.initial_accuracy))
+	_check("场景按实际保存的武器引用初始化当前概率", saved_weapon != null and enemy.weapon == saved_weapon and is_equal_approx(enemy.get_center_probability(), saved_weapon.initial_accuracy))
 	var weapon := WeaponData.new()
 	weapon.initial_accuracy = 0.9
 	weapon.stabilize_seconds = 1.0
@@ -36,10 +37,15 @@ func _run() -> void:
 	player.global_position = enemy.global_position + Vector3(0, 0, 4.8)
 	enemy.look_at(player.global_position)
 	player.get_node("Health").debug_invincible = true
+	# 真实相机跟随传送后的玩家；屏幕外禁射仍生效，不能靠删除相机绕过。
+	_check("射击前真实跟随相机已包含敌人", await preload("res://tests/enemy/enemy_fire_fixture.gd").wait_for_camera(enemy))
 	for frame in range(5):
 		await physics_frame
-	var target: Vector3 = player.global_position + Vector3.UP * 0.8
-	enemy.update_weapon(0.0, target)
+	var target: Vector3 = player.get_torso_position()
+	# 枪口现在随真实身高，先完成俯仰；准备阶段处于恢复等待，不提前抬高首枪概率。
+	enemy.weapon_recovery_timer = 0.1
+	enemy.update_weapon(0.1, target)
+	_check("真实身体点完成瞄准且准备时间不提高初始概率", enemy.aim_acquired and is_equal_approx(enemy.get_center_probability(), 0.9))
 	_check("首枪降低概率并读取武器冷却", enemy.try_fire() and is_equal_approx(enemy.get_center_probability(), 0.75) and is_equal_approx(enemy.shot_cooldown, 0.7))
 	enemy.shot_cooldown = 0.0
 	enemy.try_fire()
@@ -73,7 +79,7 @@ func _run() -> void:
 	_check("运行状态不修改共享资源", weapon.initial_accuracy == 0.9 and weapon.shot_accuracy_penalty == 0.15)
 	var other_arena = load("res://scenes/arena.tscn").instantiate()
 	root.add_child(other_arena)
-	var other = other_arena.get_node("Enemy")
+	var other = preload("res://tests/enemy/enemy_fire_fixture.gd").primary_enemy(other_arena)
 	other.get_node("AI").set_physics_process(false)
 	other.equip_weapon(weapon)
 	_check("两个敌人共享配置但稳定度各自独立", other.weapon == enemy.weapon and is_equal_approx(other.get_center_probability(), 0.9) and enemy.get_center_probability() < 0.9)
@@ -90,6 +96,26 @@ func _run() -> void:
 	_check("换枪不绕过尚未结束的冷却", is_equal_approx(enemy.shot_cooldown, 0.6))
 	enemy.reset_target()
 	_check("刷新恢复武器初始精度并清理冷却", is_equal_approx(enemy.get_center_probability(), 0.9) and enemy.shot_cooldown == 0.0)
+	# 同一资源同时带有玩家公式与敌人旧参数，实际敌人恢复必须只使用后者。
+	for mode in [WeaponData.FireMode.SEMI_AUTO, WeaponData.FireMode.SHOTGUN]:
+		var isolated := WeaponData.new()
+		isolated.fire_mode = mode
+		isolated.initial_accuracy = 0.6
+		isolated.stabilize_seconds = 1.2
+		isolated.accuracy_recovery_delay = 0.25
+		if mode == WeaponData.FireMode.SHOTGUN:
+			isolated.shotgun.starting_stability = 0.6
+			isolated.shotgun.settle_seconds = 1.2
+			isolated.shotgun.stability_recovery_delay = 0.25
+		for model in 3:
+			isolated.convergence_model = model
+			isolated.convergence_seconds = [0.05, 20.0, 3.0][model]
+			enemy.equip_weapon(isolated)
+			enemy.update_weapon(0.0)
+			enemy.weapon_stability = 0.2
+			enemy.weapon_recovery_timer = 0.25
+			enemy.update_weapon(0.55, target)
+			_check("敌人模式%d不受玩家公式%d与时间影响，等待后仍按原速恢复" % [mode, model], is_equal_approx(enemy.get_center_probability(), 0.3) and isolated.stabilize_seconds == 1.2)
 	enemy.equip_weapon(null)
 	enemy.update_weapon(1.0, target)
 	_check("卸下武器不射击", not enemy.try_fire() and not enemy.has_aim)

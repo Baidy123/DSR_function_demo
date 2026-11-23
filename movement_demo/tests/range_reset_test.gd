@@ -7,6 +7,7 @@ func run(scene: Node) -> Dictionary:
 	var a = range_node.get_node("TargetA")
 	var b = range_node.get_node("TargetB")
 	var original: Transform3D = b.transform
+	var original_body: Transform3D = b.get_node("Body").transform
 	var checks := {}
 	p.set_physics_process(false)
 	p.position = Vector3(0, 0, -2)
@@ -18,7 +19,7 @@ func run(scene: Node) -> Dictionary:
 	checks["exit_revives_test_target"] = not b.is_dead and b.health == b.max_health
 	checks["exit_clears_training_count"] = a.hit_count == 0
 	checks["exit_restores_collision_and_lock_group"] = not b.get_node("CollisionShape3D").disabled and b.is_in_group("combat_target")
-	checks["exit_cancels_fall_animation"] = b.get_node("Body").rotation.is_zero_approx() and is_equal_approx(b.get_node("Body").position.y, 0.8)
+	checks["exit_cancels_fall_animation"] = b.get_node("Body").transform.is_equal_approx(original_body)
 	checks["preserves_authored_target_position"] = b.transform.is_equal_approx(original)
 	p.position = Vector3(0, 0, -2)
 	for i in range(6): await tree.physics_frame

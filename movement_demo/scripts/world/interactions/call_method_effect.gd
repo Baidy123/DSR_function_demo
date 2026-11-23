@@ -12,11 +12,12 @@ class_name CallMethodEffect
 
 
 func apply(context: InteractionContext) -> void:
-	var target: Node = context.host.get_node_or_null(target_path) if context.host != null else null
-	if target == null or method == &"" or not target.has_method(method):
-		push_warning("CallMethodEffect 目标无效：%s.%s" % [target_path, method])
-		return
-	if use_argument:
-		target.call(method, bool_argument)
-	else:
-		target.call(method)
+	execute(context)
+
+func execute(context: InteractionContext) -> Dictionary:
+	var target := context.host.get_node_or_null(target_path) if is_instance_valid(context.host) else null
+	var args: Array = [bool_argument] if use_argument else []
+	var request = context.request_action(&"script", {"target": target,
+		"parameters": {"mode": &"method", "method": method, "arguments": args}})
+	if request == null: return {"status": &"failed", "reason": &"missing_director"}
+	return await request.wait_result()

@@ -17,7 +17,7 @@ func _run() -> void:
 	var weapon := WeaponData.new()
 	weapon.set("magazine_capacity", 12)
 	weapon.set("reload_seconds", 2.0)
-	var kind: int = weapon.get("ammo_type")
+	var kind: StringName = weapon.get_ammo_key()
 	var pool := {kind: 36}
 	var ammo = Ammo.new(weapon, pool)
 	check(ammo.magazine_rounds == 12 and ammo.reserve_count() == 36, "出生满弹匣且备弹独立于弹匣")

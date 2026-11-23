@@ -1,0 +1,61 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://scripts/debug/cinematic_camera_debug.gd" id="1_debug"]
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_panel"]
+bg_color = Color(0.05, 0.06, 0.08, 0.82)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0.45, 0.75, 0.95, 0.8)
+corner_radius_top_left = 4
+corner_radius_top_right = 4
+corner_radius_bottom_right = 4
+corner_radius_bottom_left = 4
+
+[node name="CinematicCameraDebug" type="CanvasLayer"]
+visible = false
+layer = 5
+script = ExtResource("1_debug")
+
+[node name="Panel" type="PanelContainer" parent="."]
+offset_left = 16.0
+offset_top = 292.0
+offset_right = 448.0
+offset_bottom = 462.0
+theme_override_styles/panel = SubResource("StyleBoxFlat_panel")
+
+[node name="Content" type="VBoxContainer" parent="Panel"]
+layout_mode = 2
+theme_override_constants/separation = 6
+theme_override_constants/margin_left = 12
+theme_override_constants/margin_top = 8
+theme_override_constants/margin_right = 12
+theme_override_constants/margin_bottom = 8
+
+[node name="Title" type="Label" parent="Panel/Content"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 18
+text = "演出镜头调试"
+
+[node name="ShotList" type="OptionButton" parent="Panel/Content"]
+layout_mode = 2
+custom_minimum_size = Vector2(400, 32)
+tooltip_text = "仅列出当前场景中的 CinematicShot3D"
+
+[node name="Status" type="Label" parent="Panel/Content"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 16
+text = "idle"
+autowrap_mode = 2
+
+[node name="Play" type="Button" parent="Panel/Content"]
+layout_mode = 2
+disabled = true
+text = "播放"
+
+[node name="Cancel" type="Button" parent="Panel/Content"]
+layout_mode = 2
+disabled = true
+text = "取消"

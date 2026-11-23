@@ -13,18 +13,29 @@ func _run() -> void:
 	await create_timer(3.0).timeout
 	while EditorInterface.get_resource_filesystem().is_scanning(): await process_frame
 	var weapon := WeaponData.new()
+	_check_layout(weapon)
 	weapon.magazine_capacity = 27
 	EditorInterface.edit_resource(weapon)
 	for frame in 30: await process_frame
 	EditorInterface.get_inspector().expand_all_folding()
 	for frame in 10: await process_frame
 	var ranged := _properties(EditorInterface.get_inspector(), weapon)
+	var tracking_spin := _spin(weapon, "tracking_parallel_tolerance_degrees")
+	check(tracking_spin != null and tracking_spin.value == 25 and tracking_spin.max_value == 45 and not tracking_spin.tooltip_text.is_empty(), "枪械瞄准检查器提供默认25度的玩家跟枪免罚半角与说明")
+	for field in ["hit_accuracy_loss", "suppression_accuracy_loss", "hit_speed_loss", "melee_accuracy_loss"]:
+		var found := false
+		for prop in _descendants(EditorInterface.get_inspector(), "EditorProperty"):
+			if prop.get_edited_object() != weapon or prop.get_edited_property() != field: continue
+			var spins := _descendants(prop, "SpinBox")
+			found = spins.size() == 1 and spins[0].suffix == "%" and not spins[0].tooltip_text.is_empty()
+		check(found, "攻击效果在真实检查器显示百分比及解释：" + field)
 	check(ranged.has("fire_mode") and not ranged.has("weapon_type") and ranged.has("magazine_capacity") and ranged.has("melee_range"), "原Fire Mode和枪械近战参数可见，没有额外Weapon Type")
 	var bridge := EditorPlugin.new()
 	var manager = bridge.get_undo_redo()
 	_select_mode(weapon, WeaponData.FireMode.MELEE)
 	for frame in 30: await process_frame
 	var melee := _properties(EditorInterface.get_inspector(), weapon)
+	check(not melee.has("tracking_parallel_tolerance_degrees"), "专用近战武器不展示玩家跟枪半角")
 	check(melee.has("fire_mode") and melee.has("melee_damage") and melee.has("melee_range"), "选近战后Fire Mode仍可修改且近战参数可见")
 	check(not melee.has("magazine_capacity") and not melee.has("shot_accuracy_penalty") and not melee.has("shot_spread_penalty_degrees"), "近战隐藏弹匣及两种远程准度参数")
 	var history = manager.get_history_undo_redo(manager.get_object_history_id(weapon))
@@ -47,18 +58,27 @@ func _run() -> void:
 	var undone: bool = history.undo()
 	weapon.set_block_signals(false)
 	for frame in 30: await process_frame
-	check(undone and weapon.fire_mode != WeaponData.FireMode.MELEE and _properties(EditorInterface.get_inspector(), weapon).has("magazine_capacity"), "缺少资源即时通知时，撤销也恢复远程字段")
+	# 原生检查器轮询按实际时间推进；无渲染的30帧可能先于下一次刷新。
+	# 仍要求真正撤销并恢复字段，只为异步UI刷新提供最多一秒的条件等待。
+	var refresh_deadline := Time.get_ticks_msec() + 1000
+	while undone and weapon.fire_mode != WeaponData.FireMode.MELEE and not _properties(EditorInterface.get_inspector(), weapon).has("magazine_capacity") and Time.get_ticks_msec() < refresh_deadline:
+		await process_frame
+	var capacity_visible: bool = _properties(EditorInterface.get_inspector(), weapon).has("magazine_capacity")
+	check(undone and weapon.fire_mode != WeaponData.FireMode.MELEE and capacity_visible, "缺少资源即时通知时，撤销也恢复远程字段")
 	weapon.set_block_signals(true)
 	var redone: bool = history.redo()
 	weapon.set_block_signals(false)
 	for frame in 30: await process_frame
 	check(redone and weapon.fire_mode == WeaponData.FireMode.MELEE and not _properties(EditorInterface.get_inspector(), weapon).has("magazine_capacity") and weapon.magazine_capacity == 27, "缺少资源即时通知时，重做重新隐藏并保留数值")
+	await _convergence_checks(manager)
+	await _player_recovery_controls(manager)
 	# 使用实际敌人节点的内嵌资源 Inspector，并通过资源选择器展开。
 	EditorInterface.open_scene_from_path("res://scenes/enemy/enemy.tscn")
 	await create_timer(1.0).timeout
 	var actor = EditorInterface.get_edited_scene_root()
 	var nested := WeaponData.new()
 	nested.magazine_capacity = 31
+	nested.convergence_seconds = 3.0
 	actor.set("weapon", nested)
 	EditorInterface.inspect_object(actor)
 	for frame in 30: await process_frame
@@ -69,6 +89,8 @@ func _run() -> void:
 				picker.resource_selected.emit(nested, false)
 	for frame in 30: await process_frame
 	var nested_before := _properties(EditorInterface.get_inspector(), nested)
+	check(not nested_before.has("tracking_parallel_tolerance_degrees"), "敌人内嵌武器不展示仅玩家有效的跟枪半角")
+	check(not nested_before.has("melee_headshot_opening_enabled") and not nested_before.has("melee_headshot_threshold_multiplier"), "敌人专用内嵌武器面板不展示玩家近战破绽能力")
 	check(nested_before.has("fire_mode") and nested_before.has("magazine_capacity"), "敌人 Weapon 内嵌面板的真实下拉框可操作")
 	_select_mode(nested, WeaponData.FireMode.MELEE, true)
 	for frame in 30: await process_frame
@@ -78,6 +100,8 @@ func _run() -> void:
 	for frame in 30: await process_frame
 	var nested_restored := _properties(EditorInterface.get_inspector(), nested)
 	check(nested_restored.has("damage") and nested_restored.has("magazine_capacity") and nested.magazine_capacity == 31 and nested_restored.has("initial_accuracy") and not nested_restored.has("min_spread_angle_degrees"), "内嵌面板切回单发恢复数值，并保持敌人的概率模式过滤")
+	var enemy_recovery := _spin(nested, "stabilize_seconds")
+	check(enemy_recovery != null and enemy_recovery.editable and not nested_restored.has("convergence_seconds") and not nested_restored.has("convergence_model"), "敌人只显示原恢复接口，不受玩家收敛时间误锁")
 	EditorInterface.get_inspector().edit(null)
 	bridge.free()
 	for frame in 5: await process_frame
@@ -86,8 +110,149 @@ func _run() -> void:
 
 
 func _select_mode(weapon: WeaponData, mode: int, suppress_notification: bool = false) -> void:
+	_select_enum(weapon, "fire_mode", mode, suppress_notification)
+
+
+func _check_layout(weapon: WeaponData) -> void:
+	var groups: Array[String] = []
+	var locations := {}
+	var group := ""
+	var subgroup := ""
+	var in_weapon_script := false
+	for property in weapon.get_property_list():
+		if property.usage & PROPERTY_USAGE_CATEGORY:
+			in_weapon_script = property.hint_string == weapon.get_script().resource_path
+			continue
+		if not in_weapon_script: continue
+		if property.usage & PROPERTY_USAGE_GROUP:
+			group = property.name
+			subgroup = ""
+			groups.append(group)
+		elif property.usage & PROPERTY_USAGE_SUBGROUP:
+			subgroup = property.name
+		elif property.usage & PROPERTY_USAGE_EDITOR:
+			locations[property.name] = [group, subgroup]
+	check(groups == ["基本信息", "射击与弹药", "Shotgun", "瞄准与散布", "命中效果", "近战", "外观与声音"] and locations.shotgun == ["Shotgun", ""], "Shotgun独立为一级组，位于瞄准与散布前")
+	check(locations.convergence_model == locations.convergence_seconds and locations.stabilize_seconds[1] == "敌人恢复（原算法）" and locations.spread_recovery_degrees_per_second == locations.stabilize_seconds and locations.accuracy_recovery_delay == locations.spread_recovery_delay, "玩家收敛、敌人恢复与恢复等待各自集中，职责明确")
+	check(locations.min_spread_angle_degrees[0] == "瞄准与散布" and locations.initial_accuracy[0] == "瞄准与散布" and locations.headshot_enabled[0] == "命中效果" and locations.visual_model[0] == locations.shot_noise[0], "散布、爆头、表现参数分别归入对应大组")
+
+
+func _spin(object: Object, path: String) -> SpinBox:
 	for prop in _descendants(EditorInterface.get_inspector(), "EditorProperty"):
-		if prop.get_edited_object() != weapon or prop.get_edited_property() != "fire_mode": continue
+		if prop.get_edited_object() != object or prop.get_edited_property() != path: continue
+		var spins := _descendants(prop, "SpinBox")
+		if not spins.is_empty(): return spins[0]
+	return null
+
+
+func _player_recovery_controls(manager: EditorUndoRedoManager) -> void:
+	EditorInterface.open_scene_from_path("res://scenes/player/player.tscn")
+	await create_timer(1.0).timeout
+	var slots = EditorInterface.get_edited_scene_root().get_node("Equipment")
+	var weapon := WeaponData.new()
+	weapon.spread_recovery_degrees_per_second = 7
+	slots.set("primary_weapon", weapon)
+	slots.set("secondary_weapon", null)
+	EditorInterface.inspect_object(slots)
+	for frame in 30: await process_frame
+	EditorInterface.get_inspector().expand_all_folding()
+	for prop in _descendants(EditorInterface.get_inspector(), "EditorProperty"):
+		if prop.get_edited_object() == slots and prop.get_edited_property() == "primary_weapon":
+			for picker in _descendants(prop, "EditorResourcePicker"): picker.resource_selected.emit(weapon, false)
+	for frame in 30: await process_frame
+	EditorInterface.get_inspector().expand_all_folding()
+	for model in [WeaponData.ConvergenceModel.QUADRATIC, WeaponData.ConvergenceModel.EXPONENTIAL, WeaponData.ConvergenceModel.LINEAR]:
+		_select_enum(weapon, "convergence_model", model)
+		for frame in 30: await process_frame
+		var seconds := _spin(weapon, "convergence_seconds")
+		check(seconds != null and seconds.editable and _spin(weapon, "spread_recovery_degrees_per_second") == null and _spin(weapon, "stabilize_seconds") == null, "玩家公式%d只显示统一时间，移除旧恢复入口" % model)
+	var seconds := _spin(weapon, "convergence_seconds")
+	if seconds == null: return
+	seconds.value = 3
+	for frame in 10: await process_frame
+	check(weapon.convergence_seconds == 3 and weapon.spread_recovery_degrees_per_second == 7, "玩家时间修改不改写敌人保存值")
+	var history := manager.get_history_undo_redo(manager.get_object_history_id(weapon))
+	var undone := history.undo()
+	for frame in 10: await process_frame
+	check(undone and weapon.convergence_seconds == 4 and _spin(weapon, "convergence_seconds").editable, "撤销时间保持唯一可编辑入口")
+	var redone := history.redo()
+	for frame in 10: await process_frame
+	check(redone and weapon.convergence_seconds == 3 and weapon.spread_recovery_degrees_per_second == 7, "重做时间不影响敌人恢复参数")
+	_select_mode(weapon, WeaponData.FireMode.SHOTGUN)
+	for frame in 30: await process_frame
+	for prop in _descendants(EditorInterface.get_inspector(), "EditorProperty"):
+		if prop.get_edited_object() == weapon and prop.get_edited_property() == "shotgun":
+			for picker in _descendants(prop, "EditorResourcePicker"): picker.resource_selected.emit(weapon.shotgun, false)
+	for frame in 30: await process_frame
+	EditorInterface.get_inspector().expand_all_folding()
+	check(_spin(weapon.shotgun, "settle_seconds") == null and _spin(weapon, "convergence_seconds") != null, "玩家霰弹没有第二套恢复时间入口")
+	EditorInterface.edit_resource(weapon.shotgun)
+	for frame in 30: await process_frame
+	EditorInterface.get_inspector().expand_all_folding()
+	var settle := _spin(weapon.shotgun, "settle_seconds")
+	check(settle != null and settle.editable and settle.tooltip_text.contains("仅敌人"), "独立霰弹明确显示可编辑的敌人恢复接口")
+	if settle != null: settle.value = 2.3
+	check(is_equal_approx(weapon.shotgun.settle_seconds, 2.3) and weapon.convergence_seconds == 3, "敌人霰弹时间独立写入，不覆盖玩家时间")
+	weapon.fire_mode = WeaponData.FireMode.SEMI_AUTO
+	EditorInterface.edit_resource(weapon)
+	for frame in 30: await process_frame
+	EditorInterface.get_inspector().expand_all_folding()
+	var enemy := _spin(weapon, "stabilize_seconds")
+	check(enemy != null and enemy.editable and enemy.tooltip_text.contains("仅敌人"), "独立共享武器显示独立的敌人恢复接口")
+	if enemy != null: enemy.value = 1.7
+	check(is_equal_approx(weapon.stabilize_seconds, 1.7) and weapon.convergence_seconds == 3, "敌人恢复时间独立写入，不覆盖玩家时间")
+
+
+func _convergence_checks(manager: EditorUndoRedoManager) -> void:
+	var weapon := WeaponData.new()
+	EditorInterface.edit_resource(weapon)
+	for frame in 30: await process_frame
+	EditorInterface.get_inspector().expand_all_folding()
+	for frame in 10: await process_frame
+	var fields := _properties(EditorInterface.get_inspector(), weapon)
+	check(fields.has("convergence_model") and fields.has("convergence_seconds") and not fields.has("convergence_exponent_k"), "线性显示收敛公式与时间，隐藏指数强度")
+	_select_enum(weapon, "convergence_model", WeaponData.ConvergenceModel.EXPONENTIAL)
+	for frame in 30: await process_frame
+	check(weapon.convergence_model == 2 and _properties(EditorInterface.get_inspector(), weapon).has("convergence_exponent_k"), "真实公式下拉框写入指数并显示强度")
+	var history := manager.get_history_undo_redo(manager.get_object_history_id(weapon))
+	var undone := history.undo()
+	for frame in 30: await process_frame
+	check(undone and weapon.convergence_model == 0 and not _properties(EditorInterface.get_inspector(), weapon).has("convergence_exponent_k"), "撤销公式后字段按线性刷新")
+	var redone := history.redo()
+	for frame in 30: await process_frame
+	check(redone and weapon.convergence_model == 2 and _properties(EditorInterface.get_inspector(), weapon).has("convergence_exponent_k"), "重做公式后恢复指数强度")
+	var edited := false
+	for prop in _descendants(EditorInterface.get_inspector(), "EditorProperty"):
+		if prop.get_edited_object() != weapon or prop.get_edited_property() != "convergence_seconds": continue
+		for spin in _descendants(prop, "SpinBox"):
+			edited = spin.suffix == "s" and not spin.tooltip_text.is_empty()
+			spin.value = 2.75
+	for frame in 10: await process_frame
+	check(edited and weapon.convergence_seconds == 2.75, "真实秒数控件有单位／独立作用说明且写回资源")
+	undone = history.undo()
+	for frame in 10: await process_frame
+	check(undone and weapon.convergence_seconds == 4, "收敛时间可原生撤销")
+	redone = history.redo()
+	for frame in 10: await process_frame
+	check(redone and weapon.convergence_seconds == 2.75, "收敛时间可原生重做")
+	var path := "user://convergence-inspector-test.tres"
+	var saved := ResourceSaver.save(weapon, path)
+	var loaded := ResourceLoader.load(path, "", ResourceLoader.CACHE_MODE_IGNORE) as WeaponData
+	check(saved == OK and loaded.convergence_model == 2 and loaded.convergence_seconds == 2.75, "检查器操作后的公式与时间保存重载一致")
+	DirAccess.remove_absolute(path)
+	_select_mode(weapon, WeaponData.FireMode.SHOTGUN)
+	for frame in 30: await process_frame
+	fields = _properties(EditorInterface.get_inspector(), weapon)
+	check(fields.has("convergence_model") and fields.has("convergence_seconds"), "霰弹保留玩家收敛入口")
+	_select_mode(weapon, WeaponData.FireMode.MELEE)
+	for frame in 30: await process_frame
+	fields = _properties(EditorInterface.get_inspector(), weapon)
+	check(not fields.has("convergence_model") and not fields.has("convergence_seconds") and not fields.has("convergence_exponent_k"), "近战隐藏全部瞄准收敛字段")
+
+
+func _select_enum(weapon: WeaponData, path: String, mode: int, suppress_notification: bool = false) -> void:
+	for prop in _descendants(EditorInterface.get_inspector(), "EditorProperty"):
+		if prop.get_edited_object() != weapon or prop.get_edited_property() != path: continue
 		for option in _descendants(prop, "OptionButton"):
 			var index: int = option.get_item_index(mode)
 			option.select(index)
@@ -95,7 +260,7 @@ func _select_mode(weapon: WeaponData, mode: int, suppress_notification: bool = f
 			option.item_selected.emit(index)
 			weapon.set_block_signals(false)
 			return
-	check(false, "未找到Fire Mode原生下拉框")
+	check(false, "未找到原生下拉框：" + path)
 
 
 func _descendants(node: Node, type: String) -> Array:

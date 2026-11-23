@@ -1,0 +1,80 @@
+[gd_resource type="Resource" script_class="EnemyTrainingProfile" format=3 uid="uid://ifeniax7gwqx"]
+
+[ext_resource type="Script" uid="uid://b0j3a627844ku" path="res://scripts/enemy/config/module_settings.gd" id="1_w015j"]
+[ext_resource type="Script" uid="uid://lauyebht4oxa" path="res://scripts/enemy/config/ai_settings.gd" id="2_du0bk"]
+[ext_resource type="Script" uid="uid://c2eu2biwoikls" path="res://scripts/enemy/config/cover_settings.gd" id="4_djm4n"]
+[ext_resource type="Script" uid="uid://d1ra7e76dnl5k" path="res://scripts/enemy/config/exit_suppression_settings.gd" id="5_6k6y2"]
+[ext_resource type="Script" uid="uid://bhipw1tv8dnbd" path="res://scripts/enemy/config/fire_decision_settings.gd" id="6_tdshh"]
+[ext_resource type="Script" uid="uid://curixaod7050y" path="res://scripts/enemy/config/perception_settings.gd" id="7_yhril"]
+[ext_resource type="Script" uid="uid://cmqxbw8d8ko4e" path="res://scripts/enemy/config/enemy_training_profile.gd" id="8_gw2g1"]
+[ext_resource type="Script" uid="uid://deqxtvcihlf8n" path="res://scripts/enemy/config/search_settings.gd" id="9_47mkk"]
+[ext_resource type="Script" uid="uid://bk01ecvvxhl6s" path="res://scripts/enemy/config/selection_settings.gd" id="10_ctc0s"]
+[ext_resource type="Script" uid="uid://c8bbxotvc8xdh" path="res://scripts/enemy/config/suppression_settings.gd" id="11_uuoio"]
+[ext_resource type="Script" uid="uid://c8pqrsjr22e3m" path="res://scripts/enemy/config/tactics_settings.gd" id="12_qig5i"]
+
+[sub_resource type="Resource" id="ai"]
+script = ExtResource("2_du0bk")
+overridden = PackedStringArray()
+
+[sub_resource type="Resource" id="cover"]
+script = ExtResource("4_djm4n")
+watch_seconds = 1.0
+overridden = PackedStringArray("watch_seconds")
+
+[sub_resource type="Resource" id="exit_suppression"]
+script = ExtResource("5_6k6y2")
+overridden = PackedStringArray()
+
+[sub_resource type="Resource" id="fire_decision"]
+script = ExtResource("6_tdshh")
+overridden = PackedStringArray()
+
+[sub_resource type="Resource" id="perception"]
+script = ExtResource("7_yhril")
+sight_distance = 20.0
+overridden = PackedStringArray("sight_distance")
+
+[sub_resource type="Resource" id="search"]
+script = ExtResource("9_47mkk")
+lost_target_hint_chance = 1.0
+search_hint_chance = 1.0
+search_hint_decay_mode = 0
+search_hint_min_multiplier = 1.0
+search_hint_distance_falloff = 10.0
+debug_tracking_cheat = true
+track_seconds = 10.0
+search_pause_seconds = 0.6
+search_stuck_repath_seconds = 0.8
+overridden = PackedStringArray("lost_target_hint_chance", "search_hint_decay_mode", "search_hint_min_multiplier", "search_hint_distance_falloff", "debug_tracking_cheat", "track_seconds", "search_pause_seconds", "search_stuck_repath_seconds", "search_hint_chance")
+
+[sub_resource type="Resource" id="selection"]
+script = ExtResource("10_ctc0s")
+cover_lateral_test_distance = 0.3
+minimum_cover_quality = 0.1
+overridden = PackedStringArray("cover_lateral_test_distance", "minimum_cover_quality", "vault_preference")
+
+[sub_resource type="Resource" id="suppression"]
+script = ExtResource("11_uuoio")
+overridden = PackedStringArray()
+
+[sub_resource type="Resource" id="tactics"]
+script = ExtResource("12_qig5i")
+fire_stability_target = 0.5
+burst_shot_count = 4
+ranged_min_distance = 6.0
+ranged_max_distance = 10.0
+overridden = PackedStringArray("fire_stability_target", "burst_shot_count", "burst_pause_seconds", "support_burst_shot_count", "headshot_protection", "ranged_min_distance", "ranged_max_distance")
+
+[resource]
+script = ExtResource("8_gw2g1")
+display_name = "第4关手枪兵训练"
+selected_tactics = Array[StringName]([&"melee_rush", &"cover", &"suppression", &"covering_retreat", &"melee_cover", &"melee_intercept", &"attack_position"])
+ai = SubResource("ai")
+tactics = SubResource("tactics")
+search = SubResource("search")
+cover = SubResource("cover")
+suppression = SubResource("suppression")
+exit_suppression = SubResource("exit_suppression")
+fire_decision = SubResource("fire_decision")
+perception = SubResource("perception")
+selection = SubResource("selection")

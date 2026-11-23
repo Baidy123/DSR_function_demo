@@ -8,14 +8,14 @@ func _initialize() -> void:
 
 func _run() -> void:
 	seed(82)
-	var scene = load("res://scenes/main.tscn").instantiate()
+	var scene = preload("res://tests/enemy/enemy_fire_fixture.gd").unbound_scene()
 	root.add_child(scene)
 	current_scene = scene
 	# 这部分独立验证稳枪评分，避免地图改动使固定射击位失效。
 	for region in get_nodes_in_group("cover_region"):
 		region.collision_layer = 0
 		region.remove_from_group("cover_region")
-	var e = scene.get_node("Arena/Enemy")
+	var e = preload("res://tests/enemy/enemy_fire_fixture.gd").primary_enemy(scene)
 	Fixture.configure_decision(e)
 	var ai = e.get_node("AI")
 	var t = ai.context.fire
@@ -27,6 +27,7 @@ func _run() -> void:
 	e.look_at(p.global_position)
 	for frame in range(5):
 		await physics_frame
+	_check("固定交火前真实镜头已包含敌人", await Fixture.wait_for_camera(e))
 	ai.state = ai.State.HOLD_POSITION
 	# 先复现实际问题：真实物理移动的玩家一直可见，但目标移动惩罚令稳定度低于70%。
 	var moving_fire := false
@@ -48,6 +49,7 @@ func _run() -> void:
 		if e.shot_count > shots:
 			moving_fire = moving_fire or p.global_position.distance_to(before) > 0.01
 			low_stability_fire = low_stability_fire or stability < 0.7
+	print("Moving fire: distance=", travelled, " shots=", e.shot_count, " moving_shot=", moving_fire)
 	_check("玩家持续实际移动时敌人仍会重复开火", travelled > 10.0 and moving_fire and e.shot_count >= 2)
 	_check("低于70%也能选择开火", low_stability_fire)
 	_check("战术挂载独立射击动作评分", t.fire_decision != null)
@@ -114,10 +116,10 @@ func _run() -> void:
 
 func _check_live_moving_target() -> void:
 	current_scene.free()
-	var scene = load("res://scenes/main.tscn").instantiate()
+	var scene = preload("res://tests/enemy/enemy_fire_fixture.gd").unbound_scene()
 	root.add_child(scene)
 	current_scene = scene
-	var e = scene.get_node("Arena/Enemy")
+	var e = preload("res://tests/enemy/enemy_fire_fixture.gd").primary_enemy(scene)
 	var ai = e.get_node("AI")
 	ai.set_physics_process(false)
 	Fixture.configure_decision(e)
@@ -130,6 +132,7 @@ func _check_live_moving_target() -> void:
 	for frame in range(120):
 		await physics_frame
 		if NavigationServer3D.map_get_iteration_id(ai.agent.get_navigation_map()) >= 2 and not ai.cover_selection._path_to(e.global_position, e.global_position + Vector3.LEFT).is_empty(): break
+	_check("自主交火前真实镜头已包含敌人", await Fixture.wait_for_camera(e))
 	ai.set_physics_process(true)
 	var direction := 1.0
 	var center: float = p.global_position.x
@@ -142,6 +145,7 @@ func _check_live_moving_target() -> void:
 		var before: Vector3 = p.global_position
 		p.move_and_slide()
 		travelled += before.distance_to(p.global_position)
+	print("Autonomous fire: distance=", travelled, " shots=", e.shot_count)
 	_check("完整AI自主走位时也向持续移动玩家重复开火", travelled > 15.0 and e.shot_count >= 2)
 
 func _check(label: String, passed: bool) -> void:

@@ -14,13 +14,13 @@ func _initialize() -> void:
 
 
 func _run() -> void:
-	var scene = load("res://scenes/main.tscn").instantiate()
+	var scene = preload("res://tests/enemy/enemy_fire_fixture.gd").unbound_scene()
 	root.add_child(scene)
 	current_scene = scene
 	var player = scene.get_node("Player")
 	player.set_physics_process(false)
 	player.global_position = Vector3(10, 0, 10)
-	var actor = scene.get_node("Arena/Enemy")
+	var actor = preload("res://tests/enemy/enemy_fire_fixture.gd").primary_enemy(scene)
 	actor.get_node("AI").set_physics_process(false)
 	for target in get_nodes_in_group("combat_target"):
 		if target != actor: target.global_position = Vector3(30, 0, 30)
@@ -36,7 +36,7 @@ func _run() -> void:
 			actor.velocity = Vector3.ZERO
 			await _frames(3)
 			var before: Vector3 = actor.global_position
-			actor.receive_melee_hit(1.0, before + Vector3.BACK, 1.0, 0.2)
+			actor.receive_melee_hit(1.0, before + Vector3.BACK, 1.0, 0.2, Vector3.FORWARD, {"melee": true, "hit_accuracy_loss": 1.0})
 			await _frames(int(ceil(rate * 0.2)) + 2)
 			var travelled := Vector2(actor.global_position.x - before.x, actor.global_position.z - before.z).length()
 			_check("%dHz %s击退约1米且不重复推进" % [rate, "有正常移动调用" if driven else "无AI移动调用"], absf(travelled - 1.0) < 0.045)
@@ -45,7 +45,7 @@ func _run() -> void:
 	actor.global_position = Vector3(0, 0, -3)
 	await _frames(2)
 	var before: Vector3 = actor.global_position
-	actor.receive_melee_hit(1.0, before + Vector3.BACK, 1.0, 0.2)
+	actor.receive_melee_hit(1.0, before + Vector3.BACK, 1.0, 0.2, Vector3.FORWARD, {"melee": true, "hit_accuracy_loss": 1.0})
 	await _frames(14)
 	_check("自主横移与向后击退正确合成", actor.global_position.x > before.x + 0.2 and absf(actor.global_position.z - before.z + 1.0) < 0.045)
 	scene.queue_free()

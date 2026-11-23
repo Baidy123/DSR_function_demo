@@ -1,0 +1,7 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://scripts/systems/cinematic/cinematic_shot_3d.gd" id="1_shot"]
+
+[node name="CinematicShot3D" type="Camera3D"]
+current = false
+script = ExtResource("1_shot")

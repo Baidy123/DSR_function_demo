@@ -16,6 +16,8 @@ func run(scene: Node) -> Dictionary:
 		return checks
 	state.help_choice = ""
 	state.talked_to_a = false
+	# B 的剧本现在带选项；这里显式设成「已交差」，让 B 仍给出一句无选项台词。
+	state.music_quest_turnin = "done"
 	await ui.open_dialogue(p, load("res://resources/dialogue/npc_b.dialogue"), "start")
 	for frame in range(2):
 		await tree.process_frame

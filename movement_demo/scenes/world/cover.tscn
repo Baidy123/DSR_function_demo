@@ -1,6 +1,7 @@
 [gd_scene format=3]
 
 [ext_resource type="Script" path="res://scripts/world/cover_region.gd" id="1_region"]
+[ext_resource type="Script" path="res://scripts/world/navigation_bake_obstacle.gd" id="bake_obstacle"]
 [ext_resource type="Script" path="res://scripts/systems/presentation/visual_presentation.gd" id="presentation"]
 [ext_resource type="Script" path="res://scripts/systems/effects/impact_receiver.gd" id="impact_receiver"]
 
@@ -33,3 +34,9 @@ placeholder_paths = Array[NodePath]([NodePath("../Mesh")])
 [node name="ImpactReceiver" type="Node" parent="."]
 script = ExtResource("impact_receiver")
 presentation_path = NodePath("../Presentation")
+
+[node name="NavigationBakeObstacle" type="NavigationObstacle3D" parent="."]
+avoidance_enabled = false
+affect_navigation_mesh = true
+carve_navigation_mesh = false
+script = ExtResource("bake_obstacle")

@@ -1,0 +1,30 @@
+[gd_scene format=3]
+
+[sub_resource type="StandardMaterial3D" id="BartenderMaterial"]
+albedo_color = Color(0.63, 0.37, 0.20, 1)
+
+[sub_resource type="CapsuleMesh" id="Mesh"]
+material = SubResource("BartenderMaterial")
+radius = 0.35
+height = 1.75
+
+[sub_resource type="CapsuleShape3D" id="BodyShape"]
+radius = 0.35
+height = 1.75
+
+[node name="Bartender" type="StaticBody3D"]
+
+[node name="Body" type="MeshInstance3D" parent="."]
+position = Vector3(0, 0.875, 0)
+mesh = SubResource("Mesh")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="."]
+position = Vector3(0, 0.875, 0)
+shape = SubResource("BodyShape")
+
+[node name="Name" type="Label3D" parent="."]
+position = Vector3(0, 1.93, 0)
+billboard = 1
+font_size = 34
+outline_size = 7
+text = "酒保"

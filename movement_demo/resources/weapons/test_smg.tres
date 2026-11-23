@@ -1,0 +1,35 @@
+[gd_resource type="Resource" script_class="WeaponData" format=3 uid="uid://l7t4snve8h85"]
+
+[ext_resource type="Script" uid="uid://b7iqg2tyib57x" path="res://scripts/weapons/weapon_data.gd" id="1_cd4rn"]
+[ext_resource type="Resource" path="res://resources/noise/gunshot_noise.tres" id="2_evrrc"]
+
+[resource]
+script = ExtResource("1_cd4rn")
+display_name = "测试冲锋枪"
+fire_mode = 1
+damage = 9.0
+ammo_type = 2
+magazine_capacity = 30
+reload_seconds = 4.0
+aim_range = 22.0
+tracking_parallel_tolerance_degrees = null
+convergence_model = 2
+convergence_seconds = 2.0
+convergence_exponent_k = 5.0
+spread_recovery_delay = 0.2
+min_spread_angle_degrees = 2.5
+max_spread_angle_degrees = 5.5
+initial_spread_angle_degrees = 4.0
+shot_spread_penalty_degrees = 0.25
+shot_max_spread_angle_degrees = 4.5
+player_move_spread_degrees_per_meter = 0.5
+moving_spread_angle_degrees = 5.0
+target_move_max_spread_angle_degrees = 3.0
+spread_recovery_degrees_per_second = 5.0
+hit_accuracy_loss = 0.05
+suppression_accuracy_loss = 0.01
+near_miss_radius = 1.0
+hit_speed_loss = 0.25
+hit_speed_loss_seconds = 0.1
+melee_damage = 5.0
+melee_headshot_threshold_multiplier = 0.9

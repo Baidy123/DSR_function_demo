@@ -13,18 +13,20 @@ func _initialize() -> void:
 
 
 func _run() -> void:
-	scene = load("res://scenes/main.tscn").instantiate()
+	scene = preload("res://tests/enemy/enemy_fire_fixture.gd").unbound_scene()
 	# 行为断言使用独立初值；用户在检查器调整备弹不影响测试。
-	var initial_slots = scene.get_node("Player/WeaponSlots")
-	for field in ["starting_rifle_ammo", "starting_pistol_ammo", "starting_smg_ammo", "starting_shotgun_ammo"]:
-		initial_slots.set(field, 36)
+	var initial_slots = scene.get_node("Player/Equipment")
+	var supplies: Array[AmmoSupply] = []
+	for kind in range(4):
+		supplies.append(AmmoSupply.create(AmmoDefinition.legacy(kind), 36))
+	initial_slots.initial_ammo = supplies
 	root.add_child(scene)
 	current_scene = scene
 	player = scene.get_node("Player")
 	combat = player.get_node("Combat")
-	slots = player.get_node("WeaponSlots")
+	slots = player.get_node("Equipment")
 	player.set_physics_process(false)
-	scene.get_node("Arena/Enemy/AI").set_physics_process(false)
+	preload("res://tests/enemy/enemy_fire_fixture.gd").primary_enemy(scene).get_node("AI").set_physics_process(false)
 	check(combat.has_method("request_reload"), "玩家提供主动换弹接口")
 	if failed > 0:
 		finish()
@@ -67,7 +69,7 @@ func _run() -> void:
 	_key_r()
 	combat.end_frame(2.0, false)
 	check(not combat.ammo.is_reloading and combat.ammo.magazine_rounds == 12, "再次按R后快速换弹重新累计两秒完成")
-	check(slots.reserve_ammo[WeaponData.AmmoType.PISTOL] == 24, "完成换弹从对应共享池扣弹")
+	check(slots.reserve_ammo[&"pistol"] == 24, "完成换弹从对应共享池扣弹")
 	combat.ammo.magazine_rounds = 3
 	combat.request_reload()
 	combat.end_frame(0.5, false)
@@ -122,15 +124,15 @@ func _run() -> void:
 	check(slots.primary_label.text.contains("3/12"), "非当前槽也显示保留弹量")
 	player.receive_hit(player.get_node("Health").max_health * 2.0)
 	check(player.is_dead() and not combat.ammo.is_reloading, "死亡立即取消换弹")
-	player.get_node("Health")._request_restart()
+	player.get_node("Health/DeathScreen/Center/Panel/Content/Restart").pressed.emit()
 	for frame in range(8):
 		await process_frame
 	player = current_scene.get_node("Player")
 	combat = player.get_node("Combat")
-	slots = player.get_node("WeaponSlots")
+	slots = player.get_node("Equipment")
 	player.set_physics_process(false)
 	check(not paused and combat.ammo.magazine_rounds == combat.weapon.magazine_capacity and not combat.ammo.is_reloading, "实际重开恢复初始武器满弹及换弹状态")
-	check(slots.reserve_ammo[0] == slots.starting_rifle_ammo and slots.reserve_ammo[1] == slots.starting_pistol_ammo and slots.reserve_ammo[2] == slots.starting_smg_ammo and slots.reserve_ammo[3] == slots.starting_shotgun_ammo, "重开恢复四类备弹初值")
+	check(slots.reserve_ammo[&"rifle"] == slots.starting_rifle_ammo and slots.reserve_ammo[&"pistol"] == slots.starting_pistol_ammo and slots.reserve_ammo[&"smg"] == slots.starting_smg_ammo and slots.reserve_ammo[&"shotgun"] == slots.starting_shotgun_ammo, "重开恢复四类备弹初值")
 	# 下面断言按0.5进度倍率验证固定方式，只配置测试实例；用户场景可用其他倍率。
 	combat.sprint_reload_speed_multiplier = 0.5
 	# 驱动真实Player物理流程，验证快速换弹可被奔跑中断，慢速方式仍保留。

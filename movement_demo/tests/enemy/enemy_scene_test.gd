@@ -20,16 +20,17 @@ func add_enemy(parent: Node3D, at: Vector3, label: String):
 	return enemy
 
 func _run() -> void:
-	var scene = load("res://scenes/main.tscn").instantiate()
+	var scene = preload("res://tests/enemy/enemy_fire_fixture.gd").unbound_scene()
 	root.add_child(scene)
 	current_scene = scene
 	root.get_node("DebugSettings").enabled = false
 	var arena = scene.get_node("Arena")
-	var original = arena.get_node("Enemy")
+	var original = preload("res://tests/enemy/enemy_fire_fixture.gd").primary_enemy(arena)
 	original.get_node("AI").set_physics_process(false)
 	var player = scene.get_node("Player")
 	player.set_physics_process(false)
 	player.get_node("Health").debug_invincible = true
+	var initial_members: Array = arena.enemies.duplicate()
 	var container := Node3D.new()
 	container.name = "Enemies"
 	arena.add_child(container)
@@ -38,14 +39,14 @@ func _run() -> void:
 	var ai = first.get_node("AI")
 	var other_ai = second.get_node("AI")
 	check(ai.context.arena == arena and ai.navigation_region == arena.get_node("NavigationRegion3D"), "容器内敌人自动绑定最近竞技场及导航")
-	check(arena.enemies.size() == 3, "拖入实例自动注册且不重复登记")
+	check(arena.enemies.size() == initial_members.size() + 2 and arena.enemies.count(first) == 1 and arena.enemies.count(second) == 1 and initial_members.all(func(member): return arena.enemies.count(member) == 1), "拖入实例自动注册且不重复登记")
 	check(ai.training.profile != other_ai.training.profile and ai.unit_type.profile != other_ai.unit_type.profile, "实例兵种与训练运行快照互不共享")
 	check(ai.actions[&"search"].coverage != other_ai.actions[&"search"].coverage, "每个敌人独立保存搜索覆盖进度")
 	player.global_position = Vector3(-30, 0, 0)
 	await settle()
 	var pause: float = ai.patrol_pause_timer
 	ai._physics_process(1.0)
-	ai.notice_shot(first.get_shot_origin(), first.get_shot_origin() + Vector3.RIGHT)
+	ai.notice_shot(first.get_shot_origin(), first.get_shot_origin() + Vector3.RIGHT, WeaponData.new().get_attack_effects())
 	first.receive_hit(1.0, player.global_position)
 	check(not ai.is_arena_active() and not ai.is_alerted and ai.patrol_pause_timer == pause and first.position == Vector3(0, 0, -2), "区域外待命，近弹和受击不启动巡逻调查")
 	player.global_position = arena.to_global(Vector3(1, 0, 2))
@@ -61,9 +62,9 @@ func _run() -> void:
 	var other_arena = load("res://scenes/arena.tscn").instantiate()
 	other_arena.name = "OtherArena"
 	other_arena.position = Vector3(80, 0, 0)
-	other_arena.get_node("Enemy/AI").set_physics_process(false)
+	preload("res://tests/enemy/enemy_fire_fixture.gd").primary_enemy(other_arena).get_node("AI").set_physics_process(false)
 	scene.add_child(other_arena)
-	var foreign = other_arena.get_node("Enemy")
+	var foreign = preload("res://tests/enemy/enemy_fire_fixture.gd").primary_enemy(other_arena)
 	check(not foreign.get_node("AI").context.environment_ready(), "共享导航地图已同步时仍等待新区域自身同步")
 	foreign.health = 37.0
 	var resets := {"first": 0, "second": 0}
@@ -138,7 +139,7 @@ func _run() -> void:
 	other_ai._physics_process(0.1)
 	check(arena.enemies.count(second) == 1 and other_ai.context.fire.context == other_ai.context and not other_ai.actions.is_empty(), "重新挂父节点恢复服务和动作且不重复注册")
 	# 缺少玩家时安全等待，晚加入玩家仍能正常绑定。
-	var isolated = other_arena.get_node("Enemy/AI")
+	var isolated = preload("res://tests/enemy/enemy_fire_fixture.gd").primary_enemy(other_arena).get_node("AI")
 	scene.remove_child(player)
 	isolated.context.player = null
 	isolated._physics_process(0.1)

@@ -33,7 +33,7 @@ func _refresh_weapon() -> void:
 	if script_path == "res://scripts/enemy/enemy_actor.gd":
 		weapons.append(combat.get("weapon"))
 	elif script_path in ["res://scripts/player/player_combat_v3.gd", "res://scripts/player/player_weapon_slots.gd"]:
-		var slots = combat if script_path == "res://scripts/player/player_weapon_slots.gd" else combat.get_node_or_null("../WeaponSlots")
+		var slots = combat if script_path == "res://scripts/player/player_weapon_slots.gd" else combat.get_node_or_null("../Equipment")
 		if slots != null:
 			weapons.append(slots.get("primary_weapon"))
 			weapons.append(slots.get("secondary_weapon"))

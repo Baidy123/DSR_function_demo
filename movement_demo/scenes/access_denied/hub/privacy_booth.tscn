@@ -1,0 +1,101 @@
+[gd_scene format=3]
+
+[ext_resource type="PackedScene" path="res://scenes/access_denied/hub/privacy_booth_seating.tscn" id="seat"]
+
+[sub_resource type="StandardMaterial3D" id="Wall"]
+albedo_color = Color(0.12, 0.085, 0.13, 1)
+
+[sub_resource type="StandardMaterial3D" id="Glow"]
+albedo_color = Color(0.68, 0.15, 0.32, 1)
+emission_enabled = true
+emission = Color(0.68, 0.15, 0.32, 1)
+
+[sub_resource type="BoxMesh" id="Box5"]
+material = SubResource("Wall")
+size = Vector3(0.1800, 2.3600, 5.3500)
+
+[sub_resource type="BoxShape3D" id="Box5Shape"]
+size = Vector3(0.1800, 2.3600, 5.3500)
+
+[sub_resource type="BoxMesh" id="Box7"]
+material = SubResource("Wall")
+size = Vector3(1.0900, 2.3600, 0.1800)
+
+[sub_resource type="BoxShape3D" id="Box7Shape"]
+size = Vector3(1.0900, 2.3600, 0.1800)
+
+[sub_resource type="BoxMesh" id="Box9"]
+material = SubResource("Glow")
+size = Vector3(0.0350, 1.1200, 0.0300)
+
+[sub_resource type="BoxMesh" id="Box10"]
+material = SubResource("Wall")
+size = Vector3(4.2200, 2.3600, 0.1800)
+
+[sub_resource type="BoxShape3D" id="Box10Shape"]
+size = Vector3(4.2200, 2.3600, 0.1800)
+
+[node name="PrivacyBooth" type="Node3D"]
+
+[node name="Seating" parent="." instance=ExtResource("seat")]
+position = Vector3(0.0000, 0.0000, 0.0000)
+rotation_degrees = Vector3(0.0000, 0.0000, 0.0000)
+
+[node name="LeftWall" type="StaticBody3D" parent="."]
+position = Vector3(-2.1100, 1.1800, 0.0000)
+
+[node name="Mesh" type="MeshInstance3D" parent="LeftWall" groups=["camera_fadeable"]]
+mesh = SubResource("Box5")
+
+[node name="Collision" type="CollisionShape3D" parent="LeftWall"]
+shape = SubResource("Box5Shape")
+
+[node name="LeftReturn" type="StaticBody3D" parent="."]
+position = Vector3(-1.5700, 1.1800, 2.6500)
+
+[node name="Mesh" type="MeshInstance3D" parent="LeftReturn" groups=["camera_fadeable"]]
+mesh = SubResource("Box7")
+
+[node name="Collision" type="CollisionShape3D" parent="LeftReturn"]
+shape = SubResource("Box7Shape")
+
+[node name="LeftEdge" type="MeshInstance3D" parent="." groups=["camera_fadeable"]]
+position = Vector3(-1.0450, 1.4700, 2.7510)
+mesh = SubResource("Box9")
+
+[node name="RightWall" type="StaticBody3D" parent="."]
+position = Vector3(2.1100, 1.1800, 0.0000)
+
+[node name="Mesh" type="MeshInstance3D" parent="RightWall" groups=["camera_fadeable"]]
+mesh = SubResource("Box5")
+
+[node name="Collision" type="CollisionShape3D" parent="RightWall"]
+shape = SubResource("Box5Shape")
+
+[node name="RightReturn" type="StaticBody3D" parent="."]
+position = Vector3(1.5700, 1.1800, 2.6500)
+
+[node name="Mesh" type="MeshInstance3D" parent="RightReturn" groups=["camera_fadeable"]]
+mesh = SubResource("Box7")
+
+[node name="Collision" type="CollisionShape3D" parent="RightReturn"]
+shape = SubResource("Box7Shape")
+
+[node name="RightEdge" type="MeshInstance3D" parent="." groups=["camera_fadeable"]]
+position = Vector3(1.0450, 1.4700, 2.7510)
+mesh = SubResource("Box9")
+
+[node name="BackWall" type="StaticBody3D" parent="."]
+position = Vector3(0.0000, 1.1800, -2.5400)
+
+[node name="Mesh" type="MeshInstance3D" parent="BackWall" groups=["camera_fadeable"]]
+mesh = SubResource("Box10")
+
+[node name="Collision" type="CollisionShape3D" parent="BackWall"]
+shape = SubResource("Box10Shape")
+
+[node name="TableLight" type="OmniLight3D" parent="."]
+position = Vector3(0, 2.3, -0.25)
+light_color = Color(0.43, 0.75, 0.83, 1)
+light_energy = 0.65
+omni_range = 3.6

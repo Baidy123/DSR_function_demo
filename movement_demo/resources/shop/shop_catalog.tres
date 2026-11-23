@@ -1,0 +1,43 @@
+[gd_resource type="Resource" script_class="ShopCatalog" load_steps=7 format=3]
+
+[ext_resource type="Script" uid="uid://8uv4lv4g5c7c" path="res://scripts/shop/shop_catalog.gd" id="1_catalog"]
+[ext_resource type="Script" uid="uid://tf80hj7b37py" path="res://scripts/shop/shop_item_definition.gd" id="2_item"]
+[ext_resource type="Resource" path="res://resources/player/default_medkit.tres" id="3_medkit"]
+
+[sub_resource type="Resource" id="ShopItem_first_aid"]
+script = ExtResource("2_item")
+id = &"first_aid"
+display_name = "急救包"
+description = "医疗包 +1（按 H 使用）"
+price = 40
+unlock_level = 0
+effect = 0
+amount = 1
+one_time = false
+medkit_data = ExtResource("3_medkit")
+
+[sub_resource type="Resource" id="ShopItem_ammo"]
+script = ExtResource("2_item")
+id = &"ammo"
+display_name = "弹药补给"
+description = "补满弹匣与备弹"
+price = 30
+unlock_level = 0
+effect = 1
+amount = 0
+one_time = false
+
+[sub_resource type="Resource" id="ShopItem_mind_access_device"]
+script = ExtResource("2_item")
+id = &"mind_access_device"
+display_name = "思维接入装置"
+description = "购买后获得思维接入装置"
+price = 500
+unlock_level = 0
+effect = 2
+one_time = true
+flag_key = &"has_mind_access_device"
+
+[resource]
+script = ExtResource("1_catalog")
+items = Array[ExtResource("2_item")]([SubResource("ShopItem_first_aid"), SubResource("ShopItem_ammo"), SubResource("ShopItem_mind_access_device")])

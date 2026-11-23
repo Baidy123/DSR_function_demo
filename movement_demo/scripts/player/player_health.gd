@@ -1,6 +1,6 @@
 extends CanvasLayer
 
-## 有效命中先通知战斗模块；Debug 无敌仅免除扣血。
+## 通用有效命中通知，医疗中断等仍订阅此信号；武器效果由携带攻击快照的独立入口处理。
 signal hit_received(damage: float)
 ## 结算后通知表现层；无敌不产生 damage_applied，但保留上方的原通知。
 signal damage_applied(damage: float)
@@ -26,7 +26,6 @@ var debug_invincible: bool:
 
 var health: float = 0.0
 var is_dead: bool = false
-var restart_pending: bool = false
 
 @onready var player = get_parent()
 @onready var health_label: Label = $Status/Content/HealthLabel
@@ -35,21 +34,20 @@ var restart_pending: bool = false
 @onready var stamina_label: Label = $Status/Content/Stamina/Label
 @onready var invincible_toggle: CheckBox = $Debug/Controls/Invincible
 @onready var damage_button: Button = $Debug/Controls/Damage
-@onready var death_screen: ColorRect = $DeathScreen
-@onready var restart_button: Button = $DeathScreen/Center/Panel/Content/Restart
+@onready var complete_level_button: Button = $Debug/Controls/CompleteLevel
 
 
 func _ready() -> void:
 	health = maxf(1.0, max_health)
-	death_screen.hide()
 	$Debug.visible = OS.is_debug_build()
 	invincible_toggle.toggled.connect(_set_debug_invincible)
 	$Debug/Controls/NoiseRanges.toggled.connect($NoiseRanges.set_enabled)
+	$NoiseRanges.set_enabled($Debug/Controls/NoiseRanges.button_pressed)
 	debug_settings.changed.connect(_apply_debug_mode)
 	debug_settings.set_enabled(debug_mode)
 	_apply_debug_mode(debug_settings.enabled)
 	damage_button.pressed.connect(_debug_damage)
-	restart_button.pressed.connect(_request_restart)
+	complete_level_button.pressed.connect(_debug_complete_level)
 	_update_display()
 	_update_stamina_display()
 
@@ -87,12 +85,35 @@ func receive_hit(damage: float) -> void:
 		if player.combat != null:
 			player.combat.cancel_aim()
 			player.combat.cancel_reload()
-		# 暂停敌人和对话输入；本节点及重开按钮使用 Always，暂停时仍可点击。
-		get_tree().paused = true
-		death_screen.show()
-		restart_button.grab_focus()
+		# 场景流程由调度器订阅死亡事实；此处只停止玩家自身动作。
 		died.emit()
 	damage_applied.emit(previous_health - health)
+	_update_display()
+
+
+## 医疗等主动恢复共用的生命结算；不能复活，也不发送受伤通知。
+func restore_health(amount: float) -> float:
+	if is_dead or not is_finite(amount) or amount <= 0.0: return 0.0
+	var restored: float = minf(amount, maxf(0.0, max_health - health))
+	health += restored
+	_update_display()
+	return restored
+
+
+## 奖励等其他系统的恢复入口；与医疗包共用同一生命结算。
+func heal(amount: float) -> float:
+	return restore_health(amount)
+
+
+func campaign_snapshot() -> Dictionary:
+	return {"health": health}
+
+
+func apply_campaign_snapshot(snapshot: Dictionary) -> void:
+	if snapshot.is_empty():
+		return
+	is_dead = false
+	health = clampf(float(snapshot.get("health", max_health)), 1.0, max_health)
 	_update_display()
 
 
@@ -107,12 +128,26 @@ func _set_debug_invincible(enabled: bool) -> void:
 func _apply_debug_mode(enabled: bool) -> void:
 	debug_mode = enabled
 	$Debug/Controls/NoiseRanges.disabled = not enabled
+	complete_level_button.disabled = not enabled
 	_update_display()
 
 
 func _debug_damage() -> void:
 	if OS.is_debug_build():
 		player.receive_hit(25.0)
+
+
+func _debug_complete_level() -> void:
+	if not OS.is_debug_build() or not debug_settings.enabled or is_dead:
+		return
+	var scene := get_tree().current_scene
+	if scene == null:
+		return
+	var waves := scene.get_node_or_null("SceneDirector")
+	if waves == null:
+		waves = scene.get_node_or_null("EnemyWaves")
+	if waves != null and waves.has_method(&"debug_complete_encounter"):
+		waves.debug_complete_encounter()
 
 
 func _update_display() -> void:
@@ -123,25 +158,3 @@ func _update_display() -> void:
 		health_label.text += "  [无敌]"
 	invincible_toggle.set_pressed_no_signal(is_invincible())
 	damage_button.disabled = is_dead
-
-
-func _request_restart() -> void:
-	if not is_dead or restart_pending:
-		return
-	restart_pending = true
-	restart_button.disabled = true
-	# 避免在按钮信号或物理回调中释放当前场景。
-	_restart.call_deferred()
-
-
-func _restart() -> void:
-	var tree: SceneTree = get_tree()
-	# 仅重载场景；不清空 GameState 中的对话选择。
-	var result: Error = tree.reload_current_scene()
-	if result == OK:
-		tree.paused = false
-	else:
-		restart_pending = false
-		restart_button.disabled = false
-		$DeathScreen/Center/Panel/Content/Message.text = "重新开始失败，请重试"
-		push_error("无法重新加载当前场景：%s" % error_string(result))

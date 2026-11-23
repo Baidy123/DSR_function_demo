@@ -3,6 +3,8 @@ extends Node
 ## 仅负责调试总开关；视图和生命组件各自响应，不介入 AI 决策。
 signal changed(enabled: bool)
 
+const CinematicCameraDebugScene = preload("res://scenes/debug/cinematic_camera_debug.tscn")
+
 var _navigation_requested: bool = false
 
 var enabled: bool = false:
@@ -20,6 +22,13 @@ func _ready() -> void:
 	# 保留编辑器“可见导航”的选择，但总开关关闭时也必须隐藏。
 	_navigation_requested = get_tree().debug_navigation_hint
 	get_tree().debug_navigation_hint = enabled and _navigation_requested
+	if OS.is_debug_build():
+		var paths := preload("res://scripts/debug/coordinator_paths.gd").new()
+		paths.name = "CoordinatorPaths"
+		add_child(paths)
+		var cinematic_debug = CinematicCameraDebugScene.instantiate()
+		cinematic_debug.name = "CinematicCameraDebug"
+		add_child(cinematic_debug)
 
 
 func set_enabled(value: bool) -> void:

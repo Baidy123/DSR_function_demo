@@ -1,0 +1,11 @@
+[gd_scene format=3 uid="uid://7t37opdrvjss"]
+
+[ext_resource type="PackedScene" uid="uid://cu5pdeu3u7v5m" path="res://scenes/enemy/enemy.tscn" id="1_enemy"]
+[ext_resource type="Resource" uid="uid://8t5qrt7ekvtc" path="res://resources/weapons/enemy_test_melee.tres" id="2_weapon"]
+[ext_resource type="Resource" uid="uid://ki6qibhaudrs" path="res://resources/enemy/units/melee.tres" id="3_unit"]
+
+[node name="Enemy" instance=ExtResource("1_enemy")]
+weapon = ExtResource("2_weapon")
+
+[node name="UnitType" parent="." index="0"]
+profile = ExtResource("3_unit")

@@ -1,6 +1,14 @@
 extends Node
 
 const ImpactEffects = preload("res://scripts/systems/effects/impact_effects.gd")
+const ShotgunBallistics = preload("res://scripts/weapons/shotgun_ballistics.gd")
+const Headshots = preload("res://scripts/weapons/headshot_resolver.gd")
+const TargetSwitchGesture = preload("res://scripts/player/target_switch_gesture.gd")
+const SWITCH_DIRECTION_TOLERANCE := 5.0
+const SWITCH_OVERLAP_PIXELS := 4.0
+var _shotgun_rng := RandomNumberGenerator.new()
+# 独立随机流，不改变普通散布或霰弹图样采样。
+var _headshot_rng := RandomNumberGenerator.new()
 
 @onready var debug_settings = get_node("/root/DebugSettings")
 
@@ -13,16 +21,58 @@ enum AimMode { PROBABILITY, SPREAD_CONE }
 ## 选择本节点的射击算法；两种模式共用锁定、碰撞和伤害结算。
 @export_enum("旧概率模式:0", "新散布锥模式:1") var aim_mode: int = AimMode.SPREAD_CONE
 
-@export_group("受击准度")
-## 被有效命中时增加的散布半角（度），Debug 无敌也生效；0关闭。
-@export_range(0.0, 45.0, 0.1, "suffix:°") var damage_spread_degrees: float = 3.0
-## 未命中的敌方子弹从附近通过时增加的散布半角（度）；一发只应用一次。
-@export_range(0.0, 45.0, 0.1, "suffix:°") var nearby_shot_spread_degrees: float = 0.4
-## 真实弹道到玩家胸部的近弹检测距离；墙后延长线不参与。
-@export_range(0.0, 5.0, 0.1) var nearby_shot_radius: float = 1.5
+@export_group("目标切换")
+## 鼠标辅助锁定：按住右键时，无目标可按画面方向选敌，有目标可主动换锁。
+## 关闭后只保留原角色朝向自动锁定与方向键转向；不影响已锁定目标的跟踪。
+@export var mouse_target_assist_enabled: bool = true:
+	set(value):
+		mouse_target_assist_enabled = value
+		if not value: _reset_target_switch_input()
+## 所需鼠标行程=参照点到候选的屏幕间距×本比例，再限制到下方最小／最大值。
+## 有锁定以当前目标为参照，无锁定以玩家为参照。
+## 0.12表示相隔200逻辑像素时需要拨动24像素；近目标少动、远目标多动。
+@export_range(0.01, 1.0, 0.01) var target_switch_travel_ratio: float = 0.12
+## 最小换锁行程（逻辑像素）：避免相邻目标因轻微抖动而误切。
+@export_range(1.0, 100.0, 1.0, "suffix:px") var target_switch_min_distance: float = 10.0
+## 最大换锁行程（逻辑像素）：避免远目标需要拖动过长；小于最小值时按最小值处理。
+@export_range(1.0, 200.0, 1.0, "suffix:px") var target_switch_max_distance: float = 48.0
+## 鼠标选敌方向半角：以当前目标（无目标时以玩家）的屏幕位置为起点；45°表示总共90°。
+## 仅鼠标辅助使用，不改变武器的自动锁定锥角或跟枪免罚角度。
+@export_range(1.0, 89.0, 1.0, "suffix:°") var target_switch_half_angle_degrees: float = 45.0
+## 主动换锁后的转身速度（度/秒）；360表示转90°需0.25秒。原自动选敌与普通跟踪不受影响。
+## 转身中也可立即射击，弹道沿当时的角色朝向；不排队等转完，也不冻结精度。
+@export_range(30.0, 1080.0, 10.0, "suffix:°/s") var target_switch_turn_speed_degrees: float = 360.0
+var _target_switch_gesture := TargetSwitchGesture.new()
+var _owns_switch_mouse_capture := false
+var _previous_mouse_mode: Input.MouseMode = Input.MOUSE_MODE_VISIBLE
+var _switch_capture_frame: int = -1
+var _window_focused := true
+var _switch_turn_pending := false
+# 本帧实际转角换算的跟枪位移，仅在原精度更新中消费一次。
+var _switch_turn_distance := 0.0
+
+@export_group("蹲姿精度")
+## 蹲姿最大散布乘以(1-n)，最小散布不变；0关闭，n始终小于1。
+## 霰弹只缩小最大随机偏移，固定图样不变；不修改恢复进度、时间或爆头资格。
+@export_range(0.0, 0.99, 0.01) var crouch_spread_reduction: float = 0.25
+var crouch_bonus_blocked_until_recovery: bool = false
+
+@export_group("受击反应倍率")
+## 受到攻击武器命中精度损失的倍率，射击与附带近战共用；0免除此项、0.5减半、1正常、2加倍。
+## 例如武器损失20%、本值0.5，实际扣10个百分点，精度80%变70%；不改变伤害或擦过影响。
+@export_range(0.0, 10.0, 0.05, "suffix:×") var hit_accuracy_loss_multiplier: float = 1.0
+## 受到敌方弹道擦过时的精度损失倍率；0关闭该损失、0.5减半、1正常。范围仍由攻击武器决定，不改变命中影响。
+@export_range(0.0, 10.0, 0.05, "suffix:×") var suppression_accuracy_loss_multiplier: float = 1.0
+## 命中速度损失倍率，射击与附带近战共用；武器减速30%×0.5=减速15%、保留85%速度。
+## 0免除减速，1正常，2加倍；只缩放损失，不缩放持续时间、击退或重力，擦过不会减速。
+@export_range(0.0, 10.0, 0.05, "suffix:×") var hit_speed_loss_multiplier: float = 1.0
 
 signal weapon_changed(data: WeaponData)
 signal shot_fired(hit: bool, stability: float)
+## 每个实际命中的目标最多通知一次；pellets 是本枪对它触发爆头的弹丸数。
+signal headshot_hit(world_position: Vector3, pellets: int, shotgun: bool)
+## 实际结算结果：headshot、staggered 或 killed；新反馈不再按触发弹丸数显示。
+signal headshot_resolved(world_position: Vector3, outcome: StringName)
 signal melee_started
 signal melee_struck(target: Node3D)
 signal melee_finished
@@ -42,9 +92,11 @@ var _melee_settings: Dictionary = {}
 var _melee_struck: bool = false
 var _melee_effect: Node3D
 var _melee_region: WeakRef
-var _melee_accuracy_frame: int = -1
+var _hit_accuracy_frame: int = -1
+var _pending_melee_weapon: WeaponData
+var _locked_aim_point: Vector3 = Vector3.INF
 
-## 由 WeaponSlots 装备的运行时引用；武器资源只在槽位中配置。
+## 由 Equipment 装备的运行时引用；武器资源只在槽位中配置。
 var weapon: WeaponData
 
 var is_aiming: bool = false
@@ -66,13 +118,40 @@ var player_position_before_move: Vector3 = Vector3.ZERO
 @onready var status: Label = $HUD/Panel/Status
 
 
+## 读取旧场景的自定义比例，后续保存使用新字段；不再执行旧的稳定度加法。
+func _set(property: StringName, value: Variant) -> bool:
+	if property == &"crouch_accuracy_bonus":
+		crouch_spread_reduction = clampf(float(value), 0.0, 0.99)
+		return true
+	return false
+
+
 func _ready() -> void:
 	debug_settings.changed.connect(_apply_debug_mode)
-	player.get_node("Health").hit_received.connect(_on_hit_received)
 	player.get_node("Health").died.connect(cancel_melee)
 	add_to_group("shot_listener")
+	add_to_group(&"user_settings_combat")
+	var user_settings = get_node_or_null("/root/UserSettings")
+	if user_settings != null and user_settings.has_method(&"apply_to_combat"):
+		user_settings.apply_to_combat(self)
 	equip_weapon(weapon)
 	_apply_debug_mode(debug_settings.enabled)
+
+
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_PAUSED or what == NOTIFICATION_UNPAUSED:
+		_reset_target_movement_tracking()
+		_reset_target_switch_input()
+	elif what == NOTIFICATION_APPLICATION_FOCUS_OUT:
+		_window_focused = false
+		_reset_target_switch_input()
+	elif what == NOTIFICATION_APPLICATION_FOCUS_IN:
+		_window_focused = true
+		_reset_target_switch_input()
+
+
+func _exit_tree() -> void:
+	_reset_target_switch_input()
 
 
 func _apply_debug_mode(enabled: bool) -> void:
@@ -93,6 +172,7 @@ func equip_weapon(data: WeaponData, preserve_cooldown: bool = false, ammo_state 
 	_reload_started_sprinting = resume_slow_reload
 	accuracy = weapon.get_aim_settings(is_using_spread_cone()).initial if weapon != null else 0.0
 	accuracy_recovery_timer = 0.0
+	crouch_bonus_blocked_until_recovery = false
 	cancel_aim()
 	if not preserve_cooldown:
 		shot_cooldown = 0.0
@@ -101,8 +181,22 @@ func equip_weapon(data: WeaponData, preserve_cooldown: bool = false, ammo_state 
 	weapon_changed.emit(weapon)
 
 
+func _input(event: InputEvent) -> void:
+	# 释放即清理，即使同一帧重新按下或释放被 UI 消费，也不能带入上一段瞄准的请求。
+	if event.is_action_released("aim"):
+		_reset_target_switch_input()
+
+
 func _unhandled_input(event: InputEvent) -> void:
 	if event.is_echo():
+		return
+	if event is InputEventMouseMotion:
+		if _can_use_mouse_target_assist() and Input.is_action_pressed("aim") and _owns_switch_mouse_capture:
+			# 捕获当帧可能有系统产生的定位事件，不能算作玩家的第一下拨动。
+			if Engine.get_process_frames() > _switch_capture_frame:
+				_target_switch_gesture.feed_motion(event.relative, Time.get_ticks_usec())
+		else:
+			_reset_target_switch_input()
 		return
 	if event.is_action_pressed("melee"):
 		request_melee()
@@ -115,8 +209,14 @@ func _unhandled_input(event: InputEvent) -> void:
 		request_reload()
 		get_viewport().set_input_as_handled()
 		return
-	if is_melee_active() or ammo.is_reloading or ammo.reload_checkpoint > 0.0:
+	if is_melee_active() or is_waiting_for_melee_stand() or player.is_vaulting():
 		return
+	if ammo.is_reloading and ammo.reloads_one_shell_at_a_time() and not player.is_dead() and not player.is_in_dialogue and not get_tree().paused:
+		# 只响应新按下的瞄准键；按住右键再按 R 仍可装填。射击中断需已有余弹。
+		var aimed_trigger: bool = event.is_action_pressed("fire") and Input.is_action_pressed("aim") and ammo.magazine_rounds > 0 and can_combat()
+		if event.is_action_pressed("aim") or aimed_trigger:
+			cancel_reload()
+	if ammo.is_reloading or ammo.reload_checkpoint > 0.0: return
 	if player.is_in_dialogue or weapon == null or not can_combat():
 		return
 	if event.is_action_pressed("fire") and Input.is_action_pressed("aim"):
@@ -127,7 +227,7 @@ func _unhandled_input(event: InputEvent) -> void:
 
 ## R主动请求，不要求瞄准或进入战斗区；枪械状态自己检查弹量和备弹。
 func request_reload() -> bool:
-	if is_melee_active() or weapon == null or weapon.fire_mode == WeaponData.FireMode.MELEE or player.is_dead() or player.is_in_dialogue or get_tree().paused:
+	if is_melee_active() or is_waiting_for_melee_stand() or player.is_vaulting() or weapon == null or weapon.fire_mode == WeaponData.FireMode.MELEE or player.is_dead() or player.is_in_dialogue or get_tree().paused:
 		return false
 	var resuming: bool = ammo.reload_checkpoint > 0.0
 	if resuming and player.is_sprinting and not _reload_started_sprinting:
@@ -145,11 +245,14 @@ func cancel_reload() -> void:
 	ammo.cancel_reload()
 	_reload_started_sprinting = false
 
-## 奔跑或切枪只退回已经完成的半程；前半程取消后允许使用匣内余弹。
+## 整匣换弹保留已完成的半程；逐发装填仅保留已入匣弹药，取消未完成的本发。
 func interrupt_reload() -> void:
 	if not ammo.is_reloading: return
-	var committed: bool = ammo.reload_checkpoint > 0.0 or ammo.reload_progress >= 0.5 or is_equal_approx(ammo.reload_progress, 0.5)
-	ammo.suspend_reload(0.5 if committed else 0.0)
+	if ammo.reloads_one_shell_at_a_time():
+		cancel_reload() # 已装好的弹药保留，未完成的本发不保留半程，也不强制续换。
+	else:
+		var committed: bool = ammo.reload_checkpoint > 0.0 or ammo.reload_progress >= 0.5 or is_equal_approx(ammo.reload_progress, 0.5)
+		ammo.suspend_reload(0.5 if committed else 0.0)
 	shot_requested = false
 	fire_held = false
 
@@ -162,50 +265,82 @@ func is_slow_reload() -> bool:
 
 func _hold_reload_accuracy() -> void:
 	accuracy = 0.0
+	crouch_bonus_blocked_until_recovery = true
 	accuracy_recovery_timer = maxf(0.0, weapon.get_aim_settings(is_using_spread_cone()).delay) if weapon != null else 0.0
 
-func _on_hit_received(damage: float) -> void:
-	if damage > 0.0: _apply_aim_disruption(damage_spread_degrees)
+## 攻击基础值来自攻击者快照；无来源扣血不调用此入口，也不回退旧角色常量。
+func apply_weapon_hit(effects: Dictionary) -> void:
+	var loss := _scaled_loss(float(effects.get("hit_accuracy_loss", 0.0)), hit_accuracy_loss_multiplier)
+	var melee: bool = effects.get("melee", false)
+	_apply_accuracy_loss(loss, melee)
+	if melee and loss > 0.0:
+		player.get_node("Equipment").apply_stowed_accuracy_loss(loss)
+	player.apply_hit_slowdown(_scaled_loss(float(effects.get("hit_speed_loss", 0.0)), hit_speed_loss_multiplier),
+		float(effects.get("hit_speed_loss_seconds", 0.0)))
 
+func _scaled_loss(base: float, multiplier: float) -> float:
+	if not is_finite(base) or not is_finite(multiplier): return 0.0
+	return clampf(maxf(0.0, base) * maxf(0.0, multiplier), 0.0, 1.0)
 
-func apply_melee_disruption() -> void:
-	accuracy = 0.0
-	accuracy_recovery_timer = maxf(0.0, weapon.get_aim_settings(is_using_spread_cone()).delay) if weapon != null else 0.0
-	_melee_accuracy_frame = Engine.get_physics_frames()
-	var slots := player.get_node_or_null("WeaponSlots")
-	if slots != null: slots.apply_melee_disruption()
-
-func _apply_aim_disruption(degrees: float) -> void:
-	if weapon == null or player.is_dead() or not is_finite(degrees) or degrees <= 0.0: return
-	var minimum := clampf(weapon.min_spread_angle_degrees, 0.0, 45.0)
-	var maximum := clampf(weapon.max_spread_angle_degrees, minimum, 45.0)
-	var span := maximum - minimum
-	if span <= 0.0: return
-	# 检查器以角度调参，内部仍沿用已有稳定度和两种瞄准模式的恢复流程。
-	accuracy = clampf(accuracy - degrees / span, 0.0, 1.0)
+func _apply_accuracy_loss(loss: float, block_crouch: bool = false) -> void:
+	if weapon == null or player.is_dead() or not is_finite(loss) or loss <= 0.0: return
+	accuracy = clampf(accuracy - loss, 0.0, 1.0)
 	accuracy_recovery_timer = maxf(accuracy_recovery_timer, weapon.get_aim_settings(is_using_spread_cone()).delay)
+	if block_crouch:
+		_hit_accuracy_frame = Engine.get_physics_frames()
+		crouch_bonus_blocked_until_recovery = true
 
-func notice_shot(origin: Vector3, endpoint: Vector3) -> void:
+func notice_shot(origin: Vector3, endpoint: Vector3, effects: Dictionary) -> void:
 	if weapon == null or player.is_dead() or player.is_in_dialogue or get_tree().paused: return
-	var chest: Vector3 = player.global_position + Vector3.UP * 0.8
+	var radius: float = effects.get("near_miss_radius", 0.0)
+	if not is_finite(radius) or radius <= 0.0: return
+	var chest: Vector3 = player.get_torso_position()
 	var closest := Geometry3D.get_closest_point_to_segment(chest, origin, endpoint)
-	if chest.distance_to(closest) > maxf(0.0, nearby_shot_radius): return
+	if chest.distance_to(closest) > radius: return
 	if chest.distance_squared_to(closest) > 0.000001:
 		var query := PhysicsRayQueryParameters3D.create(chest, closest, 1, [player.get_rid()])
 		query.hit_from_inside = true
 		if not player.get_world_3d().direct_space_state.intersect_ray(query).is_empty(): return
-	_apply_aim_disruption(nearby_shot_spread_degrees)
+	_apply_accuracy_loss(_scaled_loss(float(effects.get("suppression_accuracy_loss", 0.0)), suppression_accuracy_loss_multiplier))
 
 
 func cancel_aim() -> void:
 	is_aiming = false
-	locked_target = null
-	_reset_target_movement_tracking()
+	clear_target_lock()
 	shot_requested = false
 	fire_held = false
 	# 松开再按瞄准不能消除刚刚累积的射击惩罚。
 	accuracy = minf(accuracy, weapon.get_aim_settings(is_using_spread_cone()).initial) if weapon != null else 0.0
 	$HUD/Reticle.hide()
+
+
+## 翻越、姿态变化只解除旧目标牵引，不能借取消瞄准改写精度或扳机。
+func clear_target_lock() -> void:
+	_clear_target()
+	_reset_target_switch_input()
+
+
+## 目标死亡／失效只清理旧锁定及手势；持续瞄准的鼠标辅助保持捕获。
+func _clear_target() -> void:
+	_switch_turn_pending = false
+	locked_target = null
+	_locked_aim_point = Vector3.INF
+	_reset_target_movement_tracking()
+	_target_switch_gesture.reset()
+
+
+func begin_vault() -> void:
+	_pending_melee_weapon = null
+	clear_target_lock()
+	shot_requested = false
+	interrupt_reload()
+
+
+func get_locked_aim_point() -> Vector3:
+	if _locked_aim_point.is_finite(): return _locked_aim_point
+	if is_instance_valid(locked_target):
+		return locked_target.get_torso_position() if locked_target.has_method("get_torso_position") else locked_target.global_position + Vector3.UP * 0.8
+	return Vector3.INF
 
 
 func can_combat() -> bool:
@@ -220,6 +355,10 @@ func can_combat() -> bool:
 
 # Player 在移动前调用：检查锁定，再由 Player 应用朝向。
 func begin_frame(delta: float, aim_pressed: bool) -> void:
+	_switch_turn_distance = 0.0
+	if get_tree().paused:
+		_reset_target_switch_input()
+		return
 	if weapon != null and weapon.fire_mode == WeaponData.FireMode.MELEE:
 		equip_weapon(null) # 共享资源运行时被改成近战时，玩家也不能继续使用。
 	_advance_melee(delta)
@@ -232,28 +371,44 @@ func begin_frame(delta: float, aim_pressed: bool) -> void:
 		cancel_aim()
 		return
 	is_aiming = true
-	if is_instance_valid(locked_target) and not _target_visible(locked_target):
-		locked_target = null
-		_reset_target_movement_tracking()
+	if player.is_vaulting():
+		clear_target_lock()
+		return
+	if locked_target != null and (not is_instance_valid(locked_target) or locked_target.is_queued_for_deletion() or not _target_visible(locked_target)):
+		_clear_target()
+	# 无目标时也先处理主动输入；没有有效鼠标请求才继续原朝向自动选敌。
+	_update_target_switch()
 	if not is_instance_valid(locked_target):
 		var new_target: Node3D = _find_target()
 		if is_instance_valid(new_target):
-			locked_target = new_target
-			_start_target_movement_tracking(new_target)
+			_target_switch_gesture.reset()
+			_set_locked_target(new_target, _visible_target_point(new_target))
 			# 锁定只改变瞄准目标，不重置当前稳定度。
 			# 因此无锁定持续瞄准积累的稳定度会自然带入锁定状态。
 	if is_instance_valid(locked_target):
 		var direction: Vector3 = locked_target.global_position - player.global_position
 		if Vector2(direction.x, direction.z).length_squared() > 0.0001:
-			player.visual.global_rotation.y = atan2(-direction.x, -direction.z)
+			var target_angle := atan2(-direction.x, -direction.z)
+			if _switch_turn_pending:
+				var previous_angle: float = player.visual.global_rotation.y
+				var angle_step := deg_to_rad(maxf(30.0, target_switch_turn_speed_degrees)) * maxf(0.0, delta)
+				player.visual.global_rotation.y = rotate_toward(player.visual.global_rotation.y, target_angle, angle_step)
+				_switch_turn_distance = absf(angle_difference(previous_angle, player.visual.global_rotation.y)) * Vector2(direction.x, direction.z).length()
+				if absf(angle_difference(player.visual.global_rotation.y, target_angle)) <= 0.0001:
+					_switch_turn_pending = false
+			else:
+				player.visual.global_rotation.y = target_angle
+		else:
+			_switch_turn_pending = false
 
 
 # Player 移动后调用，以实际位移判断移动惩罚，射击使用本帧的视线。
 func end_frame(delta: float, moving: bool) -> void:
-	var was_reloading: bool = ammo.is_reloading
+	if get_tree().paused: return
+	var was_reloading: bool = ammo.is_reloading or ammo.reload_checkpoint > 0.0
 	if player.is_dead() or player.is_in_dialogue:
 		cancel_reload()
-	elif not get_tree().paused and not is_melee_active():
+	elif not get_tree().paused and not is_melee_active() and not is_waiting_for_melee_stand() and not player.is_vaulting():
 		if player.is_sprinting and not _reload_started_sprinting:
 			interrupt_reload()
 		else:
@@ -265,19 +420,16 @@ func end_frame(delta: float, moving: bool) -> void:
 		cancel_melee()
 		cancel_aim()
 	if is_instance_valid(locked_target) and not _target_visible(locked_target):
-		locked_target = null
-		_reset_target_movement_tracking()
+		_clear_target()
 	if weapon != null:
-		# 目标自身的位移会增加跟枪难度。这里只在已经锁定目标时计算，
-		# 新锁定的第一帧只记录位置，不产生瞬间惩罚。
-		var target_moving: bool = _apply_target_movement_accuracy_penalty(delta)
+		# 目标有效横移与主动换锁转身共用跟枪损耗；无有效跟枪影响时按原规则恢复。
+		var tracking_limited: bool = _apply_target_movement_accuracy_penalty(delta)
 
 		var settings: Dictionary = weapon.get_aim_settings(is_using_spread_cone())
-		var recovery: float = settings.recovery
 		if was_reloading:
 			# 完成的这一帧也保持最低，下一帧才开始原恢复等待，避免大delta提前恢复。
 			_hold_reload_accuracy()
-		elif _melee_accuracy_frame == Engine.get_physics_frames():
+		elif _hit_accuracy_frame == Engine.get_physics_frames():
 			pass # 近战命中的同一物理帧不能立即恢复准度。
 		elif moving:
 			var displacement: Vector3 = player.global_position - player_position_before_move
@@ -285,25 +437,30 @@ func end_frame(delta: float, moving: bool) -> void:
 			# 两种模式都逐米累积；移动惩罚不能覆盖其他来源造成的更低稳定度。
 			if accuracy > settings.moving_cap:
 				accuracy = maxf(settings.moving_cap, accuracy - distance * settings.player_move_loss)
-			accuracy_recovery_timer = settings.delay
-		elif target_moving:
-			# 目标移动时，若当前稳定度已经低于“移动目标最低稳定度”，
+				accuracy_recovery_timer = settings.delay
+			else:
+				# 受击等造成的额外损失允许边走边恢复；走路不能每帧续期这段等待。
+				var movement_limit: float = minf(settings.moving_cap, 1.0 if is_aiming else settings.initial)
+				if tracking_limited:
+					movement_limit = minf(movement_limit, _get_target_move_accuracy_floor())
+				if accuracy < movement_limit:
+					_recover_accuracy(delta, movement_limit)
+				else:
+					accuracy_recovery_timer = settings.delay
+		elif tracking_limited:
+			# 目标有效横向移动时，若当前稳定度已经低于“移动目标最低稳定度”，
 			# 仍允许按正常稳定速度恢复，但最多只恢复到这个下限。
 			# 若当前稳定度已经达到/高于该下限，则只承受目标移动惩罚，不再额外恢复，
 			# 避免移动惩罚被稳定恢复抵消。
 			var movement_floor: float = _get_target_move_accuracy_floor()
 			if accuracy < movement_floor:
-				var recovery_delta: float = maxf(0.0, delta - accuracy_recovery_timer)
-				accuracy_recovery_timer = maxf(0.0, accuracy_recovery_timer - delta)
-				accuracy = minf(movement_floor, accuracy + recovery * recovery_delta)
+				_recover_accuracy(delta, movement_floor)
 		else:
-			# 只计入延迟结束后剩余的时间，避免低帧率改变恢复速度。
-			var recovery_delta: float = maxf(0.0, delta - accuracy_recovery_timer)
-			accuracy_recovery_timer = maxf(0.0, accuracy_recovery_timer - delta)
-			# 没有玩家/目标移动惩罚时，延迟结束后按稳定速度恢复到 100%。
-			# 未瞄准时 begin_frame 会先把稳定度限制到初始值；此处仍按本帧时间恢复。
-			accuracy = minf(1.0, accuracy + recovery * recovery_delta)
+			# 瞄准可恢复到100%；未瞄准只恢复到初始值，避免帧尾越过初始散布。
+			_recover_accuracy(delta, 1.0 if is_aiming else settings.initial)
 	# 只有未被 UI 消费的按下事件才能启动连发；释放事件即使被 UI 消费也能停火。
+	if not was_reloading and _hit_accuracy_frame != Engine.get_physics_frames() and accuracy_recovery_timer <= 0.0:
+		crouch_bonus_blocked_until_recovery = false
 	if not Input.is_action_pressed("fire"):
 		fire_held = false
 	var automatic_fire: bool = weapon != null and weapon.fire_mode == WeaponData.FireMode.AUTOMATIC and fire_held
@@ -311,6 +468,13 @@ func end_frame(delta: float, moving: bool) -> void:
 		shot_requested = false
 		shoot()
 	_update_status()
+
+
+func _recover_accuracy(delta: float, limit: float) -> void:
+	# 只计入延迟结束后剩余的时间，避免低帧率改变恢复速度。
+	var recovery_delta: float = maxf(0.0, delta - accuracy_recovery_timer)
+	accuracy_recovery_timer = maxf(0.0, accuracy_recovery_timer - delta)
+	accuracy = minf(limit, weapon.recover_player_accuracy(accuracy, recovery_delta))
 
 
 func _start_target_movement_tracking(target: Node3D) -> void:
@@ -324,33 +488,54 @@ func _start_target_movement_tracking(target: Node3D) -> void:
 func _reset_target_movement_tracking() -> void:
 	has_last_target_position = false
 	last_target_position = Vector3.ZERO
+	_switch_turn_distance = 0.0
 
 
 func _apply_target_movement_accuracy_penalty(delta: float) -> bool:
+	var turn_distance := _switch_turn_distance
+	_switch_turn_distance = 0.0
 	if weapon == null or not is_instance_valid(locked_target):
 		_reset_target_movement_tracking()
 		return false
 
 	var current_position: Vector3 = locked_target.global_position
-	if not has_last_target_position:
-		last_target_position = current_position
-		has_last_target_position = true
+	if not current_position.is_finite():
+		_reset_target_movement_tracking()
 		return false
-
-	var moved_distance: float = current_position.distance_to(last_target_position)
+	var previous_position := last_target_position
 	last_target_position = current_position
-	if moved_distance <= 0.0001:
-		return false
+	if not has_last_target_position:
+		has_last_target_position = true
+		previous_position = current_position
+	if get_tree().paused or not is_finite(delta) or delta <= 0.0: return false
+
+	# 地面位移相对玩家→目标中点投影；玩家自身移动仍由原独立分支处理。
+	var offset := current_position - previous_position
+	var displacement := Vector2(offset.x, offset.z)
+	var moved_distance := displacement.length()
+	var relative_midpoint: Vector3 = (previous_position + current_position) * 0.5 - player.global_position
+	var axis := Vector2(relative_midpoint.x, relative_midpoint.z)
+	var tracking_distance := 0.0
+	if moved_distance > 0.000001 and axis.is_finite() and axis.length_squared() > 0.000001:
+		var lateral_ratio := clampf(absf(displacement.cross(axis.normalized())) / moved_distance, 0.0, 1.0)
+		var tolerance := sin(deg_to_rad(weapon.tracking_parallel_tolerance_degrees))
+		var lateral_weight := clampf((lateral_ratio - tolerance) / (1.0 - tolerance), 0.0, 1.0)
+		tracking_distance = moved_distance * lateral_weight
+	if maxf(tracking_distance, turn_distance) <= 0.000001: return false
 
 	var settings: Dictionary = weapon.get_aim_settings(is_using_spread_cone())
-	var target_speed: float = moved_distance / maxf(delta, 0.0001)
+	var target_speed: float = tracking_distance / delta
 	var speed_factor: float = clampf(target_speed / maxf(settings.fast_speed, 0.01), 0.0, 1.0)
 	var loss_per_meter: float = lerpf(
 		settings.slow,
 		settings.fast,
 		speed_factor
 	)
-	var movement_penalty: float = moved_distance * loss_per_meter
+	# 转身固定使用当前枪械的低速系数，不将角速度×距离当成高速敌人。
+	# 真实目标横移仍按原速度插值；两种损耗取较大者，避免同帧双扣。
+	var movement_penalty: float = maxf(tracking_distance * loss_per_meter, turn_distance * settings.slow)
+	# 关闭跟枪损失也必须解除恢复限制；更低的精度仍由原有来源／下限控制。
+	if movement_penalty <= 0.0: return false
 
 	# “目标移动”只允许把稳定度压到自己的下限；它不会覆盖其他来源已经造成的更低稳定度。
 	var movement_floor: float = _get_target_move_accuracy_floor()
@@ -365,6 +550,111 @@ func _get_target_move_accuracy_floor() -> float:
 	if weapon == null:
 		return 0.0
 	return weapon.get_aim_settings(is_using_spread_cone()).target_floor
+
+
+## 表现只读当前朝向状态；提前选中目标不代表枪口已经对准。
+func is_turning_to_target() -> bool:
+	return _switch_turn_pending
+
+
+## 自动取得和主动换锁共用赋值出口；切换不取消瞄准、不清精度、不改扳机。
+func _set_locked_target(target: Node3D, point: Vector3) -> void:
+	_switch_turn_pending = false
+	locked_target = target
+	_locked_aim_point = point
+	_start_target_movement_tracking(target)
+
+
+func _can_use_mouse_target_assist() -> bool:
+	if not mouse_target_assist_enabled or not is_aiming or weapon == null:
+		return false
+	if not _window_focused or get_tree().paused or player.is_dead() or player.is_in_dialogue:
+		return false
+	if is_melee_active() or is_waiting_for_melee_stand() or player.is_vaulting():
+		return false
+	var focus := get_viewport().gui_get_focus_owner()
+	return get_viewport().get_camera_3d() != null and (focus == null or not focus.is_visible_in_tree())
+
+
+func _reset_target_switch_input() -> void:
+	_target_switch_gesture.reset()
+	if not _owns_switch_mouse_capture: return
+	_owns_switch_mouse_capture = false
+	# 菜单已经接管鼠标模式时，不用旧模式覆盖它。
+	if Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
+		Input.mouse_mode = _previous_mouse_mode
+
+
+func _update_target_switch() -> void:
+	if not _can_use_mouse_target_assist():
+		_reset_target_switch_input()
+		return
+	if not _owns_switch_mouse_capture:
+		_previous_mouse_mode = Input.mouse_mode
+		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+		_owns_switch_mouse_capture = true
+		_switch_capture_frame = Engine.get_process_frames()
+		_target_switch_gesture.reset()
+	var motion := _target_switch_gesture.take_motion()
+	var minimum_travel := maxf(1.0, target_switch_min_distance)
+	if motion.length() < minimum_travel: return
+	var camera := get_viewport().get_camera_3d()
+	var reference_point: Vector3 = get_locked_aim_point() if is_instance_valid(locked_target) else player.get_torso_position()
+	if not reference_point.is_finite() or camera.is_position_behind(reference_point):
+		_target_switch_gesture.consume()
+		return
+	var origin := camera.unproject_position(reference_point)
+	var target := _find_switch_target(motion.normalized(), origin)
+	if not is_instance_valid(target) or target.is_queued_for_deletion():
+		_target_switch_gesture.consume()
+		return
+	var point := _visible_target_point(target)
+	if point.is_finite():
+		var screen_gap := camera.unproject_position(point).distance_to(origin)
+		var required_travel := clampf(screen_gap * target_switch_travel_ratio,
+			minimum_travel, maxf(minimum_travel, target_switch_max_distance))
+		if motion.length() < required_travel: return
+		_target_switch_gesture.consume()
+		_set_locked_target(target, point)
+		_switch_turn_pending = true
+	else:
+		_target_switch_gesture.consume()
+
+
+## 仅主动请求扫描周围合法目标；不复用／修改首次自动选敌的朝向评分。
+func _find_switch_target(direction: Vector2, origin: Vector2) -> Node3D:
+	var camera := get_viewport().get_camera_3d()
+	var candidates: Array[Dictionary] = []
+	var minimum_angle := INF
+	var half_angle := deg_to_rad(clampf(target_switch_half_angle_degrees, 1.0, 89.0))
+	for candidate in get_tree().get_nodes_in_group("combat_target"):
+		if candidate == locked_target or not candidate is Node3D or candidate.is_queued_for_deletion():
+			continue
+		var point := _visible_target_point(candidate)
+		if not point.is_finite() or camera.is_position_behind(point): continue
+		var offset := camera.unproject_position(point) - origin
+		var distance := offset.length_squared()
+		if not offset.is_finite() or distance <= SWITCH_OVERLAP_PIXELS * SWITCH_OVERLAP_PIXELS: continue
+		var angle := absf(direction.angle_to(offset))
+		if angle > half_angle + 0.000001: continue
+		minimum_angle = minf(minimum_angle, angle)
+		candidates.append({"target": candidate, "angle": angle, "distance": distance,
+			"world_distance": player.global_position.distance_squared_to(candidate.global_position)})
+	var best: Node3D
+	var best_distance := INF
+	var best_world_distance := INF
+	for candidate in candidates:
+		if candidate.angle > minimum_angle + deg_to_rad(SWITCH_DIRECTION_TOLERANCE): continue
+		var closer: bool = candidate.distance < best_distance
+		if is_equal_approx(candidate.distance, best_distance):
+			closer = candidate.world_distance < best_world_distance
+			if is_equal_approx(candidate.world_distance, best_world_distance):
+				closer = best == null or candidate.target.get_instance_id() < best.get_instance_id()
+		if closer:
+			best = candidate.target
+			best_distance = candidate.distance
+			best_world_distance = candidate.world_distance
+	return best
 
 
 func _find_target() -> Node3D:
@@ -384,41 +674,65 @@ func _find_target() -> Node3D:
 
 
 func _target_visible(target: Node3D) -> bool:
-	if not target.is_inside_tree() or not target.is_in_group("combat_target"):
-		return false
+	var point := _visible_target_point(target)
+	if target == locked_target: _locked_aim_point = point
+	return point.is_finite()
+
+
+func _visible_target_point(target: Node3D) -> Vector3:
+	if target.is_queued_for_deletion() or not target.is_inside_tree() or not target.is_in_group("combat_target"):
+		return Vector3.INF
+	if not preload("res://scripts/systems/combat_view.gd").contains_actor(target):
+		return Vector3.INF
 	var offset: Vector3 = target.global_position - player.global_position
 	if offset.length() > weapon.aim_range:
-		return false
-	var hit: Dictionary = _ray_to(target.global_position + Vector3.UP * 0.8)
-	return not hit.is_empty() and hit.collider == target
+		return Vector3.INF
+	var points: Array[Vector3] = []
+	if target.has_method("get_visibility_points"):
+		points.assign(target.get_visibility_points())
+	else:
+		points.append(target.global_position + Vector3.UP * 0.8)
+	for point in points:
+		var hit := _ray_to(point, player.get_eye_position())
+		if not hit.is_empty() and (hit.collider == target or target.is_ancestor_of(hit.collider)):
+			return point
+	return Vector3.INF
 
 
-func _ray_to(endpoint: Vector3) -> Dictionary:
-	var origin: Vector3 = player.global_position + Vector3.UP * 0.8
+func _ray_to(endpoint: Vector3, origin: Vector3 = Vector3.INF) -> Dictionary:
+	if not origin.is_finite(): origin = player.get_muzzle_position()
 	var query := PhysicsRayQueryParameters3D.create(origin, endpoint, 1, [player.get_rid()])
+	query.hit_from_inside = true
 	return player.get_world_3d().direct_space_state.intersect_ray(query)
 
 
 func shoot() -> void:
-	if is_melee_active() or not is_aiming or player.is_in_dialogue or weapon == null or weapon.fire_mode == WeaponData.FireMode.MELEE or shot_cooldown > 0.0 or not can_combat():
+	if is_melee_active() or is_waiting_for_melee_stand() or player.is_vaulting() or not is_aiming or player.is_in_dialogue or weapon == null or weapon.fire_mode == WeaponData.FireMode.MELEE or shot_cooldown > 0.0 or not can_combat():
 		return
 	if get_tree().paused or not ammo.consume_round():
 		return
 	# 再检查一次，防止输入与物理更新之间出现遮挡。
 	if is_instance_valid(locked_target) and not _target_visible(locked_target):
-		locked_target = null
-		_reset_target_movement_tracking()
+		_clear_target()
 	shot_count += 1
+	var stability: float = get_effective_accuracy()
+	var headshot_settings := weapon.get_headshot_settings(stability)
+	var aim_settings := weapon.get_aim_settings(is_using_spread_cone())
+	var base_damage := weapon.damage
+	var attack_effects := weapon.get_attack_effects()
 	if weapon.shot_noise != null:
 		weapon.shot_noise.emit_from(player, weapon.shot_noise_radius)
 	shot_cooldown = weapon.shot_interval
-	var stability: float = accuracy
-	var origin: Vector3 = player.global_position + Vector3.UP * 0.8
+	var origin: Vector3 = player.get_muzzle_position()
 	var direction: Vector3 = -player.visual.global_basis.z
 	var has_lock: bool = is_instance_valid(locked_target)
-	if has_lock:
-		direction = (locked_target.global_position + Vector3.UP * 0.8 - origin).normalized()
+	# 主动转身中不把弹道强拉到新锁定点；按本次发射的朝向和准度执行原散布。
+	if has_lock and not _switch_turn_pending:
+		direction = (get_locked_aim_point() - origin).normalized()
 
+	if weapon.fire_mode == WeaponData.FireMode.SHOTGUN:
+		_shoot_shotgun(origin, direction, stability, attack_effects, headshot_settings)
+		return
 	if is_using_spread_cone():
 		# 有无锁定都在整个三维锥内取样，稳定度只控制锥的半角。
 		direction = _random_direction_in_spread_cone(direction, get_spread_half_angle_degrees())
@@ -431,25 +745,70 @@ func shoot() -> void:
 	var impact = effects.capture_hit(hit, direction, player) if effects != null else null
 	last_shot_collider = hit.get("collider")
 	var target_hit: bool = false
+	var headshot := false
 	if not hit.is_empty():
 		endpoint = hit.position
 		if hit.collider.is_in_group("combat_target"):
-			hit.collider.receive_hit(weapon.damage, player.global_position)
+			var hits := {hit.collider: 1}
+			var result: Dictionary = Headshots.resolve(hits, base_damage, headshot_settings, _headshot_rng)[0]
+			headshot = result.critical
+			var outcome := Headshots.apply(result, player.global_position, attack_effects)
 			target_hit = true
-			if locked_target == hit.collider and not hit.collider.is_in_group("combat_target"):
-				locked_target = null
+			if headshot:
+				headshot_hit.emit(endpoint, 1, false)
+				headshot_resolved.emit(endpoint, outcome)
+			if locked_target == hit.collider and (not is_instance_valid(hit.collider) or not hit.collider.is_in_group("combat_target")):
+				_clear_target()
 				$HUD/Reticle.hide()
 	# 使用实际命中点截断后的线段检测近处来弹；墙后的延长线不会触发。
 	for listener in get_tree().get_nodes_in_group("shot_listener"):
-		if listener.get_parent() != player and listener.get_parent() != last_shot_collider:
-			listener.notice_shot(origin, endpoint)
-	var settings: Dictionary = weapon.get_aim_settings(is_using_spread_cone())
-	accuracy = maxf(minf(accuracy, settings.shot_floor), accuracy - settings.shot_penalty)
-	accuracy_recovery_timer = settings.delay
-	last_result = "命中" if target_hit else "未命中"
+		if listener.get_parent() != player and listener.get_parent() != last_shot_collider and not listener.get_parent().is_in_group("player"):
+			listener.notice_shot(origin, endpoint, attack_effects)
+	accuracy = maxf(minf(accuracy, aim_settings.shot_floor), accuracy - aim_settings.shot_penalty)
+	accuracy_recovery_timer = aim_settings.delay
+	last_result = "爆头" if headshot else ("命中" if target_hit else "未命中")
 	_draw_shot(origin, endpoint, target_hit)
 	if effects != null: effects.dispatch_impact(impact)
 	shot_fired.emit(target_hit, stability)
+	_update_status()
+
+
+func _shoot_shotgun(origin: Vector3, direction: Vector3, stability: float, attack_effects: Dictionary, headshot_settings: Dictionary) -> void:
+	var shotgun := weapon.get_shotgun_settings()
+	var pellet_damage := maxf(0.0, shotgun.pellet_damage)
+	var aim_settings := shotgun.get_aim_settings(is_using_spread_cone())
+	var pellets := ShotgunBallistics.trace(player, weapon, origin, direction, get_spread_stability(), _shotgun_rng)
+	var hits := ShotgunBallistics.count_hits(pellets, &"combat_target")
+	# 全部射线和每目标一次判定完成后才调用受击，死亡／回调不改变本枪其余结果。
+	var results := Headshots.resolve(hits, pellet_damage, headshot_settings, _headshot_rng)
+	var hit_positions := {}
+	var headshot_count := 0
+	for pellet in pellets:
+		if hits.has(pellet.collider) and not hit_positions.has(pellet.collider):
+			hit_positions[pellet.collider] = pellet.endpoint
+	var effects := ImpactEffects.find_for(player)
+	last_shot_collider = hits.keys()[0] if not hits.is_empty() else pellets[0].collider
+	for result in results:
+		var outcome := Headshots.apply(result, player.global_position, attack_effects)
+		if not outcome.is_empty():
+			headshot_count += 1
+			headshot_hit.emit(hit_positions[result.target], result.pellets, true)
+			headshot_resolved.emit(hit_positions[result.target], outcome)
+	if locked_target != null and (not is_instance_valid(locked_target) or not locked_target.is_in_group("combat_target")):
+		_clear_target()
+		$HUD/Reticle.hide()
+	for listener in get_tree().get_nodes_in_group("shot_listener"):
+		var receiver := listener.get_parent()
+		if not receiver is Node3D or receiver == player or receiver.is_in_group("player") or hits.has(receiver): continue
+		var endpoint := ShotgunBallistics.near_miss_endpoint(receiver, origin, pellets, attack_effects.near_miss_radius)
+		if endpoint.is_finite(): listener.notice_shot(origin, endpoint, attack_effects)
+	accuracy = maxf(minf(accuracy, aim_settings.shot_floor), accuracy - aim_settings.shot_penalty)
+	accuracy_recovery_timer = aim_settings.delay
+	last_result = "爆头目标 %d" % headshot_count if headshot_count > 0 else ("命中" if not hits.is_empty() else "未命中")
+	for pellet in pellets:
+		_draw_shot(origin, pellet.endpoint, hits.has(pellet.collider))
+		if effects != null: effects.dispatch_impact(pellet.impact)
+	shot_fired.emit(not hits.is_empty(), stability)
 	_update_status()
 
 
@@ -484,13 +843,54 @@ func _random_direction_in_miss_cone(
 	return (cone_axis * cos(theta) + radial * sin(theta)).normalized()
 
 
+## 基础收敛进度：供爆头资格、中心概率与状态显示读取，姿态不能补满它。
+func get_effective_accuracy() -> float:
+	return clampf(accuracy, 0.0, 1.0) if is_finite(accuracy) else 0.0
+
+
+## UI查询与实际命中共用规则；不掷骰、不消费敌人的破绽。
+func get_target_headshot_chance(target: Node3D) -> float:
+	if weapon == null or not is_instance_valid(target): return 0.0
+	return Headshots.get_target_chance(weapon.get_headshot_settings(get_effective_accuracy()), target)
+
+
+## 相对于原角度区间的弹道稳定度，仅供散布采样与准星大小读取，不用于爆头。
+## 在原弹道接口前换算端点，因此不用修改共享采样器或敌人执行流程。
+func get_spread_stability() -> float:
+	var base := get_effective_accuracy()
+	if weapon == null: return base
+	if crouch_bonus_blocked_until_recovery or ammo.is_reloading or ammo.reload_checkpoint > 0.0:
+		return base
+	if player == null or not player.is_crouching() or player.is_vaulting(): return base
+	var minimum: float
+	var maximum: float
+	if weapon.fire_mode == WeaponData.FireMode.SHOTGUN:
+		var shotgun := weapon.get_shotgun_settings()
+		minimum = shotgun.get_jitter_degrees(1.0)
+		maximum = shotgun.get_jitter_degrees(0.0)
+	elif is_using_spread_cone():
+		minimum = clampf(weapon.min_spread_angle_degrees, 0.0, 45.0)
+		maximum = clampf(weapon.max_spread_angle_degrees, minimum, 45.0)
+	else:
+		return base # 概率模式没有连续散布区间，不给中心命中概率增加姿态加成。
+	if maximum - minimum <= 0.00001: return base
+	var reduction := clampf(crouch_spread_reduction, 0.0, 0.99) if is_finite(crouch_spread_reduction) else 0.0
+	var crouched_maximum := maxf(minimum, maximum * (1.0 - reduction))
+	return 1.0 - (1.0 - base) * (crouched_maximum - minimum) / (maximum - minimum)
+
+
 ## 当前实际弹道半角；准星保留原圆形样式，仅用稳定度表现收拢。
 func get_spread_half_angle_degrees() -> float:
 	if weapon == null:
 		return 0.0
+	if weapon.fire_mode == WeaponData.FireMode.SHOTGUN:
+		var shotgun := weapon.get_shotgun_settings()
+		var extent := 0.0
+		for point in shotgun.get_pattern_points(): extent = maxf(extent, point.length())
+		return extent * shotgun.pattern_angle_degrees + shotgun.get_jitter_degrees(get_spread_stability())
 	var minimum: float = clampf(weapon.min_spread_angle_degrees, 0.0, 45.0)
 	var maximum: float = clampf(weapon.max_spread_angle_degrees, minimum, 45.0)
-	return lerpf(maximum, minimum, clampf(accuracy, 0.0, 1.0))
+	return lerpf(maximum, minimum, get_spread_stability())
 
 
 # 在整个锥内按立体角均匀取样，不再先判定是否直射中心。
@@ -532,15 +932,25 @@ func is_melee_active() -> bool:
 	return melee_phase != MeleePhase.READY
 
 
+func is_waiting_for_melee_stand() -> bool:
+	return _pending_melee_weapon != null
+
+
 func get_melee_progress() -> float:
 	if not is_melee_active(): return 0.0
 	return clampf(melee_elapsed / maxf(0.001, _melee_settings.windup + _melee_settings.recovery), 0.0, 1.0)
 
 
 func request_melee() -> bool:
-	if weapon == null or weapon.fire_mode == WeaponData.FireMode.MELEE or not weapon.melee_enabled or is_melee_active() or melee_cooldown > 0.0:
+	if weapon == null or weapon.fire_mode == WeaponData.FireMode.MELEE or not weapon.melee_enabled or is_melee_active() or is_waiting_for_melee_stand() or player.is_vaulting() or melee_cooldown > 0.0:
 		return false
 	if not can_combat() or player.is_in_dialogue or get_tree().paused: return false
+	if not is_finite(weapon.melee_stamina_cost) or weapon.melee_stamina_cost < 0.0 or player.stamina < weapon.melee_stamina_cost: return false
+	if player.crouch_amount > 0.0001:
+		if not player.can_stand(): return false
+		_pending_melee_weapon = weapon
+		_bind_melee_region()
+		return true
 	# 通过全部攻击资格后才扣体力；失败请求不会打断换弹或消耗冷却。
 	if not player.try_consume_stamina(weapon.melee_stamina_cost): return false
 	# 一次挥击固定配置；资源调参、切槽或动画长度都不能改变已开始的命中。
@@ -552,7 +962,10 @@ func request_melee() -> bool:
 		"recovery": maxf(0.0, weapon.melee_recovery_seconds),
 		"distance": maxf(0.0, weapon.melee_knockback_distance),
 		"duration": maxf(0.05, weapon.melee_knockback_seconds),
+		"effects": weapon.get_attack_effects(true),
 	}
+	# 只由玩家攻击附带；敌人使用同一武器也不会把破绽施加给玩家。
+	_melee_settings.effects["player_melee_stun"] = weapon.get_melee_stun_settings()
 	melee_direction = -player.global_basis.z
 	melee_direction.y = 0.0
 	melee_direction = melee_direction.normalized()
@@ -566,6 +979,13 @@ func request_melee() -> bool:
 	cancel_aim()
 	player.is_sprinting = false
 	player.current_speed = minf(player.current_speed, player.move_speed)
+	_bind_melee_region()
+	melee_count += 1
+	melee_started.emit()
+	return true
+
+
+func _bind_melee_region() -> void:
 	_melee_region = null
 	# 只绑定本次所在区域；其他靶场复位不会取消这次攻击。
 	for zone in get_tree().get_nodes_in_group("combat_zone"):
@@ -576,9 +996,6 @@ func request_melee() -> bool:
 				if not region.presentation_reset.is_connected(_on_melee_region_reset):
 					region.presentation_reset.connect(_on_melee_region_reset)
 				break
-	melee_count += 1
-	melee_started.emit()
-	return true
 
 
 func _advance_melee(delta: float) -> void:
@@ -586,6 +1003,13 @@ func _advance_melee(delta: float) -> void:
 	var elapsed := maxf(0.0, delta)
 	melee_cooldown = maxf(0.0, melee_cooldown - elapsed)
 	if is_zero_approx(melee_cooldown): melee_cooldown = 0.0
+	if is_waiting_for_melee_stand():
+		if weapon != _pending_melee_weapon or not can_combat() or player.is_in_dialogue or player.is_vaulting() or not player.can_stand() or player.stamina < weapon.melee_stamina_cost:
+			_pending_melee_weapon = null
+			return
+		if player.crouch_amount > 0.0001: return
+		_pending_melee_weapon = null
+		request_melee()
 	if not is_melee_active(): return
 	if not can_combat() or player.is_in_dialogue or weapon == null or weapon.fire_mode == WeaponData.FireMode.MELEE:
 		cancel_melee()
@@ -604,6 +1028,7 @@ func _advance_melee(delta: float) -> void:
 
 
 func cancel_melee() -> void:
+	_pending_melee_weapon = null
 	var was_active := is_melee_active()
 	melee_phase = MeleePhase.READY
 	melee_elapsed = 0.0
@@ -623,7 +1048,7 @@ func _on_melee_region_reset(region: Node) -> void:
 func _find_melee_target() -> Node3D:
 	var closest: Node3D
 	var nearest := INF
-	var origin: Vector3 = player.global_position + Vector3.UP * 0.8
+	var origin: Vector3 = player.get_torso_position()
 	var threshold: float = cos(deg_to_rad(_melee_settings.angle * 0.5))
 	for target in get_tree().get_nodes_in_group("combat_target"):
 		if not target is Node3D or not target.has_method("receive_hit") or target.is_queued_for_deletion(): continue
@@ -633,7 +1058,7 @@ func _find_melee_target() -> Node3D:
 		var distance := offset.length()
 		if distance > float(_melee_settings.range) or distance >= nearest: continue
 		if distance > 0.00001 and melee_direction.dot(offset / distance) < threshold: continue
-		var endpoint: Vector3 = target.global_position + Vector3.UP * 0.8
+		var endpoint: Vector3 = target.get_torso_position() if target.has_method("get_torso_position") else target.global_position + Vector3.UP * 0.8
 		var query := PhysicsRayQueryParameters3D.create(origin, endpoint, 1, [player.get_rid()])
 		query.hit_from_inside = true
 		var hit: Dictionary = player.get_world_3d().direct_space_state.intersect_ray(query)
@@ -650,7 +1075,8 @@ func _execute_player_melee() -> void:
 	if is_instance_valid(target):
 		if target.has_method("receive_melee_hit"):
 			target.receive_melee_hit(_melee_settings.damage, player.global_position,
-				_melee_settings.distance, _melee_settings.duration, melee_direction)
+				_melee_settings.distance, _melee_settings.duration, melee_direction,
+				_melee_settings.effects)
 		else:
 			# 固定训练靶沿用自身计数与生命规则，不改成可移动角色。
 			target.receive_hit(_melee_settings.damage, player.global_position)
@@ -668,7 +1094,7 @@ func _show_melee_slash() -> void:
 	add_child(effect)
 	effect.add_to_group("player_melee_effect")
 	# 子节点随 Combat 卸载，世界变换固定在实际出手位置。
-	effect.start(player.global_position + Vector3.UP * 0.85, melee_direction,
+	effect.start(player.get_torso_position(), melee_direction,
 		float(_melee_settings.range), float(_melee_settings.angle))
 
 
@@ -676,7 +1102,7 @@ func _update_status() -> void:
 	_apply_debug_mode(debug_settings.enabled)
 	var title: String = weapon.display_name if weapon != null else "未装备"
 	var target_name: String = str(locked_target.name) if is_instance_valid(locked_target) else "无"
-	var precision: String = "%d%%" % roundi(accuracy * 100.0)
+	var precision: String = "%d%%" % roundi(get_effective_accuracy() * 100.0)
 	var fire_hint: String = "按住左键连发" if weapon != null and weapon.fire_mode == WeaponData.FireMode.AUTOMATIC else "左键单发"
 	var hint: String = "右键瞄准 / " + fire_hint if can_combat() else "非战斗区域：请进入靶场"
 	var accuracy_label: String = "稳定度" if is_using_spread_cone() else "中心概率"

@@ -33,17 +33,20 @@ var selected_action: Action = Action.NONE
 var fire_score: float = 0.0
 var steady_score: float = 0.0
 var wait_seconds: float = 0.0
+var last_recovery_rate: float = 0.0
 
 ## recovery_rate 是本次真实恢复的稳定度/秒；close_pressure 为0～1的近身压力。
 ## 只比较分数，不读取隐藏玩家位置，不改变武器精度，也不直接执行开火。
-func choose_action(delta: float, stability: float, target: float, recovery_rate: float, close_pressure: float) -> Action:
+func choose_action(delta: float, stability: float, target: float, recovery_rate: float, close_pressure: float, support_pressure: float = 0.0) -> Action:
 	wait_seconds += maxf(0.0, delta)
+	last_recovery_rate = recovery_rate
 	var quality: float = clampf(stability / maxf(target, 0.0001), 0.0, 1.0) if target > 0.0 else 1.0
 	var recovery_benefit: float = clampf(recovery_rate / maxf(target, 0.0001), 0.0, 1.0)
 	# 不追求无限精度：达到目标后，继续等待的额外收益归零。
 	steady_score = 1.0 + recovery_benefit * (1.0 - quality) * maxf(0.0, recovery_gain_weight)
 	fire_score = quality + clampf(close_pressure, 0.0, 1.0) * maxf(0.0, close_range_weight)
 	fire_score += wait_seconds * maxf(0.05, wait_pressure_per_second)
+	fire_score += clampf(support_pressure, 0.0, 1.0)
 	selected_action = Action.FIRE if fire_score >= steady_score else Action.STEADY
 	return selected_action
 
@@ -56,3 +59,4 @@ func reset() -> void:
 	fire_score = 0.0
 	steady_score = 0.0
 	wait_seconds = 0.0
+	last_recovery_rate = 0.0

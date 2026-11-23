@@ -1,0 +1,159 @@
+# 相机绑定、武器视野与遮挡透明
+
+相机使用独立的 `scenes/player/player_camera_rig.tscn`，玩家使用 `scenes/player/player.tscn`。相机根节点 Camera3D 管理玩家引用、武器视野与透明效果，Phantom Camera 管理位置跟随。
+
+## 接入玩家与相机
+
+1. 在关卡中分别实例化玩家和相机场景，摆好 Player 出生位置。
+2. 在 Camera3D 的 **Player Path** 指向玩家；默认 `../Player` 只适用于同级且名为 Player 的节点。
+3. 保留一台活动相机；沿用项目输入映射、DebugSettings 与 PhantomCameraManager。地面、灯光和战斗区域由关卡提供。
+4. 在 Player → Equipment 指定武器；切枪通过 `Combat.weapon_changed` 通知相机，不在装备脚本中另建镜头控制。
+
+## 视野配置
+
+| 入口 | 用途 |
+| --- | --- |
+| 武器 → Aim Range | 同时决定锁定距离与正交相机视野；与子弹 Fire Range 分开 |
+| Camera3D → View Transition Seconds | 切枪后的视野过渡，默认0.25秒，0立即切换 |
+| Camera3D → Size | 空武器、无效范围或不适用投影时的回退值 |
+
+武器没有独立的相机视野分组。视野根据实际窗口比例、偏移和倾角计算，不扩大真实锁定／弹道射程。目标仍须在画面内并通过身体可见点与墙体视线检查；鼠标辅助遵循[当前锁定规则](COMBAT.md)。
+
+当前自动视野针对原正交俯视相机；极端偏移、多人分屏和跨楼层情形未完整验收。地面锚点过滤翻越抬升，物理插值与准星投影沿原显示流程。
+
+## 视野过渡与回退
+
+持枪即按锁定距离计算视野，不要求按住瞄准。出生直接应用初始装备；切枪平滑过渡，快速来回切换从当前大小接续。空武器、非正交投影、锁定距离非正数或非有限值时回到场景原 Size。相机过渡时间为非有限值时沿用0.25秒，负值按0处理。暂停冻结过渡，死亡沿用原暂停，重开重新读取初始装备。武器资源不保存相机大小、相机开关或过渡参数。
+
+当前 `PhantomCamera3D` 的 `Camera3D Resource` 留空，由插件控制跟随位置、由 `Camera3D` 脚本控制 Size。不要同时给 Phantom Camera 配置另一套镜头覆盖；剧情演出统一走 SceneDirector 的 `CinematicCameraController`，不修改插件源码或原 `Follow Offset`。
+
+## 剧情演出 Shot
+
+SceneDirector 场景已带唯一的 `CinematicCameraController` 执行器，其子节点 `PresentationCamera` 只在播放时成为活动相机。作者镜头放在可见的 `CinematicShots` 容器下，每个镜头实例化 `scenes/cinematic/cinematic_shot_3d.tscn`。Wave 和 SceneFlowAction 只引用 Shot，不直接移动 `PresentationCamera`。
+
+```text
+SceneDirector
+├─ CinematicCameraController
+│  └─ PresentationCamera
+├─ CinematicShots
+│  └─ BossEntranceShot        CinematicShot3D
+└─ Wave1 / Wave2 / Scene Rules
+```
+
+控制器同一时刻只接受一个 Shot。已有镜头播放时，新请求返回 `busy`；不替换、不排队，也不会自动播放“下一条”。普通暂停菜单或非对话管理控制仍持有时拒绝剧本／Debug Shot；前台为对话时也只允许镜头作为背景执行，若已有商店、引导、手摆演出等非对话前台排队，镜头同样返回 `busy`。已排队前台在真正启动前会再次核对镜头状态，不会在镜头占用相机时补开。`completed`、`cancelled`、`busy`、`invalid_shot`、`no_source_camera`、`camera_lost`、`source_lost` 和 `failed` 是公开结果。Debug 面板会显示阶段、`pause_world` 和最近结果。
+
+### Shot 字段
+
+| 字段 | 作用 |
+| --- | --- |
+| `enter_seconds` / `hold_seconds` / `return_seconds` | ENTER、HOLD、RETURN 的独立时长；0 表示该阶段瞬时完成 |
+| 相机 Transform | 自由机位位置与朝向；不修改原玩家相机 |
+| `projection`、`keep_aspect`、`size`、`fov` | 正交 Size 或透视 FOV；切换属性在切入时确定 |
+| `h_offset`、`v_offset`、`frustum_offset`、`near`、`far`、`cull_mask` | 与机位一起插值或切入复制 |
+| `environment`、`attributes`、`compositor` | 只读引用，不从源相机写入，也不反向修改玩家资源 |
+| `pause_world` | 默认开启；只在本次 Shot 持有 SceneDirector 的 `cinematic_shot` 暂停令牌 |
+| `transition_easing` | LINEAR、SMOOTH、EASE_IN、EASE_OUT、EASE_IN_OUT |
+| `shake_enabled` | 开启确定性局部抖动 |
+| `shake_position_amplitude` / `shake_rotation_degrees` | Shot 局部空间中的最大位置和旋转幅度 |
+| `shake_frequency`、`shake_fade_in_seconds`、`shake_fade_out_seconds` | 噪声频率（检查器最小值0.01）与 ENTER／RETURN 包络；渐入／渐出不会超过对应阶段时长 |
+| `shake_seed` | 固定切片与截图复现；相同 seed、阶段和时间得到相同偏移 |
+
+### 阶段、返回边界与抖动
+
+1. **ENTER** 从玩家当前实际可见画面切入，并移向 Shot 机位及镜头参数。
+2. **HOLD** 固定在作者机位。抖动只叠加在运行中的 `PresentationCamera` 上，不写 Shot、玩家相机或共享资源。
+3. **RETURN** 持续读取玩家最新 Transform、武器视野和遮挡焦点，结束后再切回源相机。
+
+抖动位置与旋转都使用 Shot 局部基，seed 固定；噪声源使用单位频率，作者 `shake_frequency` 只应用一次。渐入／渐出按 ENTER／RETURN 实际时长截断，返回完成时幅度为0。遮罩资源只被引用。`pause_world=false` 时若玩家仍在移动，遮挡焦点也会随玩家更新，并在 RETURN 重读最新位置。镜头中途死亡、加载、区域复位、控制器卸载、玩家相机删除／失效、活动 Shot 删除或外部相机接管都会停止采样并清理。外部系统已经取得的相机不会被旧镜头抢回。
+
+### 暂停、对话与鼠标
+
+生产对话请求会占用 SceneDirector 前台并锁住玩家，但 `SceneInteractionExecutor` 使用 `hold_request_controls(request, false, true)`，不会暂停世界。因此对话＋Shot 会话中，`pause_world=true` 的 Shot 是唯一的真实世界暂停；镜头结束会恢复世界，同时对话仍在运行且玩家仍锁定。`pause_world=false` 时即使对话仍在进行，世界也不暂停。镜头与对话可以任意顺序结束，但不要为对话额外制造世界暂停令牌。死亡或加载仍会取消 Shot；Shot 播放时普通暂停菜单不会叠开，菜单或非对话管理控制先占用时剧本／Debug Shot 也不得反向切入。
+
+控制器切入前先验证 Shot、直接快照和当前源相机，再创建 SceneRequest、取得暂停并切换相机。直接 `play_shot()` 的请求明确为 SCENE scope；Wave 镜头是 REGION scope；`PLAY_CINEMATIC_SHOT` 继承所属规则 scope。区域复位只取消本站区域的 REGION 镜头，SCENE 镜头继续并按自身结束路径恢复。任一步失败都会在取得相机或遮挡租约前返回，且不会泄漏暂停。取消统一走 `cancel_shot()`，死亡、切场、区域复位和卸载不另写一套恢复逻辑。
+
+### 玩家相机边界
+
+- 玩家 Camera3D 仍是 Phantom Camera 的跟随宿主，武器 `Aim Range`、视野过渡和遮挡透明继续由原组件负责。
+- 演出只复制运行画面所需的 Transform、投影和镜头参数；不把 `PresentationCamera` 变成玩家跟随器。
+- `PresentationCamera` 提供只读、单调递增的 `presentation_activation_count`；每次 `start_presentation()`／`start_cinematic_shot()` 实际执行 `make_current()` 后立即加一。该计数器不触发回调，也不改变相机所有权或时序，验证可比较失败窗口前后的值来捕获同一调用内随即恢复的短暂接管。
+- 玩家相机不是当前相机、跨 Viewport、离树或删除时，演出结束为 `camera_lost`／`source_lost`，不伪造源画面。
+- 旧式 Wave Marker 演出继续兼容；Wave 同时配置新 `Cinematic Shot Path` 时，新 Shot 优先且旧配置不重复播放。
+
+### Debug 面板与验证
+
+DebugSettings 开启且运行 Debug 构建时，`CinematicCameraDebug` 枚举当前场景 `cinematic_shot` 组的 Shot，可播放和取消。面板只调用控制器公开接口；场景 A 替换为 B 或 Debug 关闭时会清理旧控制器、Shot 引用和显示状态，不持有相机或暂停。
+
+专项入口为 `cinematic_shot_test`、`cinematic_camera_test`、`cinematic_controller_test`、`cinematic_wave_trigger_test`、`cinematic_debug_test` 和 `cinematic_interruption_test`。真实渲染分支：
+
+```bash
+/Applications/Godot.app/Contents/MacOS/Godot --path movement_demo \
+  --script res://tests/cinematic_interruption_test.gd -- --capture
+```
+
+截图保存到 `movement_demo/logs/cinematic-camera-capture/`，不提交。当前证据包含玩家原画面、自由机位、正交缩放、确定性抖动中点和返回画面；最终数量与失败出生夹具的稳定基线说明见[测试说明](../testing.md)。
+
+### 酒馆开场测试
+
+`Main/OpeningCinematicDemo` 是一个默认开启的一次性开场测试。首次进入酒馆时先锁住玩家并显示全黑遮罩，0.8秒渐亮；随后从玩家相机当前画面中心对应的真实地面焦点出发，沿当前朝向前移2秒到任务 NPC A 的地面锚点，停留1秒，再用1秒返回玩家最新画面。镜头使用 `pause_world=true`，完成后隐藏遮罩并解除玩家锁定。
+
+是否播放由 `GameState.opening_cinematic_played` 在本次运行内记录。返回酒馆重新加载 Main 时只隐藏演示、不再次锁定相机；重新启动游戏会重新播放。自动脚本测试默认跳过该演示，`opening_cinematic_demo_test` 会显式开启并缩短时长，验证黑场、ENTER/HOLD/RETURN、NPC 居中、返回最新玩家画面及第二次酒馆入场跳过。
+
+## 独立演出相机与手动目标
+
+SceneDirector的Wave“出场镜头”可选择Marker3D或现有Node3D作为画面中心，并配置移过去、停留、返回时间。缺少绑定时诊断并跳过，不自动替用户选敌人中心。详细摆放和路径见[场景调度教程](SCENE_DIRECTOR.md#三手摆目标展示真实增援)。
+
+旧式专用 `presentation_camera.tscn` 初始非当前，默认首次展示时由入口创建同级内部实例，也可手动绑定。新场景优先使用上面的 CinematicShot3D；旧 Wave 配置保留兼容执行。它复制原相机实际可见transform、投影、Size/FOV、偏移、裁剪、环境等参数后切入，保持俯视倾角并移动；返回时对齐玩家最新画面再切回。原Phantom绑定不变，也不复制整个玩家相机子树。
+
+树暂停期间，演出只由场景核心显式advance推进。返回前由相机侧有限同步锚点/Host/武器视野，不短暂恢复战斗；遮挡辅助通过原相机适配器交接，不能两套缓存争写材质。原相机失效或其他相机接管时取消旧演出，不抢回显示。镜头看到敌人不构成AI感知证据。
+
+`presentation_camera_test`覆盖参数/像素交接、返回、取消和真实Phantom；`scene_reinforcement_test`验证真实生成后的冻结与恢复。已有原玩家相机/遮挡专项继续保留。
+
+## 遮挡透明参数与支持范围
+
+在 `Camera3D → 遮挡透明` 调整：
+
+| 参数 | 当前初值 | 用途 |
+| --- | --- | --- |
+| Occlusion Enabled | 开启 | 关闭时立即恢复原材质 |
+| Occluded Opacity | 0.25 | 遮挡时保留25%不透明度；0完全透明，1恢复原外观 |
+| Occlusion Fade Seconds | 0.2秒 | 淡出／恢复用时；0立即切换 |
+| Occlusion Mask | 3D显示第1层 | 筛选标记装饰物的 VisualInstance3D Layers，同时受相机 Cull Mask 限制；不使用物理层 |
+
+只有明确加入 **`camera_fadeable`** 分组的模型或专用装饰容器参与透明检测。在编辑器选中天花板／方块的 `MeshInstance3D`，通过 **节点 → 分组** 添加该组即可；也可以标记只包含相关装饰的父节点，其可见子模型和 Presentation 内部模型一并参与。无需添加脚本或碰撞体，不要把整个地图根节点加入该组。未标记的墙体、地面、装饰物保持原外观。
+
+现有高、低掩体沿用 `cover_region` 分组保护，角色沿用 `CharacterBody3D` 类型排除；即使误把这些节点或内部模型加入透明组，也不会淡出。**`camera_occlusion_ignore`** 可排除某个装饰分支，祖先节点的排除优先于子节点的透明标记。隐藏的旧占位 Mesh 不参与。
+
+检测沿相机实际投影检查头部、躯干、左右肩和下身，读取角色当前身高，因此适用于蹲伏及翻越。正交相机使用平行投影线段，逐个检查标记模型的局部包围盒和实际三角形表面，支持旋转、缩放、镂空及多重遮挡。使用 Godot 的 [TriangleMesh 线段查询](https://docs.godotengine.org/en/stable/classes/class_trianglemesh.html)，不依赖物理射线或新建碰撞。因此没有碰撞体的纯装饰方块也能使用；仅处于相机到角色之间且真正遮挡采样点时渐隐。
+
+支持 Godot 的 `StandardMaterial3D`、`ORMMaterial3D` 以及这些材质的 Next Pass。当前 Compatibility 渲染器忽略网格的 `transparency` 属性，因此使用每个 Mesh 独立的材质副本，开启 Alpha 透明并渐变。原网格、共享材质、材质纹理、碰撞和导航资源不被修改。遮挡解除后恢复原材质引用；关闭功能、相机失去激活状态或退出场景也会恢复。暂停冻结淡入淡出，对话中仍保持遮挡检测。
+
+自定义 `ShaderMaterial` 不能通用地注入透明度，本版保留其原表现并首次提示；接入这类美术时需提供明确的淡出参数适配，或用上述分组排除。几何查询针对静态 Mesh 表面，不跟踪骨骼、混合形状或着色器的顶点变形。透明材质可能有叠层排序和阴影差异，正式美术接入后应检查实际画面。
+
+视觉透明不改变实体遮挡：若标记的装饰本身带有碰撞，其碰撞仍然有效；敌人仍按原物理视线判定。不能利用相机透明作为角色已看到敌人的逻辑依据。
+
+## 遮挡示例
+
+运行 `scenes/main.tscn`，出生点左前方有蓝灰色天花板、橙色悬挂方块和地面文字。走到天花板下方，它会渐隐；移到悬挂方块下方，方块渐隐、天花板恢复；离开测试区后两者恢复。现有高、低掩体始终保持不透明。
+
+场景树入口为 `Main → CameraOcclusionDemo`，复用场景 `scenes/world/camera_occlusion_demo.tscn`。只有 `Ceiling` 与 `HangingBlock` 标记了透明组，地面标记不参与。测试物体均为纯视觉节点，不增加物理身体或导航几何，不需要重新烘焙导航。可以在编辑器调整实例位置，或隐藏该实例结束试玩。
+
+## 文件与验证
+
+`player_camera.gd` 是相机根脚本，订阅装备信号并控制 Size；`camera_occlusion.gd` 是私有几何／材质辅助，不参与伤害与 AI。CameraGroundAnchor 共用 Player Path，不保留第二份玩家配置。
+
+`player_camera_test` 检查视野、切枪、过渡及回退，`player_scene_reuse_test` 检查保存与独立复用，`camera_occlusion_test` 检查标记、材质隔离和还原。正式模型、自定义 Shader 与真实设备仍需画面验证；完整历史结果见记录，统一入口见[测试说明](../testing.md)。
+
+## 历史记录
+
+早期配置、实施过程及当时的验证结果保存在[整理前记录](../history/2026-10-28/gameplay/CAMERA.md)。历史通过数不代表当前本地配置已重新验证。
+
+## 旧章节引用
+
+<a id="当前用法锁定距离带动视野2026-10-25"></a>
+
+当前用法：锁定距离带动视野（2026-10-25）：[整理前对应章节](../history/2026-10-28/gameplay/CAMERA.md#当前用法锁定距离带动视野2026-10-25)。
+
+<a id="玩家与相机分场景复用2026-10-24"></a>
+
+玩家与相机分场景复用（2026-10-24）：[整理前对应章节](../history/2026-10-28/gameplay/CAMERA.md#玩家与相机分场景复用2026-10-24)。

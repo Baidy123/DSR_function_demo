@@ -1,0 +1,261 @@
+[gd_scene load_steps=5 format=3]
+
+[ext_resource type="Script" path="res://scripts/ui/pause_menu.gd" id="1_menu"]
+[ext_resource type="PackedScene" path="res://scenes/ui/play_guide.tscn" id="2_guide"]
+
+[sub_resource type="StyleBoxFlat" id="PanelStyle"]
+bg_color = Color(0.045, 0.065, 0.085, 0.98)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.35, 0.65, 0.72, 0.8)
+corner_radius_top_left = 12
+corner_radius_top_right = 12
+corner_radius_bottom_left = 12
+corner_radius_bottom_right = 12
+content_margin_left = 28.0
+content_margin_top = 24.0
+content_margin_right = 28.0
+content_margin_bottom = 24.0
+
+[sub_resource type="StyleBoxFlat" id="ButtonStyle"]
+bg_color = Color(0.13, 0.32, 0.39, 1)
+corner_radius_top_left = 6
+corner_radius_top_right = 6
+corner_radius_bottom_left = 6
+corner_radius_bottom_right = 6
+content_margin_top = 12.0
+content_margin_bottom = 12.0
+
+[node name="PauseMenu" type="CanvasLayer"]
+process_mode = 3
+layer = 110
+script = ExtResource("1_menu")
+
+[node name="Backdrop" type="ColorRect" parent="."]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+color = Color(0.015, 0.025, 0.04, 0.76)
+
+[node name="Center" type="CenterContainer" parent="Backdrop"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="Panel" type="PanelContainer" parent="Backdrop/Center"]
+custom_minimum_size = Vector2(420, 0)
+layout_mode = 2
+theme_override_styles/panel = SubResource("PanelStyle")
+
+[node name="Content" type="VBoxContainer" parent="Backdrop/Center/Panel"]
+layout_mode = 2
+theme_override_constants/separation = 20
+
+[node name="Title" type="Label" parent="Backdrop/Center/Panel/Content"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.88, 0.96, 1, 1)
+theme_override_font_sizes/font_size = 28
+text = "游戏暂停"
+horizontal_alignment = 1
+
+[node name="Main" type="VBoxContainer" parent="Backdrop/Center/Panel/Content"]
+layout_mode = 2
+theme_override_constants/separation = 12
+
+[node name="Resume" type="Button" parent="Backdrop/Center/Panel/Content/Main"]
+layout_mode = 2
+mouse_default_cursor_shape = 2
+theme_override_font_sizes/font_size = 20
+theme_override_styles/normal = SubResource("ButtonStyle")
+text = "继续游戏"
+
+[node name="Settings" type="Button" parent="Backdrop/Center/Panel/Content/Main"]
+layout_mode = 2
+mouse_default_cursor_shape = 2
+theme_override_font_sizes/font_size = 20
+theme_override_styles/normal = SubResource("ButtonStyle")
+text = "设置"
+
+[node name="Exit" type="Button" parent="Backdrop/Center/Panel/Content/Main"]
+layout_mode = 2
+mouse_default_cursor_shape = 2
+theme_override_font_sizes/font_size = 20
+theme_override_styles/normal = SubResource("ButtonStyle")
+text = "退出游戏"
+
+[node name="Settings" type="VBoxContainer" parent="Backdrop/Center/Panel/Content"]
+visible = false
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="Categories" type="TabContainer" parent="Backdrop/Center/Panel/Content/Settings"]
+custom_minimum_size = Vector2(0, 118)
+layout_mode = 2
+
+[node name="BasicSettings" type="VBoxContainer" parent="Backdrop/Center/Panel/Content/Settings/Categories"]
+layout_mode = 2
+theme_override_constants/separation = 6
+
+[node name="WindowModeRow" type="HBoxContainer" parent="Backdrop/Center/Panel/Content/Settings/Categories/BasicSettings"]
+layout_mode = 2
+
+[node name="Label" type="Label" parent="Backdrop/Center/Panel/Content/Settings/Categories/BasicSettings/WindowModeRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_font_sizes/font_size = 16
+text = "窗口模式"
+
+[node name="WindowMode" type="OptionButton" parent="Backdrop/Center/Panel/Content/Settings/Categories/BasicSettings/WindowModeRow"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 16
+item_count = 3
+popup/item_0/text = "窗口"
+popup/item_0/id = 0
+popup/item_1/text = "无边框全屏"
+popup/item_1/id = 1
+popup/item_2/text = "独占全屏"
+popup/item_2/id = 2
+
+[node name="ResolutionRow" type="HBoxContainer" parent="Backdrop/Center/Panel/Content/Settings/Categories/BasicSettings"]
+layout_mode = 2
+
+[node name="Label" type="Label" parent="Backdrop/Center/Panel/Content/Settings/Categories/BasicSettings/ResolutionRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_font_sizes/font_size = 16
+text = "分辨率"
+
+[node name="Resolution" type="OptionButton" parent="Backdrop/Center/Panel/Content/Settings/Categories/BasicSettings/ResolutionRow"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 16
+item_count = 3
+popup/item_0/text = "1280×720"
+popup/item_0/id = 0
+popup/item_1/text = "1600×900"
+popup/item_1/id = 1
+popup/item_2/text = "1920×1080"
+popup/item_2/id = 2
+
+[node name="VSyncRow" type="HBoxContainer" parent="Backdrop/Center/Panel/Content/Settings/Categories/BasicSettings"]
+layout_mode = 2
+
+[node name="Label" type="Label" parent="Backdrop/Center/Panel/Content/Settings/Categories/BasicSettings/VSyncRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_font_sizes/font_size = 16
+text = "垂直同步"
+
+[node name="VSync" type="CheckButton" parent="Backdrop/Center/Panel/Content/Settings/Categories/BasicSettings/VSyncRow"]
+layout_mode = 2
+button_pressed = true
+theme_override_font_sizes/font_size = 16
+text = "开启"
+
+[node name="CombatSettings" type="VBoxContainer" parent="Backdrop/Center/Panel/Content/Settings/Categories"]
+visible = false
+layout_mode = 2
+theme_override_constants/separation = 6
+
+[node name="MouseAssistRow" type="HBoxContainer" parent="Backdrop/Center/Panel/Content/Settings/Categories/CombatSettings"]
+layout_mode = 2
+
+[node name="Label" type="Label" parent="Backdrop/Center/Panel/Content/Settings/Categories/CombatSettings/MouseAssistRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_font_sizes/font_size = 16
+text = "鼠标辅助锁定"
+
+[node name="MouseAssist" type="CheckButton" parent="Backdrop/Center/Panel/Content/Settings/Categories/CombatSettings/MouseAssistRow"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 16
+text = "开启"
+
+[node name="SensitivityRow" type="HBoxContainer" parent="Backdrop/Center/Panel/Content/Settings/Categories/CombatSettings"]
+layout_mode = 2
+
+[node name="Label" type="Label" parent="Backdrop/Center/Panel/Content/Settings/Categories/CombatSettings/SensitivityRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_font_sizes/font_size = 16
+text = "换锁灵敏度"
+
+[node name="Sensitivity" type="OptionButton" parent="Backdrop/Center/Panel/Content/Settings/Categories/CombatSettings/SensitivityRow"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 16
+item_count = 3
+selected = 1
+popup/item_0/text = "低"
+popup/item_0/id = 0
+popup/item_1/text = "标准"
+popup/item_1/id = 1
+popup/item_2/text = "高"
+popup/item_2/id = 2
+
+[node name="Guide" type="Button" parent="Backdrop/Center/Panel/Content/Settings"]
+layout_mode = 2
+mouse_default_cursor_shape = 2
+theme_override_font_sizes/font_size = 18
+theme_override_styles/normal = SubResource("ButtonStyle")
+text = "操作说明"
+
+[node name="Notice" type="Label" parent="Backdrop/Center/Panel/Content/Settings"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.6, 0.7, 0.75, 1)
+theme_override_font_sizes/font_size = 14
+text = "设置已保存"
+horizontal_alignment = 1
+
+[node name="SaveSettings" type="Button" parent="Backdrop/Center/Panel/Content/Settings"]
+layout_mode = 2
+mouse_default_cursor_shape = 2
+theme_override_font_sizes/font_size = 18
+theme_override_styles/normal = SubResource("ButtonStyle")
+text = "保存设置"
+
+[node name="RestoreDefaults" type="Button" parent="Backdrop/Center/Panel/Content/Settings"]
+layout_mode = 2
+mouse_default_cursor_shape = 2
+theme_override_font_sizes/font_size = 18
+theme_override_styles/normal = SubResource("ButtonStyle")
+text = "恢复默认设置"
+
+[node name="Back" type="Button" parent="Backdrop/Center/Panel/Content/Settings"]
+layout_mode = 2
+mouse_default_cursor_shape = 2
+theme_override_font_sizes/font_size = 18
+theme_override_styles/normal = SubResource("ButtonStyle")
+text = "返回"
+
+[node name="Quit" type="VBoxContainer" parent="Backdrop/Center/Panel/Content"]
+visible = false
+layout_mode = 2
+theme_override_constants/separation = 12
+
+[node name="Message" type="Label" parent="Backdrop/Center/Panel/Content/Quit"]
+layout_mode = 2
+text = "本次运行的进度不会保存。\n确定退出游戏？"
+horizontal_alignment = 1
+
+[node name="Cancel" type="Button" parent="Backdrop/Center/Panel/Content/Quit"]
+layout_mode = 2
+mouse_default_cursor_shape = 2
+theme_override_font_sizes/font_size = 20
+theme_override_styles/normal = SubResource("ButtonStyle")
+text = "取消"
+
+[node name="Confirm" type="Button" parent="Backdrop/Center/Panel/Content/Quit"]
+layout_mode = 2
+mouse_default_cursor_shape = 2
+theme_override_font_sizes/font_size = 20
+theme_override_styles/normal = SubResource("ButtonStyle")
+text = "确认退出"
+
+[node name="PlayGuide" parent="." instance=ExtResource("2_guide")]
+layer = 111

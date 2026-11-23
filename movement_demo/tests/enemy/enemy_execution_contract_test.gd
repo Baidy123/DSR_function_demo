@@ -11,10 +11,10 @@ func _initialize() -> void:
 	_run.call_deferred()
 
 func _run() -> void:
-	var scene = load("res://scenes/main.tscn").instantiate()
+	var scene = preload("res://tests/enemy/enemy_fire_fixture.gd").unbound_scene()
 	root.add_child(scene)
 	current_scene = scene
-	var actor = scene.get_node("Arena/Enemy")
+	var actor = preload("res://tests/enemy/enemy_fire_fixture.gd").primary_enemy(scene)
 	var ai = actor.get_node("AI")
 	var player = scene.get_node("Player")
 	ai.set_physics_process(false)
@@ -66,7 +66,7 @@ func _run() -> void:
 		check(actor.can_move() and actor.can_turn() and actor.can_reload() and actor.melee_cooldown == cooldown, "取消恢复执行许可但不清空近战冷却")
 		actor.melee_cooldown = 0.0
 		actor.begin_melee(0.5)
-		actor.receive_melee_hit(0.0, actor.global_position - Vector3.RIGHT, 0.5, 0.2)
+		actor.receive_melee_hit(0.0, actor.global_position - Vector3.RIGHT, 0.5, 0.2, Vector3.FORWARD, {"melee": true, "hit_accuracy_loss": 1.0})
 		start = actor.global_position
 		actor.move_character(Vector3.ZERO, 0.05)
 		check(not actor.can_move() and actor.global_position.x > start.x, "前摇限制自主移动，不阻止真实受击推移")

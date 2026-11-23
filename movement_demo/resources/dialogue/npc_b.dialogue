@@ -1,8 +1,31 @@
 ~ start
-if GameState.help_choice == "accepted"
-	B: 听说你答应帮忙了，谢谢。
-elif GameState.help_choice == "refused"
-	B: 听说你拒绝帮忙了，我知道了。
-else
-	B: 你先去找 A。
+if GameState.music_quest_turnin == "done"
+	B: 音乐真好听，谢谢你。
+	=> END
+if GameState.music_quest_choice == "accepted"
+	if GameState.music_playing == true
+		B: 我听到音乐了。
+		- 交差
+			$> GameState.music_quest_turnin = "done"
+			B: 谢谢你，总算有点声音了。
+		- 再等等
+			=> END
+	else
+		B: 唱片机还是没响呢。
+	=> END
+if GameState.music_quest_choice == "refused"
+	B: 想通了再找我。
+	- 我改主意了
+		$> GameState.music_quest_choice = "accepted"
+		B: 太好了，它就在房间东南角。
+	- 回头再说
+		=> END
+	=> END
+B: 房间东南角那台唱片机很久没响了，能帮我打开它吗？
+- 我去打开
+	$> GameState.music_quest_choice = "accepted"
+	B: 太好了，它就在房间东南角。
+- 现在不行
+	$> GameState.music_quest_choice = "refused"
+	B: 好吧。
 => END

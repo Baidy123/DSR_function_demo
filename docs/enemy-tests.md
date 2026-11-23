@@ -1,73 +1,247 @@
 # 敌人测试与诊断
 
-此目录集中保存敌人验证脚本、测试辅助和运行器；游戏主场景不加载这里的测试。运行代码说明见 [敌人模块化 AI](enemy-ai.md)。
+场景统一调度的波次验证：enemy_wave_events_test 覆盖三种出场模式撤销／恢复许可；scene_reinforcement_test 覆盖对话结束后的单次增援与镜头屏障。旧 enemy_wave_test 在“生成第一关第二波并模拟清敌后，等待控制器变成 COMPLETED”这一步未满足断言；任务开始前也有同样输出。这里只确认自动检查没有通过，尚未确定根因，不能据此认定实际游戏清场正常或异常；也没有为了让断言通过而修改敌人数值。真实五关清场返程专项另有通过记录，两种验证的失败和成功分别保留。
 
-## 当前回归
+本页说明当前验证入口、覆盖层次与需要保留的失败边界。全部旧用例结果、对照过程、日志位置和未完成项保存在[截至2026-10-28的历史记录](history/2026-10-28/enemy-tests.md)。历史通过数只描述当时代码、场景和夹具，不能视为当前工程全绿。
 
-2026-09-30 玩家近战初次接入后完整敌人回归35/35通过，记录见 [玩家阶段](superpowers/plans/2026-09-30-player-melee.md)。随后用户授权远程敌人阶段，新增 `enemy_melee_execution_test.gd`（24项）和 `enemy_melee_utility_test.gd`，完整敌人回归37/37通过。层级纠正后 Utility 专项扩展为15项，验证现有接敌的 `engage / melee` 方案、实际推开和退让接续、同一行为内方案区分与中断边界、武器关闭近战、兵种装配隔离；不新增独立挥击行为。执行专项继续验证独立执行、动画同步与生命周期。玩家侧另有 `tests/player_enemy_melee_hit_test.gd`（15项），验证两种准度模式、切枪、30／60／120 Hz 物理击退、瞄准切换和墙体阻挡。见 [远程敌人接入记录](superpowers/plans/2026-09-30-ranged-enemy-melee.md)。
+本次整理仅对照文档、代码、资源及测试登记，没有重新运行Godot或完整回归。当前功能与结构见[敌人AI](enemy-ai.md)，全项目测试入口见[项目目录](project-layout.md)。
 
-2026-09-30 增加 [表现接口验证](gameplay/PRESENTATION.md#维护与验证)。`utility_budget_test` 和 `attack_point_validation_test` 现在只在运行实例中明确启用其测试所需的攻击占位，避免依赖用户当前的训练勾选；不改保存的训练资源。涉及20毫秒预算的测试应避免与资源导入等高负载任务并行。
+## 选择和运行测试
 
-近战层级纠正后完整敌人回归再次37/37通过，基础执行24/24、Utility 近战15/15。默认行为仍为原4个，训练与战术目录没有增加挥击；协调器、选择器和统一评分公式沿用原实现。
-
-在仓库根目录运行：
+以下命令从仓库根目录运行。将Godot路径换成本机实际console可执行文件；不要自动下载或换引擎版本来掩盖差异。
 
 ```powershell
-python movement_demo/tests/enemy/run_enemy_regressions.py --godot E:/Godot/Godot_v4.7.2-stable_win64_console.exe
+python movement_demo/tests/run_regressions.py --list
+python movement_demo/tests/run_regressions.py --check
+python movement_demo/tests/enemy/run_enemy_regressions.py --godot "C:\Godot\Godot_console.exe" enemy_probability_test enemy_offscreen_fire_test
+python movement_demo/tests/run_combat_regressions.py --godot "C:\Godot\Godot_console.exe" directional_tracking_test
 ```
 
-运行器 `TESTS` 列出当前 41 套正式回归。末尾可指定测试名（不含 `.gd`）。日志固定写入 `movement_demo/logs/enemy_regressions/`，同名结果覆盖。
-
-Fire Mode 近战武器新增 `enemy_melee_weapon_test`，26/26 项通过：验证原单发／自动编号、新武器保存重载、无弹药／换弹、近战兵自主接近并连续实际命中、伤害／准度／击退、短武器距离、关闭近战，以及玩家／远程兵拒绝装备、出生错误配置和切换兵种取消未完成攻击。测试只配置现有兵种和武器，不直接选中近战行为来代替自主攻击验证。
-
-武器模式面板专项：`--headless --editor --path movement_demo --script res://tests/weapon_fire_mode_inspector_test.gd`。2026-09-30 用户报告已打开的编辑器切换近战后仍显示远程字段；现场确认模式为2、插件隐藏规则有效，但旧资源实例的 setter 未发出刷新通知。原7项测试通过不足以覆盖此情况。现扩展为14项，通过真实下拉框验证直接资源与敌人内嵌 Weapon、即时通知缺失、切回枪械、原生撤销／重做及数值保留。新增用例在修复前失败，检查器增加延迟刷新后14/14通过；当前用户编辑器也已确认远程字段隐藏。和现有编辑器专项一样，退出时的 RID／资源占用提示单独记录，不等于运行时回归出错。
-
-Fire Mode 阶段（`41edf9d`）本地工作区完整敌人回归41/41、玩家战斗回归14/14通过。当时工作区包含另行保留的共享压制参数修改；该提交不包含这些修改及其专项，提交副本另外验证依赖完整性和相关行为，不能将它们混写为新增近战功能。
-
-按暂存区导出的独立提交副本首次导入通过，无脚本／资源错误；敌人相关回归7/7（近战武器、基础执行、Utility 请求、持续追近、执行契约、模块协议、原武器）和玩家战斗完整回归14/14通过。该副本未带入上述本地压制改动与用户武器／训练配置，用于确认提交内容可独立运行。
-
-基础执行接口整理新增 `enemy_execution_contract_test`（16项）和 `enemy_shared_geometry_settings_test`（7项）。前者验证直接调用身体与新行为同帧提交冲突意图时，前摇仍不能移动／转向／开火／换弹，收招退让限速、受击外力、取消冷却及表现快照隔离正常，并检查接敌不读取近战阶段枚举。后者验证 Selection 共享推断距离的保存重载、两种压制共同使用该值，以及完全移除出口动作和配置资源后普通压制的评分不变。两项在修改前均失败，接口与配置调整后通过。
-
-2026-09-30 执行接口阶段合并前完整敌人回归 **40/40** 通过；运行时专项 P99 为 `5.059 ms`、最大 `6.263 ms`，空间预算专项 `365/365` 通过，保留原性能门槛。另运行玩家近战功能、近战物理、承受敌人近战，以及表现接口、移动兼容、区域复位共 **6/6** 套相关回归，均通过。这些是自动化结果，不代表已完成手感试玩；运行器沿用已记录的系统证书读取告警过滤，不过滤脚本、资源或断言错误。
-
-2026-09-30 两轮修改完成后，以 `222fef8` 加本次共享压制参数与测试修改建立独立提交副本，排除用户本地的武器、训练和试玩场景调参，进行统一验收。完整敌人回归首次 **40/41**：`utility_score_test` 未显式启用它要检查的普通压制，依赖了本地训练勾选。测试现通过公共辅助装配该战术，保留全部断言，单独复测 **26/26** 项通过；结合首次结果，当前 **41/41** 套均验证通过。玩家战斗完整 **14/14**、表现接口／移动兼容／区域复位 **3/3** 通过。运行时专项 P99 为 `5.275 ms`、最大 `6.375 ms`，空间预算专项 **365/365** 通过，未放宽性能门槛。动作装配器、选择器与统一评分脚本仍与原模块化重构提交 `f24dbae` 一致。
-
-该副本首次资源导入完成；编辑器退出时，沙箱阻止写入全局用户配置，出现 Dialogue Manager 配置保存及编辑器设置保存错误，与游戏回归分开记录。用户当前试玩配置另做90帧无窗口启动检查，退出码为0，无脚本／资源错误。系统证书读取告警仍按运行器既有规则处理，未新增过滤。首次失败、修正后复测与最终汇总保留在本地 `movement_demo/logs/execution_merge_validation_20260930_215119/`，日志不提交。
-
-`enemy_melee_approach_test` 覆盖正常交战后玩家持续追近：保留场景武器、训练和掩体，先推进一秒交战使退路候选就绪，再驱动六秒实际玩家移动。不手动选中近战，也不堵住退路。5项检查包含进入有效范围、自主出手、命中击退、收招退让和前摇／开火互斥；该场景在修复前出现合法近战长期未被选中的失败，修复后通过。
-
-此前正常追近修复后完整敌人回归38/38通过，追近5/5、基础近战执行24/24、Utility 近战15/15；保留原有装配、射击、退让与性能断言，编辑器导入无脚本／资源错误。
-
-掩体专项包含 `cover_tactical_safety_test`（威胁近身路线、真实玩家身体阻挡、失败点排除）和 `stationary_cover_search_test`（玩家持续静止，敌人从躲藏推进调查并恢复开火）。`attack_point_validation_test` 已迁移到当前公共上下文接口，检查部分遮身、贴角余量、射界、感知距离及绿色预览与动作评估的一致性。`utility_suppression_blocked_test` 还验证两种压制同时参选时，出口压制能够实际胜出并开火。
-
-`attack_region_quality_test` 隔离外围墙，检查 3 个距离、8 个方向共 24 组视角的可用区域面积、部分身体遮挡、内圈排除和外围散布容错；感知及射程上限由 `attack_point_validation_test` 单独覆盖。`close_range_spacing_test` 使用真实移动，验证满血未受击时退让、玩家持续逼近时再次后撤、后撤开火及失视信息边界。`utility_budget_test` 保留 20 毫秒耗时门槛和 180 帧覆盖检查。
-
-`exit_suppression_geometry_test` 隔离外围墙后使用真实碰撞，覆盖敌人自身到两端的等距／不等距评分与统一选择器结果、贴墙及窄缝、间隙扩大后恢复、仅中点可站立但进出受阻、动态封堵、无关邻墙、旋转缩放与短边出口。移动隐藏玩家不得改变评分或可用出口；评分预览不得改写运行中的瞄准与连射状态。最后以已锁定旧出口的状态切换目标，验证跟枪途中不射击、跟上后真实子弹朝向新出口，并在60帧内检查双压制评分与通行复核合计小于20毫秒。`utility_suppression_blocked_test` 继续检查统一选择器实际选择并执行出口压制，以及记忆中心超距但真实出口仍在射程内；范围按新的身体入口采样设置为2.6米。
-
-`enemy_configuration_lifecycle_test` 遍历 32 种战术选择，检查实际装配、空间任务所有者、共享查询通道和开火请求；另外检查同帧撤销再恢复、两个敌人的训练深复制、参数保存重载、替换/缺省训练资源及重生清理。测试刻意持有旧实例，避免把“恰好被释放”当作正确注销。原模块协议检查还覆盖动态扩展、能力限制、包含循环和协调器无具体战术分支。
-
-`reload_approach_timing_test` 启用攻击站位后逐帧检查玩家靠近、实际动作切换与换弹计时，另外执行合法长路线的边走边换，检查弹匣尚有余弹时也不能在换弹过程中开枪。显示分别验证准备阶段、跨动作保留的实际进度、关闭Debug仍能看见进度，以及补满后继续转移的阶段，不能仅凭动作名称判断是否仍在换弹。
-
-玩家及双方准度验证使用 `python movement_demo/tests/run_combat_regressions.py --godot E:/Godot/Godot_v4.7.2-stable_win64_console.exe`，当前 14 套入口，日志在 `movement_demo/logs/combat_regressions/`。其中 `aim_disruption_test` 验证双方真实直击/擦身弹道、墙体遮挡、换弹最低准度及恢复、重复惩罚排除和移动火力缓存边界；兼容入口复用玩家瞄准模式、散布、移动惩罚、模式参数和第一碰撞物检查。`player_reload_checkpoint_test` 覆盖50%边界、重复奔跑中断、前半程取消后真实开火、后半程强制续换禁射、两槽隔离、慢速方式保留、共享备弹耗尽及死亡重开；原换弹测试继续驱动真实Shift输入。另覆盖弹药、生命与自动射击，以及玩家近战功能、表现、物理、战斗区域、体力和敌人近战受击。
-
-`enemy_fire_fixture.gd` 是公共辅助，`modular_probe_action.gd` 验证动态扩展；二者不单独运行。检查器使用编辑器模式：
+`--list`显示实际登记，`--check`核对文件覆盖与重复登记，不启动Godot。敌人／战斗专项运行器接收不带.gd的测试名；不提供名字会跑其整套默认列表。需要统一跑指定套件时：
 
 ```powershell
-& E:/Godot/Godot_v4.7.2-stable_win64_console.exe --headless --editor --path E:/Godot/movement_demo --script res://tests/enemy/enemy_training_inspector_test.gd
+python movement_demo/tests/run_regressions.py --godot "C:\Godot\Godot_console.exe" --suite enemy
 ```
 
-该面板测试当前 14 项断言通过。Godot 4.7.2 使用 `--editor --script` 自定义 `SceneTree` 退出时仍报告编辑器 RID / 资源未释放；只等待初始化后退出的空脚本也能复现。因此将面板断言结果与编辑器退出检查分开记录，不把它算入上述无错误回归集合。测试会等待首次扫描完成，避免另行中断文件扫描。
+运行器检查退出码、超时、SCRIPT ERROR、FAIL和ERROR输出，不能只看Godot退出0或最后一行PASS。当前公共运行器仅对根证书存储错误作特定过滤，不据此忽略其他资源、脚本或卸载错误。输出含日志和results.json；统一入口也可用--output指定本轮独立目录。日志是本地诊断产物，不提交。
 
-## 本次清理增加的覆盖
+运行时套件、编辑器脚本、需rendered场景的验收和维护工具分开执行。不要glob所有.gd逐一运行：有些是夹具、被其他测试调用的子测试或写资源工具。当前没有通用run_editor_regressions.py，编辑器测试按各自脚本约定运行。
 
-`enemy_scene_test` 验证直接/容器内拖入、实例配置与搜索进度隔离、实际开火、跨区隔离、去重复位、导航自身延迟同步、导航/战斗区释放替换、区域外及不可站立出生点、无玩家/晚加入、注销和重新挂父节点。无效布置用例预期产生待命警告。
+## 按改动选择覆盖
 
-`enemy_configuration_cleanup_test` 检查七个失效字段及资源覆盖键移除、有效字段保存重载、默认与显式覆盖语义，以及嵌套场景的参数/位置保存。`search_components_test` 覆盖六种衰减、最低倍率、零概率、误差样本和随机调用顺序。`search_area_coverage_test` 从旧脚本迁移三个种子的实际导航搜寻，独立更密地面采样验证覆盖超过90%，失败目标和路径拐点不计覆盖，死亡/复位清理进度。
+下表列出代表性入口，完整登记以运行器为准。文件位于 `movement_demo/tests/enemy/`，特别注明的玩家／系统用例位于 `movement_demo/tests/`。
 
-`enemy_firing_lane_test` 取代旧平面全锥测试，验证真实三维枪口空间、外围散布降低评分、当前枪口朝障碍暂缓及转出后命中。`enemy_basic_capabilities_test`、`enemy_reload_test`、`attack_hold_regression_test`、`attack_points_test`、`enemy_weapon_test`、`enemy_probability_test` 已迁移并加入正式运行器，保留身体执行、换弹脚步、实际站位保持、四面与旋转缩放几何、换枪与概率实射。概率测试显式提供足够弹药，避免空匣后重复统计上一枪。
+| 改动范围 | 代表性验证 |
+| --- | --- |
+| 兵种、训练、装配、撤销与生命周期 | enemy_modular_contract_test、enemy_configuration_cleanup_test、enemy_configuration_lifecycle_test、enemy_execution_contract_test |
+| 个人评分与运行 | utility_score_test、utility_runtime_test、utility_budget_test |
+| 中心概率、火控、换弹、屏外机会 | enemy_probability_test、enemy_firing_cadence_test、enemy_fire_decision_test、enemy_reload_test、enemy_offscreen_fire_test |
+| 掩体区域、站位与枪线 | attack_points_test、attack_point_validation_test、attack_region_quality_test、cover_tactical_safety_test、enemy_firing_lane_test |
+| 低墙、姿态与翻越 | low_cover_band_test、enemy_low_cover_contact_test、enemy_half_cover_test、enemy_vault_navigation_test、enemy_vault_link_runtime_test、enemy_vault_link_contract_test |
+| 搜索证据与持续警戒 | search_reacquisition_test、search_pursuit_test、search_persistence_test、search_area_coverage_test、enemy_shared_contact_test |
+| 团队任务、地图与同步 | squad_command_contract_test、squad_command_runtime_test、squad_map_observation_test、squad_cover_breach_test、squad_mixed_cooperation_test |
+| 接敌恢复与派发连续性 | squad_contact_recovery_test、squad_dispatch_continuity_test、squad_melee_contact_test |
+| 巡逻与队友通行 | squad_patrol_test、enemy_ally_spacing_runtime_test、enemy_ally_navigation_integration_test、enemy_ally_route_autonomous_test |
+| 波次与出生搜索 | enemy_wave_test、enemy_wave_search_test、enemy_wave_events_test；关卡衔接另跑level_flow_test，真实增援屏障跑scene_reinforcement_test |
+| 敌人眩晕／玩家近战破绽 | headshot_stagger_runtime_test；根测试目录melee_headshot_opening_test、player_enemy_melee_hit_test |
+| 玩家锁定与精度兼容 | 根测试目录target_switch_test、directional_tracking_test、combat_compatibility_test |
+| 听觉与声音显示 | 根测试目录hearing_test、movement_noise_modes_test、noise_debug_test |
 
-27个失效历史入口的替代关系逐项列在 [清理映射](superpowers/plans/2026-09-29-enemy-cleanup-test-mapping.md)，包括已被统一评分替代的旧概率触发规则；不是按文件名批量丢弃有效测试。
+`squad_command_runtime_test.gd`使用真实感知、AI、身体与武器，覆盖接敌、搜索、换弹、减员及重载。它还支持脚本专用参数：--level=0/1/2、--search、--crowded、--blocked-exit、--mixed、--patrol、--handoff等，组合和条件应核对脚本。直接调用时把脚本参数放Godot的 `--` 之后；普通套件运行器不转发这些参数。
 
-听觉另运行 `--script res://tests/hearing_test.gd`，已迁移到当前动作/配置接口，保留45项逻辑声音、真实移动/开枪、权限、搜索、多人和资源保存检查。`test_enemy_probability_inspector.gd` 需要打开场景的编辑器测试环境，继续作为专项保留，不属于 headless 运行器。
+```powershell
+& "C:\Godot\Godot_console.exe" --headless --path movement_demo --script res://tests/enemy/squad_command_runtime_test.gd -- --level=2 --search --handoff
+```
 
-已被替代的旧结构迁移、固定优先级、旧权限测试和性能探针已删除，见 [实施记录](superpowers/plans/2026-09-29-enemy-modular-ai.md)。
+--patrol针对1／2级未警戒巡逻；强配合--search --handoff核对真实遮挡后的连续搜索与同步。运行时间或超时设定须容纳测试本身，不能借延长进程超时放宽单帧或行为时限。
+
+## 编辑器、画面与维护工具
+
+| 入口 | 运行条件与边界 |
+| --- | --- |
+| enemy/enemy_training_inspector_test.gd | 独立headless editor脚本；检查战术选项、包含来源与资源操作 |
+| weapon_fire_mode_inspector_test.gd | 独立headless editor脚本；覆盖模式字段和玩家／敌人上下文显示 |
+| enemy/test_enemy_probability_inspector.gd | Godot AI编辑器夹具，需打开对应敌人场景；不是普通SceneTree回归 |
+| shotgun_inspector_test.gd | 独立headless editor脚本 |
+| shotgun_pattern_editor_test.gd | 编辑器或脚本规定的preview-runtime分支；画面抓取需渲染环境 |
+| target_switch_test.gd的--capture | 非headless画面分支；普通逻辑通过不等于已核对PNG |
+| bake_arena.gd／bake_levels.gd | 写入导航的维护命令，不能当测试自动批量运行 |
+
+脚本运行条件最终以 `run_regressions.py` 的SPECIAL登记和各脚本实现为准。编辑器插件、UndoRedo、鼠标捕获、画面布局及实际手感不能全部由headless逻辑验证替代。
+
+## 验收应证明什么
+
+1. **结构与权限**：原节点路径、脚本UID、资源引用、动作装配、个人／团队决策分流保持；无隐藏坐标泄漏、无未训练能力、无穿墙／超射程攻击。
+2. **真实行为**：从合法感知到候选、接受、身体移动、实际开火／挥击／换弹全链路推进。只出现任务、意图或状态文字不算角色执行成功。
+3. **几何**：使用完整胶囊路线、计划姿态枪口、实际遮挡、导航与队友占位。测试玩家不能被摆进墙中，再把未命中解释成AI停滞。
+4. **生命周期**：暂停／对话、死亡、退队、减员、区域离开与重载、动作撤销、换枪、旧任务反馈及资源共享。
+5. **时间与性能**：分别统计真实进展、首次派发、全员警戒、正常火控停顿及整队帧成本。不能把任务版本未变化直接等同于无动作，也不能只量候选生成时间。
+6. **当前地图**：至少在相关保存场景上确认加载与行为。固定小夹具、短时启动和完整关卡战斗覆盖不同，结论分别报告。
+
+原团队性能验收常使用P99<16毫秒／峰值<50毫秒，具体以对应测试断言为准。约2500微秒准备预算不限制不可中断单次几何查询，也不包含全部成员执行成本；不得把预算数当作实测帧耗时。性能失败必须保留，不能为了通过调低候选质量或提高门槛。
+
+## 历史仍需关注的失败与边界
+
+以下是归档中明确记录的结果，**未在本次文档整理中复测**。后续已有针对性复验的项目应以其完整上下文判断，不能只引用最早一次失败或偶发一次通过。
+
+| 范围 | 保留事实 |
+| --- | --- |
+| 六人接敌派发 | 2026-10-27提前发布合法整表后，行为专项18/19；唯一失败仍为整队P99，约31.972毫秒／峰38.277毫秒，原16／50门槛未改 |
+| 接敌警戒恢复 | 同日普通现场29/30、局部堵路31/32，行为通过而P99仍超限；分别约24.352／22.902毫秒，不能写为整体性能达标 |
+| 强配合同掩体同步 | 定向失效／保留矩阵曾76/76；默认整场仍出现同步准备、齐备放行、早到等待和偶发时限／性能波动。偶发33/33不代表稳定全绿 |
+| 搜索持续性与追查 | 历史search_persistence_test有17/22、search_pursuit_test有29/30；涉及覆盖轮次、累计时间、冻结线索、目击年龄及峰值等，未靠放宽断言处理 |
+| 检查器撤销 | 玩家25°半角项新增覆盖通过，但weapon_fire_mode_inspector_test当次46/47；既有缺少即时通知时撤销刷新失败，退出有RID／资源清理ERROR |
+| 火控、换弹、近战与霰弹旧预期 | 历史有声音断言、支援点射、纯近战武器模式／实伤、霰弹固定图样点数与低稳定度保持失败；部分与用户保存资源或旧夹具前提有关，须对照后续复验，不能直接修改用户资源凑通过 |
+| 原个人Utility | 历史掩体候选专项存在24/25等未通过结果；恢复旧权重仍同项失败，不能算作本次评分调整造成或已修复 |
+| 波次出生搜索 | 当次专项79/79及原波次80/80通过；不覆盖所有地图难度，也不消除独立追查／持续搜索旧失败 |
+| 五关加载 | 历史五关各短时启动90帧可加载，卸载有成员移除警告；不代表完整五关自主战斗、通关或手感验收 |
+
+完整对照副本、失败列表、时间采样与日志路径见[历史测试记录](history/2026-10-28/enemy-tests.md)。忽略目录日志可能只存在当时机器，归档保留文字证据不等于日志已经提交。
+
+玩家目标切换近期还覆盖屏幕方向、按住右键无锁选敌、连续切换、击杀后继续辅助、平滑转向和转向中实际射击。测试中的替身目标命中／移出目标组不能冒充完整EnemyActor死亡生命周期；需按真实夹具报告覆盖。功能说明以[射击与锁定](gameplay/COMBAT.md)为准，不把旧通过次数累加成新的总验收。
+
+## 失败处理与交付记录
+
+先记录当前Git状态、引擎版本、场景／资源与调用参数，再区分实现错误、旧夹具前提、环境加载问题和真实性能／行为失败。需要对照时用隔离副本保留相同地图与资源，只替换待比较代码；不能在用户工作区回退配置或混入远端内容。
+
+修改测试前应说明前提为何过时，并保留原断言所保护的行为目标。用户调过武器、图样、训练或地图时，不以测试旧默认值倒推并覆盖用户设置。修正夹具并不等于修复运行逻辑；未稳定复现或未确认根因要明确记录。
+
+交付至少报告修改范围、实际运行命令、通过／失败、脚本和资源错误、未覆盖范围及必要证据。同步功能文档后只提交核对过的本阶段文件，不提交日志、导入缓存、临时探针或其他任务改动。阶段提交／推送遵守仓库AGENTS规则。
+
+## 旧章节引用
+
+<a id="2026-10-14-协作查询性能优化"></a>
+
+2026-10-14 协作查询性能优化：[整理前对应章节](history/2026-10-28/enemy-tests.md#2026-10-14-协作查询性能优化)。
+
+<a id="2026-10-14-目的地预约批量筛选优化"></a>
+
+2026-10-14 目的地预约批量筛选优化：[整理前对应章节](history/2026-10-28/enemy-tests.md#2026-10-14-目的地预约批量筛选优化)。
+
+<a id="2026-10-15-连射与协作阶段收尾"></a>
+
+2026-10-15 连射与协作阶段收尾：[整理前对应章节](history/2026-10-28/enemy-tests.md#2026-10-15-连射与协作阶段收尾)。
+
+<a id="2026-10-15-连射时的岗位资格查询"></a>
+
+2026-10-15 连射时的岗位资格查询：[整理前对应章节](history/2026-10-28/enemy-tests.md#2026-10-15-连射时的岗位资格查询)。
+
+<a id="2026-10-21-半身掩体接触保持"></a>
+
+2026-10-21 半身掩体接触保持：[整理前对应章节](history/2026-10-28/enemy-tests.md#2026-10-21-半身掩体接触保持)。
+
+<a id="2026-10-21-斜向失视漏判掩体与墙前提前结束"></a>
+
+2026-10-21 斜向失视漏判掩体与墙前提前结束：[整理前对应章节](history/2026-10-28/enemy-tests.md#2026-10-21-斜向失视漏判掩体与墙前提前结束)。
+
+<a id="2026-10-22-强配合共享接敌时盲站观察岗位"></a>
+
+2026-10-22 强配合共享接敌时盲站观察岗位：[整理前对应章节](history/2026-10-28/enemy-tests.md#2026-10-22-强配合共享接敌时盲站观察岗位)。
+
+<a id="2026-10-23-仅共享情报时搜索反复停步"></a>
+
+2026-10-23 仅共享情报时搜索反复停步：[整理前对应章节](history/2026-10-28/enemy-tests.md#2026-10-23-仅共享情报时搜索反复停步)。
+
+<a id="2026-10-23-强配合先到者等待与逐轮续接"></a>
+
+2026-10-23 强配合：先到者等待与逐轮续接：[整理前对应章节](history/2026-10-28/enemy-tests.md#2026-10-23-强配合先到者等待与逐轮续接)。
+
+<a id="2026-10-24-共用翻越路线执行"></a>
+
+2026-10-24 共用翻越路线执行：[整理前对应章节](history/2026-10-28/enemy-tests.md#2026-10-24-共用翻越路线执行)。
+
+<a id="2026-10-24-关卡兵种继承示范"></a>
+
+2026-10-24 关卡兵种继承示范：[整理前对应章节](history/2026-10-28/enemy-tests.md#2026-10-24-关卡兵种继承示范)。
+
+<a id="2026-10-24-半身掩体全宽翻越"></a>
+
+2026-10-24 半身掩体全宽翻越：[整理前对应章节](history/2026-10-28/enemy-tests.md#2026-10-24-半身掩体全宽翻越)。
+
+<a id="2026-10-24-可训练的近战堵截"></a>
+
+2026-10-24 可训练的近战堵截：[整理前对应章节](history/2026-10-28/enemy-tests.md#2026-10-24-可训练的近战堵截)。
+
+<a id="2026-10-24-翻越评分偏好"></a>
+
+2026-10-24 翻越评分偏好：[整理前对应章节](history/2026-10-28/enemy-tests.md#2026-10-24-翻越评分偏好)。
+
+<a id="2026-10-24-高掩体烘焙高度基准"></a>
+
+2026-10-24 高掩体烘焙高度基准：[整理前对应章节](history/2026-10-28/enemy-tests.md#2026-10-24-高掩体烘焙高度基准)。
+
+<a id="2026-10-25-个人翻越评分加权"></a>
+
+2026-10-25 个人翻越评分加权：[整理前对应章节](history/2026-10-28/enemy-tests.md#2026-10-25-个人翻越评分加权)。
+
+<a id="2026-10-25-运行时翻越区域与真实玩家跟进"></a>
+
+2026-10-25 运行时翻越区域与真实玩家跟进：[整理前对应章节](history/2026-10-28/enemy-tests.md#2026-10-25-运行时翻越区域与真实玩家跟进)。
+
+<a id="出生快速追查2026-10-26"></a>
+
+出生快速追查（2026-10-26）：[整理前对应章节](history/2026-10-28/enemy-tests.md#出生快速追查2026-10-26)。
+
+<a id="出生点附近的有序巡逻2026-10-26"></a>
+
+出生点附近的有序巡逻（2026-10-26）：[整理前对应章节](history/2026-10-28/enemy-tests.md#出生点附近的有序巡逻2026-10-26)。
+
+<a id="后续波次出生搜索2026-10-26"></a>
+
+后续波次出生搜索（2026-10-26）：[整理前对应章节](history/2026-10-28/enemy-tests.md#后续波次出生搜索2026-10-26)。
+
+<a id="屏外开火概率2026-10-26"></a>
+
+屏外开火概率（2026-10-26）：[整理前对应章节](history/2026-10-28/enemy-tests.md#屏外开火概率2026-10-26)。
+
+<a id="强配合同掩体同步连续性2026-10-27"></a>
+
+强配合同掩体同步连续性（2026-10-27）：[整理前对应章节](history/2026-10-28/enemy-tests.md#强配合同掩体同步连续性2026-10-27)。
+
+<a id="当前回归"></a>
+
+当前回归：[整理前对应章节](history/2026-10-28/enemy-tests.md#当前回归)。
+
+<a id="接敌派发空窗2026-10-27"></a>
+
+接敌派发空窗（2026-10-27）：[整理前对应章节](history/2026-10-28/enemy-tests.md#接敌派发空窗2026-10-27)。
+
+<a id="接敌警戒成员恢复2026-10-27"></a>
+
+接敌警戒成员恢复（2026-10-27）：[整理前对应章节](history/2026-10-28/enemy-tests.md#接敌警戒成员恢复2026-10-27)。
+
+<a id="旧测试失败原因与当前地图复验2026-10-26"></a>
+
+旧测试失败原因与当前地图复验（2026-10-26）：[整理前对应章节](history/2026-10-28/enemy-tests.md#旧测试失败原因与当前地图复验2026-10-26)。
+
+<a id="玩家枪械跟枪半角2026-10-27"></a>
+
+玩家枪械跟枪半角（2026-10-27）：[整理前对应章节](history/2026-10-28/enemy-tests.md#玩家枪械跟枪半角2026-10-27)。
+
+<a id="移除个人训练cooperation2026-10-26"></a>
+
+移除个人训练Cooperation（2026-10-26）：[整理前对应章节](history/2026-10-28/enemy-tests.md#移除个人训练cooperation2026-10-26)。
+
+<a id="第五关近战落点与真实命中2026-10-27"></a>
+
+第五关近战落点与真实命中（2026-10-27）：[整理前对应章节](history/2026-10-28/enemy-tests.md#第五关近战落点与真实命中2026-10-27)。
+
+<a id="血条相机范围屏幕禁射与尸体保留2026-10-25"></a>
+
+血条、相机范围、屏幕禁射与尸体保留（2026-10-25）：[整理前对应章节](history/2026-10-28/enemy-tests.md#血条相机范围屏幕禁射与尸体保留2026-10-25)。
+
+<a id="躲藏倾向与squad评分接口2026-10-26"></a>
+
+躲藏倾向与Squad评分接口（2026-10-26）：[整理前对应章节](history/2026-10-28/enemy-tests.md#躲藏倾向与squad评分接口2026-10-26)。
+
+<a id="近战破绽与线性爆头2026-10-27"></a>
+
+近战破绽与线性爆头（2026-10-27）：[整理前对应章节](history/2026-10-28/enemy-tests.md#近战破绽与线性爆头2026-10-27)。
+
+<a id="霰弹模式2026-10-25"></a>
+
+霰弹模式（2026-10-25）：[整理前对应章节](history/2026-10-28/enemy-tests.md#霰弹模式2026-10-25)。
+
+<a id="霰弹禁止向圆心偏移2026-10-26"></a>
+
+霰弹禁止向圆心偏移（2026-10-26）：[整理前对应章节](history/2026-10-28/enemy-tests.md#霰弹禁止向圆心偏移2026-10-26)。
