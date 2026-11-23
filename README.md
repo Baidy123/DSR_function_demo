@@ -7,7 +7,7 @@
 ## 打开工程
 
 1. 使用 Godot 4.7.2 标准版，导入 `movement_demo/project.godot`。
-2. 等待资源与插件导入完成，按 **F5** 进入酒馆；本次运行首次进入时播放一次简短开场镜头。
+2. 等待资源与插件导入完成，按 **F5** 进入酒馆。启动时存在有效游戏存档会自动读取并直接进入酒馆，不播放开场镜头；没有有效存档时，本次运行首次进入酒馆播放一次简短开场镜头。
 3. 与 A 对话接取任务，到门口传送门按 **E** 进入第1关。清场后返回酒馆，再次与 A 交互解锁下一关。
 4. 单独试玩关卡时，打开 `scenes/world/levels/lvl_N.tscn` 后按 **F6**。
 
@@ -31,6 +31,7 @@ Dialogue Manager、Phantom Camera 和 Godot AI 插件源码及许可证随工程
 | 酒馆开场 | 本次运行首次进入酒馆时黑场渐亮，平移到任务 NPC A 停留后返回；之后返回酒馆不重播 |
 | 交互与任务 | 对话、场景交互效果、条件驱动任务、阶段与 NPC 状态；任务演示与五关流程各自独立 |
 | 设置与偏好 | Esc 设置分为基础设置与战斗设置；调整窗口模式、分辨率、垂直同步、鼠标辅助和换锁灵敏度后显式保存到 `user://settings.cfg` |
+| 游戏存档与重置 | 手动保存单槽 `user://campaign_save.cfg`；酒馆保存当前状态，关卡保存最后一次离开酒馆时的状态；启动自动读取有效存档；Debug 可确认后重置全部进度 |
 | 表现与诊断 | 可替换模型／动画、命中特效、血条与尸体、准星／状态提示、相机遮挡透明和调试视图 |
 
 具体数值由场景及资源保存，文档中的默认值用于解释参数，不替代当前武器和关卡配置。
@@ -65,8 +66,19 @@ Dialogue Manager、Phantom Camera 和 Godot AI 插件源码及许可证随工程
 | --- | --- | --- |
 | Esc → 设置 → 基础设置 | 窗口模式、分辨率、垂直同步 | 控件变化先保留为未保存状态；点击“保存设置”后应用并写入 |
 | Esc → 设置 → 战斗设置 | 鼠标辅助开关、换锁灵敏度 | 与基础设置共用保存按钮；返回或 Esc 丢弃未保存改动 |
-| Esc → 设置 → 底部操作 | 保存设置、恢复默认、操作说明 | 恢复默认只修改待保存值，仍需点击保存；说明页返回保留待保存值 |
+| Esc → 设置 → 底部操作 | 保存设置、保存游戏、恢复默认、操作说明 | “保存设置”与“保存游戏”相互独立；恢复默认只修改待保存值，仍需点击保存；说明页返回保留待保存值 |
 | `user://settings.cfg` | `UserSettings` 自动加载保存的偏好 | 只保存设置，不保存任务、货币、装备或关卡进度 |
+| `user://campaign_save.cfg` | 单槽游戏存档 | 保存任务、货币、装备、购买记录、恢复点和玩家快照；不提供读取按钮 |
+
+设置页提供独立的“保存设置”和“保存游戏”。保存设置写入 `user://settings.cfg`；
+保存游戏写入单槽 `user://campaign_save.cfg`，不提供读取按钮。
+
+酒馆内保存写入当前酒馆状态和玩家快照。关卡内保存写入最后一次离开酒馆时的状态，
+不保存战斗位置、敌人、波次或临时过程。每次启动自动读取有效存档并进入酒馆。
+直接按 F6 启动关卡时没有最后酒馆快照，保存功能不可用。
+
+Debug 总开关开启后可“重置全部进度”：确认后删除游戏存档及其备份、清空本次运行进度并回到初始酒馆；
+用户设置保持不变，Debug 总开关也保持开启。
 
 ### 玩家与相机
 
@@ -133,6 +145,8 @@ Dialogue Manager、Phantom Camera 和 Godot AI 插件源码及许可证随工程
 | CinematicCameraController | `play_shot(shot)`、`cancel_shot(reason)`、`get_snapshot()` | 单 Shot 请求、显式取消和只读阶段／错误状态 |
 | OpeningCinematicDemo | `finished(result)`、`debug_snapshot()` | 一次性酒馆开场黑场、NPC 平移镜头和运行态状态 |
 | GameState | `record_campaign_checkpoint(level, player_snapshot)`、`restore_campaign_checkpoint()` | 保存并恢复最近完成关卡时的酒馆进度与玩家快照 |
+| CampaignSaveService | `save_game(snapshot)`、`load_game()`、`apply_saved_game()` | 单槽游戏存档、启动读取与正式／备份文件维护 |
+| SceneDirector | `can_save_game()`、`save_game()`、`request_debug_reset_progress()` | 判定当前场景可否保存、执行手动保存并请求确认后的 Debug 重置 |
 | GameState | `add_money(amount)`、`spend_money(amount)`、`claim_task_reward(id, amount, level)`、`has_purchased_shop_item(id)` | 货币增减、一次性任务发奖与商店购买记录 |
 | ShopController | `open_shop_for_player(player)`、`purchase(item_id, slot)`、`close_shop()` | 打开／关闭货币商店、复核并执行购买；面板只回传意图 |
 | SceneDirector 核心 | `for_node(node)`、`request_action(kind, context)`、`cancel_request(id, reason)` | 查找本场导演并请求；`await request.wait_result()` 读取一次性结果 |

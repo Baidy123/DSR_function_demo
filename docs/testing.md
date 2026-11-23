@@ -4,6 +4,10 @@
 
 ## 当前五关定向记录
 
+2026-11-23 单槽战役存档与 Debug 重置：`campaign_save_state_test` 7/7、`campaign_save_service_test` 19/19、`campaign_save_flow_test` 7/7、`campaign_save_reset_test` 26/26，四个 headless 进程均以 0 退出。覆盖完整游戏快照、进入关卡时记录最后酒馆状态、单槽写入／读取、损坏版本与字段拒绝、正式文件替换失败保留备份、启动自动应用并跳过开场、没有最后酒馆快照时关卡保存不可用、确认后重置、正式与备份暂存、加载失败回滚、用户设置与 Debug 总开关保留。`campaign_save_reset_rendered_test` 使用真实 Metal 显示后端和原生场景替换，16/16、退出 0，验证确认对话框真实可见、替换后的当前场景为初始酒馆、重置删除正式／备份／暂存文件且保留设置。该测试登记为 `SPECIAL`，不进入 headless systems 组。
+
+同级定向回归均退出 0：`settings_menu_test` 44/44、`campaign_checkpoint_test` 20/20、`scene_transition_request_test` 23/23、`scene_director_test` 151/151、`opening_cinematic_demo_test` 16/16、`pause_menu_test` 50/50。另用隔离文件走真实显示进程：首次进程从设置页“保存游戏”创建存档，随后在酒馆购买急救包并退出；第二次进程恢复保存前的货币和玩家库存，进入酒馆且开场镜头保持 `skipped`。首进程 5/5、重启进程 6/6，临时探针随后删除。`run_regressions.py --check` 为 `Catalog OK`，`git diff --check` 无输出。已知 macOS root certificate store 诊断仍出现；`campaign_save_reset_test` 的恢复／删除失败分支各输出一条预期 warning，断言均通过。
+
 2026-11-23 酒馆开场演示：`opening_cinematic_demo_test` 使用真实 `main.tscn`，验证默认 0.8/2/1/1 时序、脚本测试默认跳过、第一黑帧立即锁玩家、黑场渐亮、控制器 ENTER/HOLD/RETURN、暂停期间保持玩家锁、NPC 地面锚点投影居中、完成结果、最终恢复玩家相机/暂停/输入锁、取消与缺失相机错误清理、`GameState` 本次运行一次性记录，以及第二次加载酒馆不再播放。headless 16/16、真实 OpenGL/Metal 16/16。脚本测试模式默认跳过开场，专项测试显式开启。
 
 2026-11-23 剧情演出相机最终复审修复：`cinematic_shot_test` 7/7、`cinematic_camera_test` 67/67、`cinematic_controller_test` 126/126、`cinematic_wave_trigger_test` 59/59、`cinematic_debug_test` 33/33、`cinematic_interruption_test` headless 224/224。真实 OpenGL/Metal 运行同一打断矩阵并执行 `-- --capture` 为 238/238，五个画面保存到 `movement_demo/logs/cinematic-camera-capture/`：`00-player-baseline.png`、`01-free-camera-composition.png`、`02-orthographic-zoom.png`、`03-deterministic-shake-midpoint.png`、`04-returned-player-view.png`。基线图和返回图 SHA-256 同为 `9a9f2bd7a629f6f3c0db00fbed38d0443e2fff3ea897e24dd3a23e7ef41844a0`；自由机位、缩放与抖动图分别为 `35ab6df7522cf52c3275e25d5a03c9461d2c54b60cdb2ed0ba6d062d93c2cd2c`、`7eb7d4e8e83b758af19e38b3b9ed119327680bce46a0cf0a640e2f49cca13660`、`263d0cd8506d6774470f02c7f3018c78021af0e57aea2f475bcbd41303c065e1`。截图与运行日志不提交。
@@ -134,6 +138,7 @@ python movement_demo/tests/run_combat_regressions.py --godot E:/Godot/Godot_v4.7
 | 相机与独立复用 | `player_camera_test`、`player_scene_reuse_test`、`camera_occlusion_test` |
 | 剧情演出镜头 | `cinematic_shot_test`、`cinematic_camera_test`、`cinematic_controller_test`、`cinematic_wave_trigger_test`、`cinematic_debug_test`、`cinematic_interruption_test`；真实画面必须跑 `-- --capture` |
 | 用户设置与暂停 | `user_settings_test`、`settings_menu_test`、`pause_menu_test`；基础/战斗分栏、显式保存、分辨率/全屏/Vsync、返回丢弃及 640×480 布局 |
+| 游戏存档与重置 | `campaign_save_state_test`、`campaign_save_service_test`、`campaign_save_flow_test`、`campaign_save_reset_test`；真实显示后端另跑 `campaign_save_reset_rendered_test` |
 | 五关、检查点与波次 | `campaign_checkpoint_test`、`campaign_flow_test`、`level_flow_test`、敌人波次专项；使用真实保存场景验证 |
 | 场景调度与编辑器接线 | `scene_director_test`、`scene_event_node_test`、`enemy_wave_events_test`；无Wave/无Guide、暂停拥有者、事件过滤/失效、两个死亡按钮、加载失败重试 |
 | 统一请求与取消 | `scene_request_test`、`scene_interaction_test`、`scene_script_cancellation_test`、`scene_transition_request_test`；身份、真实停止、子交互与加载事务 |
@@ -142,7 +147,7 @@ python movement_demo/tests/run_combat_regressions.py --godot E:/Godot/Godot_v4.7
 | 任务与交互 | systems 中条件、任务、阶段、面板、唱片机与交互专项 |
 | 货币商店与任务金额 | `shop_catalog_test`、`shop_state_test`、`shop_weapon_test`、`shop_board_test`、`shop_flow_test`、`quest_money_reward_test` |
 | UI、检查器、美术 | 对应编辑器／渲染入口，不能只用 headless 代替 |
-| `systems` | 用户设置与设置菜单、移动、奔跑、NPC 交互、听觉、声音模式、Debug、表现接口／复位、对话文件扫描，以及任务条件、五关任务链、阶段接线、任务面板、唱片机支线、五关酒馆往返、跨关玩家状态、货币商店（目录／状态／武器／面板／流程）、任务金额、Debug 一键通关、奖励板兼容；由统一入口登记 |
+| `systems` | 用户设置与设置菜单、四个单槽存档 headless 专项、移动、奔跑、NPC 交互、听觉、声音模式、Debug、表现接口／复位、对话文件扫描，以及任务条件、五关任务链、阶段接线、任务面板、唱片机支线、五关酒馆往返、跨关玩家状态、货币商店（目录／状态／武器／面板／流程）、任务金额、Debug 一键通关、奖励板兼容；由统一入口登记 |
 | `combat` | `tests/run_combat_regressions.py` 的原玩家战斗清单 |
 | `enemy` | `tests/enemy/run_enemy_regressions.py` 的原敌人清单 |
 
@@ -154,6 +159,7 @@ python movement_demo/tests/run_combat_regressions.py --godot E:/Godot/Godot_v4.7
 | --- | --- |
 | 检查器保存、原生撤销 | 对应 `--editor --script` 或 Godot AI 编辑器夹具，按实际清单 SPECIAL 说明执行 |
 | 模型、准星、全屏和截图 | 实际渲染实例及对应 capture 参数，检查生成画面 |
+| `campaign_save_reset_rendered_test.gd` | 真实显示后端、原生场景替换；必须用隔离的 `DSR_CAMPAIGN_SAVE_CONFIG` 与 `DSR_USER_SETTINGS_CONFIG`，登记为 SPECIAL，不能由 headless systems 自动运行 |
 | `*_fixture.gd`、动作替身 | 由所属测试装配，不作为独立专项 |
 | 战斗兼容的子脚本 | 由 `combat_compatibility_test` 调度，避免重复算通过数量 |
 | `bake_arena.gd`、`bake_levels.gd` | 写导航的维护命令，绝不自动当作回归运行 |
