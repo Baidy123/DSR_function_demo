@@ -1,4 +1,4 @@
-[gd_scene load_steps=5 format=3]
+[gd_scene load_steps=6 format=3]
 
 [ext_resource type="Script" path="res://scripts/ui/pause_menu.gd" id="1_menu"]
 [ext_resource type="PackedScene" path="res://scenes/ui/play_guide.tscn" id="2_guide"]
@@ -27,6 +27,15 @@ corner_radius_bottom_left = 6
 corner_radius_bottom_right = 6
 content_margin_top = 12.0
 content_margin_bottom = 12.0
+
+[sub_resource type="StyleBoxFlat" id="SettingsButtonStyle"]
+bg_color = Color(0.13, 0.32, 0.39, 1)
+corner_radius_top_left = 6
+corner_radius_top_right = 6
+corner_radius_bottom_left = 6
+corner_radius_bottom_right = 6
+content_margin_top = 4.0
+content_margin_bottom = 4.0
 
 [node name="PauseMenu" type="CanvasLayer"]
 process_mode = 3
@@ -93,7 +102,7 @@ text = "退出游戏"
 [node name="Settings" type="VBoxContainer" parent="Backdrop/Center/Panel/Content"]
 visible = false
 layout_mode = 2
-theme_override_constants/separation = 8
+theme_override_constants/separation = 4
 
 [node name="Categories" type="TabContainer" parent="Backdrop/Center/Panel/Content/Settings"]
 custom_minimum_size = Vector2(0, 118)
@@ -202,7 +211,7 @@ popup/item_2/id = 2
 layout_mode = 2
 mouse_default_cursor_shape = 2
 theme_override_font_sizes/font_size = 18
-theme_override_styles/normal = SubResource("ButtonStyle")
+theme_override_styles/normal = SubResource("SettingsButtonStyle")
 text = "操作说明"
 
 [node name="Notice" type="Label" parent="Backdrop/Center/Panel/Content/Settings"]
@@ -216,21 +225,35 @@ horizontal_alignment = 1
 layout_mode = 2
 mouse_default_cursor_shape = 2
 theme_override_font_sizes/font_size = 18
-theme_override_styles/normal = SubResource("ButtonStyle")
+theme_override_styles/normal = SubResource("SettingsButtonStyle")
 text = "保存设置"
+
+[node name="SaveGame" type="Button" parent="Backdrop/Center/Panel/Content/Settings"]
+layout_mode = 2
+mouse_default_cursor_shape = 2
+theme_override_font_sizes/font_size = 18
+theme_override_styles/normal = SubResource("SettingsButtonStyle")
+text = "保存游戏"
+
+[node name="GameSaveNotice" type="Label" parent="Backdrop/Center/Panel/Content/Settings"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.6, 0.7, 0.75, 1)
+theme_override_font_sizes/font_size = 14
+text = ""
+horizontal_alignment = 1
 
 [node name="RestoreDefaults" type="Button" parent="Backdrop/Center/Panel/Content/Settings"]
 layout_mode = 2
 mouse_default_cursor_shape = 2
 theme_override_font_sizes/font_size = 18
-theme_override_styles/normal = SubResource("ButtonStyle")
+theme_override_styles/normal = SubResource("SettingsButtonStyle")
 text = "恢复默认设置"
 
 [node name="Back" type="Button" parent="Backdrop/Center/Panel/Content/Settings"]
 layout_mode = 2
 mouse_default_cursor_shape = 2
 theme_override_font_sizes/font_size = 18
-theme_override_styles/normal = SubResource("ButtonStyle")
+theme_override_styles/normal = SubResource("SettingsButtonStyle")
 text = "返回"
 
 [node name="Quit" type="VBoxContainer" parent="Backdrop/Center/Panel/Content"]
@@ -240,7 +263,7 @@ theme_override_constants/separation = 12
 
 [node name="Message" type="Label" parent="Backdrop/Center/Panel/Content/Quit"]
 layout_mode = 2
-text = "本次运行的进度不会保存。\n确定退出游戏？"
+text = "尚未保存的游戏进度会丢失。\n确定退出游戏？"
 horizontal_alignment = 1
 
 [node name="Cancel" type="Button" parent="Backdrop/Center/Panel/Content/Quit"]

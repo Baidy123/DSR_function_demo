@@ -10,6 +10,8 @@ const Interactions = preload("res://scripts/systems/scene_interaction_executor.g
 const Scripts = preload("res://scripts/systems/scene_script_executor.gd")
 const Transitions = preload("res://scripts/systems/scene_transition_executor.gd")
 const PauseMenuScene = preload("res://scenes/ui/pause_menu.tscn")
+const PlayerState = preload("res://scripts/player/player_campaign_state.gd")
+const MAIN_SCENE_PATH := "res://scenes/main.tscn"
 const REGISTRATION := &"scene_director_root"
 var _scene_root: Node
 var _requests
@@ -137,6 +139,7 @@ func initialize() -> void:
 	_link(_pause_menu, &"pause_requested", request_pause_menu)
 	_link(_pause_menu, &"resume_requested", resume_from_pause_menu)
 	_link(_pause_menu, &"quit_requested", _quit_game)
+	_link(_pause_menu, &"save_game_requested", _save_game_from_menu)
 	var guide: Node = _bindings.get("guide")
 	if guide != null:
 		_set_state(&"running")
@@ -181,6 +184,38 @@ func advance(delta: float) -> void:
 func can_run_actions() -> bool:
 	return _initialized and not _load_failed and state in [&"running", &"guide"] and not get_tree().paused
 
+func can_save_game() -> bool:
+	if not _initialized or _load_failed:
+		return false
+	var state := get_node_or_null("/root/GameState")
+	if state == null:
+		return false
+	return _scene_root.scene_file_path == MAIN_SCENE_PATH \
+		or not state.last_tavern_state.is_empty()
+
+func save_game() -> Dictionary:
+	if not can_save_game():
+		return {"ok": false, "result": &"unavailable"}
+	var state := get_node("/root/GameState")
+	var service := get_node_or_null("/root/CampaignSaveService")
+	if service == null:
+		return {"ok": false, "result": &"save_failed"}
+	var in_tavern := _scene_root.scene_file_path == MAIN_SCENE_PATH
+	var snapshot: Dictionary
+	if in_tavern:
+		var player := get_tree().get_first_node_in_group(&"player")
+		snapshot = state.capture_save_state(PlayerState.capture(player))
+		state.remember_tavern_state(snapshot)
+	else:
+		snapshot = state.last_tavern_state.duplicate(true)
+	if service.save_game(snapshot) != OK:
+		return {"ok": false, "result": &"save_failed"}
+	return {"ok": true, "result": &"tavern_saved" if in_tavern else &"level_saved"}
+
+func _save_game_from_menu() -> void:
+	var result := save_game()
+	_pause_menu.show_game_save_result(result.result)
+
 ## 普通暂停只在可游玩、没有其他界面或演出占用控制时打开。
 func request_pause_menu() -> void:
 	if not _initialized or _menu_token != 0 or _load_failed: return
@@ -191,6 +226,7 @@ func request_pause_menu() -> void:
 	if _requests.snapshot().foreground != 0 or _pauses.snapshot().count != 0: return
 	_menu_token = _pauses.acquire(self, &"pause_menu", true)
 	_pause_menu.open_menu()
+	_pause_menu.set_game_save_available(can_save_game())
 
 func resume_from_pause_menu() -> void:
 	if is_instance_valid(_pause_menu): _pause_menu.close_menu()
