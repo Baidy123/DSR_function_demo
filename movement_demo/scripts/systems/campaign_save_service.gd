@@ -99,34 +99,69 @@ func apply_saved_game() -> Error:
 
 
 func stage_reset() -> Error:
-	if not FileAccess.file_exists(save_path):
-		return _ok()
-	var pending_path := save_path + ".reset-pending"
-	if FileAccess.file_exists(pending_path):
-		return _fail(ERR_ALREADY_EXISTS, &"reset_pending_exists")
-	if _rename(save_path, pending_path) != OK:
-		return _fail(ERR_CANT_CREATE, &"reset_stage_failed")
+	var pairs := _reset_file_pairs()
+	for pair in pairs:
+		if FileAccess.file_exists(pair.pending):
+			return _fail(ERR_ALREADY_EXISTS, &"reset_pending_exists")
+	var staged: Array[Dictionary] = []
+	for pair in pairs:
+		if not FileAccess.file_exists(pair.original):
+			continue
+		var error := _rename(pair.original, pair.pending)
+		if error != OK:
+			var rollback_error := _restore_staged_files(staged)
+			if rollback_error != OK:
+				return _fail(rollback_error, &"rollback_failed")
+			return _fail(error, &"reset_stage_failed")
+		staged.append(pair)
 	return _ok()
 
 
 func restore_staged_reset() -> Error:
-	var pending_path := save_path + ".reset-pending"
-	if not FileAccess.file_exists(pending_path):
-		return _ok()
-	if FileAccess.file_exists(save_path):
-		return _fail(ERR_ALREADY_EXISTS, &"reset_restore_failed")
-	if _rename(pending_path, save_path) != OK:
-		return _fail(ERR_CANT_CREATE, &"reset_restore_failed")
+	var first_error := OK
+	for pair in _reset_file_pairs():
+		if not FileAccess.file_exists(pair.pending):
+			continue
+		var error := OK
+		if FileAccess.file_exists(pair.original):
+			error = ERR_ALREADY_EXISTS
+		else:
+			error = _rename(pair.pending, pair.original)
+		if error != OK and first_error == OK:
+			first_error = error
+	if first_error != OK:
+		return _fail(first_error, &"reset_restore_failed")
 	return _ok()
 
 
 func finish_staged_reset() -> Error:
-	var pending_path := save_path + ".reset-pending"
-	if not FileAccess.file_exists(pending_path):
-		return _ok()
-	if _remove_file(pending_path) != OK:
-		return _fail(ERR_CANT_CREATE, &"reset_finish_failed")
+	var first_error := OK
+	for pair in _reset_file_pairs():
+		if not FileAccess.file_exists(pair.pending):
+			continue
+		var error := _remove_file(pair.pending)
+		if error != OK and first_error == OK:
+			first_error = error
+	if first_error != OK:
+		return _fail(first_error, &"reset_finish_failed")
 	return _ok()
+
+
+func _reset_file_pairs() -> Array[Dictionary]:
+	return [
+		{"original": save_path, "pending": save_path + ".reset-pending"},
+		{"original": save_path + ".bak", "pending": save_path + ".bak.reset-pending"},
+	]
+
+
+func _restore_staged_files(staged: Array[Dictionary]) -> Error:
+	var first_error := OK
+	for index in range(staged.size() - 1, -1, -1):
+		var pair: Dictionary = staged[index]
+		var error := _rename(pair.pending, pair.original)
+		if error != OK and first_error == OK:
+			first_error = error
+	return first_error
 
 
 func _encode(snapshot: Dictionary) -> ConfigFile:

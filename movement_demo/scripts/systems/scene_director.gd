@@ -20,6 +20,8 @@ var _guide_request
 var _camera_request
 var _completion_request
 var _reset_request
+var _reset_service: WeakRef
+var _reset_debug_settings: WeakRef
 var _interactions
 var _scripts
 var _load_request
@@ -229,6 +231,10 @@ func request_debug_reset_progress() -> bool:
 	if service.stage_reset() != OK:
 		report_action_error("reset", "Unable to stage save deletion")
 		return false
+	_reset_service = weakref(service)
+	_reset_debug_settings = weakref(debug_settings)
+	if debug_settings.has_method(&"preserve_enabled_once"):
+		debug_settings.preserve_enabled_once()
 	var main_path := str(ProjectSettings.get_setting("application/run/main_scene", MAIN_SCENE_PATH))
 	_reset_request = _request_transition({
 		"path": main_path,
@@ -245,13 +251,32 @@ func _on_debug_reset_finished(request) -> void:
 	if request != _reset_request:
 		return
 	_reset_request = null
-	var service := get_node_or_null("/root/CampaignSaveService")
-	if service == null:
+	var debug_settings = _reset_debug_settings.get_ref() if _reset_debug_settings != null else null
+	if request.status != &"completed" and is_instance_valid(debug_settings) \
+			and debug_settings.has_method(&"cancel_preserved_enabled"):
+		debug_settings.cancel_preserved_enabled()
+	_reset_debug_settings = null
+	var service = _reset_service.get_ref() if _reset_service != null else null
+	_reset_service = null
+	if not is_instance_valid(service):
+		report_action_error("reset", "CampaignSaveService unavailable after reset")
 		return
+	var error: Error
 	if request.status == &"completed":
-		service.finish_staged_reset()
+		error = service.finish_staged_reset()
+		if error != OK:
+			_report_reset_maintenance_error(
+				"Unable to remove staged reset save: %s" % error_string(error))
 	else:
-		service.restore_staged_reset()
+		error = service.restore_staged_reset()
+		if error != OK:
+			_report_reset_maintenance_error(
+				"Unable to restore staged reset save: %s" % error_string(error))
+
+
+func _report_reset_maintenance_error(reason: String) -> void:
+	report_action_error("reset", reason)
+	push_warning("reset: %s" % reason)
 
 ## 普通暂停只在可游玩、没有其他界面或演出占用控制时打开。
 func request_pause_menu() -> void:

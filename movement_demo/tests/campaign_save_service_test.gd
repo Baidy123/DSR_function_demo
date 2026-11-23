@@ -104,6 +104,22 @@ func _run() -> void:
 	service.stage_reset()
 	check(service.finish_staged_reset() == OK and not FileAccess.file_exists(save_path),
 		"提交重置后删除暂存存档")
+	service.save_game(snapshot)
+	var backup_path := save_path + ".bak"
+	var backup_pending := backup_path + ".reset-pending"
+	check(DirAccess.rename_absolute(save_path, backup_path) == OK
+			and FileAccess.file_exists(backup_path),
+		"构造仅备份可恢复存档")
+	check(service.stage_reset() == OK and not FileAccess.file_exists(backup_path)
+			and FileAccess.file_exists(backup_pending),
+		"重置暂存包含备份存档")
+	check(service.restore_staged_reset() == OK and FileAccess.file_exists(backup_path)
+			and not FileAccess.file_exists(backup_pending),
+		"加载失败恢复备份存档")
+	service.stage_reset()
+	check(service.finish_staged_reset() == OK and not FileAccess.file_exists(backup_path)
+			and not FileAccess.file_exists(backup_pending),
+		"提交重置删除备份暂存")
 
 	print("CAMPAIGN SAVE SERVICE: %d/%d passed" % [checks - failures, checks])
 	service.free()
@@ -112,7 +128,7 @@ func _run() -> void:
 
 
 func _cleanup() -> void:
-	for suffix in ["", ".tmp", ".bak", ".reset-pending"]:
+	for suffix in ["", ".tmp", ".bak", ".reset-pending", ".bak.reset-pending"]:
 		var path: String = save_path + str(suffix)
 		if DirAccess.dir_exists_absolute(path):
 			DirAccess.remove_absolute(path)

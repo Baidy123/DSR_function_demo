@@ -5,6 +5,21 @@ const Director := preload("res://scripts/systems/scene_director.gd")
 const MAIN_SCENE_PATH := "res://scenes/main.tscn"
 const WATCHDOG_SECONDS := 20.0
 
+
+class FailingMaintenanceService extends "res://scripts/systems/campaign_save_service.gd":
+	var fail_restore := false
+	var fail_finish := false
+
+	func _rename(from_path: String, to_path: String) -> Error:
+		if fail_restore and from_path.ends_with(".reset-pending") and to_path == save_path:
+			return ERR_CANT_CREATE
+		return super._rename(from_path, to_path)
+
+	func _remove_file(path: String) -> Error:
+		if fail_finish and path.ends_with(".reset-pending"):
+			return ERR_CANT_CREATE
+		return super._remove_file(path)
+
 var checks := 0
 var failures := 0
 var _finished := false
@@ -136,12 +151,136 @@ func _run() -> void:
 		"重置加载失败恢复旧状态和存档")
 	check(failed_director.state == &"running",
 		"重置加载失败归还场景控制")
-	_finish(failed_scene, service.save_path)
+	failed_scene.free()
+	current_scene = null
+	await process_frame
+
+	state.reset_game_progress()
+	state.money = 100
+	state.available_level = 3
+	state.opening_cinematic_played = true
+	check(service.save_game(state.capture_save_state({})) == OK,
+		"备份重置测试准备有效存档")
+	var backup_path: String = service.save_path + ".bak"
+	var backup_pending: String = backup_path + ".reset-pending"
+	check(DirAccess.rename_absolute(service.save_path, backup_path) == OK
+			and FileAccess.file_exists(backup_path),
+		"备份重置测试构造备份存档")
+	var backup_scene: Node = LEVEL_ONE.instantiate()
+	root.add_child(backup_scene)
+	current_scene = backup_scene
+	for _frame in range(3):
+		await process_frame
+	backup_scene.get_node("LevelFlow/PlayGuide/Backdrop/Panel/Content/Close").pressed.emit()
+	var backup_director := Director.for_node(backup_scene)
+	backup_director.scene_loader = func(_path: String, _reload: bool) -> Error: return OK
+	var backup_health := backup_scene.get_node("Player/Health")
+	backup_health.debug_invincible = true
+	await process_frame
+	var backup_confirm := backup_health.get_node_or_null("ResetProgressConfirm") as ConfirmationDialog
+	check(backup_confirm != null, "备份重置场景提供确认入口")
+	if backup_confirm == null:
+		_finish(backup_scene, service.save_path)
+		return
+	backup_confirm.confirmed.emit()
+	for _frame in range(3):
+		await process_frame
+	check(state.money == 0 and not FileAccess.file_exists(service.save_path)
+			and not FileAccess.file_exists(backup_path)
+			and not FileAccess.file_exists(backup_pending),
+		"重置删除只存在备份的旧存档")
+	backup_scene.free()
+	current_scene = null
+	await process_frame
+
+	_remove_save_artifacts(service.save_path)
+	var original_service := root.get_node("CampaignSaveService")
+	original_service.name = "CampaignSaveServiceOriginal"
+	var failing_service = FailingMaintenanceService.new()
+	failing_service.name = "CampaignSaveService"
+	failing_service.save_path = service.save_path
+	root.add_child(failing_service)
+
+	state.reset_game_progress()
+	state.money = 100
+	check(failing_service.save_game(state.capture_save_state({})) == OK,
+		"恢复失败测试准备有效存档")
+	var restore_scene: Node = LEVEL_ONE.instantiate()
+	root.add_child(restore_scene)
+	current_scene = restore_scene
+	for _frame in range(3):
+		await process_frame
+	restore_scene.get_node("LevelFlow/PlayGuide/Backdrop/Panel/Content/Close").pressed.emit()
+	var restore_director := Director.for_node(restore_scene)
+	restore_director.scene_loader = func(_path: String, _reload: bool) -> Error:
+		return ERR_FILE_CANT_OPEN
+	var restore_errors: Array[Dictionary] = []
+	restore_director.action_failed.connect(func(rule: String, reason: String) -> void:
+		restore_errors.append({"rule": rule, "reason": reason}))
+	var restore_health := restore_scene.get_node("Player/Health")
+	restore_health.debug_invincible = true
+	await process_frame
+	var restore_confirm := restore_health.get_node_or_null("ResetProgressConfirm") as ConfirmationDialog
+	check(restore_confirm != null, "恢复失败测试提供确认入口")
+	if restore_confirm == null:
+		_finish(restore_scene, failing_service.save_path)
+		return
+	failing_service.fail_restore = true
+	restore_confirm.confirmed.emit()
+	for _frame in range(3):
+		await process_frame
+	check(_has_reset_error(restore_errors, "restore"),
+		"恢复暂存存档失败产生可观察错误")
+	restore_scene.free()
+	current_scene = null
+	await process_frame
+	_remove_save_artifacts(failing_service.save_path)
+
+	state.reset_game_progress()
+	state.money = 100
+	failing_service.fail_restore = false
+	check(failing_service.save_game(state.capture_save_state({})) == OK,
+		"删除失败测试准备有效存档")
+	var finish_scene: Node = LEVEL_ONE.instantiate()
+	root.add_child(finish_scene)
+	current_scene = finish_scene
+	for _frame in range(3):
+		await process_frame
+	finish_scene.get_node("LevelFlow/PlayGuide/Backdrop/Panel/Content/Close").pressed.emit()
+	var finish_director := Director.for_node(finish_scene)
+	finish_director.scene_loader = func(_path: String, _reload: bool) -> Error: return OK
+	var finish_errors: Array[Dictionary] = []
+	finish_director.action_failed.connect(func(rule: String, reason: String) -> void:
+		finish_errors.append({"rule": rule, "reason": reason}))
+	var finish_health := finish_scene.get_node("Player/Health")
+	finish_health.debug_invincible = true
+	await process_frame
+	var finish_confirm := finish_health.get_node_or_null("ResetProgressConfirm") as ConfirmationDialog
+	check(finish_confirm != null, "删除失败测试提供确认入口")
+	if finish_confirm == null:
+		_finish(finish_scene, failing_service.save_path)
+		return
+	failing_service.fail_finish = true
+	finish_confirm.confirmed.emit()
+	for _frame in range(3):
+		await process_frame
+	check(_has_reset_error(finish_errors, "remove"),
+		"删除暂存存档失败产生可观察错误")
+	check(state.money == 0, "提交后删除失败不恢复旧游戏进度")
+	_finish(finish_scene, failing_service.save_path)
+
+
+func _has_reset_error(errors: Array[Dictionary], reason_fragment: String) -> bool:
+	for error in errors:
+		if error.get("rule") == "reset" \
+				and String(error.get("reason", "")).to_lower().contains(reason_fragment):
+			return true
+	return false
 
 
 func _remove_save_artifacts(save_path: String) -> void:
 	for path in [save_path, save_path + ".tmp", save_path + ".bak",
-			save_path + ".reset-pending"]:
+			save_path + ".reset-pending", save_path + ".bak.reset-pending"]:
 		if FileAccess.file_exists(path):
 			DirAccess.remove_absolute(path)
 
