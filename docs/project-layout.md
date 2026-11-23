@@ -45,7 +45,7 @@ movement_demo/
 │   ├── ui/                对话、锁定准星、任务面板、货币商店、关卡流程与游玩说明
 │   ├── debug/             调试开关、协调器路径与 CinematicCameraDebug；声音圈及旧攻击区域预览默认关闭
 │   └── systems/           场景调度、关卡流程、相机、公共状态、用户设置、声音数据与正式场景切换
-│       ├── cinematic/     CinematicCameraController 单 Shot 请求、阶段和结果
+│       ├── cinematic/     CinematicCameraController 与一次性酒馆开场 Shot
 │       ├── stage/         阶段、任务与 NPC 状态控制器
 │       ├── presentation/  模型挂载、动画配置与表现状态
 │       └── effects/       命中快照、表面配置与特效生命周期
@@ -155,10 +155,13 @@ Equipment 交接当前枪给 Combat；相机订阅 `weapon_changed`，表现订�
 | --- | --- |
 | `systems/cinematic/cinematic_shot_3d.gd` / `scenes/cinematic/` | 作者单镜头数据：机位、镜头参数、三阶段时间、暂停和确定性抖动；运行时不自行切换活动相机 |
 | `systems/cinematic/cinematic_camera_controller.gd` | SceneDirector 可见子控制器；单 Shot 准入、SceneRequest、暂停令牌、阶段推进、取消和只读 snapshot |
+| `systems/cinematic/opening_cinematic_demo.gd` | 首次酒馆入场黑场、NPC 平移、停留、返回及本次运行内一次性状态 |
 | `systems/presentation_camera.gd` | 玩家相机与演出相机之间的通用执行器；复制可见画面、执行旧式移动或新式 Cinematic Shot、返回最新玩家视野并交接遮挡 |
 | `debug/cinematic_camera_debug.gd` | Debug 构建下枚举当前场 Shot，只调用控制器 `play_shot`／`cancel_shot`；不拥有相机或暂停 |
 
 `SceneDirector/CinematicCameraController/PresentationCamera` 是固定执行层级，`SceneDirector/CinematicShots` 是可见作者容器。直接 `play_shot()` 使用 SCENE scope；Wave 的 `cinematic_shot_path` 使用 REGION scope；`PLAY_CINEMATIC_SHOT` 继承规则 scope。`busy` 不排队、不替换、不回滚敌人，非对话前台与暂停菜单反向占用也会拒绝镜头。玩家相机仍由 Phantom 和武器视野组件控制，原相机不交给总调度每帧移动。旧式 Marker3D／Node3D 演出继续由同一执行器兼容，新 Shot 优先，遮挡辅助同一时刻只有一个拥有者。
+
+`Main/OpeningCinematicDemo` 是独立的一次性开场节点：首次进入时从 `GameState` 取得播放资格，锁玩家并黑场渐亮，之后动态创建临时 `OpeningNPCPan` Shot，从玩家相机实际地面焦点平移到 `NPC`，停留后退回最新玩家画面。完成、失败或取消都会隐藏遮罩、解除玩家锁并释放临时 Shot；返回酒馆不会再次播放，重新启动游戏才会重置本次运行标记。
 
 控制器在死亡、加载、区域复位、控制器／场景卸载、源相机失效、活动 Shot 删除、调试取消和外部相机接管时统一结束；区域复位按请求 scope 只清理 REGION，SCENE 继续。暂停、鼠标与相机所有权分别由共享协调器与原相机恢复。专项为 `cinematic_controller_test`、`cinematic_camera_test`、`cinematic_wave_trigger_test`、`cinematic_debug_test` 和 `cinematic_interruption_test`。
 

@@ -1,5 +1,6 @@
 [gd_scene format=3 uid="uid://dmglkk0768iby"]
 [ext_resource type="PackedScene" path="res://scenes/world/scene_director.tscn" id="director_authority"]
+[ext_resource type="PackedScene" path="res://scenes/cinematic/opening_cinematic_demo.tscn" id="opening_cinematic"]
 
 [ext_resource type="PackedScene" path="res://scenes/player/player.tscn" id="player_prefab"]
 
@@ -274,3 +275,5 @@ auto_start_on_enter = false
 complete_when_all_waves_cleared = false
 result_view_path = NodePath("")
 guide_path = NodePath("")
+
+[node name="OpeningCinematicDemo" parent="." instance=ExtResource("opening_cinematic")]

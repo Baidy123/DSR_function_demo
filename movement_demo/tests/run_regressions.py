@@ -12,6 +12,7 @@ DIRECTORY = Path(__file__).resolve().parent
 PROJECT = DIRECTORY.parent
 SYSTEM_TESTS = [
     "pause_menu_test",
+    "opening_cinematic_demo_test",
     "user_settings_test", "settings_menu_test",
     "cinematic_shot_test",
     "cinematic_camera_test",

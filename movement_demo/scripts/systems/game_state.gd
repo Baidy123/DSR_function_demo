@@ -5,6 +5,16 @@ var _transition_prepared: Dictionary = {}
 var _transition_signals: Array[Dictionary] = []
 var _transition_committing := false
 
+## 本次运行是否已经播放过酒馆开场镜头；返回酒馆场景不会重置。
+var opening_cinematic_played := false
+
+
+func claim_opening_cinematic() -> bool:
+	if opening_cinematic_played:
+		return false
+	opening_cinematic_played = true
+	return true
+
 func _transition_snapshot() -> Dictionary:
 	var snapshot := capture_campaign_state()
 	snapshot["campaign_checkpoint"] = campaign_checkpoint.duplicate(true)

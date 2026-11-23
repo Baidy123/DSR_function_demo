@@ -7,7 +7,7 @@
 ## 打开工程
 
 1. 使用 Godot 4.7.2 标准版，导入 `movement_demo/project.godot`。
-2. 等待资源与插件导入完成，按 **F5** 进入酒馆。
+2. 等待资源与插件导入完成，按 **F5** 进入酒馆；本次运行首次进入时播放一次简短开场镜头。
 3. 与 A 对话接取任务，到门口传送门按 **E** 进入第1关。清场后返回酒馆，再次与 A 交互解锁下一关。
 4. 单独试玩关卡时，打开 `scenes/world/levels/lvl_N.tscn` 后按 **F6**。
 
@@ -28,6 +28,7 @@ Dialogue Manager、Phantom Camera 和 Godot AI 插件源码及许可证随工程
 | 敌人 AI | 巡逻、视觉／听觉、追踪与搜索、掩体、近远程攻击；个人决策与三档小队配合 |
 | 场景调度 | SceneDirector 统一对话、商店、交互、事件演出、波次、镜头、出口与切场景，支持排队和真实取消 |
 | 剧情演出相机 | 单 Shot、自由机位、正交缩放、确定性抖动和返回玩家最新视野；Wave、SceneFlowAction 与 Debug 面板共用控制器 |
+| 酒馆开场 | 本次运行首次进入酒馆时黑场渐亮，平移到任务 NPC A 停留后返回；之后返回酒馆不重播 |
 | 交互与任务 | 对话、场景交互效果、条件驱动任务、阶段与 NPC 状态；任务演示与五关流程各自独立 |
 | 设置与偏好 | Esc 设置分为基础设置与战斗设置；调整窗口模式、分辨率、垂直同步、鼠标辅助和换锁灵敏度后显式保存到 `user://settings.cfg` |
 | 表现与诊断 | 可替换模型／动画、命中特效、血条与尸体、准星／状态提示、相机遮挡透明和调试视图 |
@@ -130,6 +131,7 @@ Dialogue Manager、Phantom Camera 和 Godot AI 插件源码及许可证随工程
 | Combat | `weapon_changed`、`shot_fired`、`headshot_resolved` 信号 | 相机、表现或统计订阅真实装备／射击结果 |
 | Health | `receive_hit(damage)`、`restore_health(amount)`、`died` 信号 | 伤害、治疗与死亡通知 |
 | CinematicCameraController | `play_shot(shot)`、`cancel_shot(reason)`、`get_snapshot()` | 单 Shot 请求、显式取消和只读阶段／错误状态 |
+| OpeningCinematicDemo | `finished(result)`、`debug_snapshot()` | 一次性酒馆开场黑场、NPC 平移镜头和运行态状态 |
 | GameState | `record_campaign_checkpoint(level, player_snapshot)`、`restore_campaign_checkpoint()` | 保存并恢复最近完成关卡时的酒馆进度与玩家快照 |
 | GameState | `add_money(amount)`、`spend_money(amount)`、`claim_task_reward(id, amount, level)`、`has_purchased_shop_item(id)` | 货币增减、一次性任务发奖与商店购买记录 |
 | ShopController | `open_shop_for_player(player)`、`purchase(item_id, slot)`、`close_shop()` | 打开／关闭货币商店、复核并执行购买；面板只回传意图 |

@@ -4,6 +4,8 @@
 
 ## 当前五关定向记录
 
+2026-11-23 酒馆开场演示：`opening_cinematic_demo_test` 使用真实 `main.tscn`，验证默认 0.8/2/1/1 时序、脚本测试默认跳过、第一黑帧立即锁玩家、黑场渐亮、控制器 ENTER/HOLD/RETURN、暂停期间保持玩家锁、NPC 地面锚点投影居中、完成结果、最终恢复玩家相机/暂停/输入锁、取消与缺失相机错误清理、`GameState` 本次运行一次性记录，以及第二次加载酒馆不再播放。headless 16/16、真实 OpenGL/Metal 16/16。脚本测试模式默认跳过开场，专项测试显式开启。
+
 2026-11-23 剧情演出相机最终复审修复：`cinematic_shot_test` 7/7、`cinematic_camera_test` 67/67、`cinematic_controller_test` 126/126、`cinematic_wave_trigger_test` 59/59、`cinematic_debug_test` 33/33、`cinematic_interruption_test` headless 224/224。真实 OpenGL/Metal 运行同一打断矩阵并执行 `-- --capture` 为 238/238，五个画面保存到 `movement_demo/logs/cinematic-camera-capture/`：`00-player-baseline.png`、`01-free-camera-composition.png`、`02-orthographic-zoom.png`、`03-deterministic-shake-midpoint.png`、`04-returned-player-view.png`。基线图和返回图 SHA-256 同为 `9a9f2bd7a629f6f3c0db00fbed38d0443e2fff3ea897e24dd3a23e7ef41844a0`；自由机位、缩放与抖动图分别为 `35ab6df7522cf52c3275e25d5a03c9461d2c54b60cdb2ed0ba6d062d93c2cd2c`、`7eb7d4e8e83b758af19e38b3b9ed119327680bce46a0cf0a640e2f49cca13660`、`263d0cd8506d6774470f02c7f3018c78021af0e57aea2f475bcbd41303c065e1`。截图与运行日志不提交。
 
 本轮复审新增覆盖：对话期间已排队的商店／引导／手摆演出阻止 Shot 准入，并验证前台启动边界复核；`COMPLETE_SCENE` 与全波自动完成等待 `pause_world=false` Shot；直接 SCENE、Wave REGION 与 `PLAY_CINEMATIC_SHOT` 规则 scope 的区域复位；暂停菜单及非对话管理控制的反向镜头准入；移动玩家的动态遮挡焦点与 RETURN 最新焦点；抖动渐入／渐出按阶段截断、噪声单位频率、零频率和直接畸形快照在暂停／相机／遮挡租约前拒绝。

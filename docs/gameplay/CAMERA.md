@@ -93,6 +93,12 @@ DebugSettings 开启且运行 Debug 构建时，`CinematicCameraDebug` 枚举当
 
 截图保存到 `movement_demo/logs/cinematic-camera-capture/`，不提交。当前证据包含玩家原画面、自由机位、正交缩放、确定性抖动中点和返回画面；最终数量与失败出生夹具的稳定基线说明见[测试说明](../testing.md)。
 
+### 酒馆开场测试
+
+`Main/OpeningCinematicDemo` 是一个默认开启的一次性开场测试。首次进入酒馆时先锁住玩家并显示全黑遮罩，0.8秒渐亮；随后从玩家相机当前画面中心对应的真实地面焦点出发，沿当前朝向前移2秒到任务 NPC A 的地面锚点，停留1秒，再用1秒返回玩家最新画面。镜头使用 `pause_world=true`，完成后隐藏遮罩并解除玩家锁定。
+
+是否播放由 `GameState.opening_cinematic_played` 在本次运行内记录。返回酒馆重新加载 Main 时只隐藏演示、不再次锁定相机；重新启动游戏会重新播放。自动脚本测试默认跳过该演示，`opening_cinematic_demo_test` 会显式开启并缩短时长，验证黑场、ENTER/HOLD/RETURN、NPC 居中、返回最新玩家画面及第二次酒馆入场跳过。
+
 ## 独立演出相机与手动目标
 
 SceneDirector的Wave“出场镜头”可选择Marker3D或现有Node3D作为画面中心，并配置移过去、停留、返回时间。缺少绑定时诊断并跳过，不自动替用户选敌人中心。详细摆放和路径见[场景调度教程](SCENE_DIRECTOR.md#三手摆目标展示真实增援)。
