@@ -4,7 +4,7 @@
 
 当前合并基线同时保留本地五关任务／货币商店与 upstream 场景调度结构。`LevelFlow` 在清场后只启用本关 `TavernReturnPortal`；返程门写入 `completed_level`、一次性玩家快照和酒馆检查点并返回酒馆，A 更新 `available_level` 后门口 `QuestPortal` 才指向下一关。结果按钮和自动加载是 SceneDirector 的可复用能力，当前五关实际没有使用“清场后自动进入下一关”。
 
-`CampaignSaveService` 是单槽游戏存档的读写边界，默认路径为 `user://campaign_save.cfg`。酒馆内保存由 `SceneDirector.save_game()` 捕获当前 `GameState` 和玩家快照；关卡内保存只写入进入关卡前记录的 `GameState.last_tavern_state`，不读取实时战斗状态。有效存档在下次启动时由自动加载服务应用，`GameState` 以酒馆为恢复场景并标记开场镜头已处理，因此不会在载入存档后重播开场。用户设置仍由 `UserSettings` 独立写入 `user://settings.cfg`。
+`CampaignSaveService` 是单槽游戏存档的读写边界，默认路径为 `user://campaign_save.cfg`。酒馆内保存由 `SceneDirector.save_game()` 捕获当前 `GameState` 和玩家快照；关卡内保存只写入进入关卡前记录的 `GameState.last_tavern_state`，不读取实时战斗状态。只有正常主场景启动才应用有效存档；`--scene` 指向关卡等非主场景入口按隔离试玩处理，不读取也不清理正常存档路径。自动加载先执行递归类型／范围／枚举校验，再一次性应用快照；`GameState` 以酒馆为恢复场景并标记开场镜头已处理，因此不会在载入存档后重播开场。启动读取失败只报告一次 warning 并保留原文件；主文件不可用时只回退到通过同样校验的 `.bak`。用户设置仍由 `UserSettings` 独立写入 `user://settings.cfg`。
 
 五关任务与任务金额由 `resources/stages/stage_table_template.tres` 保存，商品目录由 `resources/shop/shop_catalog.tres` 保存；`QuestCondition.int_at_least()` 提供整数下限条件，`QuestDefinition.money_reward` 配置完成时的固定货币，`GameState.rewarded_task_ids` 记录一次性任务发奖。货币商店由 `ShopController` 按目录解析可见商品、复核并执行购买，`ShopBoard` 只回传购买意图；`GameState.money`／`purchased_shop_item_ids` 与酒馆检查点同步。跨关快照由 `player_campaign_state.gd` 搬运；QuestPortal、返程门、死亡重开／回酒馆向导演请求加载，GameState 准备入关状态或最近酒馆检查点，加载获准后才提交关卡进度、商店旗标、货币、奖励记录和玩家快照。旧三选一奖励组件仍保留为兼容代码，不再接入主流程。
 
@@ -151,7 +151,7 @@ Equipment 交接当前枪给 Combat；相机订阅 `weapon_changed`，表现订�
 
 `scripts/systems/user_settings.gd` 作为 `UserSettings` 自动加载，保存基础设置的窗口模式、分辨率和垂直同步，以及战斗设置的鼠标辅助和换锁灵敏度，默认路径为 `user://settings.cfg`。设置页将基础与战斗偏好分为两栏，控件变化只保留在待保存状态；统一点击“保存设置”后才调用 `commit_settings()` 校验、写入、应用并通知。分辨率应用同时更新 `Window.content_scale_size` 和窗口尺寸；这避免 `canvas_items` 只改变外框、2D虚拟画布仍固定为1152×648。`canvas_items` 下3D仍按实际窗口或显示器输出像素渲染，本设置不充当独立3D渲染缩放；全屏3D像素由显示器决定，2D界面按所选虚拟画布缩放。返回、Esc 或关闭菜单丢弃未保存值；进入操作说明再返回则保留待保存值。首次没有配置文件时显示“默认设置，尚未保存”，不会把未应用的内置值伪装成已保存。玩家战斗组件入场时读取已保存值，成功保存后通过 `user_settings_combat` 组同步当前玩家。错误类型、越界枚举与缺失键回退默认值；保存失败不提交候选值，并由设置页提示“设置未应用”。窗口模式按平台生成选项，macOS 只提供窗口与无边框全屏；headless 验证跳过真实窗口调用。脚本测试模式默认不读取开发者本机配置，只有显式设置 `DSR_USER_SETTINGS_CONFIG` 时才启用隔离配置。该配置文件与 `GameState` 的本次运行关卡、货币、装备及恢复点快照相互独立。
 
-设置页的“保存游戏”是另一个独立入口，不触发设置提交。`SceneDirector` 在酒馆捕获当前状态和玩家快照；在关卡内只使用离开酒馆时写下的完整快照。没有该快照的直接 F6 关卡入口会禁用保存并提示“没有可保存的酒馆进度”。存档服务先写 `.tmp` 并校验，再替换正式单槽文件；启动主文件不可用时可从有效 `.bak` 恢复。Debug 总开关开启后，“重置全部进度”先要求确认，把正式与备份文件暂存为重置 pending 文件，真实加载主酒馆并清空 `GameState` 后才删除 pending；加载失败会恢复原存档和旧进度。用户设置文件不在重置范围，Debug 总开关也在场景替换中保持开启。
+设置页的“保存游戏”是另一个独立入口，不触发设置提交。`SceneDirector` 在酒馆捕获当前状态和玩家快照；在关卡内只使用离开酒馆时写下的完整快照。没有该快照的直接 F6 关卡入口会禁用保存并提示“没有可保存的酒馆进度”。存档服务先写 `.tmp` 并校验，再替换正式单槽文件；启动主文件不可用时可从有效 `.bak` 恢复，主文件损坏时不会覆盖原文件。Debug 总开关开启后，“重置全部进度”先要求确认，把正式与备份文件暂存为重置 pending 文件，真实加载主酒馆并清空 `GameState` 后才删除 pending；加载失败会恢复原存档和旧进度。主场景启动或新的重置发现上次遗留的 pending 文件时，将其视为已经请求的重置并清理，不自动恢复旧档，也不会永久阻塞后续重置。用户设置文件不在重置范围，Debug 总开关也在场景替换中保持开启。
 
 相机根 `systems/player_camera.gd` 统一绑定玩家、读取武器 Aim Range、控制视野过渡；`camera_occlusion.gd` 仅处理显式标记装饰的材质副本与还原。CameraGroundAnchor 过滤翻越抬升。保持原 Phantom Camera 跟随和更新关系。
 

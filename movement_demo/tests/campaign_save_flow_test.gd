@@ -42,12 +42,53 @@ func _run() -> void:
 	check(failed_result.result == &"save_failed", "无效存档路径返回保存失败")
 	check(state.last_tavern_state == unchanged_tavern,
 		"保存失败不替换最后酒馆状态")
+	service.save_path = save_path
+	if FileAccess.file_exists(service.save_path):
+		DirAccess.remove_absolute(service.save_path)
+	state.money = 88
+	state.items = {&"coin": {"display_name": "硬币", "count": 2}}
+	var player := tavern_scene.get_node("Player")
+	var health := player.get_node("Health")
+	var equipment := player.get_node("Equipment")
+	health.health = 42.0
+	health._update_display()
+	equipment.medkit_count = 2
+	var active_slot: int = equipment.active_slot
+	var active_weapon: WeaponData = equipment.primary_weapon \
+		if active_slot == 0 else equipment.secondary_weapon
+	var expected_magazine := maxi(0, active_weapon.magazine_capacity - 2)
+	equipment._ammo_states[active_slot].magazine_rounds = expected_magazine
+	var saved_result: Dictionary = tavern_director.save_game()
+	check(saved_result.result == &"tavern_saved", "酒馆内保存真实玩家状态")
+	var saved_player: Dictionary = service.load_game().get("player_state", {})
+	var saved_equipment: Dictionary = saved_player.get("equipment", {})
+	check(saved_player.get("health", {}).get("health") == 42.0
+			and saved_equipment.get("medkit_count") == 2
+			and saved_equipment.get("active_slot") == active_slot
+			and saved_equipment.get("magazines", [])[active_slot] == expected_magazine,
+		"酒馆存档写入真实生命与装备字段")
 	tavern_scene.free()
+	current_scene = null
+	await process_frame
+	check(service.apply_saved_game() == OK, "酒馆存档可重新应用")
+	var restored_tavern: Node = load("res://scenes/main.tscn").instantiate()
+	root.add_child(restored_tavern)
+	current_scene = restored_tavern
+	for _frame in range(3):
+		await process_frame
+	var restored_player := restored_tavern.get_node("Player")
+	var restored_health := restored_player.get_node("Health")
+	var restored_equipment := restored_player.get_node("Equipment")
+	check(restored_health.health == 42.0
+			and restored_equipment.medkit_count == 2
+			and restored_equipment.active_slot == active_slot
+			and restored_equipment._ammo_states[active_slot].magazine_rounds == expected_magazine,
+		"新酒馆玩家实际恢复生命与装备")
+	restored_tavern.free()
 	current_scene = null
 	await process_frame
 
 	state.reset_game_progress()
-	service.save_path = save_path
 	if FileAccess.file_exists(service.save_path):
 		DirAccess.remove_absolute(service.save_path)
 

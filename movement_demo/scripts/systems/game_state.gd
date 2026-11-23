@@ -4,6 +4,46 @@ var _transition_sequence := 0
 var _transition_prepared: Dictionary = {}
 var _transition_signals: Array[Dictionary] = []
 var _transition_committing := false
+const SAVE_STATE_KEYS := [
+	&"completed_level",
+	&"available_level",
+	&"claimed_reward_levels",
+	&"task_a_returned",
+	&"money",
+	&"rewarded_task_ids",
+	&"purchased_shop_item_ids",
+	&"campaign_checkpoint",
+	&"level_entry_player_state",
+	&"talked_to_a",
+	&"help_choice",
+	&"music_quest_choice",
+	&"music_quest_turnin",
+	&"items",
+	&"flags",
+	&"shop_flag_keys",
+	&"player_state",
+]
+const CAMPAIGN_CHECKPOINT_KEYS := [
+	&"level",
+	&"completed_level",
+	&"available_level",
+	&"claimed_reward_levels",
+	&"shop_flags",
+	&"task_a_returned",
+	&"money",
+	&"rewarded_task_ids",
+	&"purchased_shop_item_ids",
+	&"player_state",
+]
+const EQUIPMENT_SNAPSHOT_KEYS := [
+	&"primary_weapon",
+	&"secondary_weapon",
+	&"medkit",
+	&"medkit_count",
+	&"active_slot",
+	&"reserve_ammo",
+	&"magazines",
+]
 
 ## 本次运行是否已经播放过酒馆开场镜头；返回酒馆场景不会重置。
 var opening_cinematic_played := false
@@ -46,20 +86,201 @@ func capture_save_state(player_snapshot: Dictionary = {}) -> Dictionary:
 
 
 func validate_save_state(snapshot: Dictionary) -> bool:
-	for key in [&"completed_level", &"available_level", &"money"]:
-		if not snapshot.get(key) is int:
+	if not _has_exact_keys(snapshot, SAVE_STATE_KEYS):
+		return false
+	if not _is_int_in_range(snapshot.get(&"completed_level"), 0, 5):
+		return false
+	if not _is_int_in_range(snapshot.get(&"available_level"), 1, 5):
+		return false
+	if not _is_non_negative_int(snapshot.get(&"money")):
+		return false
+	if not snapshot.get(&"talked_to_a") is bool:
+		return false
+	if not _is_string_in(snapshot.get(&"task_a_returned"), ["", "returned"]):
+		return false
+	if not _is_string_in(snapshot.get(&"help_choice"), ["", "accepted", "refused"]):
+		return false
+	if not _is_string_in(snapshot.get(&"music_quest_choice"), ["", "accepted", "refused"]):
+		return false
+	if not _is_string_in(snapshot.get(&"music_quest_turnin"), ["", "done"]):
+		return false
+	if not _valid_level_bool_map(snapshot.get(&"claimed_reward_levels")):
+		return false
+	if not _valid_id_bool_map(snapshot.get(&"rewarded_task_ids")):
+		return false
+	if not _valid_id_bool_map(snapshot.get(&"purchased_shop_item_ids")):
+		return false
+	if not _valid_items(snapshot.get(&"items")):
+		return false
+	if not _valid_flags(snapshot.get(&"flags")):
+		return false
+	if not _valid_flags(snapshot.get(&"shop_flag_keys")):
+		return false
+	if not _valid_campaign_checkpoint(snapshot.get(&"campaign_checkpoint")):
+		return false
+	if not _valid_player_state(snapshot.get(&"level_entry_player_state")):
+		return false
+	if not _valid_player_state(snapshot.get(&"player_state")):
+		return false
+	return true
+
+
+func _has_exact_keys(value: Dictionary, keys: Array) -> bool:
+	if value.size() != keys.size():
+		return false
+	for key in keys:
+		if not value.has(key):
 			return false
-	for key in [&"claimed_reward_levels", &"rewarded_task_ids",
-			&"purchased_shop_item_ids", &"campaign_checkpoint",
-			&"level_entry_player_state", &"items", &"flags",
-			&"shop_flag_keys", &"player_state"]:
-		if not snapshot.get(key) is Dictionary:
+	return true
+
+
+func _has_only_keys(value: Dictionary, keys: Array) -> bool:
+	for key in value:
+		if key not in keys:
 			return false
-	for key in [&"task_a_returned", &"help_choice",
-			&"music_quest_choice", &"music_quest_turnin"]:
-		if not snapshot.get(key) is String:
+	return true
+
+
+func _is_int_in_range(value: Variant, minimum: int, maximum: int) -> bool:
+	return value is int and int(value) >= minimum and int(value) <= maximum
+
+
+func _is_non_negative_int(value: Variant) -> bool:
+	return value is int and int(value) >= 0
+
+
+func _is_string_in(value: Variant, options: Array) -> bool:
+	return value is String and value in options
+
+
+func _valid_level_bool_map(value: Variant) -> bool:
+	if not value is Dictionary:
+		return false
+	for key in value:
+		if not _is_int_in_range(key, 1, 5) or not value[key] is bool:
 			return false
-	return snapshot.get(&"talked_to_a") is bool
+	return true
+
+
+func _valid_id_bool_map(value: Variant) -> bool:
+	if not value is Dictionary:
+		return false
+	for key in value:
+		if not key is StringName or String(key).is_empty() or not value[key] is bool:
+			return false
+	return true
+
+
+func _valid_flags(value: Variant) -> bool:
+	if not value is Dictionary:
+		return false
+	for key in value:
+		if not key is StringName or String(key).is_empty() or not value[key] is bool:
+			return false
+	return true
+
+
+func _valid_items(value: Variant) -> bool:
+	if not value is Dictionary:
+		return false
+	for item_id in value:
+		if not item_id is StringName or String(item_id).is_empty():
+			return false
+		var entry: Variant = value[item_id]
+		if not entry is Dictionary or entry.size() != 2 \
+				or not entry.get(&"display_name") is String \
+				or not _is_int_in_range(entry.get(&"count"), 1, 2147483647):
+			return false
+	return true
+
+
+func _valid_campaign_checkpoint(value: Variant) -> bool:
+	if not value is Dictionary:
+		return false
+	if value.is_empty():
+		return true
+	if not _has_exact_keys(value, CAMPAIGN_CHECKPOINT_KEYS):
+		return false
+	if not _is_int_in_range(value.get(&"level"), 1, 5):
+		return false
+	if not _is_int_in_range(value.get(&"completed_level"), 0, 5):
+		return false
+	if not _is_int_in_range(value.get(&"available_level"), 1, 5):
+		return false
+	if not _is_non_negative_int(value.get(&"money")):
+		return false
+	if not _is_string_in(value.get(&"task_a_returned"), ["", "returned"]):
+		return false
+	if not _valid_level_bool_map(value.get(&"claimed_reward_levels")):
+		return false
+	if not _valid_flags(value.get(&"shop_flags")):
+		return false
+	if not _valid_id_bool_map(value.get(&"rewarded_task_ids")):
+		return false
+	if not _valid_id_bool_map(value.get(&"purchased_shop_item_ids")):
+		return false
+	return _valid_player_state(value.get(&"player_state"))
+
+
+func _valid_player_state(value: Variant) -> bool:
+	if not value is Dictionary:
+		return false
+	if value.is_empty():
+		return true
+	if not _has_only_keys(value, [&"health", &"equipment"]):
+		return false
+	if value.has(&"health") and not _valid_health_snapshot(value.get(&"health")):
+		return false
+	if value.has(&"equipment") and not _valid_equipment_snapshot(value.get(&"equipment")):
+		return false
+	return not value.is_empty()
+
+
+func _valid_health_snapshot(value: Variant) -> bool:
+	if not value is Dictionary or not _has_exact_keys(value, [&"health"]):
+		return false
+	var health_value: Variant = value.get(&"health")
+	return (health_value is float or health_value is int) \
+		and not health_value is bool \
+		and is_finite(float(health_value)) \
+		and float(health_value) > 0.0 \
+		and float(health_value) <= 10000.0
+
+
+func _valid_equipment_snapshot(value: Variant) -> bool:
+	if not value is Dictionary or not _has_exact_keys(value, EQUIPMENT_SNAPSHOT_KEYS):
+		return false
+	var primary: Variant = value.get(&"primary_weapon")
+	var secondary: Variant = value.get(&"secondary_weapon")
+	if primary != null and not primary is WeaponData:
+		return false
+	if secondary != null and not secondary is WeaponData:
+		return false
+	var medkit: Variant = value.get(&"medkit")
+	if medkit != null and not medkit is MedkitData:
+		return false
+	if not _is_int_in_range(value.get(&"medkit_count"), 0, 999):
+		return false
+	if not _is_int_in_range(value.get(&"active_slot"), -1, 1):
+		return false
+	var reserve_ammo: Variant = value.get(&"reserve_ammo")
+	if not reserve_ammo is Dictionary:
+		return false
+	for ammo_id in reserve_ammo:
+		if not ammo_id is StringName or String(ammo_id).is_empty() \
+				or not _is_non_negative_int(reserve_ammo[ammo_id]):
+			return false
+	var magazines: Variant = value.get(&"magazines")
+	if not magazines is Array or magazines.size() != 2:
+		return false
+	var capacities := [
+		int(primary.magazine_capacity) if primary is WeaponData else 0,
+		int(secondary.magazine_capacity) if secondary is WeaponData else 0,
+	]
+	for slot in range(2):
+		if not _is_int_in_range(magazines[slot], 0, capacities[slot]):
+			return false
+	return true
 
 
 func prepare_scene_transition(mode: StringName, player_snapshot: Dictionary = {}, level_number: int = 0) -> Dictionary:

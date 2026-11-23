@@ -31,12 +31,20 @@ func _run() -> void:
 	state.items = {&"coin": {"display_name": "硬币", "count": 3}}
 	state.flags = {&"music_playing": true, &"shop_mind_access": true}
 	state._shop_flag_keys = {&"shop_mind_access": true}
-	state.campaign_checkpoint = {"completed_level": 2, "money": 100}
-	state.level_entry_player_state = {"health": {"health": 61.0}}
-	var player_snapshot := {
-		"health": {"health": 73.0},
-		"equipment": {"current_slot": 1},
+	state.campaign_checkpoint = {
+		"level": 2,
+		"completed_level": 2,
+		"available_level": 3,
+		"claimed_reward_levels": {1: true},
+		"shop_flags": {&"shop_mind_access": true},
+		"task_a_returned": "returned",
+		"money": 100,
+		"rewarded_task_ids": {&"task_a": true},
+		"purchased_shop_item_ids": {&"medkit_pack": true},
+		"player_state": _valid_player_snapshot(61.0),
 	}
+	state.level_entry_player_state = _valid_player_snapshot(61.0)
+	var player_snapshot := _valid_player_snapshot(73.0)
 
 	var snapshot: Dictionary = state.capture_save_state(player_snapshot)
 	check(state.validate_save_state(snapshot), "完整游戏快照通过校验")
@@ -51,9 +59,77 @@ func _run() -> void:
 
 	check(state.apply_save_state(snapshot), "合法快照可以恢复")
 	check(state.money == 275 and state.completed_level == 2 and state.available_level == 3
-			and state.pending_player_state == player_snapshot
-			and state.last_tavern_state == snapshot,
+			and state.pending_player_state.get("health", {}).get("health") == 73.0
+			and state.last_tavern_state.get("player_state", {}).get("health", {}).get("health") == 73.0,
 		"恢复快照并重建最后酒馆状态")
+
+	var malformed := snapshot.duplicate(true)
+	malformed.player_state = {"health": {"health": "73"}}
+	_reject_without_mutation(state, malformed, "错误玩家生命类型拒绝且不改状态")
+
+	malformed = snapshot.duplicate(true)
+	malformed.player_state = {"health": {"health": 0.0}}
+	_reject_without_mutation(state, malformed, "越界玩家生命拒绝且不改状态")
+
+	malformed = snapshot.duplicate(true)
+	malformed.player_state = {"equipment": {
+		"primary_weapon": null,
+		"secondary_weapon": null,
+		"medkit": null,
+		"medkit_count": 0,
+		"active_slot": 0,
+		"reserve_ammo": {&"pistol": "12"},
+		"magazines": [0, 0],
+	}}
+	_reject_without_mutation(state, malformed, "错误备弹数量拒绝且不改状态")
+
+	malformed = snapshot.duplicate(true)
+	malformed.player_state = {"equipment": {
+		"primary_weapon": null,
+		"secondary_weapon": null,
+		"medkit": null,
+		"medkit_count": 0,
+		"active_slot": 0,
+		"reserve_ammo": {},
+		"magazines": ["full", 0],
+	}}
+	_reject_without_mutation(state, malformed, "错误弹匣数量拒绝且不改状态")
+
+	malformed = snapshot.duplicate(true)
+	malformed.items = {&"coin": {"display_name": "硬币", "count": "3"}}
+	_reject_without_mutation(state, malformed, "错误物品数量拒绝且不改状态")
+
+	malformed = snapshot.duplicate(true)
+	malformed.flags = {&"music_playing": "yes"}
+	_reject_without_mutation(state, malformed, "错误旗标值拒绝且不改状态")
+
+	malformed = snapshot.duplicate(true)
+	malformed.rewarded_task_ids = {&"task_a": "yes"}
+	_reject_without_mutation(state, malformed, "错误任务奖励记录拒绝且不改状态")
+
+	malformed = snapshot.duplicate(true)
+	malformed.purchased_shop_item_ids = {&"medkit_pack": 1}
+	_reject_without_mutation(state, malformed, "错误商店购买记录拒绝且不改状态")
+
+	malformed = snapshot.duplicate(true)
+	malformed.campaign_checkpoint.money = "100"
+	_reject_without_mutation(state, malformed, "错误检查点字段拒绝且不改状态")
+
+	malformed = snapshot.duplicate(true)
+	malformed.campaign_checkpoint.erase("level")
+	_reject_without_mutation(state, malformed, "缺失检查点字段拒绝且不改状态")
+
+	malformed = snapshot.duplicate(true)
+	malformed.level_entry_player_state = {"health": {"health": "61"}}
+	_reject_without_mutation(state, malformed, "错误关卡快照拒绝且不改状态")
+
+	malformed = snapshot.duplicate(true)
+	malformed.completed_level = 6
+	_reject_without_mutation(state, malformed, "越界完成关卡拒绝且不改状态")
+
+	malformed = snapshot.duplicate(true)
+	malformed.help_choice = "yes"
+	_reject_without_mutation(state, malformed, "未知对话枚举拒绝且不改状态")
 
 	state.reset_game_progress()
 	state.money = 45
@@ -61,8 +137,31 @@ func _run() -> void:
 	check(not prepared.is_empty() and state.commit_scene_transition(prepared),
 		"进入关卡事务可提交")
 	check(int(state.last_tavern_state.get("money", -1)) == 45
-			and state.last_tavern_state.get("player_state") == player_snapshot,
+			and state.last_tavern_state.get("player_state", {}).get("health", {}).get("health") == 73.0,
 		"进入关卡时记录离开酒馆前的完整快照")
 
 	print("CAMPAIGN SAVE STATE: %d/%d passed" % [checks - failures, checks])
 	quit(1 if failures else 0)
+
+
+func _valid_player_snapshot(health_value: float) -> Dictionary:
+	return {"health": {"health": health_value}}
+
+
+func _reject_without_mutation(state: Node, snapshot: Dictionary, label: String) -> void:
+	state.reset_game_progress()
+	state.money = 41
+	state.available_level = 4
+	state.items = {&"stable": {"display_name": "稳定", "count": 1}}
+	state.flags = {&"stable": true}
+	state.help_choice = "refused"
+	var accepted: bool = state.apply_save_state(snapshot)
+	check(not accepted
+			and state.money == 41
+			and state.available_level == 4
+			and state.items.get(&"stable", {}).get("count") == 1
+			and state.flags.get(&"stable") == true
+			and state.help_choice == "refused"
+			and state.pending_player_state.is_empty()
+			and state.last_tavern_state.is_empty(),
+		label)

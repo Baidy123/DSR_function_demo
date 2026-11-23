@@ -7,6 +7,8 @@ const TEST_PATH_ENV := "DSR_CAMPAIGN_SAVE_CONFIG"
 var save_path := DEFAULT_SAVE_PATH
 var last_error: Error = OK
 var last_error_code: StringName = &""
+var startup_warning_count := 0
+var _reset_staged := false
 
 
 func _ready() -> void:
@@ -14,13 +16,62 @@ func _ready() -> void:
 	if not override.is_empty():
 		save_path = override
 	var args := OS.get_cmdline_args()
-	if not should_load_saved_state(args, override):
-		return
-	apply_saved_game()
+	apply_startup_game(args, override)
 
 
 func should_load_saved_state(args: PackedStringArray, override: String) -> bool:
-	return not override.is_empty() or not args.has("--script")
+	if override.is_empty() and _has_option(args, ["--script", "-s"]):
+		return false
+	if not _has_option(args, ["--scene"]):
+		return true
+	var scene_path := _option_value(args, "--scene")
+	if scene_path.is_empty():
+		return false
+	var main_scene := str(ProjectSettings.get_setting(
+		"application/run/main_scene", "res://scenes/main.tscn"))
+	return scene_path.simplify_path() == main_scene.simplify_path()
+
+
+func _has_option(args: PackedStringArray, names: Array[String]) -> bool:
+	for argument in args:
+		for name in names:
+			if argument == name or argument.begins_with(name + "="):
+				return true
+	return false
+
+
+func _option_value(args: PackedStringArray, name: String) -> String:
+	for index in range(args.size()):
+		var argument: String = args[index]
+		if argument.begins_with(name + "="):
+			return argument.trim_prefix(name + "=")
+		if argument == name and index + 1 < args.size():
+			return args[index + 1]
+	return ""
+
+
+func apply_startup_game(args: PackedStringArray, override: String) -> Error:
+	if not should_load_saved_state(args, override):
+		return OK
+	var reconcile_error := _reconcile_stale_reset_artifacts()
+	if reconcile_error != OK:
+		_fail(reconcile_error, &"reset_reconcile_failed")
+		_report_startup_load_error()
+		return reconcile_error
+	var error := apply_saved_game()
+	if error != OK:
+		_report_startup_load_error()
+	return error
+
+
+func _report_startup_load_error() -> void:
+	if startup_warning_count > 0:
+		return
+	startup_warning_count += 1
+	push_warning("Campaign save startup load failed (%s): %s" % [
+		last_error_code,
+		save_path,
+	])
 
 
 func save_game(snapshot: Dictionary) -> Error:
@@ -57,18 +108,31 @@ func save_game(snapshot: Dictionary) -> Error:
 
 
 func load_game() -> Dictionary:
-	if not FileAccess.file_exists(save_path):
-		var backup_path := save_path + ".bak"
-		if FileAccess.file_exists(backup_path):
-			var backup_snapshot := _read_snapshot(backup_path)
-			if backup_snapshot.is_empty():
-				return {}
-			_rename(backup_path, save_path)
-			return backup_snapshot
+	var primary_exists := FileAccess.file_exists(save_path)
+	var backup_path := save_path + ".bak"
+	var backup_exists := FileAccess.file_exists(backup_path)
+	if not primary_exists and not backup_exists:
 		last_error = OK
 		last_error_code = &""
 		return {}
-	return _read_snapshot(save_path)
+	if primary_exists:
+		var primary_snapshot := _read_snapshot(save_path)
+		if not primary_snapshot.is_empty():
+			return primary_snapshot
+		var primary_error := last_error
+		var primary_error_code := last_error_code
+		if backup_exists:
+			var backup_snapshot := _read_snapshot(backup_path)
+			if not backup_snapshot.is_empty():
+				return backup_snapshot
+		last_error = primary_error
+		last_error_code = primary_error_code
+		return {}
+	var recovered_snapshot := _read_snapshot(backup_path)
+	if recovered_snapshot.is_empty():
+		return {}
+	_rename(backup_path, save_path)
+	return recovered_snapshot
 
 
 func _read_snapshot(path: String) -> Dictionary:
@@ -99,10 +163,14 @@ func apply_saved_game() -> Error:
 
 
 func stage_reset() -> Error:
-	var pairs := _reset_file_pairs()
-	for pair in pairs:
-		if FileAccess.file_exists(pair.pending):
+	if _reset_staged:
+		if _has_pending_reset_artifact():
 			return _fail(ERR_ALREADY_EXISTS, &"reset_pending_exists")
+		_reset_staged = false
+	var reconcile_error := _reconcile_stale_reset_artifacts()
+	if reconcile_error != OK:
+		return _fail(reconcile_error, &"reset_reconcile_failed")
+	var pairs := _reset_file_pairs()
 	var staged: Array[Dictionary] = []
 	for pair in pairs:
 		if not FileAccess.file_exists(pair.original):
@@ -114,10 +182,16 @@ func stage_reset() -> Error:
 				return _fail(rollback_error, &"rollback_failed")
 			return _fail(error, &"reset_stage_failed")
 		staged.append(pair)
+	_reset_staged = true
 	return _ok()
 
 
 func restore_staged_reset() -> Error:
+	if not _reset_staged:
+		var reconcile_error := _reconcile_stale_reset_artifacts()
+		if reconcile_error != OK:
+			return _fail(reconcile_error, &"reset_reconcile_failed")
+		return _ok()
 	var first_error := OK
 	for pair in _reset_file_pairs():
 		if not FileAccess.file_exists(pair.pending):
@@ -131,10 +205,16 @@ func restore_staged_reset() -> Error:
 			first_error = error
 	if first_error != OK:
 		return _fail(first_error, &"reset_restore_failed")
+	_reset_staged = false
 	return _ok()
 
 
 func finish_staged_reset() -> Error:
+	if not _reset_staged:
+		var reconcile_error := _reconcile_stale_reset_artifacts()
+		if reconcile_error != OK:
+			return _fail(reconcile_error, &"reset_reconcile_failed")
+		return _ok()
 	var first_error := OK
 	for pair in _reset_file_pairs():
 		if not FileAccess.file_exists(pair.pending):
@@ -144,7 +224,32 @@ func finish_staged_reset() -> Error:
 			first_error = error
 	if first_error != OK:
 		return _fail(first_error, &"reset_finish_failed")
+	_reset_staged = false
 	return _ok()
+
+
+func _reconcile_stale_reset_artifacts() -> Error:
+	if not _has_pending_reset_artifact():
+		return OK
+	var first_error := OK
+	for path in [
+			save_path,
+			save_path + ".bak",
+			save_path + ".reset-pending",
+			save_path + ".bak.reset-pending",
+		]:
+		var error := _remove_file(path)
+		if error != OK and first_error == OK:
+			first_error = error
+	return first_error
+
+
+func _has_pending_reset_artifact() -> bool:
+	var pairs := _reset_file_pairs()
+	for pair in pairs:
+		if FileAccess.file_exists(pair.pending):
+			return true
+	return false
 
 
 func _reset_file_pairs() -> Array[Dictionary]:
@@ -184,8 +289,26 @@ func _encode(snapshot: Dictionary) -> ConfigFile:
 
 
 func _decode(config: ConfigFile) -> Dictionary:
-	if int(config.get_value("save", "schema_version", -1)) != CURRENT_SCHEMA_VERSION:
+	var schema_version: Variant = config.get_value("save", "schema_version", null)
+	if not schema_version is int:
+		last_error_code = &"invalid_state"
+		return {}
+	if schema_version != CURRENT_SCHEMA_VERSION:
 		last_error_code = &"unsupported_version"
+		return {}
+	for entry in [
+			["save", "saved_at_unix"],
+			["save", "opening_cinematic_played"],
+		]:
+		if not config.has_section_key(entry[0], entry[1]):
+			last_error_code = &"invalid_state"
+			return {}
+	var saved_at: Variant = config.get_value("save", "saved_at_unix", null)
+	if not saved_at is int or int(saved_at) < 0:
+		last_error_code = &"invalid_state"
+		return {}
+	if not config.get_value("save", "opening_cinematic_played", null) is bool:
+		last_error_code = &"invalid_state"
 		return {}
 	for entry in [
 			["campaign", "completed_level"],

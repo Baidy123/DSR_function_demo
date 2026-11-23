@@ -4,9 +4,9 @@
 
 ## 当前五关定向记录
 
-2026-11-23 单槽战役存档与 Debug 重置：`campaign_save_state_test` 7/7、`campaign_save_service_test` 19/19、`campaign_save_flow_test` 7/7、`campaign_save_reset_test` 26/26，四个 headless 进程均以 0 退出。覆盖完整游戏快照、进入关卡时记录最后酒馆状态、单槽写入／读取、损坏版本与字段拒绝、正式文件替换失败保留备份、启动自动应用并跳过开场、没有最后酒馆快照时关卡保存不可用、确认后重置、正式与备份暂存、加载失败回滚、用户设置与 Debug 总开关保留。`campaign_save_reset_rendered_test` 使用真实 Metal 显示后端和原生场景替换，16/16、退出 0，验证确认对话框真实可见、替换后的当前场景为初始酒馆、重置删除正式／备份／暂存文件且保留设置。该测试登记为 `SPECIAL`，不进入 headless systems 组。
+2026-11-23 单槽战役存档与 Debug 重置最终复审修复：`campaign_save_state_test` 20/20、`campaign_save_service_test` 77/77、`campaign_save_flow_test` 11/11、`campaign_save_reset_test` 26/26，四个 headless 进程均以 0 退出。新增覆盖递归校验全部快照、玩家、装备、备弹、弹匣、物品、旗标、奖励／购买记录和检查点字段，且在应用前拒绝错误类型、越界值与未知枚举；`schema_version` 只接受精确 `int`；`--scene` 指向关卡时忽略已有正常存档，未隔离脚本测试不读取也不清理默认路径，正常主场景启动仍应用存档；损坏主文件可从有效 `.bak` 恢复且保留损坏原文件，启动失败只 warning 一次；真实酒馆玩家的生命、医疗包、当前槽与弹匣写入并在新酒馆实例恢复；主存档或备份 `.reset-pending` 崩溃残留按已请求重置清理，后续重置不再永久阻塞。`campaign_save_reset_rendered_test` 使用真实 Metal 显示后端和原生场景替换，16/16、退出 0，验证确认对话框真实可见、替换后的当前场景为初始酒馆、重置删除正式／备份／暂存文件且保留设置。该测试登记为 `SPECIAL`，不进入 headless systems 组。
 
-同级定向回归均退出 0：`settings_menu_test` 44/44、`campaign_checkpoint_test` 20/20、`scene_transition_request_test` 23/23、`scene_director_test` 151/151、`opening_cinematic_demo_test` 16/16、`pause_menu_test` 50/50。另用隔离文件走真实显示进程：首次进程从设置页“保存游戏”创建存档，随后在酒馆购买急救包并退出；第二次进程恢复保存前的货币和玩家库存，进入酒馆且开场镜头保持 `skipped`。首进程 5/5、重启进程 6/6，临时探针随后删除。`run_regressions.py --check` 为 `Catalog OK`，`git diff --check` 无输出。已知 macOS root certificate store 诊断仍出现；`campaign_save_reset_test` 的恢复／删除失败分支各输出一条预期 warning，断言均通过。
+同级定向回归均退出 0：`settings_menu_test` 44/44、`campaign_checkpoint_test` 20/20、`scene_transition_request_test` 23/23、修改后的 `debug_complete_level_test` 14/14，且验证死亡刷新路径禁用重置按钮；`campaign_flow_test`、`shop_state_test`、`shop_flow_test` 均为全部检查通过、进程退出 0。`run_regressions.py --check` 为 `Catalog OK`，`git diff --check` 无输出。已知 macOS root certificate store 诊断仍出现；`campaign_save_service_test` 主动构造一次启动失败 warning，`campaign_save_reset_test` 的恢复／删除失败分支各输出一条预期 warning，`shop_flow_test` 的缺失面板／目录夹具输出两条预期 warning，所有相关断言均通过。
 
 2026-11-23 酒馆开场演示：`opening_cinematic_demo_test` 使用真实 `main.tscn`，验证默认 0.8/2/1/1 时序、脚本测试默认跳过、第一黑帧立即锁玩家、黑场渐亮、控制器 ENTER/HOLD/RETURN、暂停期间保持玩家锁、NPC 地面锚点投影居中、完成结果、最终恢复玩家相机/暂停/输入锁、取消与缺失相机错误清理、`GameState` 本次运行一次性记录，以及第二次加载酒馆不再播放。headless 16/16、真实 OpenGL/Metal 16/16。脚本测试模式默认跳过开场，专项测试显式开启。
 

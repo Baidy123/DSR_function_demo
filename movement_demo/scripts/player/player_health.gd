@@ -176,3 +176,4 @@ func _update_display() -> void:
 		health_label.text += "  [无敌]"
 	invincible_toggle.set_pressed_no_signal(is_invincible())
 	damage_button.disabled = is_dead
+	reset_progress_button.disabled = not debug_settings.enabled or is_dead

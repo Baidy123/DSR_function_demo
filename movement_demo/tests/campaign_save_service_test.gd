@@ -51,12 +51,112 @@ func _run() -> void:
 	check(service.apply_saved_game() == OK and state.money == 125
 			and state.opening_cinematic_played,
 		"启动读取应用快照并跳过开场镜头")
+	var script_args := PackedStringArray([
+		"--script",
+		"res://tests/campaign_save_service_test.gd",
+	])
+	var level_args := PackedStringArray([
+		"--scene",
+		"res://scenes/world/levels/lvl_1.tscn",
+	])
+	check(not service.should_load_saved_state(script_args, ""),
+		"脚本测试默认跳过正常存档")
+	check(service.should_load_saved_state(script_args, save_path),
+		"隔离存档的脚本测试允许读取")
+	state.money = 7
+	if service.should_load_saved_state(level_args, ""):
+		service.apply_saved_game()
+	check(state.money == 7,
+		"--scene 关卡启动忽略已有正常存档")
+	check(service.should_load_saved_state(PackedStringArray(), ""),
+		"主场景正常启动允许读取存档")
+	service.apply_saved_game()
+	check(state.money == 125,
+		"主场景正常启动应用已有存档")
 
 	var corrupt := ConfigFile.new()
 	corrupt.set_value("save", "schema_version", 99)
 	check(corrupt.save(save_path) == OK, "构造未知版本存档")
 	check(service.load_game().is_empty() and service.last_error_code == &"unsupported_version",
 		"未知版本拒绝读取")
+
+	for invalid_version in ["1", 1.0, true]:
+		service.save_game(snapshot)
+		var version_config := ConfigFile.new()
+		check(version_config.load(save_path) == OK, "读取版本测试存档")
+		version_config.set_value("save", "schema_version", invalid_version)
+		check(version_config.save(save_path) == OK, "写入错误版本类型")
+		state.money = 41
+		check(service.load_game().is_empty() and state.money == 41,
+			"schema_version 仅接受精确 int：%s" % [var_to_str(invalid_version)])
+		check(service.apply_saved_game() != OK and state.money == 41,
+			"错误版本类型不应用且不改状态：%s" % [var_to_str(invalid_version)])
+
+	service.save_game(snapshot)
+	var metadata_config := ConfigFile.new()
+	check(metadata_config.load(save_path) == OK, "读取元数据校验存档")
+	metadata_config.set_value("save", "saved_at_unix", "now")
+	check(metadata_config.save(save_path) == OK, "写入错误保存时间")
+	check(service.load_game().is_empty(), "错误保存时间拒绝读取")
+
+	service.save_game(snapshot)
+	metadata_config = ConfigFile.new()
+	check(metadata_config.load(save_path) == OK, "重新读取元数据校验存档")
+	metadata_config.set_value("save", "opening_cinematic_played", 1)
+	check(metadata_config.save(save_path) == OK, "写入错误开场标记")
+	check(service.load_game().is_empty(), "错误开场标记拒绝读取")
+
+	service.save_game(snapshot)
+	metadata_config = ConfigFile.new()
+	check(metadata_config.load(save_path) == OK, "再次读取元数据校验存档")
+	metadata_config.erase_section_key("save", "saved_at_unix")
+	check(metadata_config.save(save_path) == OK, "删除必需保存时间")
+	check(service.load_game().is_empty(), "缺失保存时间拒绝读取")
+
+	service.save_game(snapshot)
+	var malformed_nested := ConfigFile.new()
+	check(malformed_nested.load(save_path) == OK, "读取嵌套校验存档")
+	malformed_nested.set_value("player", "player_state", {"equipment": {
+		"primary_weapon": null,
+		"secondary_weapon": null,
+		"medkit": null,
+		"medkit_count": 0,
+		"active_slot": 0,
+		"reserve_ammo": {&"pistol": "twelve"},
+		"magazines": [0, 0],
+	}})
+	check(malformed_nested.save(save_path) == OK, "写入错误装备嵌套数据")
+	state.money = 41
+	check(service.load_game().is_empty() and state.money == 41,
+		"错误装备嵌套数据在应用前拒绝")
+
+	service.save_game(snapshot)
+	malformed_nested = ConfigFile.new()
+	check(malformed_nested.load(save_path) == OK, "重新读取嵌套校验存档")
+	malformed_nested.set_value("world", "items",
+		{&"coin": {"display_name": "硬币", "count": "3"}})
+	check(malformed_nested.save(save_path) == OK, "写入错误物品嵌套数据")
+	check(service.apply_saved_game() != OK and state.money == 41,
+		"错误物品嵌套数据不应用且不改状态")
+
+	service.save_game(snapshot)
+	malformed_nested = ConfigFile.new()
+	check(malformed_nested.load(save_path) == OK, "再次读取嵌套校验存档")
+	malformed_nested.set_value("campaign", "campaign_checkpoint", {
+		"level": "1",
+		"completed_level": 1,
+		"available_level": 1,
+		"claimed_reward_levels": {},
+		"shop_flags": {},
+		"task_a_returned": "returned",
+		"money": 100,
+		"rewarded_task_ids": {},
+		"purchased_shop_item_ids": {},
+		"player_state": {},
+	})
+	check(malformed_nested.save(save_path) == OK, "写入错误检查点嵌套数据")
+	check(service.load_game().is_empty(),
+		"错误检查点嵌套数据在应用前拒绝")
 
 	var invalid := snapshot.duplicate(true)
 	invalid.money = "125"
@@ -97,6 +197,53 @@ func _run() -> void:
 		"启动从有效备份恢复旧存档")
 	interrupted.free()
 
+	check(service.save_game(snapshot) == OK
+			and DirAccess.rename_absolute(save_path, save_path + ".bak") == OK,
+		"构造有效备份和损坏主存档")
+	var corrupt_primary := ConfigFile.new()
+	corrupt_primary.set_value("save", "schema_version", "broken")
+	check(corrupt_primary.save(save_path) == OK, "写入损坏主存档")
+	var corrupt_primary_text := FileAccess.get_file_as_string(save_path)
+	state.money = 41
+	check(service.apply_saved_game() == OK and state.money == 125,
+		"损坏主存档可回退到有效备份")
+	check(FileAccess.file_exists(save_path)
+			and FileAccess.get_file_as_string(save_path) == corrupt_primary_text
+			and FileAccess.file_exists(save_path + ".bak"),
+		"备份回退保留损坏主存档和有效备份")
+
+	var invalid_backup := ConfigFile.new()
+	invalid_backup.set_value("save", "schema_version", 99)
+	check(invalid_backup.save(save_path + ".bak") == OK, "写入损坏备份")
+	state.money = 41
+	check(service.apply_saved_game() != OK and state.money == 41,
+		"主存档和备份均无效时不应用且不改状态")
+
+	var invalid_startup := ConfigFile.new()
+	invalid_startup.set_value("save", "schema_version", 1)
+	check(invalid_startup.save(save_path) == OK
+			and service._remove_file(save_path + ".bak") == OK,
+		"构造启动失败的孤立损坏存档")
+	state.money = 41
+	var previous_override := OS.get_environment("DSR_CAMPAIGN_SAVE_CONFIG")
+	OS.set_environment("DSR_CAMPAIGN_SAVE_CONFIG", save_path)
+	service._ready()
+	service._ready()
+	if previous_override.is_empty():
+		OS.unset_environment("DSR_CAMPAIGN_SAVE_CONFIG")
+	else:
+		OS.set_environment("DSR_CAMPAIGN_SAVE_CONFIG", previous_override)
+	var warning_count := 0
+	var has_warning_count := false
+	for property in service.get_property_list():
+		if property.name == "startup_warning_count":
+			has_warning_count = true
+			warning_count = int(service.get("startup_warning_count"))
+	check(has_warning_count, "启动加载错误通过可观察 warning 计数报告")
+	check(warning_count == 1, "启动加载错误只报告一次")
+	check(FileAccess.file_exists(save_path) and state.money == 41,
+		"启动加载失败保留原存档且不改状态")
+
 	check(service.stage_reset() == OK and not FileAccess.file_exists(save_path),
 		"重置暂存移走正式存档")
 	check(service.restore_staged_reset() == OK and FileAccess.file_exists(save_path),
@@ -120,6 +267,62 @@ func _run() -> void:
 	check(service.finish_staged_reset() == OK and not FileAccess.file_exists(backup_path)
 			and not FileAccess.file_exists(backup_pending),
 		"提交重置删除备份暂存")
+
+	service.save_game(snapshot)
+	var pending_path: String = save_path + ".reset-pending"
+	check(DirAccess.rename_absolute(save_path, pending_path) == OK,
+		"构造主存档重置崩溃窗口")
+	var script_skip_service = ServiceScript.new()
+	script_skip_service.save_path = save_path
+	root.add_child(script_skip_service)
+	await process_frame
+	check(FileAccess.file_exists(pending_path),
+		"未隔离脚本测试不清理也未读取正常存档路径")
+	script_skip_service.queue_free()
+	await process_frame
+	check(DirAccess.rename_absolute(pending_path, save_path) == OK,
+		"恢复崩溃窗口准备隔离启动")
+	check(DirAccess.rename_absolute(save_path, pending_path) == OK,
+		"重新构造主存档重置崩溃窗口")
+	var crash_service = ServiceScript.new()
+	crash_service.save_path = save_path
+	var previous_crash_override := OS.get_environment("DSR_CAMPAIGN_SAVE_CONFIG")
+	OS.set_environment("DSR_CAMPAIGN_SAVE_CONFIG", save_path)
+	root.add_child(crash_service)
+	if previous_crash_override.is_empty():
+		OS.unset_environment("DSR_CAMPAIGN_SAVE_CONFIG")
+	else:
+		OS.set_environment("DSR_CAMPAIGN_SAVE_CONFIG", previous_crash_override)
+	await process_frame
+	check(not FileAccess.file_exists(save_path)
+			and not FileAccess.file_exists(pending_path),
+		"启动将残留主存档 pending 视为已请求重置")
+	check(crash_service.stage_reset() == OK,
+		"清理残留 pending 后重置不再永久阻塞")
+	check(crash_service.finish_staged_reset() == OK,
+		"清理残留 pending 后可结束已请求重置")
+	check(crash_service.save_game(snapshot) == OK
+			and crash_service.stage_reset() == OK
+			and FileAccess.file_exists(pending_path),
+		"清理残留 pending 后可再次暂存正式重置")
+	check(crash_service.finish_staged_reset() == OK,
+		"后续正式重置可完成")
+
+	check(crash_service.save_game(snapshot) == OK
+			and DirAccess.rename_absolute(save_path, backup_path) == OK
+			and DirAccess.rename_absolute(backup_path, backup_pending) == OK,
+		"构造备份存档重置崩溃窗口")
+	check(crash_service.stage_reset() == OK
+			and not FileAccess.file_exists(backup_pending),
+		"残留备份 pending 不会阻塞后续重置")
+	check(crash_service.finish_staged_reset() == OK,
+		"清理残留备份 pending 后可结束已请求重置")
+	check(crash_service.save_game(snapshot) == OK
+			and crash_service.stage_reset() == OK
+			and crash_service.finish_staged_reset() == OK,
+		"清理备份 pending 后可再次完成正式重置")
+	crash_service.queue_free()
+	await process_frame
 
 	print("CAMPAIGN SAVE SERVICE: %d/%d passed" % [checks - failures, checks])
 	service.free()
