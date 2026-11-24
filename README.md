@@ -67,7 +67,7 @@ Dialogue Manager、Phantom Camera 和 Godot AI 插件源码及许可证随工程
 | --- | --- | --- |
 | Player | 移速、转速、加减速、耐力、蹲姿与翻越 | [移动](docs/gameplay/MOVEMENT.md) |
 | Player → Combat → 目标切换 | `Mouse Target Assist Enabled` 开关、鼠标行程、方向半角、转身速度 | [锁定与精度](docs/gameplay/COMBAT.md) |
-| Player → Combat → Aim Control | 场景默认采用自动锁定或鼠标瞄准，游戏内可从暂停设置覆盖 | [瞄准方式](docs/gameplay/COMBAT.md#瞄准方式) |
+| Player → Combat → Aim Control | 独立脚本调试使用的后备值。正常游戏从战斗设置读取全局瞄准方式 | [瞄准方式](docs/gameplay/COMBAT.md#瞄准方式) |
 | Player → Equipment → 武器 → 玩家收敛等栏目 | 在各栏的「自动锁定」和「鼠标瞄准」页分别调节准度 | [各自调节准度](docs/gameplay/COMBAT.md#各自调节准度) |
 | Player → Combat | 分瞄准方式调节蹲姿精度和受击精度、共用受击减速 | [战斗配置](docs/gameplay/COMBAT.md) |
 | Player → Equipment | 主副武器、初始槽、初始共享备弹、医疗包资源与数量 | [装备](docs/gameplay/WEAPON_SLOTS.md) |

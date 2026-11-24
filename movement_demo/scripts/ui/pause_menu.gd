@@ -13,7 +13,6 @@ signal load_game_requested
 @onready var _title: Label = $Backdrop/Center/Panel/Content/Title
 @onready var _guide: CanvasLayer = $PlayGuide
 @onready var _aim_control: OptionButton = _settings.get_node("Categories/CombatSettings/AimControl/Choice")
-@onready var _game_state = get_node("/root/GameState")
 @onready var _categories: TabContainer = $Backdrop/Center/Panel/Content/Settings/Categories
 @onready var _window_mode: OptionButton = $Backdrop/Center/Panel/Content/Settings/Categories/BasicSettings/WindowModeRow/WindowMode
 @onready var _resolution: OptionButton = $Backdrop/Center/Panel/Content/Settings/Categories/BasicSettings/ResolutionRow/Resolution
@@ -114,13 +113,17 @@ func _show_main() -> void:
 
 
 func _show_settings() -> void:
-	_aim_control.select(_aim_control.get_item_index(_game_state.player_aim_control_override))
 	_sync_settings_controls()
 	_show_page(_settings, "设置", _settings.get_node("Back"))
 
 
 func _select_aim_control(index: int) -> void:
-	_game_state.player_aim_control_override = _aim_control.get_item_id(index)
+	var user_settings := _user_settings()
+	if user_settings == null:
+		return
+	if user_settings.commit_aim_control(_aim_control.get_item_id(index)) != OK:
+		_aim_control.select(_aim_control.get_item_index(user_settings.get_aim_control()))
+		_notice.text = "瞄准方式保存失败"
 
 
 func _show_quit() -> void:
@@ -151,11 +154,12 @@ func _user_settings() -> Node:
 func _sync_settings_controls() -> void:
 	var user_settings := _user_settings()
 	var available := user_settings != null
-	for control in [_window_mode, _resolution, _vsync, _mouse_assist,
+	for control in [_window_mode, _resolution, _vsync, _aim_control, _mouse_assist,
 			_sensitivity, _save, _restore_defaults]:
 		control.disabled = not available
 	if not available:
 		return
+	_aim_control.select(_aim_control.get_item_index(user_settings.get_aim_control()))
 	_sync_window_modes(user_settings.available_window_modes())
 	_sync_resolutions(user_settings.available_resolutions())
 	_window_mode.select(user_settings.window_mode)

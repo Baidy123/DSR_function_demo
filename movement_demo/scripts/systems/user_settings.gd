@@ -3,6 +3,7 @@ extends Node
 ## 用户偏好只保存设置，不保存任务、货币或玩家进度。
 signal settings_changed
 
+enum AimControl { AUTO_LOCK = 1, MOUSE = 2 }
 enum TargetSwitchSensitivity { LOW, NORMAL, HIGH }
 enum WindowMode { WINDOWED, FULLSCREEN, EXCLUSIVE_FULLSCREEN }
 
@@ -26,6 +27,7 @@ var resolution_index: int = DEFAULT_RESOLUTION_INDEX
 var vsync_enabled := DEFAULT_VSYNC_ENABLED
 var last_save_error := OK
 var has_saved_settings := false
+var _aim_control := 0
 
 
 func _ready() -> void:
@@ -35,15 +37,17 @@ func _ready() -> void:
 	if not config_override.is_empty():
 		config_path = config_override
 	if should_load_saved_config(OS.get_cmdline_args(), config_override):
+		_aim_control = AimControl.AUTO_LOCK
 		var error := load_settings()
 		if error == OK:
-			apply_display_settings()
+			if has_saved_settings:
+				apply_display_settings()
 		elif error != ERR_FILE_NOT_FOUND:
 			push_warning("无法读取用户设置 %s：%s" % [config_path, error_string(error)])
 
 
 static func should_load_saved_config(args: PackedStringArray, config_override: String) -> bool:
-	return not config_override.is_empty() or not args.has("--script")
+	return not config_override.is_empty() or not (args.has("--script") or args.has("-s"))
 
 
 func available_resolutions() -> Array:
@@ -72,6 +76,26 @@ func default_values() -> Dictionary:
 		"resolution_index": DEFAULT_RESOLUTION_INDEX,
 		"vsync_enabled": DEFAULT_VSYNC_ENABLED,
 	}
+
+
+func get_aim_control(fallback: int = AimControl.AUTO_LOCK) -> int:
+	return _aim_control if _aim_control != 0 else fallback
+
+
+func commit_aim_control(mode: int) -> Error:
+	if mode not in [AimControl.AUTO_LOCK, AimControl.MOUSE]:
+		return ERR_INVALID_PARAMETER
+	var config := ConfigFile.new()
+	if FileAccess.file_exists(config_path):
+		var read_error := config.load(config_path)
+		if read_error != OK:
+			return read_error
+	config.set_value("combat", "aim_control", mode)
+	var error := config.save(config_path)
+	if error == OK:
+		_aim_control = mode
+		settings_changed.emit()
+	return error
 
 
 func commit_settings(
@@ -113,6 +137,8 @@ func load_settings() -> Error:
 	var error := config.load(config_path)
 	if error != OK:
 		return error
+	_aim_control = _enum_setting(
+		config, "combat", "aim_control", AimControl.AUTO_LOCK, [AimControl.AUTO_LOCK, AimControl.MOUSE])
 	mouse_target_assist_enabled = _bool_setting(
 		config, "input_assist", "mouse_target_assist_enabled",
 		DEFAULT_MOUSE_TARGET_ASSIST_ENABLED)
@@ -131,7 +157,7 @@ func load_settings() -> Error:
 	vsync_enabled = _bool_setting(
 		config, "display", "vsync_enabled", DEFAULT_VSYNC_ENABLED)
 	last_save_error = OK
-	has_saved_settings = true
+	has_saved_settings = config.has_section("display") or config.has_section("input_assist")
 	return OK
 
 
@@ -194,6 +220,7 @@ func _write_settings(
 		resolution_choice: int,
 		vsync: bool) -> Error:
 	var config := ConfigFile.new()
+	config.set_value("combat", "aim_control", get_aim_control())
 	config.set_value("input_assist", "mouse_target_assist_enabled", mouse_assist)
 	config.set_value("input_assist", "target_switch_sensitivity", sensitivity)
 	config.set_value("display", "window_mode", mode)

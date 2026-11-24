@@ -86,8 +86,10 @@ func _run() -> void:
 	var settings_page := content.get_node("Settings")
 	check(settings_page.visible, "设置分类页保持现有导航")
 	var aim_control := settings_page.get_node_or_null("Categories/CombatSettings/AimControl/Choice") as OptionButton
-	var state := root.get_node("GameState")
-	check(aim_control != null and aim_control.item_count == 3, "战斗设置保留三个瞄准方式选项")
+	var combat: Node = scene.get_node("Player/Combat")
+	check(aim_control != null and aim_control.item_count == 2
+		and aim_control.get_item_index(1) >= 0 and aim_control.get_item_index(2) >= 0,
+		"战斗设置只保留自动锁定和鼠标瞄准")
 	if aim_control != null:
 		var aim_categories := settings_page.get_node("Categories") as TabContainer
 		aim_categories.current_tab = 0
@@ -96,12 +98,12 @@ func _run() -> void:
 		check(aim_control.is_visible_in_tree(), "战斗设置显示瞄准方式")
 		aim_control.select(aim_control.get_item_index(2))
 		aim_control.item_selected.emit(aim_control.selected)
-		check(state.player_aim_control_override == 2, "鼠标瞄准立即生效")
+		check(combat.get_aim_control() == 2 and FileAccess.file_exists(test_config),
+			"鼠标瞄准立即生效并写入用户配置")
 		aim_control.select(aim_control.get_item_index(1))
 		aim_control.item_selected.emit(aim_control.selected)
-		check(state.player_aim_control_override == 1, "自动锁定仍可即时切回")
-		aim_control.select(aim_control.get_item_index(0))
-		aim_control.item_selected.emit(aim_control.selected)
+		check(combat.get_aim_control() == 1 and not settings.has_saved_settings,
+			"自动锁定即时切回且只保存瞄准方式")
 	var categories := settings_page.find_child("Categories", true, false)
 	var basic := settings_page.find_child("BasicSettings", true, false)
 	var combat_settings := settings_page.find_child("CombatSettings", true, false)
@@ -158,6 +160,7 @@ func _run() -> void:
 	var content_scale_before := root.content_scale_size
 	var visible_size_before := root.get_visible_rect().size
 	var render_scale_before := root.scaling_3d_scale
+	var preferences_before := FileAccess.get_file_as_string(test_config)
 	mouse_assist.button_pressed = false
 	mouse_assist.toggled.emit(false)
 	sensitivity.select(2)
@@ -175,11 +178,11 @@ func _run() -> void:
 		and settings.resolution_index == 0
 		and settings.vsync_enabled,
 		"编辑控件不会自动提交设置")
-	check(not FileAccess.file_exists(test_config), "编辑控件不会自动写入配置")
+	check(FileAccess.get_file_as_string(test_config) == preferences_before,
+		"编辑其他控件不会自动写入配置")
 	check(root.content_scale_size == content_scale_before
 		and is_equal_approx(root.scaling_3d_scale, render_scale_before),
 		"编辑分辨率不会立即改变界面基准或渲染比例")
-	var combat: Node = scene.get_node("Player/Combat")
 	check(combat.mouse_target_assist_enabled
 		and is_equal_approx(combat.target_switch_travel_ratio, 0.12),
 		"编辑战斗设置不会立即影响玩家")

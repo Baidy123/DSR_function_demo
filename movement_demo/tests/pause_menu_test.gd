@@ -53,6 +53,9 @@ func _capture(name: String) -> void:
 	root.get_texture().get_image().save_png(CAPTURE_DIR + name + ".png")
 
 func _run() -> void:
+	var settings := root.get_node("UserSettings")
+	var test_config := OS.get_temp_dir().path_join("dsr-pause-menu-%d.cfg" % OS.get_process_id())
+	settings.config_path = test_config
 	root.size = Vector2i(1152, 720)
 	root.content_scale_size = root.size
 	for path in ["res://scenes/main.tscn", "res://scenes/world/levels/lvl_1.tscn",
@@ -83,12 +86,20 @@ func _run() -> void:
 			else:
 				await _key()
 				check(not menu.visible and not paused, "Esc 恢复关卡：" + path)
-				if path.ends_with("lvl_1.tscn"): await _exercise_aim_pause(scene, menu)
+				if path.ends_with("lvl_1.tscn"):
+					var combat: Node = scene.get_node("Player/Combat")
+					check(combat.get_aim_control() == 2,
+						"第一关继承酒馆中选择的鼠标瞄准")
+					if settings.has_method(&"commit_aim_control"):
+						settings.commit_aim_control(1)
+					await _exercise_aim_pause(scene, menu)
 				if path.ends_with("lvl_5.tscn"): await _key()
 		scene.free()
 		current_scene = null
 		await _settle()
 		check(not paused, "场景卸载释放自己的暂停：" + path)
+	if FileAccess.file_exists(test_config):
+		DirAccess.remove_absolute(test_config)
 	print("PAUSE MENU: %d/%d passed" % [checks - failures, checks])
 	quit(1 if failures else 0)
 
@@ -141,14 +152,14 @@ func _exercise_menu(scene: Node, menu: CanvasLayer) -> void:
 	var categories := settings.get_node("Categories") as TabContainer
 	categories.current_tab = 1
 	var aim_choice := settings.get_node_or_null("Categories/CombatSettings/AimControl/Choice") as OptionButton
-	check(aim_choice != null and aim_choice.item_count == 3, "设置提供瞄准方式选项")
+	check(aim_choice != null and aim_choice.item_count == 2, "设置提供两种全局瞄准方式")
 	if aim_choice != null:
-		aim_choice.select(2)
-		aim_choice.item_selected.emit(2)
+		aim_choice.select(aim_choice.get_item_index(1))
+		aim_choice.item_selected.emit(aim_choice.selected)
+		check(combat.get_aim_control() == 1 and paused, "设置应用自动锁定且保持暂停")
+		aim_choice.select(aim_choice.get_item_index(2))
+		aim_choice.item_selected.emit(aim_choice.selected)
 		check(combat.get_aim_control() == 2 and paused, "设置应用鼠标瞄准且保持暂停")
-		aim_choice.select(0)
-		aim_choice.item_selected.emit(0)
-		check(combat.get_aim_control() == combat.aim_control, "跟随场景配置恢复检查器值")
 	await _capture("02-settings")
 	await _key()
 	check(main.visible and paused, "设置页 Esc 返回暂停菜单")

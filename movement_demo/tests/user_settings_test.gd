@@ -66,6 +66,19 @@ func _run() -> void:
 		"基础设置修改不再触发自动保存")
 
 	settings.config_path = test_config
+	var aim_ready: bool = settings.has_method("commit_aim_control")
+	check(aim_ready, "设置服务提供独立的瞄准方式保存入口")
+	if aim_ready:
+		check(settings.commit_aim_control(2) == OK and settings.get_aim_control() == 2,
+			"鼠标瞄准保存后立即生效")
+		var config_override := OS.get_environment("DSR_USER_SETTINGS_CONFIG")
+		OS.set_environment("DSR_USER_SETTINGS_CONFIG", test_config)
+		var aim_only = settings_script.new()
+		root.add_child(aim_only)
+		OS.set_environment("DSR_USER_SETTINGS_CONFIG", config_override)
+		check(aim_only.get_aim_control() == 2 and not aim_only.has_saved_settings,
+			"启动重读瞄准方式不启用未保存的显示和辅助设置")
+		aim_only.free()
 	var commit_ready: bool = settings.has_method("commit_settings")
 	check(commit_ready, "设置服务提供显式保存入口")
 	if commit_ready:
@@ -83,6 +96,8 @@ func _run() -> void:
 		var restored = settings_script.new()
 		restored.config_path = test_config
 		check(restored.load_settings() == OK, "保存后的设置可以重新读取")
+		if aim_ready:
+			check(restored.get_aim_control() == 2, "保存其他设置保留已选的鼠标瞄准")
 		check(restored.mouse_target_assist_enabled
 			and restored.target_switch_sensitivity == 2
 			and restored.window_mode == 1
@@ -92,6 +107,13 @@ func _run() -> void:
 		if persisted_state_ready:
 			check(restored.has_saved_settings, "重载成功标记为已持久化")
 		restored.free()
+
+		if aim_ready:
+			check(settings.commit_aim_control(1) == OK, "可以持久化切回自动锁定")
+			var current_config := ConfigFile.new()
+			check(current_config.load(test_config) == OK
+				and current_config.get_value("display", "resolution_index") == 2,
+				"切换瞄准方式保留现有显示设置")
 
 		var invalid_config := ConfigFile.new()
 		invalid_config.set_value("display", "window_mode", 999)
@@ -103,6 +125,8 @@ func _run() -> void:
 		var invalid = settings_script.new()
 		invalid.config_path = test_config
 		check(invalid.load_settings() == OK, "错误值仍可读取并回退")
+		if aim_ready:
+			check(invalid.get_aim_control() == 1, "没有瞄准方式字段的旧配置默认自动锁定")
 		check(invalid.mouse_target_assist_enabled
 			and invalid.target_switch_sensitivity == 1
 			and invalid.window_mode == 0
@@ -147,6 +171,9 @@ func _run() -> void:
 		failure.config_path = OS.get_temp_dir().path_join(
 			"dsr-settings-missing-%d" % OS.get_process_id()).path_join("settings.cfg")
 		var window_before: int = failure.window_mode
+		if aim_ready:
+			check(failure.commit_aim_control(2) != OK and failure.get_aim_control() == 1,
+				"无法写入时保留当前瞄准方式")
 		check(failure.commit_settings(false, 0, 1, 2, false) != OK,
 			"写入失败返回错误")
 		check(failure.window_mode == window_before

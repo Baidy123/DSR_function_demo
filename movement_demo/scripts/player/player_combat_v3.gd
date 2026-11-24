@@ -17,8 +17,8 @@ const Ammo = preload("res://scripts/weapons/weapon_ammo.gd")
 @export_range(0.1, 1.0, 0.05) var sprint_reload_speed_multiplier: float = 0.5
 var ammo = Ammo.new()
 var _reload_started_sprinting: bool = false
-enum AimControl { FROM_SCENE, AUTO_LOCK, MOUSE }
-## 按住右键时自动锁定敌人，或让准星跟随鼠标。暂停菜单可以在本次运行中覆盖此值。
+const AimControl = preload("res://scripts/systems/user_settings.gd").AimControl
+## 独立组件演示／脚本夹具的后备值。正常运行时读取全局用户设置。
 @export_enum("自动锁定:1", "鼠标瞄准:2") var aim_control: int = AimControl.AUTO_LOCK
 var _active_aim_control: int = AimControl.AUTO_LOCK
 var _mouse_aim_cursor := Vector2.INF
@@ -127,7 +127,7 @@ var player_position_before_move: Vector3 = Vector3.ZERO
 
 @onready var player = get_parent()
 @onready var status: Label = $HUD/Panel/Status
-@onready var _game_state = get_node_or_null("/root/GameState")
+@onready var _user_settings = get_node_or_null("/root/UserSettings")
 
 
 ## 读取旧场景的自定义比例，后续保存使用新字段；不再执行旧的稳定度加法。
@@ -143,9 +143,8 @@ func _ready() -> void:
 	player.get_node("Health").died.connect(cancel_melee)
 	add_to_group("shot_listener")
 	add_to_group(&"user_settings_combat")
-	var user_settings = get_node_or_null("/root/UserSettings")
-	if user_settings != null and user_settings.has_saved_settings:
-		user_settings.apply_to_combat(self)
+	if _user_settings != null and _user_settings.has_saved_settings:
+		_user_settings.apply_to_combat(self)
 	equip_weapon(weapon)
 	_apply_debug_mode(debug_settings.enabled)
 
@@ -367,8 +366,7 @@ func get_locked_aim_point() -> Vector3:
 
 
 func get_aim_control() -> int:
-	var override: int = _game_state.player_aim_control_override if _game_state != null else AimControl.FROM_SCENE
-	return aim_control if override == AimControl.FROM_SCENE else override
+	return _user_settings.get_aim_control(aim_control) if _user_settings != null else aim_control
 
 
 func _uses_mouse_aim_tuning() -> bool:

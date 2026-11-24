@@ -107,7 +107,7 @@ movement_demo/
 | `weapons/headshot_resolver.gd` | 按实际目标冻结每枪结果与一次破绽消费，再交付受击 |
 | `ui/lock_reticle.gd` | 只读准度、目标概率和转身状态，显示准星／菱形／转向标记 |
 
-Equipment 交接当前枪给 Combat。相机订阅 `weapon_changed`，表现订阅真实射击结果。Combat 统一读取检查器 `aim_control` 或 `GameState` 中的会话偏好。两种瞄准方式都对普通枪使用散布锥，对霰弹使用弹丸图样。自动锁定主动转身固定读取当前武器低速跟枪项，实际目标移动按速度插值，两项损耗取较大者。鼠标瞄准以相机投影提供枪口射击方向，并跳过跟枪损耗。普通敌人的中心概率仍由 `WeaponData.get_aim_settings(false)` 提供。
+Equipment 交接当前枪给 Combat。相机订阅 `weapon_changed`，表现订阅真实射击结果。正常运行时 Combat 从 `UserSettings` 读取全局瞄准方式。检查器 `aim_control` 供独立组件测试作后备值。两种瞄准方式都对普通枪使用散布锥，对霰弹使用弹丸图样。自动锁定主动转身固定读取当前武器低速跟枪项，实际目标移动按速度插值，两项损耗取较大者。鼠标瞄准以相机投影提供枪口射击方向，并跳过跟枪损耗。普通敌人的中心概率仍由 `WeaponData.get_aim_settings(false)` 提供。
 
 ## 敌人、区域与小队
 
@@ -150,7 +150,7 @@ Equipment 交接当前枪给 Combat。相机订阅 `weapon_changed`，表现订�
 
 ## 相机、表现与内容
 
-`scenes/ui/pause_menu.tscn` 与 `scripts/ui/pause_menu.gd` 由场景导演核心在运行时装配，提供 Esc 暂停、瞄准方式、操作说明和退出确认。菜单将瞄准选择写入 `GameState.player_aim_control_override`，其余用户偏好由 `UserSettings` 读写独立配置。该服务应用窗口尺寸和全屏 3D 渲染分辨率，界面继续使用工程的缩放基准。暂停首页提交保存、加载、暂停与退出意图，死亡界面通过同一个导演入口请求加载。`SceneDirector.request_pause_menu()`／`resume_from_pause_menu()` 持有和释放共享暂停协调器的独立令牌。暂停首页的操作说明复用原 `play_guide.tscn` 与 `LevelFlow/PlayGuide` 节点路径，关闭说明返回暂停首页。显式教程入口 `guide_path` 默认留空。
+`scenes/ui/pause_menu.tscn` 与 `scripts/ui/pause_menu.gd` 由场景导演核心在运行时装配，提供 Esc 暂停、瞄准方式、操作说明和退出确认。`UserSettings` 统一读写用户偏好。瞄准方式单项即时写入，其他选项在点击保存设置后写入。该服务应用窗口尺寸和全屏 3D 渲染分辨率，界面继续使用工程的缩放基准。暂停首页提交保存、加载、暂停与退出意图，死亡界面通过同一个导演入口请求加载。`SceneDirector.request_pause_menu()`／`resume_from_pause_menu()` 持有和释放共享暂停协调器的独立令牌。暂停首页的操作说明复用原 `play_guide.tscn` 与 `LevelFlow/PlayGuide` 节点路径，关闭说明返回暂停首页。显式教程入口 `guide_path` 默认留空。
 
 相机根 `systems/player_camera.gd` 统一绑定玩家、读取武器 Aim Range、控制视野过渡；`camera_occlusion.gd` 仅处理显式标记装饰的材质副本与还原。CameraGroundAnchor 过滤翻越抬升。保持原 Phantom Camera 跟随和更新关系。
 

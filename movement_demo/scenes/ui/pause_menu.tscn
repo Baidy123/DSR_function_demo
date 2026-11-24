@@ -215,14 +215,12 @@ text = "瞄准方式"
 layout_mode = 2
 mouse_default_cursor_shape = 2
 theme_override_font_sizes/font_size = 16
-item_count = 3
+item_count = 2
 selected = 0
-popup/item_0/text = "跟随场景配置"
-popup/item_0/id = 0
-popup/item_1/text = "自动锁定"
-popup/item_1/id = 1
-popup/item_2/text = "鼠标瞄准"
-popup/item_2/id = 2
+popup/item_0/text = "自动锁定"
+popup/item_0/id = 1
+popup/item_1/text = "鼠标瞄准"
+popup/item_1/id = 2
 
 [node name="MouseAssistRow" type="HBoxContainer" parent="Backdrop/Center/Panel/Content/Settings/Categories/CombatSettings"]
 layout_mode = 2
