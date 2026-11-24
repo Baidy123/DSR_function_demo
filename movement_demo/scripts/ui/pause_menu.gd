@@ -34,7 +34,7 @@ func _ready() -> void:
 	_main.get_node("Resume").pressed.connect(func(): resume_requested.emit())
 	_main.get_node("Settings").pressed.connect(_show_settings)
 	_main.get_node("Exit").pressed.connect(_show_quit)
-	_settings.get_node("Guide").pressed.connect(_show_guide)
+	_main.get_node("Guide").pressed.connect(_show_guide)
 	_settings.get_node("Back").pressed.connect(_discard_settings_and_show_main)
 	_aim_control.item_selected.connect(_select_aim_control)
 	_window_mode.item_selected.connect(_on_setting_changed)
@@ -48,9 +48,9 @@ func _ready() -> void:
 	_load_game.pressed.connect(func() -> void: load_game_requested.emit())
 	_quit.get_node("Cancel").pressed.connect(_show_main)
 	_quit.get_node("Confirm").pressed.connect(func(): quit_requested.emit())
-	_guide.finished.connect(_return_to_settings_after_guide)
-	_guide.get_node("Backdrop/Panel/Content/Close").text = "返回设置"
-	_guide.get_node("Backdrop/Panel/Content/Hint").text = "游戏已暂停 · 滚轮查看说明 · Esc 返回设置"
+	_guide.finished.connect(_show_main)
+	_guide.get_node("Backdrop/Panel/Content/Close").text = "返回暂停菜单"
+	_guide.get_node("Backdrop/Panel/Content/Hint").text = "游戏已暂停 · 滚轮查看说明 · Esc 返回暂停菜单"
 	_categories.set_tab_title(0, "基础设置")
 	_categories.set_tab_title(1, "战斗设置")
 	close_menu()
@@ -116,7 +116,7 @@ func _show_main() -> void:
 func _show_settings() -> void:
 	_aim_control.select(_aim_control.get_item_index(_game_state.player_aim_control_override))
 	_sync_settings_controls()
-	_show_settings_page(_settings.get_node("Guide"))
+	_show_page(_settings, "设置", _settings.get_node("Back"))
 
 
 func _select_aim_control(index: int) -> void:
@@ -135,16 +135,8 @@ func _show_page(page: Control, title: String, focus: Button) -> void:
 	focus.grab_focus()
 
 
-func _show_settings_page(focus: Button) -> void:
-	_show_page(_settings, "设置", focus)
-
-
 func _show_guide() -> void:
 	_guide.begin()
-
-
-func _return_to_settings_after_guide() -> void:
-	_show_settings_page(_settings.get_node("Guide"))
 
 
 func _discard_settings_and_show_main() -> void:

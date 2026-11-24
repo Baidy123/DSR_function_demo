@@ -150,7 +150,7 @@ Equipment 交接当前枪给 Combat。相机订阅 `weapon_changed`，表现订�
 
 ## 相机、表现与内容
 
-`scenes/ui/pause_menu.tscn` 与 `scripts/ui/pause_menu.gd` 由场景导演核心在运行时装配，提供 Esc 暂停、瞄准方式、操作说明和退出确认。菜单将瞄准选择写入 `GameState.player_aim_control_override`，其余用户偏好由 `UserSettings` 读写独立配置。该服务应用窗口尺寸和全屏 3D 渲染分辨率，界面继续使用工程的缩放基准。暂停首页提交保存、加载、暂停与退出意图，死亡界面通过同一个导演入口请求加载。`SceneDirector.request_pause_menu()`／`resume_from_pause_menu()` 持有和释放共享暂停协调器的独立令牌。说明复用原 `play_guide.tscn` 与 `LevelFlow/PlayGuide` 节点路径，显式教程入口 `guide_path` 默认留空。
+`scenes/ui/pause_menu.tscn` 与 `scripts/ui/pause_menu.gd` 由场景导演核心在运行时装配，提供 Esc 暂停、瞄准方式、操作说明和退出确认。菜单将瞄准选择写入 `GameState.player_aim_control_override`，其余用户偏好由 `UserSettings` 读写独立配置。该服务应用窗口尺寸和全屏 3D 渲染分辨率，界面继续使用工程的缩放基准。暂停首页提交保存、加载、暂停与退出意图，死亡界面通过同一个导演入口请求加载。`SceneDirector.request_pause_menu()`／`resume_from_pause_menu()` 持有和释放共享暂停协调器的独立令牌。暂停首页的操作说明复用原 `play_guide.tscn` 与 `LevelFlow/PlayGuide` 节点路径，关闭说明返回暂停首页。显式教程入口 `guide_path` 默认留空。
 
 相机根 `systems/player_camera.gd` 统一绑定玩家、读取武器 Aim Range、控制视野过渡；`camera_occlusion.gd` 仅处理显式标记装饰的材质副本与还原。CameraGroundAnchor 过滤翻越抬升。保持原 Phantom Camera 跟随和更新关系。
 

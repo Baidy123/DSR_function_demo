@@ -8,7 +8,7 @@
 
 1. 把 `scenes/world/scene_director.tscn` 拖到场景根下，保留一份入口。
 2. 在 **Health Path** 选择本场玩家的 Health；同级 Player 的路径是 `../Player/Health`。
-3. 有 LevelFlow 时设置 **Result View Path**。**Guide Path** 默认留空，操作说明统一从 **Esc → 设置** 手动打开；只有另需开场教程时才显式绑定。没有 Wave 也能运行，不会自动通关。
+3. 有 LevelFlow 时设置 **Result View Path**。**Guide Path** 默认留空，操作说明统一从 **Esc → 操作说明** 手动打开；只有另需开场教程时才显式绑定。没有 Wave 也能运行，不会自动通关。
 4. 战斗场景沿用 CombatZone、Player、Camera3D 和 Wave → Squad → Enemy。Wave 放在导演入口下，第一关原根节点 Squad 仍由 Wave1 引用，无需移动。
 5. 事件、动作和手摆镜头按后文配置。不要把整个区域或敌人设成 Always；内部调度器会处理暂停期间的 UI 和取消。
 

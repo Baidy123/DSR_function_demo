@@ -131,6 +131,8 @@ func _run() -> void:
 		"暂停首页提供保存和加载游戏")
 	check(not settings_page.has_node("SaveGame") and not settings_page.has_node("LoadGame"),
 		"设置页专注于用户设置")
+	check(pause_main.has_node("Guide") and not settings_page.has_node("Guide"),
+		"操作说明只在暂停首页显示入口")
 	check(load_game != null and load_game.disabled, "空存档时暂停首页不能加载")
 	var setup_ready: bool = categories is TabContainer \
 		and window_mode is OptionButton and resolution_choice is OptionButton \
@@ -268,18 +270,14 @@ func _run() -> void:
 	sensitivity.select(0)
 	sensitivity.item_selected.emit(0)
 	await _settle()
-	settings_page.get_node("Guide").pressed.emit()
-	await _settle()
-	menu.get_node("PlayGuide").close_guide()
-	await _settle()
-	check(settings_page.visible and sensitivity.selected == 0
-		and settings.target_switch_sensitivity == 2,
-		"引导返回保留待保存战斗设置且不提交")
+	check(sensitivity.selected == 0 and settings.target_switch_sensitivity == 2,
+		"编辑战斗设置保留已提交值")
 	resolution_choice.select(2)
 	resolution_choice.item_selected.emit(2)
 	await _settle()
 	await _escape()
-	check(content.get_node("Main").visible and settings.resolution_index == 1,
+	check(content.get_node("Main").visible and settings.resolution_index == 1
+		and sensitivity.selected == 2,
 		"Esc 返回并丢弃未保存改动")
 	content.get_node("Main/Settings").pressed.emit()
 
@@ -351,7 +349,7 @@ func _run() -> void:
 	await _settle()
 	var basic_visible := true
 	for control in [window_mode, resolution_choice, vsync, save, restore,
-			settings_page.get_node("Guide"), settings_page.get_node("Back")]:
+			settings_page.get_node("Back")]:
 		if not viewport.encloses(control.get_global_rect()):
 			print("Clipped %s %s in %s" % [control.name, control.get_global_rect(), viewport])
 			basic_visible = false
@@ -363,9 +361,11 @@ func _run() -> void:
 		and aim_control != null and viewport.encloses(aim_control.get_global_rect())
 	check(basic_visible, "640×480 下两栏设置与操作按钮完整可见")
 	settings_page.get_node("Back").pressed.emit()
+	menu.show_game_save_result(&"tavern_saved")
 	await _settle()
-	for button_name in ["Resume", "SaveGame", "LoadGame", "Settings", "Exit"]:
-		check(viewport.encloses(pause_main.get_node(button_name).get_global_rect()),
+	for button_name in ["Resume", "SaveGame", "LoadGame", "Settings", "Guide", "Exit"]:
+		var button := pause_main.get_node_or_null(button_name) as Button
+		check(button != null and viewport.encloses(button.get_global_rect()),
 			"640×480 暂停首页按钮完整可见：" + button_name)
 
 	scene.free()

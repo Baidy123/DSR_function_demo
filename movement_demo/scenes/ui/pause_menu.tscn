@@ -115,6 +115,13 @@ theme_override_font_sizes/font_size = 20
 theme_override_styles/normal = SubResource("ButtonStyle")
 text = "设置"
 
+[node name="Guide" type="Button" parent="Backdrop/Center/Panel/Content/Main"]
+layout_mode = 2
+mouse_default_cursor_shape = 2
+theme_override_font_sizes/font_size = 20
+theme_override_styles/normal = SubResource("ButtonStyle")
+text = "操作说明"
+
 [node name="Exit" type="Button" parent="Backdrop/Center/Panel/Content/Main"]
 layout_mode = 2
 mouse_default_cursor_shape = 2
@@ -251,13 +258,6 @@ popup/item_1/text = "标准"
 popup/item_1/id = 1
 popup/item_2/text = "高"
 popup/item_2/id = 2
-
-[node name="Guide" type="Button" parent="Backdrop/Center/Panel/Content/Settings"]
-layout_mode = 2
-mouse_default_cursor_shape = 2
-theme_override_font_sizes/font_size = 18
-theme_override_styles/normal = SubResource("SettingsButtonStyle")
-text = "操作说明"
 
 [node name="Notice" type="Label" parent="Backdrop/Center/Panel/Content/Settings"]
 layout_mode = 2

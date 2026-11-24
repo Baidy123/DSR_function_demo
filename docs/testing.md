@@ -118,6 +118,8 @@
 
 存档和设置使用 `campaign_save_state_test`、`campaign_save_service_test`、`campaign_save_flow_test`、`campaign_save_reset_test`、`user_settings_test` 和 `settings_menu_test`。其中真实流程验证外景自动读档、暂停首页和死亡后手动加载，检查恢复的生命、装备、开场旗标及加载失败后的暂停所有权。共享镜头使用 `director_shot_test`、`cinematic_shot_test`、`cinematic_camera_test` 和原 `presentation_camera_test`，验证排队、相机复用和取消。原开场、暂停和真实增援分别用 `opening_flow_test`、`pause_menu_test` 和 `scene_reinforcement_test` 核对。
 
+操作说明移到暂停首页后，暂停导航专项为 54/54，Windows 渲染设置专项为 64/64。五关流程为 96/97，各关说明打开、关闭、继续及死亡中断的检查通过。唯一失败的启动场景断言仍要求酒馆内景，当前工程入口配置为酒吧外景。
+
 ## 查询实际清单
 
 在仓库根目录使用：

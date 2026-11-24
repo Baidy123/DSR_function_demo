@@ -102,7 +102,7 @@ func _run() -> void:
 			await process_frame
 		await _click(guide.get_node("Backdrop/Panel/Content/Close"))
 		check(not guide.visible and paused and combat.ammo.magazine_rounds == rounds_before,
-			"第%d关关闭说明返回设置，保持暂停且不误开火" % number)
+			"第%d关关闭说明返回暂停首页，保持暂停且不误开火" % number)
 		await _resume_menu(scene)
 		check(not paused, "第%d关继续游戏才恢复游玩" % number)
 		if number == 2:
@@ -220,8 +220,7 @@ func _open_menu_guide(scene: Node) -> CanvasLayer:
 	_key(KEY_ESCAPE, true)
 	_key(KEY_ESCAPE, false)
 	await process_frame
-	await _click(menu.get_node("Backdrop/Center/Panel/Content/Main/Settings"))
-	await _click(menu.get_node("Backdrop/Center/Panel/Content/Settings/Guide"))
+	await _click(menu.get_node("Backdrop/Center/Panel/Content/Main/Guide"))
 	return menu.get_node("PlayGuide")
 
 
@@ -232,7 +231,6 @@ func _close_menu_guide(scene: Node, guide: CanvasLayer) -> void:
 
 func _resume_menu(scene: Node) -> void:
 	var menu: CanvasLayer = Director.for_node(scene).get_node("PauseMenu")
-	await _click(menu.get_node("Backdrop/Center/Panel/Content/Settings/Back"))
 	await _click(menu.get_node("Backdrop/Center/Panel/Content/Main/Resume"))
 
 
