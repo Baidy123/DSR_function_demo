@@ -12,6 +12,10 @@
 
 开场的 **E 询问酒保** 提示跟随 `BarEnvironment/BarCounter/Bartender`。移动酒保后，可交谈范围会沿吧台一起移动。柜体 `Long/Collision` 的本地 **+X** 侧是客人侧。
 
+## 开场发放装备
+
+打开酒馆场景，展开 **Opening → EquipmentGrant**。在检查器调整 **Weapon**、**Weapon Slot**、**Ammo Supplies** 和 **Medkit Amount**。这里的实例来自 `scenes/world/opening_equipment_grant.tscn`，默认给主武器槽的测试冲锋枪、60 发备弹和 1 个医疗包。发放接线与其他场景复用方式见[导演教程](SCENE_DIRECTOR.md#用导演发放装备)。
+
 ## 放 NPC 和设置坐席
 
 1. 在 Main 实例化 `scenes/access_denied/hub/tavern_npc.tscn`，命名并摆好站位。仅当需要阶段状态、对话或商店时，勾选 **Special NPC** 并填写相应资源。

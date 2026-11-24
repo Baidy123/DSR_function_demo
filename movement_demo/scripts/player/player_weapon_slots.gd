@@ -157,15 +157,51 @@ func replace_weapon_slot(slot: int, weapon: WeaponData) -> bool:
 	if slot not in [0, 1] or weapon == null or weapon.fire_mode == WeaponData.FireMode.MELEE:
 		return false
 	var snapshot := campaign_snapshot()
-	if slot == 0:
-		snapshot["primary_weapon"] = weapon
-	else:
-		snapshot["secondary_weapon"] = weapon
-	var magazines: Array = snapshot["magazines"]
-	magazines[slot] = weapon.magazine_capacity
-	snapshot["magazines"] = magazines
+	_set_snapshot_weapon(snapshot, slot, weapon)
 	apply_campaign_snapshot(snapshot)
 	return _weapon_at(slot) == weapon
+
+
+## Receives an approved scene grant. Validate the entire package before touching equipment.
+func grant_equipment(slot: int, weapon: WeaponData, supplies: Array[AmmoSupply],
+		medical_data: MedkitData, medical_amount: int) -> bool:
+	if not is_node_ready() or player.is_dead():
+		return false
+	if weapon == null and supplies.is_empty() and medical_amount == 0:
+		return false
+	if weapon != null and (slot not in [0, 1] or weapon.fire_mode == WeaponData.FireMode.MELEE):
+		return false
+	if medical_amount < 0 or (medical_amount > 0 and not can_add_medkits(medical_data, medical_amount)):
+		return false
+	for supply in supplies:
+		if supply == null or supply.ammo == null or not supply.ammo.has_valid_id() or supply.amount <= 0:
+			return false
+
+	if weapon != null:
+		var snapshot := campaign_snapshot()
+		_set_snapshot_weapon(snapshot, slot, weapon)
+		for supply in supplies:
+			_add_ammo_to_reserve(snapshot.reserve_ammo, supply.ammo, supply.amount)
+		if medical_amount > 0:
+			snapshot.medkit = medical_data
+			snapshot.medkit_count += medical_amount
+		apply_campaign_snapshot(snapshot)
+		for supply in supplies:
+			_remember_definition(supply.ammo)
+	else:
+		for supply in supplies:
+			_remember_definition(supply.ammo)
+			_add_ammo_to_reserve(reserve_ammo, supply.ammo, supply.amount)
+		if medical_amount > 0:
+			add_medkits(medical_data, medical_amount)
+		_update_display()
+	return true
+
+
+func _set_snapshot_weapon(snapshot: Dictionary, slot: int, weapon: WeaponData) -> void:
+	snapshot["primary_weapon" if slot == 0 else "secondary_weapon"] = weapon
+	var magazines: Array = snapshot["magazines"]
+	magazines[slot] = weapon.magazine_capacity
 
 
 func apply_campaign_snapshot(snapshot: Dictionary) -> void:
@@ -289,10 +325,14 @@ func add_ammo(definition: AmmoDefinition, amount: int) -> int:
 	if definition == null or not definition.has_valid_id() or amount <= 0: return 0
 	if not is_inside_tree() or get_tree().paused or player.is_dead() or player.is_in_dialogue: return 0
 	_remember_definition(definition)
-	var key := definition.ammo_id
-	reserve_ammo[key] = maxi(0, int(reserve_ammo.get(key, 0))) + amount
+	_add_ammo_to_reserve(reserve_ammo, definition, amount)
 	_update_display()
 	return amount
+
+
+func _add_ammo_to_reserve(reserve: Dictionary, definition: AmmoDefinition, amount: int) -> void:
+	var key := definition.ammo_id
+	reserve[key] = maxi(0, int(reserve.get(key, 0))) + amount
 
 func _process(_delta: float) -> void:
 	if Engine.is_editor_hint(): return

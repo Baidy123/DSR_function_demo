@@ -2,6 +2,7 @@
 [ext_resource type="PackedScene" path="res://scenes/world/scene_director.tscn" id="director_authority"]
 [ext_resource type="PackedScene" path="res://scenes/access_denied/hub/tavern_npc.tscn" id="tavern_npc"]
 [ext_resource type="Script" path="res://scripts/world/opening_sequence.gd" id="opening"]
+[ext_resource type="PackedScene" path="res://scenes/world/opening_equipment_grant.tscn" id="opening_equipment_grant"]
 [ext_resource type="Script" path="res://scripts/world/tavern_npc.gd" id="shared_npc"]
 [ext_resource type="Script" path="res://scripts/world/tavern_seating.gd" id="seating"]
 
@@ -1073,6 +1074,8 @@ route_path = NodePath("../TavernRoutes/RunnerToStaffDoor")
 
 [node name="Opening" type="Node" parent="."]
 script = ExtResource("opening")
+
+[node name="EquipmentGrant" parent="Opening" instance=ExtResource("opening_equipment_grant")]
 
 [node name="TavernSeating" type="Node3D" parent="."]
 script = ExtResource("seating")

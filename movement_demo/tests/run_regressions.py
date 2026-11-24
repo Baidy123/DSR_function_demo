@@ -13,6 +13,7 @@ PROJECT = DIRECTORY.parent
 SYSTEM_TESTS = [
     "pause_menu_test",
     "opening_flow_test",
+    "equipment_grant_test",
     "user_settings_test",
     "settings_menu_test",
     "campaign_save_state_test",

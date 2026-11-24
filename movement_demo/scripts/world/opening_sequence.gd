@@ -2,9 +2,6 @@ extends Node
 
 const Director = preload("res://scripts/systems/scene_director.gd")
 const Dialogue = preload("res://resources/dialogue/opening.dialogue")
-const StarterWeapon = preload("res://resources/weapons/test_smg.tres")
-const StarterAmmo = preload("res://resources/ammo/types/smg.tres")
-const StarterMedkit = preload("res://resources/player/default_medkit.tres")
 const ACTIVE := &"opening_active"
 const COMPLETE := &"opening_complete"
 const BOOTH_APPROACH := Vector3(-0.42, 0, -1.03)
@@ -22,6 +19,7 @@ const SEAT_CUES := {
 enum Phase { ARRIVAL, ENTER, BARTENDER, VISITOR, CURTAIN, COMMISSIONER, MERCHANT, CATALOG, DELIVERY, DEPART }
 
 @export var exterior := false
+@export_node_path("Node") var equipment_grant_path: NodePath = ^"EquipmentGrant"
 
 @onready var scene: Node3D = get_parent()
 @onready var player: CharacterBody3D = scene.get_node("Player")
@@ -333,16 +331,16 @@ func _deliver(request: SceneRequest) -> bool:
 	if not request.is_current():
 		return false
 	_clear_delivery_crate()
-	var equipment := player.get_node("Equipment")
-	equipment.apply_campaign_snapshot({
-		"primary_weapon": StarterWeapon,
-		"secondary_weapon": null,
-		"active_slot": 0,
-		"magazines": [StarterWeapon.magazine_capacity, 0],
-		"reserve_ammo": {StarterAmmo.ammo_id: 60},
-		"medkit": StarterMedkit,
-		"medkit_count": 1,
+	var grant: SceneRequest = director.request_child(request, &"script", {
+		"source": self, "target": get_node_or_null(equipment_grant_path), "player": player,
 	})
+	var grant_result := await grant.wait_result()
+	if not request.is_current():
+		return false
+	if grant_result.status != &"completed":
+		director.report_action_error("opening_equipment_grant", String(grant_result.reason))
+		_reset_delivery()
+		return false
 	state.set_flag(COMPLETE)
 	_portal.enabled = true
 	_commissioner.set_process_unhandled_input(true)

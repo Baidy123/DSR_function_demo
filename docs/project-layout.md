@@ -37,7 +37,7 @@ movement_demo/
 │   ├── rewards/           关卡、选项与奖励表资源脚本
 │   ├── shop/              商品定义、目录与货币商店控制器
 │   ├── world/             掩体、训练靶、区域、门、NPC、交互物与屏障
-│   │   ├── opening_sequence.gd   开场分段、交互条件、导演子请求与初始装备发放
+│   │   ├── opening_sequence.gd   开场分段、交互条件与交付的导演子请求
 │   │   ├── tavern_npc.gd         有碰撞的酒馆 NPC，坐席、巡游、局部绕行和出口离场
 │   │   ├── tavern_seat.gd       家具坐席点、占用和角色姿态切换
 │   │   ├── tavern_seating.gd    玩家面对空位时显示提示并向导演请求入座
@@ -157,6 +157,8 @@ Equipment 交接当前枪给 Combat。相机订阅 `weapon_changed`，表现订�
 `systems/presentation_camera.gd` 和 `scenes/player/presentation_camera.tscn` 是独立演出相机。目的地由编辑器绑定Marker3D/Node3D；复制可见画面后切入，返回前通过玩家相机的有限同步接口刷新，再切回。原玩家相机不交给总调度每帧移动，遮挡辅助同一时刻只有一个拥有者。
 
 `systems/presentation/` 读取实际状态驱动模型／动画，`systems/effects/` 管理命中快照、表面配置与特效生命周期。表现不改变伤害、枪口、碰撞或 AI；UI 不替代业务状态的唯一写入者。
+
+`world/player_equipment_grant.gd` 是导演的可配置执行节点，接收武器、弹种和医疗包资源并调用 Equipment。开场的配置实例为 `Main/Opening/EquipmentGrant`。
 
 `world/interactions/` 的效果只通过 InteractionContext 使用注入引用。`systems/stage/` 中阶段、任务和 NPC 状态控制器各自拥有数据，通过只读查询和变化信号协作；普通节点按组绑定，NPC 只按稳定 ID 接收状态。
 

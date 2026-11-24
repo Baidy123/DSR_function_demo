@@ -76,7 +76,7 @@ Dialogue Manager、Phantom Camera 和 Godot AI 插件源码及许可证随工程
 
 ### 武器与补给
 
-武器统一由 Equipment 的 `Primary Weapon / Secondary Weapon` 引用，也可直接编辑 `resources/weapons/` 下的 WeaponData。
+武器由 Equipment 的 `Primary Weapon / Secondary Weapon` 引用。开场发放配置在酒馆场景的 **Opening → EquipmentGrant**，可在检查器替换武器和修改补给量。[酒馆编辑与调试](docs/gameplay/TAVERN_AUTHORING.md#开场发放装备)
 
 | 武器分组／资源 | 可以配置 | 说明 |
 | --- | --- | --- |

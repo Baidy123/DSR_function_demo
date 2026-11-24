@@ -1,0 +1,19 @@
+[gd_scene load_steps=7 format=3]
+
+[ext_resource type="Script" path="res://scripts/world/player_equipment_grant.gd" id="1_grant"]
+[ext_resource type="Script" path="res://scripts/weapons/ammo_supply.gd" id="2_supply"]
+[ext_resource type="Resource" path="res://resources/weapons/test_smg.tres" id="3_weapon"]
+[ext_resource type="Resource" path="res://resources/ammo/types/smg.tres" id="4_ammo"]
+[ext_resource type="Resource" path="res://resources/player/default_medkit.tres" id="5_medkit"]
+
+[sub_resource type="Resource" id="AmmoSupply_Smg"]
+script = ExtResource("2_supply")
+ammo = ExtResource("4_ammo")
+amount = 60
+
+[node name="EquipmentGrant" type="Node"]
+script = ExtResource("1_grant")
+weapon = ExtResource("3_weapon")
+ammo_supplies = Array[ExtResource("2_supply")]([SubResource("AmmoSupply_Smg")])
+medkit = ExtResource("5_medkit")
+medkit_amount = 1

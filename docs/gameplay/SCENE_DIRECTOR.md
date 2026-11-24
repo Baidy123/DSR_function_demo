@@ -32,7 +32,7 @@
 
 对白的 `sit` 标签向 SceneDirector 提交以座位为目标的 `script` 子请求。座位执行走位、落座姿态和离席。脚本将玩家直接置于指定空座，可通行时保留走近演出。剧情离席检查站立落脚点并走出通道。商人对话绑定其正对面的座位。NPC 路线可在抵达后向导演请求座位或活动作为子动作。布景、座位和路线的编辑步骤见[酒馆编辑与调试](TAVERN_AUTHORING.md)。
 
-`shop` 请求传入 `browse_only = true` 时，面板禁用购买按钮，`ShopController.purchase()` 同时拒绝交易。目录关闭后继续价格对话和交付。伙计以 `script` 子请求到桌前，放下箱子后立即提交后台离场请求，商人继续交付对白。装备通过现有装备快照一次性发放，仓库门沿用 QuestPortal 以及导演的跨关装备搬运。大姐头和商人的位置直接保存在主场景，`keep_authored_position` 使阶段刷新继续使用保存的位置。
+`shop` 请求传入 `browse_only = true` 时，面板禁用购买按钮，`ShopController.purchase()` 同时拒绝交易。目录关闭后继续价格对话和交付。伙计以 `script` 子请求到桌前，放下箱子后立即提交后台离场请求，商人继续交付对白。装备由 `Opening/EquipmentGrant` 在导演批准的子请求中发放，开场收到完成结果后继续原流程。大姐头和商人的位置直接保存在主场景，`keep_authored_position` 使阶段刷新继续使用保存的位置。
 
 两场通过 GameState 的 `opening_active` / `opening_complete` 交接。直接 F6 运行酒馆或完成开场后返程，使用酒馆的常规任务和商店入口。首次流程的付款、人物原则、接入制度和供应信息旗标由对应选项设置，活跃于本次运行。
 
@@ -163,7 +163,7 @@ SceneDirector 另有可选“统一出场镜头”，适合所有波使用同一
 3. **Scope = REGION**：本轮区域战斗一次，复位可重播；**SCENE**：本场一次，出入区域不重播。
 4. **Actions** 按顺序添加 `SceneFlowAction`，先选 **Kind**，再填相关字段。
 
-将鼠标悬停在 **Kind** 属性名上查看用途与必填参数；新增 RUN_SCRIPT 后共有11种动作，旧资源编号保持。
+将鼠标悬停在 **Kind** 属性名上查看用途与必填参数；目前有 12 种动作，旧资源编号保持。
 
 例如“事件 → 等1秒 → 请求Wave2 → 等清空 → 调已有公开方法”：
 
@@ -189,6 +189,15 @@ REQUEST_WAVE 等真实生成才继续；若勾选 **Present Spawn**，动作的 
 CALL_METHOD 不接受以下划线开头的私有方法，并检查参数数量和基础类型。即时方法留空 Completed Trigger；需要等待异步完成时，必须同时配置 **Completed Trigger** 与 **Cancel Method**（公开、无参停止方法），缺少取消契约会在执行前拒绝。订阅先于方法调用，不遗漏同步完成；滑门状态改变不等于 Tween 已经结束。
 
 规则请求排队后，真正开始前会重新检查 **Condition**。条件已经失效时取消本次动作，原因是 `condition_changed`，不会先执行副作用。本次规则已触发，不自动重投；REGION 规则在所属区域复位后可以重新触发，SCENE 规则本场不重播。
+
+## 用导演发放装备
+
+1. 在场景根下添加 **PlayerEquipmentGrant** 节点。给现有开场换装备时，在酒馆场景选 **Opening → EquipmentGrant**。
+2. **Weapon** 拖入武器资源，**Weapon Slot** 选择主槽或副槽。新枪满弹匣发放。只补给时把 Weapon 留空。
+3. **Ammo Supplies** 可添加多条 AmmoSupply，逐条指定弹种和备弹数量。**Medkit** 和 **Medkit Amount** 配置医疗包资源与数量。
+4. 在 SceneDirector 的规则中加 **RUN_SCRIPT**，Target Path 指向发放节点，规则本身绑定触发事件。导演获准后在当前场景发给玩家，并在整组配置通过校验后提交。配置无效时动作失败，停止该规则的后续动作。
+
+发放复用玩家 Equipment 的武器槽和库存。备弹与医疗包追加到已有数量，武器替换所选槽位。纯补给保留已有弹匣与换弹状态。开场沿用原有完成标记，场景规则的重播由其 Scope 决定。
 
 ## 五、接入可取消的脚本演出
 
