@@ -7,6 +7,46 @@ var _transition_sequence := 0
 var _transition_prepared: Dictionary = {}
 var _transition_signals: Array[Dictionary] = []
 var _transition_committing := false
+const SAVE_STATE_KEYS := [
+	&"completed_level",
+	&"available_level",
+	&"claimed_reward_levels",
+	&"task_a_returned",
+	&"money",
+	&"rewarded_task_ids",
+	&"purchased_shop_item_ids",
+	&"campaign_checkpoint",
+	&"level_entry_player_state",
+	&"talked_to_a",
+	&"help_choice",
+	&"music_quest_choice",
+	&"music_quest_turnin",
+	&"items",
+	&"flags",
+	&"shop_flag_keys",
+	&"player_state",
+]
+const CAMPAIGN_CHECKPOINT_KEYS := [
+	&"level",
+	&"completed_level",
+	&"available_level",
+	&"claimed_reward_levels",
+	&"shop_flags",
+	&"task_a_returned",
+	&"money",
+	&"rewarded_task_ids",
+	&"purchased_shop_item_ids",
+	&"player_state",
+]
+const EQUIPMENT_SNAPSHOT_KEYS := [
+	&"primary_weapon",
+	&"secondary_weapon",
+	&"medkit",
+	&"medkit_count",
+	&"active_slot",
+	&"reserve_ammo",
+	&"magazines",
+]
 
 func _transition_snapshot() -> Dictionary:
 	var snapshot := capture_campaign_state()
@@ -14,8 +54,232 @@ func _transition_snapshot() -> Dictionary:
 	snapshot["level_entry_player_state"] = level_entry_player_state.duplicate(true)
 	return snapshot
 
-func prepare_scene_transition(mode: StringName, player_snapshot: Dictionary = {}, level_number: int = 0) -> Dictionary:
-	if mode not in [&"enter_level", &"return_tavern", &"retry_level", &"death_return", &"plain"]: return {}
+
+func capture_save_state(player_snapshot: Dictionary = {}) -> Dictionary:
+	var snapshot := {
+		"completed_level": completed_level,
+		"available_level": available_level,
+		"claimed_reward_levels": claimed_reward_levels.duplicate(true),
+		"task_a_returned": task_a_returned,
+		"money": money,
+		"rewarded_task_ids": rewarded_task_ids.duplicate(true),
+		"purchased_shop_item_ids": purchased_shop_item_ids.duplicate(true),
+		"campaign_checkpoint": campaign_checkpoint.duplicate(true),
+		"level_entry_player_state": level_entry_player_state.duplicate(true),
+		"talked_to_a": talked_to_a,
+		"help_choice": help_choice,
+		"music_quest_choice": music_quest_choice,
+		"music_quest_turnin": music_quest_turnin,
+		"items": items.duplicate(true),
+		"flags": flags.duplicate(true),
+		"shop_flag_keys": _shop_flag_keys.duplicate(true),
+		"player_state": player_snapshot.duplicate(true),
+	}
+	return snapshot
+
+
+func validate_save_state(snapshot: Dictionary) -> bool:
+	if not _has_exact_keys(snapshot, SAVE_STATE_KEYS):
+		return false
+	if not _is_int_in_range(snapshot.get(&"completed_level"), 0, 5):
+		return false
+	if not _is_int_in_range(snapshot.get(&"available_level"), 1, 5):
+		return false
+	if not _is_non_negative_int(snapshot.get(&"money")):
+		return false
+	if not snapshot.get(&"talked_to_a") is bool:
+		return false
+	if not _is_string_in(snapshot.get(&"task_a_returned"), ["", "returned"]):
+		return false
+	if not _is_string_in(snapshot.get(&"help_choice"), ["", "accepted", "refused"]):
+		return false
+	if not _is_string_in(snapshot.get(&"music_quest_choice"), ["", "accepted", "refused"]):
+		return false
+	if not _is_string_in(snapshot.get(&"music_quest_turnin"), ["", "done"]):
+		return false
+	if not _valid_level_bool_map(snapshot.get(&"claimed_reward_levels")):
+		return false
+	if not _valid_id_bool_map(snapshot.get(&"rewarded_task_ids")):
+		return false
+	if not _valid_id_bool_map(snapshot.get(&"purchased_shop_item_ids")):
+		return false
+	if not _valid_items(snapshot.get(&"items")):
+		return false
+	if not _valid_flags(snapshot.get(&"flags")):
+		return false
+	if not _valid_flags(snapshot.get(&"shop_flag_keys")):
+		return false
+	if not _valid_campaign_checkpoint(snapshot.get(&"campaign_checkpoint")):
+		return false
+	if not _valid_player_state(snapshot.get(&"level_entry_player_state")):
+		return false
+	if not _valid_player_state(snapshot.get(&"player_state")):
+		return false
+	return true
+
+
+func _has_exact_keys(value: Dictionary, keys: Array) -> bool:
+	if value.size() != keys.size():
+		return false
+	for key in keys:
+		if not value.has(key):
+			return false
+	return true
+
+
+func _has_only_keys(value: Dictionary, keys: Array) -> bool:
+	for key in value:
+		if key not in keys:
+			return false
+	return true
+
+
+func _is_int_in_range(value: Variant, minimum: int, maximum: int) -> bool:
+	return value is int and int(value) >= minimum and int(value) <= maximum
+
+
+func _is_non_negative_int(value: Variant) -> bool:
+	return value is int and int(value) >= 0
+
+
+func _is_string_in(value: Variant, options: Array) -> bool:
+	return value is String and value in options
+
+
+func _valid_level_bool_map(value: Variant) -> bool:
+	if not value is Dictionary:
+		return false
+	for key in value:
+		if not _is_int_in_range(key, 1, 5) or not value[key] is bool:
+			return false
+	return true
+
+
+func _valid_id_bool_map(value: Variant) -> bool:
+	if not value is Dictionary:
+		return false
+	for key in value:
+		if not key is StringName or String(key).is_empty() or not value[key] is bool:
+			return false
+	return true
+
+
+func _valid_flags(value: Variant) -> bool:
+	if not value is Dictionary:
+		return false
+	for key in value:
+		if not key is StringName or String(key).is_empty() or not value[key] is bool:
+			return false
+	return true
+
+
+func _valid_items(value: Variant) -> bool:
+	if not value is Dictionary:
+		return false
+	for item_id in value:
+		if not item_id is StringName or String(item_id).is_empty():
+			return false
+		var entry: Variant = value[item_id]
+		if not entry is Dictionary or entry.size() != 2 \
+				or not entry.get(&"display_name") is String \
+				or not _is_int_in_range(entry.get(&"count"), 1, 2147483647):
+			return false
+	return true
+
+
+func _valid_campaign_checkpoint(value: Variant) -> bool:
+	if not value is Dictionary:
+		return false
+	if value.is_empty():
+		return true
+	if not _has_exact_keys(value, CAMPAIGN_CHECKPOINT_KEYS):
+		return false
+	if not _is_int_in_range(value.get(&"level"), 1, 5):
+		return false
+	if not _is_int_in_range(value.get(&"completed_level"), 0, 5):
+		return false
+	if not _is_int_in_range(value.get(&"available_level"), 1, 5):
+		return false
+	if not _is_non_negative_int(value.get(&"money")):
+		return false
+	if not _is_string_in(value.get(&"task_a_returned"), ["", "returned"]):
+		return false
+	if not _valid_level_bool_map(value.get(&"claimed_reward_levels")):
+		return false
+	if not _valid_flags(value.get(&"shop_flags")):
+		return false
+	if not _valid_id_bool_map(value.get(&"rewarded_task_ids")):
+		return false
+	if not _valid_id_bool_map(value.get(&"purchased_shop_item_ids")):
+		return false
+	return _valid_player_state(value.get(&"player_state"))
+
+
+func _valid_player_state(value: Variant) -> bool:
+	if not value is Dictionary:
+		return false
+	if value.is_empty():
+		return true
+	if not _has_only_keys(value, [&"health", &"equipment"]):
+		return false
+	if value.has(&"health") and not _valid_health_snapshot(value.get(&"health")):
+		return false
+	if value.has(&"equipment") and not _valid_equipment_snapshot(value.get(&"equipment")):
+		return false
+	return not value.is_empty()
+
+
+func _valid_health_snapshot(value: Variant) -> bool:
+	if not value is Dictionary or not _has_exact_keys(value, [&"health"]):
+		return false
+	var health_value: Variant = value.get(&"health")
+	return (health_value is float or health_value is int) \
+		and not health_value is bool \
+		and is_finite(float(health_value)) \
+		and float(health_value) > 0.0 \
+		and float(health_value) <= 10000.0
+
+
+func _valid_equipment_snapshot(value: Variant) -> bool:
+	if not value is Dictionary or not _has_exact_keys(value, EQUIPMENT_SNAPSHOT_KEYS):
+		return false
+	var primary: Variant = value.get(&"primary_weapon")
+	var secondary: Variant = value.get(&"secondary_weapon")
+	if primary != null and not primary is WeaponData:
+		return false
+	if secondary != null and not secondary is WeaponData:
+		return false
+	var medkit: Variant = value.get(&"medkit")
+	if medkit != null and not medkit is MedkitData:
+		return false
+	if not _is_int_in_range(value.get(&"medkit_count"), 0, 999):
+		return false
+	if not _is_int_in_range(value.get(&"active_slot"), -1, 1):
+		return false
+	var reserve_ammo: Variant = value.get(&"reserve_ammo")
+	if not reserve_ammo is Dictionary:
+		return false
+	for ammo_id in reserve_ammo:
+		if not ammo_id is StringName or String(ammo_id).is_empty() \
+				or not _is_non_negative_int(reserve_ammo[ammo_id]):
+			return false
+	var magazines: Variant = value.get(&"magazines")
+	if not magazines is Array or magazines.size() != 2:
+		return false
+	var capacities := [
+		int(primary.magazine_capacity) if primary is WeaponData else 0,
+		int(secondary.magazine_capacity) if secondary is WeaponData else 0,
+	]
+	for slot in range(2):
+		if not _is_int_in_range(magazines[slot], 0, capacities[slot]):
+			return false
+	return true
+
+
+func prepare_scene_transition(mode: StringName, player_snapshot: Dictionary = {},
+		level_number: int = 0, save_snapshot: Dictionary = {}) -> Dictionary:
+	if mode not in [&"enter_level", &"return_tavern", &"retry_level", &"death_return", &"reset_progress", &"resume_campaign", &"plain"]: return {}
+	if mode == &"resume_campaign" and not validate_save_state(save_snapshot): return {}
 	if mode == &"return_tavern" and (level_number < 1 or level_number > 5): return {}
 	var before := _transition_snapshot()
 	var target := before.duplicate(true)
@@ -23,6 +287,8 @@ func prepare_scene_transition(mode: StringName, player_snapshot: Dictionary = {}
 		&"enter_level":
 			target.player_state = player_snapshot.duplicate(true)
 			target.level_entry_player_state = player_snapshot.duplicate(true)
+			target["last_tavern_state"] = capture_save_state(
+				player_snapshot.duplicate(true))
 		&"return_tavern":
 			target.completed_level = level_number
 			if level_number == 1: target.task_a_returned = "returned"
@@ -41,8 +307,10 @@ func prepare_scene_transition(mode: StringName, player_snapshot: Dictionary = {}
 					"rewarded_task_ids": {}, "purchased_shop_item_ids": {}, "player_state": {}}
 				for key in defaults:
 					target[key] = _transition_copy(campaign_checkpoint.get(key, defaults[key]))
+		&"resume_campaign":
+			target = save_snapshot.duplicate(true)
 	_transition_sequence += 1
-	var prepared := {"id": _transition_sequence, "base": before, "target": target}
+	var prepared := {"id": _transition_sequence, "base": before, "target": target, "mode": mode}
 	_transition_prepared[_transition_sequence] = prepared.duplicate(true)
 	return prepared
 
@@ -60,9 +328,17 @@ func commit_scene_transition(prepared: Dictionary) -> bool:
 	_transition_prepared.erase(prepared.id)
 	var target: Dictionary = prepared.target
 	_transition_committing = true
-	campaign_checkpoint = target.campaign_checkpoint.duplicate(true)
-	level_entry_player_state = target.level_entry_player_state.duplicate(true)
-	restore_campaign_state(target)
+	match prepared.get("mode"):
+		&"reset_progress":
+			reset_game_progress()
+		&"resume_campaign":
+			apply_save_state(target)
+		_:
+			campaign_checkpoint = target.campaign_checkpoint.duplicate(true)
+			level_entry_player_state = target.level_entry_player_state.duplicate(true)
+			restore_campaign_state(target)
+			if target.has("last_tavern_state"):
+				remember_tavern_state(target.last_tavern_state)
 	_transition_committing = false
 	var notifications := _transition_signals
 	_transition_signals = []
@@ -156,6 +432,8 @@ var available_level: int = 1:
 var pending_player_state: Dictionary = {}
 ## 最近一次正常完成关卡时的酒馆状态；死亡后选择回酒馆时恢复，不随一次性玩家快照消费。
 var campaign_checkpoint: Dictionary = {}
+## 最近一次进入关卡前离开酒馆时的完整快照；只用于酒馆安全状态保存。
+var last_tavern_state: Dictionary = {}
 ## 已领取任务奖励的任务 ID；与检查点同步，保证死亡回酒馆后不重复领取。
 var rewarded_task_ids: Dictionary = {}
 ## 一次性商店商品购买记录；与检查点同步，保证死亡回酒馆后恢复未购买状态。
@@ -377,6 +655,60 @@ func restore_campaign_state(snapshot: Dictionary) -> bool:
 	var player_snapshot: Dictionary = snapshot.get("player_state", {})
 	pending_player_state = player_snapshot.duplicate(true)
 	return true
+
+
+func apply_save_state(snapshot: Dictionary, rebuild_last_tavern: bool = true) -> bool:
+	if not validate_save_state(snapshot):
+		return false
+	reset_game_progress()
+	completed_level = int(snapshot.completed_level)
+	available_level = int(snapshot.available_level)
+	claimed_reward_levels = snapshot.claimed_reward_levels.duplicate(true)
+	task_a_reward_claimed = bool(claimed_reward_levels.get(1, false))
+	task_a_returned = str(snapshot.task_a_returned)
+	money = int(snapshot.money)
+	rewarded_task_ids = snapshot.rewarded_task_ids.duplicate(true)
+	purchased_shop_item_ids = snapshot.purchased_shop_item_ids.duplicate(true)
+	campaign_checkpoint = snapshot.campaign_checkpoint.duplicate(true)
+	level_entry_player_state = snapshot.level_entry_player_state.duplicate(true)
+	talked_to_a = bool(snapshot.talked_to_a)
+	help_choice = str(snapshot.help_choice)
+	music_quest_choice = str(snapshot.music_quest_choice)
+	music_quest_turnin = str(snapshot.music_quest_turnin)
+	items = snapshot.items.duplicate(true)
+	flags = snapshot.flags.duplicate(true)
+	_shop_flag_keys = snapshot.shop_flag_keys.duplicate(true)
+	pending_player_state = snapshot.player_state.duplicate(true)
+	if rebuild_last_tavern:
+		last_tavern_state = snapshot.duplicate(true)
+	return true
+
+
+func remember_tavern_state(snapshot: Dictionary) -> void:
+	if validate_save_state(snapshot):
+		last_tavern_state = snapshot.duplicate(true)
+
+
+func reset_game_progress() -> void:
+	completed_level = 0
+	available_level = 1
+	claimed_reward_levels = {}
+	task_a_reward_claimed = false
+	task_a_returned = ""
+	money = 0
+	rewarded_task_ids = {}
+	purchased_shop_item_ids = {}
+	pending_player_state = {}
+	campaign_checkpoint = {}
+	level_entry_player_state = {}
+	last_tavern_state = {}
+	talked_to_a = false
+	help_choice = ""
+	music_quest_choice = ""
+	music_quest_turnin = ""
+	items = {}
+	flags = {}
+	_shop_flag_keys = {}
 
 
 func has_claimed_reward(level_number: int) -> bool:

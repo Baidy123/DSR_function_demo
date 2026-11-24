@@ -12,6 +12,16 @@ DIRECTORY = Path(__file__).resolve().parent
 PROJECT = DIRECTORY.parent
 SYSTEM_TESTS = [
     "pause_menu_test",
+    "opening_flow_test",
+    "user_settings_test",
+    "settings_menu_test",
+    "campaign_save_state_test",
+    "campaign_save_service_test",
+    "campaign_save_flow_test",
+    "campaign_save_reset_test",
+    "cinematic_shot_test",
+    "cinematic_camera_test",
+    "director_shot_test",
     "scene_request_test", "scene_interaction_test", "scene_script_cancellation_test", "scene_transition_request_test", "scene_director_authority_test",
     "scene_director_test", "scene_event_node_test", "scene_reinforcement_test",
     "movement_test", "sprint_test", "interaction_test", "hearing_test",
@@ -42,6 +52,7 @@ TIMEOUTS = {"squad_command_runtime_test": 180}
 
 # These entries need their documented harness; never glob-run every .gd file.
 SPECIAL = {
+    "campaign_save_reset_rendered_test.gd": "real rendered scene transition",
     "scene_transition_target.gd": "target-ready fixture loaded by scene_transition_request_test",
     "shotgun_pattern_editor_test.gd": "standalone --editor --max-fps 60 --script; also --headless --script with -- --preview-runtime; captures editor UI when rendered",
     "shotgun_inspector_test.gd": "standalone --headless --editor --script",

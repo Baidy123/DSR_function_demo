@@ -119,6 +119,8 @@ func _collect_configuration(region: Node) -> Dictionary:
 	if not is_finite(_host.spawn_retry_seconds) or _host.spawn_retry_seconds <= 0.0:
 		errors.append("重试间隔必须大于0秒。")
 	for child in _host.get_children():
+		if child.name == &"CinematicShots" and child.has_meta(&"scene_director_infrastructure"):
+			continue
 		if not child is Wave:
 			errors.append("%s：控制器下面请放 enemy_wave.tscn 波次节点。" % child.name)
 			invalid_roots.append(child)

@@ -133,6 +133,8 @@ func _step(entry: Dictionary, delta: float) -> void:
 					if not error.is_empty(): _fail(entry, error)
 			Action.Kind.PRESENT_TARGET:
 				_submit(entry, &"presentation", target, action.camera_options())
+			Action.Kind.PLAY_CINEMATIC_SHOT:
+				_submit(entry, &"presentation", target, {"camera_shot": true})
 			Action.Kind.GUIDE:
 				_submit(entry, &"guide", target, {"pause_world": action.guide_pauses_world})
 			Action.Kind.COMPLETE_SCENE:

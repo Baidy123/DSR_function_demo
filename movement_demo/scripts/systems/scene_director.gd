@@ -134,6 +134,7 @@ func initialize() -> void:
 	_link(_pause_menu, &"pause_requested", request_pause_menu)
 	_link(_pause_menu, &"resume_requested", resume_from_pause_menu)
 	_link(_pause_menu, &"quit_requested", _quit_game)
+	_link(_pause_menu, &"save_game_requested", _save_game_from_menu)
 	var guide: Node = _bindings.get("guide")
 	if guide != null:
 		_set_state(&"running")
@@ -158,16 +159,38 @@ func advance(delta: float) -> void:
 	if not _initialized or not is_inside_tree(): return
 	if _menu_token != 0: return
 	_requests.advance(delta)
-	if _active_presentation != 0 and _pauses.can_advance_presentation(_camera_token):
+	if _active_presentation != 0 and _can_advance_presentation():
 		if is_instance_valid(_camera): _camera.advance_presentation(delta)
-		else: _finish_presentation()
+		else: _finish_presentation(&"camera_lost")
 	if not can_run_actions(): return
 	_flows.advance(delta)
 	if _completion_pending and state == &"running" and _active_presentation == 0 and _guide == null and _requests.snapshot().foreground == 0 and Engine.get_process_frames() > _completion_frame:
 		_finish_completion()
 
+func _can_advance_presentation() -> bool:
+	if _camera_token == 0: return not get_tree().paused
+	return _pauses.can_advance_presentation(_camera_token)
+
 func can_run_actions() -> bool:
 	return _initialized and not _load_failed and state in [&"running", &"guide"] and not get_tree().paused
+
+func can_save_game() -> bool:
+	var service := get_node_or_null("/root/CampaignSaveService")
+	return _initialized and not _load_failed and service != null and service.can_save_game(_scene_root)
+
+func save_game() -> Dictionary:
+	if not can_save_game():
+		return {"ok": false, "result": &"unavailable"}
+	return get_node("/root/CampaignSaveService").save_current_game(_scene_root)
+
+func _save_game_from_menu() -> void:
+	_pause_menu.show_game_save_result(save_game().result)
+
+func request_debug_reset_progress() -> bool:
+	if not _initialized or _load_failed or _load_request != null or state == &"loading":
+		return false
+	var service := get_node_or_null("/root/CampaignSaveService")
+	return service != null and service.request_debug_reset(self)
 
 ## 普通暂停只在可游玩、没有其他界面或演出占用控制时打开。
 func request_pause_menu() -> void:
@@ -176,6 +199,7 @@ func request_pause_menu() -> void:
 	if _requests.snapshot().foreground != 0 or _pauses.snapshot().count != 0: return
 	_menu_token = _pauses.acquire(self, &"pause_menu", true)
 	_pause_menu.open_menu()
+	_pause_menu.set_game_save_available(can_save_game())
 
 func resume_from_pause_menu() -> void:
 	if is_instance_valid(_pause_menu): _pause_menu.close_menu()
@@ -444,7 +468,9 @@ func authorize_wave_deployment(wave: Node) -> bool:
 	if not is_instance_valid(wave) or state not in [&"running", &"guide"] or _load_failed or _completion_pending or get_tree().paused: return false
 	var request = _wave_requests.get(wave.get_instance_id())
 	if request == null or not request.is_current(): return false
-	var presentation: bool = _armed_presentations.has(wave.get_instance_id()) or wave.get("show_spawn_presentation") == true or _bindings.get("present_spawned_waves", false)
+	var shot_path: NodePath = wave.get("cinematic_shot_path") if wave.get("cinematic_shot_path") != null else NodePath()
+	var presentation: bool = not shot_path.is_empty() or _armed_presentations.has(wave.get_instance_id()) \
+		or wave.get("show_spawn_presentation") == true or _bindings.get("present_spawned_waves", false)
 	return not presentation or _requests.snapshot().foreground == 0
 
 func wave_status(wave: Node) -> StringName:
@@ -459,6 +485,15 @@ func _present_committed_wave(wave: Node) -> void:
 	if state not in [&"running", &"guide"]: return
 	var armed: Dictionary = _armed_presentations.get(wave.get_instance_id(), {})
 	_armed_presentations.erase(wave.get_instance_id())
+	var shot_path: NodePath = wave.get("cinematic_shot_path") if wave.get("cinematic_shot_path") != null else NodePath()
+	if not shot_path.is_empty():
+		var shot := wave.get_node_or_null(shot_path) as CinematicShot3D
+		if shot == null:
+			report_action_error("camera", "Wave cinematic shot path must point to a CinematicShot3D")
+			return
+		request_action(&"presentation", {"source": wave, "target": shot, "scope": 1,
+			"scope_owner": region_owner(), "origin": &"rule", "parameters": {"camera_shot": true}})
+		return
 	var owner: Node = wave
 	var target_path: NodePath
 	var options: Dictionary
@@ -493,8 +528,14 @@ func present_target(focus: Vector3, options: Dictionary = {}, scope: int = 0) ->
 		"scope_owner": region_owner(), "parameters": parameters, "origin": &"interaction"})
 	return _active_presentation if request.has_started() else 0
 
-func _execute_presentation(focus: Vector3, options: Dictionary = {}, scope: int = 0) -> int:
-	if _active_presentation != 0: return -1
+## Requests an authored camera from the same foreground queue as target presentations.
+func request_cinematic_shot(shot: CinematicShot3D, scope: int = 0) -> Request:
+	return request_action(&"presentation", {"source": _host, "target": shot, "scope": scope,
+		"scope_owner": region_owner(), "parameters": {"camera_shot": true}})
+
+func _execute_presentation(focus: Vector3, options: Dictionary, scope: int,
+		shot: CinematicShot3D = null) -> int:
+	if _active_presentation != 0: return 0
 	if state not in [&"running", &"guide"]: return 0
 	var source: Camera3D = get_viewport().get_camera_3d()
 	if not is_instance_valid(source):
@@ -504,11 +545,23 @@ func _execute_presentation(focus: Vector3, options: Dictionary = {}, scope: int 
 	_presentation_id += 1
 	_active_presentation = _presentation_id
 	_presentation_scope = scope
-	_camera_token = _pauses.acquire(self, &"presentation")
-	# Establish pause in the synchronous spawn commit before public spawned callbacks.
-	if not _camera.start_presentation(source, focus, options, _active_presentation):
+	if shot == null or shot.pause_world:
+		# Establish pause in the synchronous spawn commit before public spawned callbacks.
+		var request: Request = _camera_request
+		var token: int = _pauses.acquire(self, &"presentation")
+		if request != _camera_request or not request.is_current():
+			_pauses.release(token)
+			return 0
+		_camera_token = token
+	var started: bool
+	if shot == null:
+		started = _camera.start_presentation(source, focus, options, _active_presentation)
+	else:
+		started = _camera.has_method(&"start_cinematic_shot") \
+			and _camera.start_cinematic_shot(source, shot.runtime_snapshot(), _active_presentation)
+	if not started:
 		report_action_error("camera", "Presentation could not start; deployment remains committed")
-		_finish_presentation()
+		_finish_presentation(&"failed")
 		return 0
 	return _active_presentation
 
@@ -533,16 +586,19 @@ func _ensure_camera() -> bool:
 func _on_presentation_finished(id: int, result: StringName) -> void:
 	if id != _active_presentation: return
 	if result not in [&"completed", &"finished", &"cancelled"]: _last_error = "Presentation: %s" % result
-	_finish_presentation()
+	_finish_presentation(result)
 
-func _finish_presentation() -> void:
+func _finish_presentation(result: StringName = &"completed") -> void:
 	_active_presentation = 0
 	if _camera_token != 0: _pauses.release(_camera_token)
 	_camera_token = 0
 	if _camera_request != null:
 		var request = _camera_request
 		_camera_request = null
-		request.complete()
+		if request.parameters.get("camera_shot", false) and result not in [&"completed", &"finished"]:
+			request.fail(String(result))
+		else:
+			request.complete()
 
 func is_presentation_pending(id: int) -> bool:
 	return id != 0 and id == _active_presentation
@@ -708,6 +764,23 @@ func execute_request(request: Request) -> void:
 				_guide_request = null
 				request.fail("invalid_guide")
 		&"presentation":
+			if _active_presentation != 0:
+				request.fail("presentation_busy")
+				return
+			if request.parameters.get("camera_shot", false):
+				var shot := request.node(&"target") as CinematicShot3D
+				if shot == null:
+					request.fail("invalid_shot")
+					return
+				var error := shot.configuration_error()
+				if not error.is_empty():
+					request.fail(String(error))
+					return
+				_camera_request = request
+				if _execute_presentation(Vector3.ZERO, {}, request.scope, shot) == 0:
+					if _camera_request == request: _camera_request = null
+					request.fail("presentation_failed")
+				return
 			var target := request.node(&"target") as Node3D
 			var focus: Variant = target.global_position if target != null else request.parameters.get("focus")
 			if not focus is Vector3:
@@ -715,7 +788,7 @@ func execute_request(request: Request) -> void:
 				return
 			_camera_request = request
 			if _execute_presentation(focus, request.parameters, request.scope) == 0:
-				_camera_request = null
+				if _camera_request == request: _camera_request = null
 				request.complete({"skipped": true})
 		&"completion":
 			_completion_request = request

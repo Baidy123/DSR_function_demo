@@ -181,6 +181,7 @@ REQUEST_WAVE 等真实生成才继续；若勾选 **Present Spawn**，动作的 
 | PRESENT_TARGET | 单独展示 Target Path 指向的 Marker3D/Node3D，不要求刷怪 |
 | GUIDE | 调用 begin() 并等待无参 finished，可选择是否暂停 |
 | WAIT_SIGNAL | 等待 Completed Trigger 的来源信号及过滤结果 |
+| PLAY_CINEMATIC_SHOT | Target Path 指向 CinematicShot3D，遵守机位的暂停配置，正常返回后继续 |
 | COMPLETE_SCENE | 请求完成，必要镜头结束后显示结果，同帧死亡优先 |
 | RESTART | 编排者配置的重载动作；当前五关未配置，不是玩家平时的重试入口 |
 | CHANGE_SCENE | 请求 Scene Path 指定场景，失败可重试原目标 |

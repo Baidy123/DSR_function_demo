@@ -27,6 +27,10 @@
 
 当前 `PhantomCamera3D` 的 `Camera3D Resource` 留空，由插件控制跟随位置、由 `Camera3D` 脚本控制 Size。不要同时给 Phantom Camera 配置另一套镜头覆盖；以后需要多镜头切换时，应统一视野的控制入口。本轮不修改插件源码或原 `Follow Offset`。
 
+## 自定义机位
+
+在场景导演的 **CinematicShots** 容器下实例化 `scenes/cinematic/cinematic_shot_3d.tscn`。Shot 的位置和朝向是相机机位，可设置投影、视野、切入／停留／返回时长、缓动、抖动与 **Pause World**。场景规则用 **PLAY_CINEMATIC_SHOT** 指定该节点，波次可使用 **Cinematic Shot Path**，脚本也可调用 `SceneDirector.request_cinematic_shot(shot)`。两种拍法共用 `presentation` 请求、演出相机、暂停和取消。对话的指路子请求仍按原绑定播放。
+
 ## 独立演出相机与手动目标
 
 SceneDirector的Wave“出场镜头”可选择Marker3D或现有Node3D作为画面中心，并配置移过去、停留、返回时间。缺少绑定时诊断并跳过，不自动替用户选敌人中心。详细摆放和路径见[场景调度教程](SCENE_DIRECTOR.md#三手摆目标展示真实增援)。

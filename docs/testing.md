@@ -114,6 +114,10 @@
 - 分开报告断言、进程退出、脚本／资源诊断、性能和实际渲染。未运行的项目不能记为通过。
 - 测试或诊断放在既有 tests／忽略日志目录，不混入运行组件；新增或移除专项同步维护登记。
 
+## PR #6 整合专项
+
+存档和设置使用 `campaign_save_state_test`、`campaign_save_service_test`、`campaign_save_flow_test`、`campaign_save_reset_test`、`user_settings_test` 和 `settings_menu_test`。其中真实流程从当前外景读档切到酒馆，并检查生命、装备和开场旗标恢复。共享镜头使用 `director_shot_test`、`cinematic_shot_test`、`cinematic_camera_test` 和原 `presentation_camera_test`，验证排队、相机复用和取消。原开场、暂停和真实增援分别用 `opening_flow_test`、`pause_menu_test` 和 `scene_reinforcement_test` 核对。
+
 ## 查询实际清单
 
 在仓库根目录使用：

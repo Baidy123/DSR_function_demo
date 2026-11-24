@@ -4,6 +4,7 @@ extends Node
 signal changed(enabled: bool)
 
 var _navigation_requested: bool = false
+var _preserve_enabled_once := false
 
 var enabled: bool = false:
 	set(value):
@@ -28,3 +29,19 @@ func _ready() -> void:
 
 func set_enabled(value: bool) -> void:
 	enabled = value
+
+
+## Reset replaces the scene; keep the current Debug choice for the next Health.
+func preserve_enabled_once() -> void:
+	_preserve_enabled_once = enabled and OS.is_debug_build()
+
+
+func cancel_preserved_enabled() -> void:
+	_preserve_enabled_once = false
+
+
+func initialize_scene_enabled(value: bool) -> void:
+	if _preserve_enabled_once:
+		_preserve_enabled_once = false
+		return
+	set_enabled(value)

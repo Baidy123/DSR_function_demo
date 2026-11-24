@@ -25,7 +25,9 @@ enum Kind {
 	## 等待 Completed Trigger 指定的信号及过滤条件满足后继续；只等待，不主动调用目标方法。
 	WAIT_SIGNAL,
 	## Run a provider with begin_scene_action(request) and cancel_scene_action(request, reason).
-	RUN_SCRIPT
+	RUN_SCRIPT,
+	## 播放 Target Path 指向的自定义机位，返回后继续。
+	PLAY_CINEMATIC_SHOT
 }
 ## 选择本步骤要做什么；下面只显示该类型需要填写的参数。[br]
 ## [b]WAIT（等待时间）[/b]：填写 Seconds，等待结束后执行下一步。[br]
@@ -89,6 +91,7 @@ func _validate_property(property: Dictionary) -> void:
 		Kind.CHANGE_SCENE: relevant.append("scene_path")
 		Kind.CALL_METHOD: relevant.append_array(["target_path", "method", "arguments", "completed_trigger", "cancel_method"])
 		Kind.RUN_SCRIPT: relevant.append_array(["target_path", "arguments"])
+		Kind.PLAY_CINEMATIC_SHOT: relevant.append("target_path")
 		Kind.WAIT_SIGNAL: relevant.append("completed_trigger")
 	var fields := ["target_path", "seconds", "present_spawn", "presentation_target_path", "move_seconds", "hold_seconds", "return_seconds", "camera_size", "guide_pauses_world", "scene_path", "method", "arguments", "completed_trigger", "cancel_method"]
 	if property.name in fields and property.name not in relevant: property.usage &= ~PROPERTY_USAGE_EDITOR

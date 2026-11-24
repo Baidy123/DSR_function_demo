@@ -144,9 +144,13 @@ Equipment 交接当前枪给 Combat。相机订阅 `weapon_changed`，表现订�
 - `scenes/enemy/levels/lvl_N/` 与 `resources/enemy/training/levels/lvl_N/` 保存各关兵种／训练。共享资源仍可能被跨关引用，修改前核对实际使用者。
 - 导航烘焙命令会写资源，属于维护工具；不能作为普通游戏加载流程或默认回归一起执行。
 
+## 战役存档
+
+`systems/campaign_save_service.gd` 负责单槽文件、备份和重置暂存，`GameState` 负责快照与恢复进度。正常启动从本地外景进入，由 SceneDirector 接受读档切场后提交战役和待消费的玩家快照。开场进行中禁用保存。Debug 重置将磁盘删除和清空运行状态系在同一个切场结果上，失败时恢复暂存。
+
 ## 相机、表现与内容
 
-`scenes/ui/pause_menu.tscn` 与 `scripts/ui/pause_menu.gd` 由场景导演核心在运行时装配，提供 Esc 暂停、瞄准方式、操作说明和退出确认。菜单将瞄准选择写入 `GameState.player_aim_control_override`，暂停与退出回传场景导演。`SceneDirector.request_pause_menu()`／`resume_from_pause_menu()` 持有和释放共享暂停协调器的独立令牌。说明复用原 `play_guide.tscn` 与 `LevelFlow/PlayGuide` 节点路径，显式教程入口 `guide_path` 默认留空。
+`scenes/ui/pause_menu.tscn` 与 `scripts/ui/pause_menu.gd` 由场景导演核心在运行时装配，提供 Esc 暂停、瞄准方式、操作说明和退出确认。菜单将瞄准选择写入 `GameState.player_aim_control_override`，其余用户偏好由 `UserSettings` 读写独立配置。菜单提交保存、暂停与退出意图，场景导演保持流程所有权。`SceneDirector.request_pause_menu()`／`resume_from_pause_menu()` 持有和释放共享暂停协调器的独立令牌。说明复用原 `play_guide.tscn` 与 `LevelFlow/PlayGuide` 节点路径，显式教程入口 `guide_path` 默认留空。
 
 相机根 `systems/player_camera.gd` 统一绑定玩家、读取武器 Aim Range、控制视野过渡；`camera_occlusion.gd` 仅处理显式标记装饰的材质副本与还原。CameraGroundAnchor 过滤翻越抬升。保持原 Phantom Camera 跟随和更新关系。
 

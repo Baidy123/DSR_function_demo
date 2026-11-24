@@ -27,6 +27,7 @@ enum Phase { ARRIVAL, ENTER, BARTENDER, VISITOR, CURTAIN, COMMISSIONER, MERCHANT
 @onready var player: CharacterBody3D = scene.get_node("Player")
 @onready var ui: CanvasLayer = scene.get_node("DialogueUI")
 @onready var state: Node = get_node("/root/GameState")
+@onready var campaign_save := get_node_or_null("/root/CampaignSaveService")
 
 var phase: Phase
 var _request: SceneRequest
@@ -93,6 +94,8 @@ func _clear_equipment() -> void:
 
 
 func _physics_process(_delta: float) -> void:
+	if exterior and campaign_save != null and campaign_save.startup_pending:
+		return
 	if _busy():
 		return
 	if phase == Phase.ARRIVAL or (phase == Phase.VISITOR and _near_target()):

@@ -23,7 +23,8 @@ func begin_scene_action(request: Request) -> void:
 	var parameters := request.parameters
 	if state != null:
 		_prepared = state.prepare_scene_transition(parameters.get("mode", &"plain"),
-			parameters.get("player_snapshot", {}), parameters.get("level_number", 0))
+			parameters.get("player_snapshot", {}), parameters.get("level_number", 0),
+			parameters.get("save_snapshot", {}))
 		if _prepared.is_empty():
 			director.finish_transition(request, &"failed", &"invalid_transition_state")
 			return

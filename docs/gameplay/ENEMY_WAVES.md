@@ -47,6 +47,10 @@ SEQUENCE模式关闭Wait For Previous Clear时，从紧邻上一波实际出场�
 
 无法取得有效玩家或合法误差点时仍生成本波，保留原出生行为并输出诊断，不无限等待或退回无误差坐标。未建立交战警戒的普通声音调查仍可能结束回巡逻，与出生搜索不同。
 
+## 自定义机位
+
+Wave 的 **Cinematic Shot Path** 可指向同一场景的 CinematicShot3D。配置该路径时优先使用该机位，仍在真实生成后通过导演播放。路径为空时继续使用已有手摆目标和全场默认。关卡中新加的 CinematicShots 容器用来摆放机位，Wave、Squad 和 Enemy 继续放在原层级。
+
 ## 给新战斗区域接入
 
 1. 保留区域的 `shooting_range.gd`、战斗区、玩家和导航。在该区域下放一个 `scenes/world/scene_director.tscn`，一个区域只放一个控制器。

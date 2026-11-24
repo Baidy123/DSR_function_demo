@@ -31,6 +31,12 @@ enum TriggerCombination { ANY, ALL }
 ## 暂停、对话或玩家死亡时不扣时间；刷新点被占用时仍需等待原位置空出。
 @export_range(0.0, 120.0, 0.1, "or_greater", "suffix:s") var start_delay_seconds: float = 0.0
 @export_group("出场镜头")
+## 新式单镜头。真实部署成功后由 CinematicCameraController 执行。
+## 与旧 Show Spawn Presentation 同时存在时，本次 Shot 优先，旧配置不重复播放。
+@export_node_path("Node") var cinematic_shot_path: NodePath:
+	set(value):
+		cinematic_shot_path = value
+		update_configuration_warnings()
 ## 开启后，本波真正生成成功时暂停战斗并展示下面绑定的目标，返回玩家视野后恢复。
 ## 必须手动指定 Presentation Target Path；出生点受阻时不提前播放。无需修改玩家相机。
 @export var show_spawn_presentation := false
@@ -112,6 +118,10 @@ func event_node_diagnostic(path: NodePath) -> String:
 
 func _get_configuration_warnings() -> PackedStringArray:
 	var errors: PackedStringArray = deployment_configuration().errors
+	if not cinematic_shot_path.is_empty():
+		var shot := get_node_or_null(cinematic_shot_path)
+		if not shot is CinematicShot3D:
+			errors.append("新式出场镜头路径必须是 CinematicShot3D：%s" % cinematic_shot_path)
 	if show_spawn_presentation:
 		var target := get_node_or_null(presentation_target_path) if not presentation_target_path.is_empty() else null
 		if not target is Node3D: errors.append("出场镜头请手动绑定Marker3D/Node3D目标；未绑定时跳过表现。")
