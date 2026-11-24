@@ -138,7 +138,9 @@ func _exercise_menu(scene: Node, menu: CanvasLayer) -> void:
 	await _capture("01-pause")
 	await _click(main.get_node("Settings"))
 	check(settings.visible and not main.visible and paused, "设置子页保持暂停")
-	var aim_choice := settings.get_node_or_null("AimControl/Choice") as OptionButton
+	var categories := settings.get_node("Categories") as TabContainer
+	categories.current_tab = 1
+	var aim_choice := settings.get_node_or_null("Categories/CombatSettings/AimControl/Choice") as OptionButton
 	check(aim_choice != null and aim_choice.item_count == 3, "设置提供瞄准方式选项")
 	if aim_choice != null:
 		aim_choice.select(2)

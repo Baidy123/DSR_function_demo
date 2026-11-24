@@ -29,6 +29,8 @@ var has_saved_settings := false
 
 
 func _ready() -> void:
+	if DisplayServer.get_name() != "headless":
+		get_window().size_changed.connect(_apply_3d_resolution)
 	var config_override := OS.get_environment("DSR_USER_SETTINGS_CONFIG")
 	if not config_override.is_empty():
 		config_path = config_override
@@ -141,9 +143,6 @@ func apply_to_combat(combat: Node) -> void:
 
 
 func apply_display_settings() -> void:
-	var window := get_window()
-	if window != null:
-		window.content_scale_size = resolution()
 	if DisplayServer.get_name() == "headless":
 		return
 	DisplayServer.window_set_mode(godot_window_mode())
@@ -151,6 +150,23 @@ func apply_display_settings() -> void:
 		DisplayServer.window_set_size(resolution())
 	DisplayServer.window_set_vsync_mode(
 		DisplayServer.VSYNC_ENABLED if vsync_enabled else DisplayServer.VSYNC_DISABLED)
+	_apply_3d_resolution()
+
+
+func _apply_3d_resolution() -> void:
+	if not has_saved_settings:
+		return
+	var window := get_window()
+	if window_mode == WindowMode.WINDOWED:
+		window.scaling_3d_scale = 1.0
+		return
+	var output_size := DisplayServer.window_get_size()
+	if output_size.x <= 0 or output_size.y <= 0:
+		return
+	var target := resolution()
+	# The viewport keeps its aspect ratio within the native fullscreen output.
+	window.scaling_3d_scale = minf(1.0, maxf(
+		float(target.x) / output_size.x, float(target.y) / output_size.y))
 
 
 func godot_window_mode() -> DisplayServer.WindowMode:

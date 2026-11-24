@@ -47,7 +47,7 @@ func _escape() -> void:
 
 func _run() -> void:
 	_remove_test_config()
-	root.size = Vector2i(1152, 720)
+	root.size = Vector2i(1280, 720)
 	root.content_scale_size = root.size
 	var settings := root.get_node_or_null("UserSettings")
 	check(settings != null, "设置菜单使用项目用户设置服务")
@@ -79,10 +79,15 @@ func _run() -> void:
 	content.get_node("Main/Settings").pressed.emit()
 	var settings_page := content.get_node("Settings")
 	check(settings_page.visible, "设置分类页保持现有导航")
-	var aim_control := settings_page.get_node_or_null("AimControl/Choice") as OptionButton
+	var aim_control := settings_page.get_node_or_null("Categories/CombatSettings/AimControl/Choice") as OptionButton
 	var state := root.get_node("GameState")
-	check(aim_control != null and aim_control.item_count == 3, "保留原瞄准方式选项和节点路径")
+	check(aim_control != null and aim_control.item_count == 3, "战斗设置保留三个瞄准方式选项")
 	if aim_control != null:
+		var aim_categories := settings_page.get_node("Categories") as TabContainer
+		aim_categories.current_tab = 0
+		check(not aim_control.is_visible_in_tree(), "基础设置不显示瞄准方式")
+		aim_categories.current_tab = 1
+		check(aim_control.is_visible_in_tree(), "战斗设置显示瞄准方式")
 		aim_control.select(aim_control.get_item_index(2))
 		aim_control.item_selected.emit(aim_control.selected)
 		check(state.player_aim_control_override == 2, "鼠标瞄准立即生效")
@@ -139,6 +144,8 @@ func _run() -> void:
 	var vsync_before := DisplayServer.window_get_vsync_mode()
 	var size_before := DisplayServer.window_get_size()
 	var content_scale_before := root.content_scale_size
+	var visible_size_before := root.get_visible_rect().size
+	var render_scale_before := root.scaling_3d_scale
 	mouse_assist.button_pressed = false
 	mouse_assist.toggled.emit(false)
 	sensitivity.select(2)
@@ -157,8 +164,9 @@ func _run() -> void:
 		and settings.vsync_enabled,
 		"编辑控件不会自动提交设置")
 	check(not FileAccess.file_exists(test_config), "编辑控件不会自动写入配置")
-	check(root.content_scale_size == content_scale_before,
-		"编辑分辨率不会立即改变渲染画布")
+	check(root.content_scale_size == content_scale_before
+		and is_equal_approx(root.scaling_3d_scale, render_scale_before),
+		"编辑分辨率不会立即改变界面基准或渲染比例")
 	var combat: Node = scene.get_node("Player/Combat")
 	check(combat.mouse_target_assist_enabled
 		and is_equal_approx(combat.target_switch_travel_ratio, 0.12),
@@ -184,10 +192,10 @@ func _run() -> void:
 		"点击保存后同步当前玩家")
 	check(notice.text.contains("已保存") and not notice.text.contains("未保存"),
 		"保存成功后显示明确状态")
-	check(root.content_scale_size == Vector2i(1920, 1080),
-		"保存后应用1920×1080渲染画布")
-	check(root.get_visible_rect().size == Vector2(1920, 1080),
-		"保存后可见画布使用1920×1080坐标")
+	check(root.content_scale_size == content_scale_before,
+		"全屏保存1920×1080后保留工程的界面基准")
+	check(root.get_visible_rect().size == visible_size_before,
+		"全屏切换分辨率时保留可见界面坐标")
 	var save_service := root.get_node_or_null("CampaignSaveService")
 	check(save_service != null, "设置页可访问单槽存档服务")
 	test_game_save = OS.get_temp_dir().path_join(
@@ -208,6 +216,20 @@ func _run() -> void:
 			"保存后应用无边框全屏")
 		check(DisplayServer.window_get_vsync_mode() == DisplayServer.VSYNC_DISABLED,
 			"保存后关闭垂直同步")
+		var full_hd_scale := root.scaling_3d_scale
+		var full_hd_size := DisplayServer.window_get_size()
+		var interface_transform := root.get_final_transform()
+		resolution_choice.select(0)
+		resolution_choice.item_selected.emit(0)
+		save.pressed.emit()
+		await _settle()
+		var expected_scale := minf(1.0, maxf(1280.0 / full_hd_size.x, 720.0 / full_hd_size.y))
+		check(is_equal_approx(root.scaling_3d_scale, expected_scale)
+			and root.scaling_3d_scale <= full_hd_scale,
+			"全屏较低档位降低 3D 渲染分辨率")
+		check(root.get_final_transform().is_equal_approx(interface_transform)
+			and DisplayServer.window_get_size() == full_hd_size,
+			"全屏切换分辨率时界面实际缩放和输出窗口相同")
 
 	window_mode.select(0)
 	window_mode.item_selected.emit(0)
@@ -217,10 +239,10 @@ func _run() -> void:
 	await _settle()
 	check(settings.window_mode == 0 and settings.resolution_index == 1,
 		"保存后提交窗口分辨率")
-	check(root.content_scale_size == Vector2i(1600, 900),
-		"保存后应用1600×900渲染画布")
-	check(root.get_visible_rect().size == Vector2(1600, 900),
-		"保存后可见画布使用1600×900坐标")
+	check(root.content_scale_size == content_scale_before,
+		"窗口分辨率保留界面缩放基准")
+	check(root.get_visible_rect().size == visible_size_before and is_equal_approx(root.scaling_3d_scale, 1.0),
+		"窗口模式以所选窗口像素原生渲染并保留界面坐标")
 	if rendered:
 		var window_applied := await _await_window_state(
 			DisplayServer.WINDOW_MODE_WINDOWED, Vector2i(1600, 900))
@@ -279,6 +301,7 @@ func _run() -> void:
 	var failed_mode_before := DisplayServer.window_get_mode()
 	var failed_size_before := DisplayServer.window_get_size()
 	var failed_vsync_before := DisplayServer.window_get_vsync_mode()
+	var failed_render_scale_before := root.scaling_3d_scale
 	mouse_assist.button_pressed = false
 	mouse_assist.toggled.emit(false)
 	sensitivity.select(2)
@@ -302,8 +325,9 @@ func _run() -> void:
 	check(combat.mouse_target_assist_enabled
 		and is_equal_approx(combat.target_switch_travel_ratio, 0.12),
 		"保存失败不改变当前战斗设置")
-	check(root.content_scale_size == Vector2i(1280, 720),
-		"保存失败不改变渲染画布")
+	check(root.content_scale_size == content_scale_before
+		and is_equal_approx(root.scaling_3d_scale, failed_render_scale_before),
+		"保存失败不改变界面基准或渲染比例")
 	if rendered:
 		check(DisplayServer.window_get_mode() == failed_mode_before
 			and DisplayServer.window_get_size() == failed_size_before
@@ -330,7 +354,8 @@ func _run() -> void:
 	await _settle()
 	basic_visible = basic_visible \
 		and viewport.encloses(mouse_assist.get_global_rect()) \
-		and viewport.encloses(sensitivity.get_global_rect())
+		and viewport.encloses(sensitivity.get_global_rect()) \
+		and aim_control != null and viewport.encloses(aim_control.get_global_rect())
 	check(basic_visible, "640×480 下两栏设置与操作按钮完整可见")
 
 	scene.free()

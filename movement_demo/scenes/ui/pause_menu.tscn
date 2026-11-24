@@ -172,6 +172,28 @@ visible = false
 layout_mode = 2
 theme_override_constants/separation = 6
 
+[node name="AimControl" type="HBoxContainer" parent="Backdrop/Center/Panel/Content/Settings/Categories/CombatSettings"]
+layout_mode = 2
+
+[node name="Label" type="Label" parent="Backdrop/Center/Panel/Content/Settings/Categories/CombatSettings/AimControl"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_font_sizes/font_size = 16
+text = "瞄准方式"
+
+[node name="Choice" type="OptionButton" parent="Backdrop/Center/Panel/Content/Settings/Categories/CombatSettings/AimControl"]
+layout_mode = 2
+mouse_default_cursor_shape = 2
+theme_override_font_sizes/font_size = 16
+item_count = 3
+selected = 0
+popup/item_0/text = "跟随场景配置"
+popup/item_0/id = 0
+popup/item_1/text = "自动锁定"
+popup/item_1/id = 1
+popup/item_2/text = "鼠标瞄准"
+popup/item_2/id = 2
+
 [node name="MouseAssistRow" type="HBoxContainer" parent="Backdrop/Center/Panel/Content/Settings/Categories/CombatSettings"]
 layout_mode = 2
 
@@ -205,29 +227,6 @@ popup/item_0/id = 0
 popup/item_1/text = "标准"
 popup/item_1/id = 1
 popup/item_2/text = "高"
-popup/item_2/id = 2
-
-[node name="AimControl" type="HBoxContainer" parent="Backdrop/Center/Panel/Content/Settings"]
-layout_mode = 2
-theme_override_constants/separation = 12
-
-[node name="Label" type="Label" parent="Backdrop/Center/Panel/Content/Settings/AimControl"]
-layout_mode = 2
-theme_override_font_sizes/font_size = 18
-text = "瞄准方式"
-
-[node name="Choice" type="OptionButton" parent="Backdrop/Center/Panel/Content/Settings/AimControl"]
-layout_mode = 2
-size_flags_horizontal = 3
-mouse_default_cursor_shape = 2
-theme_override_font_sizes/font_size = 18
-item_count = 3
-selected = 0
-popup/item_0/text = "跟随场景配置"
-popup/item_0/id = 0
-popup/item_1/text = "自动锁定"
-popup/item_1/id = 1
-popup/item_2/text = "鼠标瞄准"
 popup/item_2/id = 2
 
 [node name="Guide" type="Button" parent="Backdrop/Center/Panel/Content/Settings"]

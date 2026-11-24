@@ -11,7 +11,7 @@ signal save_game_requested
 @onready var _quit: VBoxContainer = $Backdrop/Center/Panel/Content/Quit
 @onready var _title: Label = $Backdrop/Center/Panel/Content/Title
 @onready var _guide: CanvasLayer = $PlayGuide
-@onready var _aim_control: OptionButton = _settings.get_node("AimControl/Choice")
+@onready var _aim_control: OptionButton = _settings.get_node("Categories/CombatSettings/AimControl/Choice")
 @onready var _game_state = get_node("/root/GameState")
 @onready var _categories: TabContainer = $Backdrop/Center/Panel/Content/Settings/Categories
 @onready var _window_mode: OptionButton = $Backdrop/Center/Panel/Content/Settings/Categories/BasicSettings/WindowModeRow/WindowMode
