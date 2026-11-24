@@ -204,3 +204,11 @@ layout_mode = 2
 size_flags_horizontal = 4
 theme_override_font_sizes/font_size = 20
 text = "返回酒馆（通关返程状态）"
+
+[node name="LoadGame" type="Button" parent="DeathScreen/Center/Panel/Content"]
+custom_minimum_size = Vector2(320, 44)
+layout_mode = 2
+size_flags_horizontal = 4
+theme_override_font_sizes/font_size = 20
+disabled = true
+text = "加载已保存游戏"

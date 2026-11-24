@@ -5,6 +5,7 @@ signal pause_requested
 signal resume_requested
 signal quit_requested
 signal save_game_requested
+signal load_game_requested
 
 @onready var _main: VBoxContainer = $Backdrop/Center/Panel/Content/Main
 @onready var _settings: VBoxContainer = $Backdrop/Center/Panel/Content/Settings
@@ -20,8 +21,9 @@ signal save_game_requested
 @onready var _mouse_assist: CheckButton = $Backdrop/Center/Panel/Content/Settings/Categories/CombatSettings/MouseAssistRow/MouseAssist
 @onready var _sensitivity: OptionButton = $Backdrop/Center/Panel/Content/Settings/Categories/CombatSettings/SensitivityRow/Sensitivity
 @onready var _save: Button = $Backdrop/Center/Panel/Content/Settings/SaveSettings
-@onready var _save_game: Button = $Backdrop/Center/Panel/Content/Settings/SaveGame
-@onready var _game_save_notice: Label = $Backdrop/Center/Panel/Content/Settings/GameSaveNotice
+@onready var _save_game: Button = _main.get_node("SaveGame")
+@onready var _load_game: Button = _main.get_node("LoadGame")
+@onready var _game_save_notice: Label = _main.get_node("GameSaveNotice")
 @onready var _restore_defaults: Button = $Backdrop/Center/Panel/Content/Settings/RestoreDefaults
 @onready var _notice: Label = $Backdrop/Center/Panel/Content/Settings/Notice
 
@@ -43,6 +45,7 @@ func _ready() -> void:
 	_save.pressed.connect(_save_settings)
 	_restore_defaults.pressed.connect(_restore_settings)
 	_save_game.pressed.connect(func() -> void: save_game_requested.emit())
+	_load_game.pressed.connect(func() -> void: load_game_requested.emit())
 	_quit.get_node("Cancel").pressed.connect(_show_main)
 	_quit.get_node("Confirm").pressed.connect(func(): quit_requested.emit())
 	_guide.finished.connect(_return_to_settings_after_guide)
@@ -56,9 +59,16 @@ func _ready() -> void:
 func set_game_save_available(value: bool) -> void:
 	_save_game.disabled = not value
 	_game_save_notice.text = "" if value else "没有可保存的酒馆进度"
+	_game_save_notice.visible = not value
+
+
+func set_game_load_available(value: bool) -> void:
+	_load_game.disabled = not value
+	_load_game.tooltip_text = "恢复最近保存的进度并返回酒馆" if value else "没有可加载的存档"
 
 
 func show_game_save_result(result: StringName) -> void:
+	_game_save_notice.show()
 	match result:
 		&"tavern_saved":
 			_game_save_notice.text = "酒馆进度已保存"
@@ -66,6 +76,8 @@ func show_game_save_result(result: StringName) -> void:
 			_game_save_notice.text = "已保存离开酒馆时的进度"
 		&"unavailable":
 			_game_save_notice.text = "没有可保存的酒馆进度"
+		&"load_failed":
+			_game_save_notice.text = "加载已保存游戏失败"
 		_:
 			_game_save_notice.text = "游戏进度保存失败"
 

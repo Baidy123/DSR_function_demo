@@ -102,7 +102,29 @@ func _run() -> void:
 			and restored_equipment.active_slot == active_slot
 			and restored_equipment._ammo_states[active_slot].magazine_rounds == expected_magazine,
 		"新酒馆玩家实际恢复生命与装备")
-	restored_tavern.free()
+	var restored_director := Director.for_node(restored_tavern)
+	state.money = 999
+	restored_director.request_pause_menu()
+	var pause_menu := restored_director.get_node("PauseMenu/Backdrop/Center/Panel/Content/Main")
+	var load_button := pause_menu.get_node_or_null("LoadGame") as Button
+	check(load_button != null and not load_button.disabled, "暂停首页可加载现有存档")
+	if load_button != null:
+		restored_director.scene_loader = func(_path: String, _reload: bool) -> Error:
+			return ERR_FILE_CANT_OPEN
+		load_button.pressed.emit()
+		for _frame in range(3):
+			await process_frame
+		check(paused and pause_menu.is_visible_in_tree() and state.money == 999
+			and pause_menu.get_node("GameSaveNotice").text.contains("失败"),
+			"暂停首页加载失败时保留当前进度和暂停")
+		restored_director.scene_loader = Callable()
+		var old_tavern_id := restored_tavern.get_instance_id()
+		load_button.pressed.emit()
+		var loaded_tavern := await _wait_for_replacement(old_tavern_id)
+		check(loaded_tavern != null and not paused and state.money == 88,
+			"暂停首页手动加载返回酒馆并恢复磁盘进度")
+	if is_instance_valid(current_scene):
+		current_scene.free()
 	current_scene = null
 	await process_frame
 
@@ -122,11 +144,14 @@ func _run() -> void:
 		"没有最后酒馆状态时关卡不能保存")
 	director.request_pause_menu()
 	var menu: CanvasLayer = director.get_node("PauseMenu")
-	var settings_page := menu.get_node("Backdrop/Center/Panel/Content/Settings")
-	settings_page.get_parent().get_node("Main/Settings").pressed.emit()
-	check(settings_page.get_node("SaveGame").disabled
-		and settings_page.get_node("GameSaveNotice").text.contains("没有可保存"),
-		"无最后酒馆状态时保存按钮禁用并显示独立提示")
+	var pause_main := menu.get_node("Backdrop/Center/Panel/Content/Main")
+	var empty_save_button := pause_main.get_node_or_null("SaveGame") as Button
+	var empty_load_button := pause_main.get_node_or_null("LoadGame") as Button
+	var empty_notice := pause_main.get_node_or_null("GameSaveNotice") as Label
+	check(empty_save_button != null and empty_save_button.disabled
+		and empty_notice != null and empty_notice.text.contains("没有可保存"),
+		"无最后酒馆状态时暂停首页保存按钮禁用并提示")
+	check(empty_load_button != null and empty_load_button.disabled, "空存档时加载按钮禁用")
 	director.resume_from_pause_menu()
 	state.money = 88
 	state.items = {&"coin": {"display_name": "硬币", "count": 2}}
@@ -141,8 +166,40 @@ func _run() -> void:
 	var loaded: Dictionary = service.load_game()
 	check(loaded.money == 88 and loaded.items.has(&"coin"),
 		"关卡内当前货币和物品没有写入存档")
-	scene.free()
+	var health_in_level := scene.get_node("Player/Health")
+	health_in_level.receive_hit(health_in_level.health + 1.0)
+	var death_view := health_in_level.get_node("DeathScreen/Center/Panel/Content")
+	var death_load_button := death_view.get_node_or_null("LoadGame") as Button
+	check(paused and death_load_button != null and death_load_button.is_visible_in_tree()
+		and not death_load_button.disabled, "死亡界面可加载已保存游戏")
+	if death_load_button != null:
+		director.scene_loader = func(_path: String, _reload: bool) -> Error:
+			return ERR_FILE_CANT_OPEN
+		death_load_button.pressed.emit()
+		for _frame in range(3):
+			await process_frame
+		check(paused and health_in_level.is_dead and not death_load_button.disabled
+			and death_view.get_node("Message").text.contains("失败"),
+			"死亡界面加载失败时保留死亡暂停并允许重试")
+		director.scene_loader = Callable()
+		var id := scene.get_instance_id()
+		death_load_button.pressed.emit()
+		var after_death := await _wait_for_replacement(id)
+		check(after_death != null and after_death.scene_file_path == "res://scenes/main.tscn"
+			and after_death.get_node("Player/Health").health == 70.0
+			and state.money == 88 and not paused, "死亡后加载磁盘存档并释放死亡暂停")
+	if is_instance_valid(current_scene):
+		current_scene.free()
 	current_scene = null
 	DirAccess.remove_absolute(service.save_path)
 	print("CAMPAIGN SAVE FLOW: %d/%d passed" % [checks - failures, checks])
 	quit(1 if failures else 0)
+
+
+func _wait_for_replacement(previous_id: int) -> Node:
+	for _frame in range(40):
+		await process_frame
+		if current_scene != null and current_scene.get_instance_id() != previous_id:
+			await process_frame
+			return current_scene
+	return null

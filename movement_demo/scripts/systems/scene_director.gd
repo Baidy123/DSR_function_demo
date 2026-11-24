@@ -122,6 +122,7 @@ func initialize() -> void:
 			is_instance_valid(_level_flow) and _level_flow.has_method(&"next_scene_path"))
 	_link(_result_view, &"restart_requested", request_restart)
 	_link(_result_view, &"return_to_tavern_requested", request_return_to_tavern)
+	_link(_result_view, &"load_game_requested", request_saved_game)
 	_link(_health, &"died", _on_player_died)
 	_link(_level_flow, &"continue_requested", request_next_level)
 	_link(_waves, &"encounter_completed", _on_waves_completed)
@@ -135,6 +136,7 @@ func initialize() -> void:
 	_link(_pause_menu, &"resume_requested", resume_from_pause_menu)
 	_link(_pause_menu, &"quit_requested", _quit_game)
 	_link(_pause_menu, &"save_game_requested", _save_game_from_menu)
+	_link(_pause_menu, &"load_game_requested", request_saved_game)
 	var guide: Node = _bindings.get("guide")
 	if guide != null:
 		_set_state(&"running")
@@ -185,6 +187,34 @@ func save_game() -> Dictionary:
 
 func _save_game_from_menu() -> void:
 	_pause_menu.show_game_save_result(save_game().result)
+	_pause_menu.set_game_load_available(_has_saved_game())
+
+func _has_saved_game() -> bool:
+	var service := get_node_or_null("/root/CampaignSaveService")
+	return service != null and service.has_saved_game()
+
+func request_saved_game() -> void:
+	var from_death := state == &"dead"
+	if _load_request != null or (not from_death and _menu_token == 0):
+		return
+	var service := get_node_or_null("/root/CampaignSaveService")
+	var request: Request = service.resume_game(_scene_root) if service != null else null
+	if request != null:
+		await request.wait_result()
+		if request.status not in [&"failed", &"rejected"]:
+			return
+	if not is_inside_tree():
+		return
+	if from_death:
+		_update_death_load_action()
+		if _result_view.has_method(&"show_saved_game_load_error"):
+			_result_view.show_saved_game_load_error()
+		else:
+			_result_view.show_load_error()
+	else:
+		request_pause_menu()
+		_pause_menu.set_game_load_available(_has_saved_game())
+		_pause_menu.show_game_save_result(&"load_failed")
 
 func request_debug_reset_progress() -> bool:
 	if not _initialized or _load_failed or _load_request != null or state == &"loading":
@@ -200,6 +230,7 @@ func request_pause_menu() -> void:
 	_menu_token = _pauses.acquire(self, &"pause_menu", true)
 	_pause_menu.open_menu()
 	_pause_menu.set_game_save_available(can_save_game())
+	_pause_menu.set_game_load_available(_has_saved_game())
 
 func resume_from_pause_menu() -> void:
 	if is_instance_valid(_pause_menu): _pause_menu.close_menu()
@@ -273,7 +304,12 @@ func _on_player_died() -> void:
 	_generation += 1
 	_cancel_actions()
 	if is_instance_valid(_level_flow): _level_flow.hide_result()
+	_update_death_load_action()
 	_result_view.show_death()
+
+func _update_death_load_action() -> void:
+	if _result_view.has_method(&"set_saved_game_available"):
+		_result_view.set_saved_game_available(_has_saved_game())
 
 func request_completion() -> void:
 	if not _initialized or state in [&"dead", &"completed", &"loading", &"error"]: return

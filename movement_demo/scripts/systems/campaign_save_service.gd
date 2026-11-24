@@ -36,7 +36,13 @@ func _restore_startup_scene() -> void:
 	await get_tree().process_frame
 	var scene := get_tree().current_scene
 	if scene != null and scene.scene_file_path == _launch_scene_path():
-		resume_game(scene)
+		var error := _reconcile_stale_reset_artifacts()
+		if error == OK:
+			resume_game(scene)
+		else:
+			_fail(error, &"reset_reconcile_failed")
+		if last_error != OK:
+			_report_startup_load_error()
 	startup_pending = false
 
 
@@ -46,24 +52,25 @@ func _launch_scene_path() -> String:
 
 ## Restore the snapshot only once the director's normal scene transition is accepted.
 func resume_game(scene: Node) -> SceneRequest:
-	var error := _reconcile_stale_reset_artifacts()
-	if error != OK:
-		_fail(error, &"reset_reconcile_failed")
-		_report_startup_load_error()
+	if _reset_in_progress():
+		_fail(ERR_BUSY, &"reset_pending_exists")
 		return null
 	var snapshot := load_game()
 	if snapshot.is_empty():
-		if last_error != OK: _report_startup_load_error()
 		return null
 	var director = Director.for_node(scene)
 	if director == null:
 		_fail(ERR_UNAVAILABLE, &"missing_scene_director")
-		_report_startup_load_error()
 		return null
 	return director.request_action(&"transition", {"source": scene, "parameters": {
 		"path": TAVERN_SCENE_PATH, "mode": &"resume_campaign", "save_snapshot": snapshot,
 		"return_control_on_failure": true,
 	}})
+
+
+func has_saved_game() -> bool:
+	return not _reset_in_progress() \
+		and (FileAccess.file_exists(save_path) or FileAccess.file_exists(save_path + ".bak"))
 
 
 func can_save_game(scene: Node) -> bool:
@@ -182,7 +189,7 @@ func _report_startup_load_error() -> void:
 
 
 func save_game(snapshot: Dictionary) -> Error:
-	if _debug_reset_in_flight or _has_pending_reset_artifact():
+	if _reset_in_progress():
 		return _fail(ERR_BUSY, &"reset_pending_exists")
 	var state = _game_state()
 	if state == null or not state.validate_save_state(snapshot):
@@ -354,6 +361,10 @@ func _reconcile_stale_reset_artifacts() -> Error:
 		if error != OK and first_error == OK:
 			first_error = error
 	return first_error
+
+
+func _reset_in_progress() -> bool:
+	return _debug_reset_in_flight or _has_pending_reset_artifact()
 
 
 func _has_pending_reset_artifact() -> bool:

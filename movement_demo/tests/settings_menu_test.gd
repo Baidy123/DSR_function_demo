@@ -55,6 +55,12 @@ func _run() -> void:
 		_finish()
 		return
 	settings.config_path = test_config
+	var save_service := root.get_node("CampaignSaveService")
+	test_game_save = OS.get_temp_dir().path_join(
+		"dsr-settings-game-save-%d.cfg" % OS.get_process_id())
+	save_service.save_path = test_game_save
+	if FileAccess.file_exists(test_game_save):
+		DirAccess.remove_absolute(test_game_save)
 	var defaults: Dictionary = settings.default_values()
 	settings.mouse_target_assist_enabled = defaults.mouse_target_assist_enabled
 	settings.target_switch_sensitivity = defaults.target_switch_sensitivity
@@ -109,8 +115,10 @@ func _run() -> void:
 	var save := settings_page.get_node_or_null("SaveSettings")
 	var restore := settings_page.get_node_or_null("RestoreDefaults")
 	var notice := settings_page.get_node_or_null("Notice")
-	var save_game := settings_page.get_node_or_null("SaveGame") as Button
-	var game_save_notice := settings_page.get_node_or_null("GameSaveNotice") as Label
+	var pause_main := content.get_node("Main")
+	var save_game := pause_main.get_node_or_null("SaveGame") as Button
+	var load_game := pause_main.get_node_or_null("LoadGame") as Button
+	var game_save_notice := pause_main.get_node_or_null("GameSaveNotice") as Label
 	check(categories is TabContainer and categories.get_tab_count() == 2,
 		"设置页分为基础设置和战斗设置")
 	check(window_mode is OptionButton and resolution_choice is OptionButton
@@ -119,14 +127,16 @@ func _run() -> void:
 		"战斗设置栏保留鼠标辅助和换锁灵敏度")
 	check(save is Button and restore is Button and notice is Label,
 		"设置页提供统一保存、恢复默认和状态提示")
-	check(save_game != null and game_save_notice != null,
-		"设置页提供独立保存游戏按钮和提示")
-	check(not settings_page.has_node("LoadGame"),
-		"设置页不提供读取游戏按钮")
+	check(save_game != null and load_game != null and game_save_notice != null,
+		"暂停首页提供保存和加载游戏")
+	check(not settings_page.has_node("SaveGame") and not settings_page.has_node("LoadGame"),
+		"设置页专注于用户设置")
+	check(load_game != null and load_game.disabled, "空存档时暂停首页不能加载")
 	var setup_ready: bool = categories is TabContainer \
 		and window_mode is OptionButton and resolution_choice is OptionButton \
 		and vsync is CheckButton and mouse_assist is CheckButton \
-		and sensitivity is OptionButton and save is Button and notice is Label
+		and sensitivity is OptionButton and save is Button and notice is Label \
+		and save_game != null and load_game != null and game_save_notice != null
 	if not setup_ready:
 		scene.free()
 		_finish()
@@ -196,19 +206,15 @@ func _run() -> void:
 		"全屏保存1920×1080后保留工程的界面基准")
 	check(root.get_visible_rect().size == visible_size_before,
 		"全屏切换分辨率时保留可见界面坐标")
-	var save_service := root.get_node_or_null("CampaignSaveService")
-	check(save_service != null, "设置页可访问单槽存档服务")
-	test_game_save = OS.get_temp_dir().path_join(
-		"dsr-settings-game-save-%d.cfg" % OS.get_process_id())
-	save_service.save_path = test_game_save
-	if FileAccess.file_exists(save_service.save_path):
-		DirAccess.remove_absolute(save_service.save_path)
+	settings_page.get_node("Back").pressed.emit()
 	save_game.pressed.emit()
 	await _settle()
 	check(FileAccess.file_exists(save_service.save_path),
 		"酒馆内点击保存游戏创建存档")
 	check(game_save_notice.text.contains("酒馆进度已保存"),
 		"保存游戏显示独立成功提示")
+	check(not load_game.disabled, "首次写入后立即可在暂停首页加载")
+	pause_main.get_node("Settings").pressed.emit()
 	check(notice.text.contains("设置已保存"),
 		"保存游戏不改变独立的设置提示")
 	if rendered:
@@ -345,8 +351,7 @@ func _run() -> void:
 	await _settle()
 	var basic_visible := true
 	for control in [window_mode, resolution_choice, vsync, save, restore,
-			save_game, game_save_notice, settings_page.get_node("Guide"),
-			settings_page.get_node("Back")]:
+			settings_page.get_node("Guide"), settings_page.get_node("Back")]:
 		if not viewport.encloses(control.get_global_rect()):
 			print("Clipped %s %s in %s" % [control.name, control.get_global_rect(), viewport])
 			basic_visible = false
@@ -357,6 +362,11 @@ func _run() -> void:
 		and viewport.encloses(sensitivity.get_global_rect()) \
 		and aim_control != null and viewport.encloses(aim_control.get_global_rect())
 	check(basic_visible, "640×480 下两栏设置与操作按钮完整可见")
+	settings_page.get_node("Back").pressed.emit()
+	await _settle()
+	for button_name in ["Resume", "SaveGame", "LoadGame", "Settings", "Exit"]:
+		check(viewport.encloses(pause_main.get_node(button_name).get_global_rect()),
+			"640×480 暂停首页按钮完整可见：" + button_name)
 
 	scene.free()
 	current_scene = null

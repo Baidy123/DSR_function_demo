@@ -85,6 +85,29 @@ theme_override_font_sizes/font_size = 20
 theme_override_styles/normal = SubResource("ButtonStyle")
 text = "继续游戏"
 
+[node name="SaveGame" type="Button" parent="Backdrop/Center/Panel/Content/Main"]
+layout_mode = 2
+mouse_default_cursor_shape = 2
+theme_override_font_sizes/font_size = 20
+theme_override_styles/normal = SubResource("ButtonStyle")
+text = "保存游戏"
+
+[node name="LoadGame" type="Button" parent="Backdrop/Center/Panel/Content/Main"]
+layout_mode = 2
+mouse_default_cursor_shape = 2
+theme_override_font_sizes/font_size = 20
+theme_override_styles/normal = SubResource("ButtonStyle")
+disabled = true
+text = "加载已保存游戏"
+
+[node name="GameSaveNotice" type="Label" parent="Backdrop/Center/Panel/Content/Main"]
+visible = false
+layout_mode = 2
+theme_override_colors/font_color = Color(0.6, 0.7, 0.75, 1)
+theme_override_font_sizes/font_size = 14
+text = ""
+horizontal_alignment = 1
+
 [node name="Settings" type="Button" parent="Backdrop/Center/Panel/Content/Main"]
 layout_mode = 2
 mouse_default_cursor_shape = 2
@@ -249,20 +272,6 @@ mouse_default_cursor_shape = 2
 theme_override_font_sizes/font_size = 18
 theme_override_styles/normal = SubResource("SettingsButtonStyle")
 text = "保存设置"
-
-[node name="SaveGame" type="Button" parent="Backdrop/Center/Panel/Content/Settings"]
-layout_mode = 2
-mouse_default_cursor_shape = 2
-theme_override_font_sizes/font_size = 18
-theme_override_styles/normal = SubResource("SettingsButtonStyle")
-text = "保存游戏"
-
-[node name="GameSaveNotice" type="Label" parent="Backdrop/Center/Panel/Content/Settings"]
-layout_mode = 2
-theme_override_colors/font_color = Color(0.6, 0.7, 0.75, 1)
-theme_override_font_sizes/font_size = 14
-text = ""
-horizontal_alignment = 1
 
 [node name="RestoreDefaults" type="Button" parent="Backdrop/Center/Panel/Content/Settings"]
 layout_mode = 2
