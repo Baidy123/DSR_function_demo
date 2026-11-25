@@ -2,6 +2,16 @@
 
 本页说明如何查询和运行已有验证，以及如何解释结果。AI 的真实场景、行为／性能边界见[敌人验证](enemy-tests.md)，模块职责见[项目结构](project-layout.md)。各轮结果按日期区分，不代表全工程回归。
 
+## 2026-11-26 SceneDirector 检查器事件编排
+
+最终定向验证使用 Godot 4.7.2 headless 直接运行实际脚本：`scene_event_runtime_test` 32/32、`scene_event_condition_test` 12/12、`scene_action_catalog_test` 21/21、`scene_actor_action_test` 27/27、`scene_request_test` 22/22、`scene_event_node_test` 99/99、`scene_script_cancellation_test` 11/11、`scene_transition_request_test` 25/25、`scene_reinforcement_test` 134/134、`scene_director_authority_test` 50/50、`equipment_grant_test` 8/8、`enemy_wave_events_test` 127/127。覆盖类型化事件 identity/generation、条件、全部动作类别、NPC 固定移动、Wave 真生成与镜头屏障、切场成功／失败与兄弟事件取消、六个正式场景唯一导演及 Wave → Squad → Enemy 结构。`python movement_demo/tests/run_regressions.py --check` 输出 `Catalog OK`。
+
+`opening_flow_test` 为 85/86。对白、两段镜头、访客与送货伙计移动、坐席、只读目录、装备事件完成、出口解锁和第1关继承均通过；唯一失败仍是“发放值必须精确等于预制默认值”，当前 `main.tscn` 的 EquipmentGrant 实例保存了用户覆盖值（手枪／36 发），而预制默认是冲锋枪／60 发。未用预制默认覆盖实例，也未放宽断言。`level_flow_test` 为 96/97，唯一失败的旧断言要求 F5 默认入口是 `main.tscn`，仓库基线实际入口是外景 `tavern_exterior.tscn`；五关进入、死亡重开、逐关清场、返程和最终回酒馆均通过。
+
+编辑器专项 `scene_event_inspector_test` 的 25 条功能断言通过且进程返回 0，覆盖八类菜单、19 个动作条目、UndoRedo、复制独立性、外部资源共享和保存重载。退出阶段仍输出 Phantom Camera 单例、editor settings 写入及 RID/资源清理诊断，因此只记录功能通过，不称为干净退出。最终文档阶段未重跑真实显示服务的鼠标捕获分支、全部分辨率或人工拖拽手感；headless 增援明确跳过 `--mouse-ownership-only`。本轮较早的正式开场画面检查已覆盖外景、到店、委托人和目录画面，但不能替代后续美术调整后的人工验收。
+
+旧 `SceneFlowRule/SceneFlowAction` 仍由公开 `scene_rules` 兼容字段、Runner、脚本 UID、事件节点双路测试及一条真实增援兼容夹具消费，故保留而不删除。新流程的唯一作者入口是 Event Sequences；简单单波信号继续直接使用 Wave EVENTS。
+
 ## 当前五关定向记录
 
 2026-11-21 当前酒馆布局：开场测试 80/80，布局测试 26/26。初始坐席断言按场景实际保存的绑定核对占用、位置、朝向与坐姿碰撞体。当前本地场景保存六个绑定，大姐头、商人、LoungePatron 和 LoungeGuest 无初始绑定，加载时为站姿。临时清除 HallReader 的运行时占用只触发对应座位的断言。对话、玩家隔桌入座、交付和入关通过。

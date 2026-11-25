@@ -2,7 +2,9 @@
 
 日期：2026-11-25。
 
-状态：待用户书面复核；本文只定义目标架构、编辑体验、迁移边界与验收要求，尚未授权实施。
+状态：已于 2026-11-26 按用户确认方向实施。第 1 节继续记录原始用户要求；后文目标架构现为实现与维护约束，不以实施结果反向改写用户要求。
+
+实现摘要：SceneDirector 已提供 `Event Sequences: Array[SceneEventDefinition]`；分类 SceneAction、条件、Runner、原生检查器队列与正式开场迁移已落地。简单 Wave EVENTS 保留，`SceneFlowRule/SceneFlowAction` 因公开兼容字段、脚本 UID 和聚焦兼容测试继续存在，不作为新作者入口。实际验证与已知基线失败见 `docs/testing.md`。
 
 依据：[项目结构](../../project-layout.md)、[现行场景导演](../../gameplay/SCENE_DIRECTOR.md)、[统一调度设计](2026-11-10-scene-director-authority-design.md)、[交互系统](../../gameplay/INTERACTION.md)、[敌人波次](../../gameplay/ENEMY_WAVES.md)、[酒馆编辑](../../gameplay/TAVERN_AUTHORING.md)、[敌人 AI](../../enemy-ai.md)及[测试说明](../../testing.md)。
 

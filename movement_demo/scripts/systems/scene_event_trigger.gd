@@ -4,7 +4,7 @@ extends Resource
 
 const EventFilter = preload("res://scripts/systems/scene_event_filter.gd")
 
-## 高级直连方式：Wave中相对该Wave，SceneFlowRule中相对SceneDirector；也可填/root/GameState。
+## 高级直连方式：Wave 中相对该 Wave，SceneEventDefinition 中相对 SceneDirector；旧 SceneFlowRule 仍兼容。也可填 /root/GameState。
 ## 简单配置优先使用SceneEvent节点+Event Nodes，这里用于不建立中间节点的原信号接线。
 @export_node_path("Node") var source_path: NodePath
 ## 来源节点声明的信号名，不带括号，例如body_entered、interacted、flag_changed。

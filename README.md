@@ -98,8 +98,9 @@ Dialogue Manager、Phantom Camera 和 Godot AI 插件源码及许可证随工程
 | Enemy → Training → Profile | 感知、搜索、射击及战术解锁；修改后重新加载战斗 | [敌人 AI](docs/enemy-ai.md) |
 | Squad → Profile | 仅视野共享、战术配合、强配合三档及队级参数 | [小队与 AI](docs/enemy-ai.md) |
 | SceneDirector → Wave | 顺序/事件节点/请求出场、延迟、出生搜索、手动镜头目标；原小队部署保持 | [波次](docs/gameplay/ENEMY_WAVES.md) |
-| SceneDirector | 本场唯一入口、Health／说明／结果绑定、请求和取消 | [使用指南](docs/gameplay/SCENE_DIRECTOR.md) |
-| SceneEvent、SceneDirector → Scene Rules | 选择来源信号或手动trigger；Wave/规则直接选择事件节点，配置动作 | [节点接线教程](docs/gameplay/SCENE_DIRECTOR.md) |
+| SceneDirector | 本场唯一入口、Health／说明／结果绑定、请求和取消；Event Sequences 集中编排复杂流程 | [使用指南](docs/gameplay/SCENE_DIRECTOR.md) |
+| SceneEventDefinition、SceneAction | 在检查器队列配置触发、条件、失败策略及 Flow/Combat/Presentation/Actor/World/State/Transition 动作 | [事件编排教程](docs/gameplay/SCENE_DIRECTOR.md) |
+| SceneEvent、Wave → EVENTS | 选择来源信号或手动 trigger；简单单波触发直接接 Wave，不必创建复杂队列 | [节点接线教程](docs/gameplay/SCENE_DIRECTOR.md) |
 | `scenes/world/levels/` | 地形、导航、出生点、玩家装备和敌人部署；LevelFlow 保存关卡编号 | [关卡](docs/gameplay/LEVEL_MAPS.md) |
 | Interactable、StageStateController | 交互条件与效果、Stage Table、任务及 NPC 状态 | [交互](docs/gameplay/INTERACTION.md)、[任务](docs/gameplay/STAGE_STATE.md) |
 | Presentation、武器外观、ImpactProfile | 模型、动画映射与命中特效 | [表现接入](docs/gameplay/PRESENTATION.md) |
@@ -128,8 +129,9 @@ Dialogue Manager、Phantom Camera 和 Godot AI 插件源码及许可证随工程
 | GameState | `add_money(amount)`、`spend_money(amount)`、`claim_task_reward(id, amount, level)`、`has_purchased_shop_item(id)` | 货币增减、一次性任务发奖与商店购买记录 |
 | ShopController | `open_shop_for_player(player)`、`purchase(item_id, slot)`、`close_shop()` | 打开／关闭货币商店、复核并执行购买；面板只回传意图 |
 | SceneDirector 核心 | `for_node(node)`、`request_action(kind, context)`、`cancel_request(id, reason)` | 查找本场导演并请求；`await request.wait_result()` 读取一次性结果 |
+| SceneDirector 类型化事件 | `trigger_event(id)`、`can_accept_event(id)`、`reset_event(id)`、`typed_event_finished` | 通过稳定 ID 驱动、预检、重置事件并读取 completed／failed／cancelled 终态 |
 | SceneDirector 场景入口 | `start_encounter()`、`request_wave(wave)`、`reset_encounter()`、`debug_snapshot()` | 原波次兼容接口及信号保留；`director` 指向核心 |
-| SceneEvent | `trigger()`、无参`triggered`；来源节点/信号/过滤由检查器配置 | 统一通知Wave或场景规则，不要求每种事件重写刷怪代码 |
+| SceneEvent | `trigger()`、无参`triggered`；来源节点/信号/过滤由检查器配置 | 统一通知 Wave 或 Event Sequence，不要求每种事件重写业务代码 |
 | Interactable / InteractionEffect | `can_interact(player)`、`interact(player)`、`execute(context)` | 请求交互、等待效果；`interacted` 表示全部完成，同步效果保留 `apply` |
 | StageStateController | `reload_table()`、`get_snapshot()`、`snapshot_changed` | 重新装配任务配置及只读状态展示 |
 
@@ -139,6 +141,7 @@ Dialogue Manager、Phantom Camera 和 Godot AI 插件源码及许可证随工程
 - **新增弹种**：创建 AmmoDefinition，填写唯一 ID；让武器引用它，并在 Equipment 的 `Initial Ammo` 中添加 AmmoSupply。掉落开关、数量和模型在弹种资源内设置。
 - **新增商店商品**：在 `resources/shop/shop_catalog.tres` 的 `Items` 中新建 `ShopItemDefinition`，按效果拖入医疗包／枪械资源或填写旗标。数量、一次性购买与校验规则见[商店配置](docs/gameplay/REWARDS.md)。
 - **新增敌人或波次**：兵种放入Squad，再放到Wave；选择原顺序模式、事件节点模式或显式请求。事件和手摆镜头按[SceneDirector教程](docs/gameplay/SCENE_DIRECTOR.md)配置，无需迁移部署层。
+- **新增场景事件**：选中 SceneDirector，在 Event Sequences 中建立 `SceneEventDefinition`，再从分类选择器添加类型化动作；对象自己的巡逻、交互和伤害仍留在对象组件。旧 Scene Rules 只用于兼容已有资源。
 - **接入新战斗地图**：复用带区域控制器的结构，保留CombatZone与导航；放入玩家、独立相机及SceneDirector，设置相机Player Path、部署并烘焙导航。见[关卡](docs/gameplay/LEVEL_MAPS.md)和[波次](docs/gameplay/ENEMY_WAVES.md)。
 - **新增交互或表现**：交互物组合已有 InteractionEffect，新增效果通过 InteractionContext 使用注入的状态；模型、动画与特效通过表现组件接入。具体资源契约见对应专项说明。
 

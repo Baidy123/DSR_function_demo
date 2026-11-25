@@ -37,7 +37,7 @@ signal encounter_completed
 ## 不要选玩家Camera3D；它继续由原Phantom跟随，演出使用第二台相机。
 @export_node_path("Camera3D") var presentation_camera_path: NodePath
 @export_group("场景规则")
-## 添加元素→新建SceneFlowRule。Event Nodes选事件节点，Actions按顺序放动作。
+## 旧场景兼容入口；新流程请使用 Event Sequences 与类型化 SceneAction。
 ## 只想事件刷怪可直接配Wave.Event Nodes，不必先写规则。无Wave也可使用提示/镜头等动作。
 @export var scene_rules: Array[SceneFlowRule] = []
 @export_group("事件序列")

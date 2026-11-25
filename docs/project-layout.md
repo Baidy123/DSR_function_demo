@@ -37,7 +37,7 @@ movement_demo/
 │   ├── rewards/           关卡、选项与奖励表资源脚本
 │   ├── shop/              商品定义、目录与货币商店控制器
 │   ├── world/             掩体、训练靶、区域、门、NPC、交互物与屏障
-│   │   ├── opening_sequence.gd   开场分段、交互条件与交付的导演子请求
+│   │   ├── opening_sequence.gd   开场阶段、交互条件、目标提示与本地机械适配；跨对象顺序在 Event Sequences
 │   │   ├── tavern_npc.gd         有碰撞的酒馆 NPC，坐席、巡游、局部绕行和出口离场
 │   │   ├── tavern_seat.gd       家具坐席点、占用和角色姿态切换
 │   │   ├── tavern_seating.gd    玩家面对空位时显示提示并向导演请求入座
@@ -128,17 +128,20 @@ Equipment 交接当前枪给 Combat。相机订阅 `weapon_changed`，表现订�
 
 酒馆与五关各明确装配一个 SceneDirector。`scene_request.gd` 保存请求身份、弱节点引用与一次性结果，`scene_request_scheduler.gd` 是导演内部的排队／去重／取消管理。`scene_interaction_executor.gd` 适配 NPC 转身、对话／商店开始和收尾；导演保存暂停、鼠标及玩家限制，界面报告真实结束，包括首句尚未加载完成的取消。区域通过本场查找共享核心，缺失时诊断，不再隐式创建。
 
-`scene_script_executor.gd` 负责即时公开方法与可取消脚本适配，校验完成／取消合同，释放真实执行而非只清理订阅。SceneFlowRunner 保存动作的请求句柄，失败、区域复位和卸载都会取消它；纯等待仍并行。RUN_SCRIPT 追加在原枚举末尾，旧资源编号与 UID 保留。滑门动画通过后台提供者接入，伤害与局部受击表现仍由原组件执行。规则切场与交互切场共用事务加载适配。
+`systems/scene_events/` 保存 `SceneEventDefinition`、条件、类型化动作、执行上下文与 Runner。Resource 只保存检查器配置；Runner 保存 generation、当前动作和请求句柄，失败、区域复位、死亡及卸载按真实终态取消。动作按 Flow、Combat、Presentation、Actor、World、State、Transition、Advanced 分目录；固定 NPC 移动使用 `MoveActorAction`，特殊可取消提供者才使用 `RunProviderAction`。切场动作与交互切场共用事务加载适配，发起切场的 typed event 保留到加载终态，其他旧执行仍取消。
+
+`scene_script_executor.gd` 继续负责既有即时公开方法与可取消脚本适配。`SceneFlowRunner`、`SceneFlowRule`、`SceneFlowAction` 和末尾枚举值 `RUN_SCRIPT` 保留旧资源编号、脚本 UID 与兼容测试，但正式场景不再新增 Scene Rules。滑门动画通过后台提供者接入，伤害与局部受击表现仍由原组件执行。
 
 `scene_transition_executor.gd` 执行导演批准的加载，经 SceneTransition 在最终边界复核身份；GameState.prepare_scene_transition 只准备数据，commit_scene_transition 在引擎接受后、目标 _ready 前提交，并在完整状态写好后通知订阅者。父交互的合法加载链保留到终态，其他旧执行取消；普通加载失败归还控制，结果／死亡失败保留重试。InteractionContext 注入导演和执行身份，效果可等待子请求，跨关旧来源不再补发 interacted。
 
 波次候选在物理边界取得导演请求，Runtime 的 authorize_deployment 是紧邻真实提交的纯检查，保留原空间／清空业务。出场镜头沿唯一 wave_committed 回调安排；完成请求等前台收尾后，导演才调用 LevelFlow.execute_scene_completion 启用原出口。公开 start_encounter／request_wave／show_completion 为兼容请求入口，区域取消同时核对 scope_owner。
 
-排队规则通过内部启动条件复核，条件失效时取消本次执行。Runtime 的 deployment_failed 将实际部署错误传回导演，结束仍在等待的请求。加载父链在引擎接受前保留独立取消入口和弱来源监听，接受后的旧场景退出由加载适配完成收尾。
+类型化事件在动作开始前复核条件，条件失效时不执行副作用；兼容规则保留原排队复核。Runtime 的 deployment_failed 将实际部署错误传回导演，结束仍在等待的请求。加载父链在引擎接受前保留独立取消入口和弱来源监听，接受后的旧场景退出由加载适配完成收尾。
 
 - `world/enemy_wave_controller.gd` 是 SceneDirector 场景入口兼容脚本，原 UID 保留；五关入口已按用户要求改名，Wave/Squad层级不动。`enemy_wave_runtime.gd` 执行模板、合法出生、各波状态、搜索与清理；`enemy_wave_definition.gd` 保存部署、事件节点与手选镜头配置。
-- `systems/scene_director.gd` 是入口内部的场景核心，不依赖Wave或PlayGuide；`scene_flow_runner.gd` 推进资源规则与动作，`scene_pause_coordinator.gd` 统一记录拥有者。仅内部核心使用Always，区域和敌人保持可暂停。
-- `systems/scene_event.gd` 是可放入场景的事件节点，来源信号或trigger()统一发triggered；`scene_event_trigger/filter/subscription.gd` 适配和过滤，`scene_flow_rule/action.gd` 保存静态配置。接线见[教程](gameplay/SCENE_DIRECTOR.md)。
+- `systems/scene_director.gd` 是入口内部的场景核心，不依赖Wave或PlayGuide；`scene_events/scene_event_runner.gd` 推进主事件队列，`scene_pause_coordinator.gd` 统一记录拥有者。仅内部核心使用Always，区域和敌人保持可暂停。
+- `systems/scene_event.gd` 是可放入场景的事件节点，来源信号或 `trigger()` 统一发 `triggered`；`scene_event_trigger/filter/subscription.gd` 适配和过滤。`scene_flow_runner/rule/action.gd` 仅保留兼容。接线见[教程](gameplay/SCENE_DIRECTOR.md)。
+- `addons/scene_event_inspector/` 提供 Event Sequences 队列、分类动作选择和摘要显示；只改变编辑体验，不保存运行进度或建立第二套调度器。
 - `systems/level_flow.gd` 保留五关表和结果视图，`ui/play_guide.gd` 提供可选begin/cancel/finished，`ui/scene_result_view.gd` 绑定原Health死亡UI；它们只显示并报告请求，暂停与加载由核心决定。五关当前只走返程门闭环；酒馆任务系统读取关卡进度，但不参与 LevelFlow 的返程门与解锁动作。
 - `world/ammo_drop_controller.gd` 管理区域掉落选择、数量与生命周期，`ammo_drop_position.gd` 检查合法落点，`ammo_pickup.gd` 显示并执行一次领取。
 - `scenes/enemy/levels/lvl_N/` 与 `resources/enemy/training/levels/lvl_N/` 保存各关兵种／训练。共享资源仍可能被跨关引用，修改前核对实际使用者。
