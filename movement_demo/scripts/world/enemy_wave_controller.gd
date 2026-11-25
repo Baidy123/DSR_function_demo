@@ -40,6 +40,9 @@ signal encounter_completed
 ## 添加元素→新建SceneFlowRule。Event Nodes选事件节点，Actions按顺序放动作。
 ## 只想事件刷怪可直接配Wave.Event Nodes，不必先写规则。无Wave也可使用提示/镜头等动作。
 @export var scene_rules: Array[SceneFlowRule] = []
+@export_group("事件序列")
+## 在检查器中按队列配置类型化事件；旧 Scene Rules 在迁移期间继续独立生效。
+@export var event_sequences: Array[SceneEventDefinition] = []
 @export_group("统一出场镜头（可选）")
 ## 可选整场默认：每波出场都展示统一目标。通常在各Wave的“出场镜头”单独配置更直观。
 ## 默认关闭，保留当前关卡节奏；每波/场景动作的专属镜头优先。
@@ -84,7 +87,7 @@ func _ready() -> void:
 		"guide": get_node_or_null(guide_path) if not guide_path.is_empty() else null,
 		"guide_required": guide_required, "guide_pauses_world": guide_pauses_world,
 		"camera": get_node_or_null(presentation_camera_path) if not presentation_camera_path.is_empty() else null,
-		"rules": scene_rules, "wave_runtime": _runtime,
+		"rules": scene_rules, "events": event_sequences, "wave_runtime": _runtime,
 		"auto_complete_waves": complete_when_all_waves_cleared
 			and not result_view_path.is_empty() and get_node_or_null(result_view_path) != null,
 		"present_spawned_waves": present_spawned_waves,

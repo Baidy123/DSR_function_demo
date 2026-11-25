@@ -17,6 +17,18 @@ class Guide extends Node:
 		cancels += 1
 		if request != null: request.complete()
 
+class FlagState extends Node:
+	var allowed := true
+	var action_begins := 0
+
+	func get_flag(_key: StringName, _fallback: bool = false) -> bool:
+		return allowed
+
+class CountAction extends SceneAction:
+	func begin(context: SceneActionContext) -> void:
+		context.resolve(^"State").action_begins += 1
+		context.complete()
+
 func _initialize() -> void:
 	_run.call_deferred()
 
@@ -125,5 +137,36 @@ func _run() -> void:
 		"resetting region A cannot cancel region B guide through legacy global cleanup")
 	scoped.scene.free()
 	await process_frame
+	await _test_queued_event_rechecks_condition()
 	print("Scene requests: %d checks; %d failures" % [checks, failures])
 	quit(0 if failures == 0 else 1)
+
+
+func _test_queued_event_rechecks_condition() -> void:
+	var scene := Node.new()
+	root.add_child(scene)
+	var state := FlagState.new()
+	state.name = "State"
+	scene.add_child(state)
+	var guide := Guide.new()
+	scene.add_child(guide)
+	var condition := SceneFlagCondition.new()
+	condition.state_path = ^"State"
+	condition.flag = &"allowed"
+	var definition := SceneEventDefinition.new()
+	definition.event_id = &"queued_condition"
+	definition.start_mode = SceneEventDefinition.StartMode.MANUAL
+	definition.conditions = [condition]
+	definition.actions = [CountAction.new()]
+	var director = Director.new()
+	director.configure(scene, {"scene_root": scene, "guide": guide,
+		"guide_pauses_world": true, "events": [definition]})
+	scene.add_child(director)
+	director.initialize()
+	check(director.trigger_event(&"queued_condition"), "manual event is accepted while a foreground guide owns execution")
+	state.allowed = false
+	guide.finished.emit()
+	director.advance(0.0)
+	check(state.action_begins == 0, "queued event rechecks conditions after foreground guide release")
+	scene.free()
+	await process_frame

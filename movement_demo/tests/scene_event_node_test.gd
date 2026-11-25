@@ -30,6 +30,17 @@ class LateSignalSource extends Node:
 	func _ready() -> void:
 		add_user_signal(&"became_ready")
 
+class TypedRecordAction extends SceneAction:
+	@export var label := "typed"
+
+	func begin(context: SceneActionContext) -> void:
+		var source := context.resolve(^"../Source")
+		if source == null:
+			context.fail(&"missing_source")
+			return
+		source.record(label)
+		context.complete()
+
 func _initialize() -> void:
 	_run.call_deferred()
 
@@ -307,8 +318,16 @@ func _test_rule_node_paths() -> void:
 	var second = Rule.new()
 	second.event_nodes.append(^"../Event")
 	second.actions.append(_record("second"))
+	var typed := SceneEventDefinition.new()
+	typed.event_id = &"typed_listener"
+	typed.start_mode = SceneEventDefinition.StartMode.TRIGGERS
+	var trigger := SceneEventTrigger.new()
+	trigger.source_path = ^"../Event"
+	trigger.signal_name = &"triggered"
+	typed.triggers = [trigger]
+	typed.actions = [TypedRecordAction.new()]
 	var director = Director.new()
-	director.configure(host, {"rules": [first, second], "scene_root": f.scene})
+	director.configure(host, {"rules": [first, second], "events": [typed], "scene_root": f.scene})
 	host.add_child(director)
 	await _settle()
 	director.set_process(false)
@@ -323,10 +342,12 @@ func _test_rule_node_paths() -> void:
 	check(source.calls.is_empty(), "Paused director keeps SceneEvent actions pending")
 	ledger.release(token)
 	for step in 4: director.advance(0.0)
-	check(source.calls == ["first", "second"], "One SceneEvent independently satisfies multiple rules after pause release")
+	check(source.calls == ["first", "second", "typed"],
+		"legacy rules and typed sequences independently receive one SceneEvent")
 	f.event.trigger()
 	for step in 4: director.advance(0.0)
-	check(source.calls == ["first", "second"], "Repeated relay events do not replay a once-per-scene rule")
+	check(source.calls == ["first", "second", "typed"],
+		"Repeated relay events do not replay once-per-scene consumers")
 	await _dispose(f)
 
 func _signal_property(event: Node) -> Dictionary:

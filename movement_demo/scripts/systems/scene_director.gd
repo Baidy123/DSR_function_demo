@@ -3,6 +3,7 @@ extends Node
 ## Scene lifecycle, independent of enemy deployment and CombatZone occupancy.
 const Pauses = preload("res://scripts/systems/scene_pause_coordinator.gd")
 const Flows = preload("res://scripts/systems/scene_flow_runner.gd")
+const Events = preload("res://scripts/systems/scene_events/scene_event_runner.gd")
 const ResultView = preload("res://scripts/ui/scene_result_view.gd")
 const Request = preload("res://scripts/systems/scene_request.gd")
 const Scheduler = preload("res://scripts/systems/scene_request_scheduler.gd")
@@ -41,6 +42,7 @@ var _level_flow: Node
 var _result_view
 var _waves
 var _flows
+var _events
 var _pauses
 var _pause_menu: CanvasLayer
 var _menu_token := 0
@@ -129,6 +131,8 @@ func initialize() -> void:
 	_link(_waves, &"wave_committed", _on_wave_committed)
 	_flows = Flows.new(self, _host)
 	_flows.configure(_bindings.get("rules", []))
+	_events = Events.new(self, _host)
+	_events.configure(_bindings.get("events", []))
 	if _waves != null: _waves.prepare_events()
 	_pause_menu = PauseMenuScene.instantiate()
 	add_child(_pause_menu)
@@ -166,6 +170,7 @@ func advance(delta: float) -> void:
 		else: _finish_presentation(&"camera_lost")
 	if not can_run_actions(): return
 	_flows.advance(delta)
+	_events.advance(delta)
 	if _completion_pending and state == &"running" and _active_presentation == 0 and _guide == null and _requests.snapshot().foreground == 0 and Engine.get_process_frames() > _completion_frame:
 		_finish_completion()
 
@@ -175,6 +180,9 @@ func _can_advance_presentation() -> bool:
 
 func can_run_actions() -> bool:
 	return _initialized and not _load_failed and state in [&"running", &"guide"] and not get_tree().paused
+
+func trigger_event(event_id: StringName) -> bool:
+	return _events != null and _events.trigger_event(event_id)
 
 func can_save_game() -> bool:
 	var service := get_node_or_null("/root/CampaignSaveService")
@@ -658,12 +666,14 @@ func reset_region(owner: Node = null) -> void:
 		_clear_guide(true)
 		if state == &"guide": _set_state(&"running")
 	_flows.reset_region()
+	_events.reset_region()
 	_completion_pending = false
 
 func _cancel_actions() -> void:
 	if _requests != null: _requests.cancel_all(&"scene_interrupted")
 	_armed_presentations.clear()
 	_flows.cancel_all()
+	_events.cancel_all()
 	_clear_guide(true)
 	_cancel_presentation()
 
@@ -682,6 +692,7 @@ func debug_snapshot() -> Dictionary:
 		"load_failed": _load_failed, "load_path": _load_path,
 		"presentation": _active_presentation, "guide": is_instance_valid(_guide), "completion_pending": _completion_pending,
 		"pause": _pauses.snapshot() if _pauses != null else {}, "flows": _flows.snapshot() if _flows != null else {},
+		"events": _events.snapshot() if _events != null else {},
 		"requests": _requests.snapshot() if _requests != null else {}}
 
 func _exit_tree() -> void:
@@ -695,6 +706,7 @@ func _exit_tree() -> void:
 		var registration: WeakRef = _scene_root.get_meta(REGISTRATION)
 		if registration.get_ref() == self: _scene_root.remove_meta(REGISTRATION)
 	_flows.release()
+	_events.release()
 	_clear_guide(true)
 	_cancel_presentation(false)
 	_pauses.release(_terminal_token)
