@@ -5,6 +5,8 @@ extends SceneAction
 @export_node_path("Node3D") var actor_path: NodePath
 @export_node_path("Node3D") var target_path: NodePath
 @export_node_path("TavernRoute") var route_path: NodePath
+## Direct target movement stays visible by default; routes keep their authored finish mode.
+## Enabling this forces either form of movement to despawn at the destination.
 @export var vanish_at_end := false
 ## Zero keeps the actor's authored speed for this execution.
 @export_range(0.0, 20.0, 0.05) var speed_override := 0.0
@@ -19,7 +21,9 @@ func begin(context: SceneActionContext) -> void:
 	if target_path.is_empty() == route_path.is_empty():
 		context.fail(&"move_needs_one_target_or_route")
 		return
-	var parameters := {"vanish_at_end": vanish_at_end}
+	var parameters := {}
+	if vanish_at_end or not target_path.is_empty():
+		parameters["vanish_at_end"] = vanish_at_end
 	if not target_path.is_empty():
 		var target := context.resolve(target_path) as Node3D
 		if target == null:

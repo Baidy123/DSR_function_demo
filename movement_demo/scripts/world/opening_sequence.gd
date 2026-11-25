@@ -1,5 +1,10 @@
 extends Node
 
+signal delivery_event_requested
+signal delivery_arrived
+signal runner_clear_table_reached
+signal equipment_granted
+
 const Director = preload("res://scripts/systems/scene_director.gd")
 const Dialogue = preload("res://resources/dialogue/opening.dialogue")
 const ACTIVE := &"opening_active"
@@ -39,8 +44,8 @@ var _merchant: Node3D
 var _lounge_rail: Node3D
 var _visitor: TavernNPC
 var _runner: TavernNPC
-var _runner_departure: SceneRequest
 var _delivery_crate: MeshInstance3D
+var _runner_cleared_table := false
 var _visitor_start: Vector3
 var _runner_start: Vector3
 var _portal: Interactable
@@ -161,6 +166,9 @@ func _start(origin: StringName) -> void:
 func begin_scene_action(request: SceneRequest) -> void:
 	if request.kind != &"script" or request.node(&"target") != self or not request.is_current():
 		return
+	if request.parameters.get("mode", &"") == &"provider":
+		_begin_event_adapter(request)
+		return
 	var director = Director.for_node(self)
 	if phase == Phase.ENTER:
 		state.set_flag(ACTIVE)
@@ -207,7 +215,14 @@ func begin_scene_action(request: SceneRequest) -> void:
 		Phase.CATALOG:
 			completed = await _browse(request)
 		Phase.DELIVERY:
-			completed = await _deliver(request)
+			completed = await _start_delivery_event(request)
+			if not request.is_current():
+				return
+			if completed:
+				request.complete()
+			else:
+				request.fail("opening_step_incomplete")
+			return
 	if not request.is_current():
 		return
 	if not completed:
@@ -290,69 +305,42 @@ func _browse(request: SceneRequest) -> bool:
 	return request.is_current() and result.status == &"completed"
 
 
-func _deliver(request: SceneRequest) -> bool:
+func _start_delivery_event(request: SceneRequest) -> bool:
 	if not await _say(request, _merchant, "prices"):
 		return false
-	_runner.set_physical_presence(true)
-	var aisle: Marker3D = scene.get_node("TavernRoutes/RunnerToStaffDoor/Point01")
-	var delivery_point: Marker3D = scene.get_node(
-		"BarEnvironment/SouthLounge/Tables/Setting1/Table/RunnerDeliveryPoint")
-	var director = Director.for_node(self)
-	var arrival: SceneRequest = director.request_child(request, &"script", {
-		"source": self, "target": _runner,
-		"parameters": {"points": [aisle.global_position, delivery_point.global_position]},
-	})
-	var result := await arrival.wait_result()
-	if not request.is_current():
-		return false
-	if result.status != &"completed":
-		_reset_delivery()
-		return false
-	var facing := -delivery_point.global_basis.z
-	_runner.rotation.y = atan2(-facing.x, -facing.z)
-	_set_down_delivery_crate(delivery_point.get_parent() as Node3D)
-	var clear_table: SceneRequest = director.request_action(&"script", {
-		"source": self, "target": _runner, "dedupe_key": &"runner_clear_table",
-		"parameters": {"points": [aisle.global_position]},
-	})
-	_runner_departure = clear_table
-	clear_table.finished.connect(_continue_runner_departure)
-	if not await _say(request, _merchant, "delivery"):
-		if request.is_current():
-			_reset_delivery()
-		return false
-	var cleared := await clear_table.wait_result()
-	if not request.is_current():
-		return false
-	if cleared.status != &"completed":
-		_reset_delivery()
-		return false
-	await _release_scripted_seat(request)
-	if not request.is_current():
-		return false
-	_clear_delivery_crate()
-	var grant: SceneRequest = director.request_child(request, &"script", {
-		"source": self, "target": get_node_or_null(equipment_grant_path), "player": player,
-	})
-	var grant_result := await grant.wait_result()
-	if not request.is_current():
-		return false
-	if grant_result.status != &"completed":
-		director.report_action_error("opening_equipment_grant", String(grant_result.reason))
-		_reset_delivery()
-		return false
-	state.set_flag(COMPLETE)
-	_portal.enabled = true
-	_commissioner.set_process_unhandled_input(true)
-	_merchant.set_process_unhandled_input(true)
-	return true
+	_runner_cleared_table = false
+	delivery_event_requested.emit()
+	return request.is_current()
 
 
-func _continue_runner_departure(cleared_table: SceneRequest) -> void:
-	if _runner_departure == cleared_table and cleared_table.status == &"completed":
-		_runner_departure = Director.for_node(self).request_action(&"script", {
-			"source": self, "target": _runner, "dedupe_key": &"runner_departure",
-		})
+func _begin_event_adapter(request: SceneRequest) -> void:
+	match request.parameters.get("opening_command", &""):
+		&"drop_delivery_crate":
+			var delivery_point: Marker3D = scene.get_node(
+				"BarEnvironment/SouthLounge/Tables/Setting1/Table/RunnerDeliveryPoint")
+			var facing := -delivery_point.global_basis.z
+			_runner.rotation.y = atan2(-facing.x, -facing.z)
+			_set_down_delivery_crate(delivery_point.get_parent() as Node3D)
+			delivery_arrived.emit()
+			request.complete()
+		&"runner_clear_table":
+			_runner_cleared_table = true
+			runner_clear_table_reached.emit()
+			request.complete()
+		&"clear_delivery_crate":
+			_clear_delivery_crate()
+			request.complete()
+		&"finalize_equipment":
+			state.set_flag(COMPLETE)
+			_portal.enabled = true
+			_commissioner.set_process_unhandled_input(true)
+			_merchant.set_process_unhandled_input(true)
+			phase = Phase.DEPART
+			_refresh_objective()
+			equipment_granted.emit()
+			request.complete()
+		_:
+			request.fail("unknown_opening_event_command")
 
 
 func _set_down_delivery_crate(table: Node3D) -> void:
@@ -373,9 +361,7 @@ func _clear_delivery_crate() -> void:
 
 
 func _reset_delivery() -> void:
-	if _runner_departure != null and not _runner_departure.is_terminal():
-		Director.for_node(self).cancel_request(_runner_departure.id, &"delivery_interrupted")
-	_runner_departure = null
+	_runner_cleared_table = false
 	_clear_delivery_crate()
 	_runner.get_node("Crate").show()
 	_runner.set_physical_presence(false)

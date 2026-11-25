@@ -127,6 +127,7 @@ func _run() -> void:
 				"merchant dialogue seats the player directly across from the merchant")
 		seated_cues.append(cue))
 	check(Director.for_node(player) != null, "tavern has its own director")
+	_check_typed_event_structure(opening)
 	check(current_scene.get_node("BarEnvironment").scene_file_path.is_empty(),
 		"the tavern environment is authored inline in Main")
 	check(curtain.to_local(commissioner.global_position).z < -1.0, "commissioner starts behind the northeast curtain")
@@ -260,9 +261,7 @@ func _run() -> void:
 		and ui.dialogue_panel.visible, "runner walks away while the delivery dialogue is still open")
 	if block_merchant_approach:
 		# Let the runner clear the table before restoring the same obstruction for the player's exit.
-		await _wait_for(func() -> bool:
-			var departure: SceneRequest = opening._runner_departure
-			return departure != null and departure.dedupe_key == &"runner_departure")
+		await _wait_for(func() -> bool: return opening._runner_cleared_table)
 	for blocker in approach_blockers: blocker.collision_layer = 1
 	await _conversation(ui, "gear delivery")
 	check(state.get_flag("ASKED_MERCHANT_SUPPLY"), "price follow-up records the supply explanation")
@@ -287,8 +286,8 @@ func _run() -> void:
 	check(await _wait_for(func(): return not visitor.visible, 950)
 		and visitor.global_position.distance_to(visitor.floor_position(Vector3(0.15, 0, 7.06))) < 0.2,
 		"visitor disappears only after reaching the exit")
-	check(await _wait_for(func(): return not runner.visible, 950)
-		and runner.global_position.distance_to(runner.floor_position(runner.route_points().back())) < 0.2
+	check(await _wait_for(func(): return not runner.visible, 950) \
+		and runner.global_position.distance_to(runner.floor_position(runner.route_points().back())) < 0.2 \
 		and runner.global_position.distance_to(current_scene.get_node("BarEnvironment/Architecture/StaffDoor").global_position) < 1.6,
 		"runner leaves through the staff door")
 
@@ -302,6 +301,29 @@ func _run() -> void:
 		check(false, "warehouse door loads the real first level")
 	print("Opening flow: %d checks, %d failed" % [checks, failures])
 	quit(0 if failures == 0 else 1)
+
+
+func _check_typed_event_structure(opening: Node) -> void:
+	var host = current_scene.get_node("SceneDirector")
+	var ids: Array[StringName] = []
+	for event: SceneEventDefinition in host.event_sequences:
+		if event != null:
+			ids.append(event.event_id)
+	var required: Array[StringName] = [
+		&"opening_visitor_entrance",
+		&"opening_commissioner_seating",
+		&"opening_merchant_catalog",
+		&"opening_delivery_equipment",
+		&"opening_runner_departure",
+		&"opening_scene_transition",
+	]
+	check(required.all(func(id: StringName): return ids.has(id)),
+		"Main stores every named opening sequence on SceneDirector")
+	var legacy_orchestration := [
+		&"_deliver", &"_say", &"_browse", &"_release_scripted_seat", &"_show_focus", &"_walk",
+	]
+	check(legacy_orchestration.all(func(method: StringName): return not opening.has_method(method)),
+		"Opening no longer directly orchestrates dialogue, shop, seating, equipment, presentation, or routes")
 
 
 func _check_initial_occupants() -> void:

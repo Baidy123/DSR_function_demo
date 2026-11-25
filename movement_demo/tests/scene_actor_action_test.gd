@@ -132,6 +132,22 @@ func _test_move_and_route(f: Dictionary) -> void:
 		and f.npc.global_position.distance_to(route.get_node("Second").global_position) < 0.2,
 		"MoveActorAction traverses TavernRoute markers in child order")
 
+	var exit_route := TavernRoute.new()
+	exit_route.name = "ExitRoute"
+	exit_route.finish_mode = TavernRoute.Finish.DESPAWN
+	var exit_marker := Marker3D.new()
+	exit_marker.position = Vector3(2.4, 0.0, 1.0)
+	exit_route.add_child(exit_marker)
+	f.scene.add_child(exit_route)
+	move = MoveActorAction.new()
+	move.actor_path = ^"NPC"
+	move.route_path = ^"ExitRoute"
+	context = _context(f, move, &"move_exit_route")
+	move.begin(context)
+	check(await _wait_terminal(context) and context.status == &"completed" and not f.npc.visible,
+		"MoveActorAction preserves the TavernRoute DESPAWN finish mode by default")
+	f.npc.set_physical_presence(true)
+
 	var empty := TavernRoute.new()
 	empty.name = "EmptyRoute"
 	f.scene.add_child(empty)

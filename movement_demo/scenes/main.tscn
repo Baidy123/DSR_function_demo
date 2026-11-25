@@ -46,6 +46,141 @@
 [ext_resource type="Script" path="res://scripts/world/tavern_route.gd" id="tavern_route"]
 [ext_resource type="Script" path="res://scripts/world/tavern_staff_door.gd" id="staff_door"]
 
+[ext_resource type="Script" uid="uid://b0pst3hbwfcpw" path="res://scripts/systems/scene_events/scene_event_definition.gd" id="scene_event_definition"]
+[ext_resource type="Script" uid="uid://c3dk3irrb766n" path="res://scripts/systems/scene_event_trigger.gd" id="scene_event_trigger"]
+[ext_resource type="Script" uid="uid://bpxk55iv6epf3" path="res://scripts/systems/scene_events/scene_action.gd" id="scene_action_base"]
+[ext_resource type="Script" uid="uid://bql837o6nkfgc" path="res://scripts/systems/scene_events/actions/actor/move_actor_action.gd" id="move_actor_action"]
+[ext_resource type="Script" uid="uid://b6vcn6vby886t" path="res://scripts/systems/scene_events/actions/actor/set_actor_visible_action.gd" id="set_actor_visible_action"]
+[ext_resource type="Script" uid="uid://b0mlins1kf17t" path="res://scripts/systems/scene_events/actions/state/give_equipment_action.gd" id="give_equipment_action"]
+[ext_resource type="Script" uid="uid://5blh8n416pfe" path="res://scripts/systems/scene_events/actions/advanced/run_provider_action.gd" id="run_provider_action"]
+[ext_resource type="Script" uid="uid://chguup2bf5sgv" path="res://scripts/systems/scene_event_filter.gd" id="scene_event_filter"]
+[ext_resource type="Script" uid="uid://2h66nl7yf0s2" path="res://scripts/systems/scene_events/actions/presentation/dialogue_action.gd" id="dialogue_action"]
+[ext_resource type="Script" uid="uid://dihdcynne8e1t" path="res://scripts/systems/scene_events/actions/actor/seat_actor_action.gd" id="seat_actor_action"]
+[ext_resource type="Resource" path="res://resources/dialogue/opening.dialogue" id="opening_dialogue"]
+
+[sub_resource type="Resource" id="SceneEventTrigger_delivery_requested"]
+script = ExtResource("scene_event_trigger")
+source_path = NodePath("../Opening")
+signal_name = &"delivery_event_requested"
+
+[sub_resource type="Resource" id="SceneEventTrigger_delivery_arrived"]
+script = ExtResource("scene_event_trigger")
+source_path = NodePath("../Opening")
+signal_name = &"delivery_arrived"
+
+[sub_resource type="Resource" id="SceneAction_show_runner"]
+script = ExtResource("set_actor_visible_action")
+actor_path = NodePath("../Runner")
+
+[sub_resource type="Resource" id="SceneAction_runner_arrive_aisle"]
+script = ExtResource("move_actor_action")
+actor_path = NodePath("../Runner")
+target_path = NodePath("../TavernRoutes/RunnerToStaffDoor/Point01")
+
+[sub_resource type="Resource" id="SceneAction_runner_arrive_table"]
+script = ExtResource("move_actor_action")
+actor_path = NodePath("../Runner")
+target_path = NodePath("../BarEnvironment/SouthLounge/Tables/Setting1/Table/RunnerDeliveryPoint")
+
+[sub_resource type="Resource" id="SceneAction_drop_delivery_crate"]
+script = ExtResource("run_provider_action")
+target_path = NodePath("../Opening")
+parameters = {
+"opening_command": &"drop_delivery_crate"
+}
+
+[sub_resource type="Resource" id="SceneAction_delivery_dialogue"]
+script = ExtResource("dialogue_action")
+target_path = NodePath("../DialogueUI")
+player_path = NodePath("../Player")
+dialogue = ExtResource("opening_dialogue")
+start = "delivery"
+
+[sub_resource type="Resource" id="SceneEvent_opening_delivery_arrival"]
+script = ExtResource("scene_event_definition")
+event_id = &"opening_delivery_arrival"
+label = "伙计到桌并开始交付对白"
+triggers = Array[ExtResource("scene_event_trigger")]([SubResource("SceneEventTrigger_delivery_requested")])
+actions = Array[ExtResource("scene_action_base")]([SubResource("SceneAction_show_runner"), SubResource("SceneAction_runner_arrive_aisle"), SubResource("SceneAction_runner_arrive_table"), SubResource("SceneAction_drop_delivery_crate"), SubResource("SceneAction_delivery_dialogue")])
+
+[sub_resource type="Resource" id="SceneAction_runner_clear_table"]
+script = ExtResource("move_actor_action")
+actor_path = NodePath("../Runner")
+target_path = NodePath("../TavernRoutes/RunnerToStaffDoor/Point01")
+
+[sub_resource type="Resource" id="SceneAction_notify_runner_clear"]
+script = ExtResource("run_provider_action")
+target_path = NodePath("../Opening")
+parameters = {
+"opening_command": &"runner_clear_table"
+}
+
+[sub_resource type="Resource" id="SceneAction_runner_depart_staff"]
+script = ExtResource("move_actor_action")
+actor_path = NodePath("../Runner")
+route_path = NodePath("../TavernRoutes/RunnerToStaffDoor")
+
+[sub_resource type="Resource" id="SceneEvent_opening_runner_departure"]
+script = ExtResource("scene_event_definition")
+event_id = &"opening_runner_departure"
+label = "伙计从员工门离场"
+triggers = Array[ExtResource("scene_event_trigger")]([SubResource("SceneEventTrigger_delivery_arrived")])
+actions = Array[ExtResource("scene_action_base")]([SubResource("SceneAction_runner_clear_table"), SubResource("SceneAction_notify_runner_clear"), SubResource("SceneAction_runner_depart_staff")])
+
+[sub_resource type="Resource" id="SceneEventFilter_delivery_cue"]
+script = ExtResource("scene_event_filter")
+parameter_index = 1
+string_name_value = &"delivery"
+
+[sub_resource type="Resource" id="SceneEventFilter_dialogue_completed"]
+script = ExtResource("scene_event_filter")
+parameter_index = 2
+string_name_value = &"completed"
+
+[sub_resource type="Resource" id="SceneEventTrigger_runner_clear"]
+script = ExtResource("scene_event_trigger")
+source_path = NodePath("../Opening")
+signal_name = &"runner_clear_table_reached"
+
+[sub_resource type="Resource" id="SceneEventTrigger_delivery_dialogue_ended"]
+script = ExtResource("scene_event_trigger")
+source_path = NodePath("../DialogueUI")
+signal_name = &"dialogue_sequence_ended"
+filters = Array[ExtResource("scene_event_filter")]([SubResource("SceneEventFilter_delivery_cue"), SubResource("SceneEventFilter_dialogue_completed")])
+
+[sub_resource type="Resource" id="SceneAction_leave_merchant_seat"]
+script = ExtResource("seat_actor_action")
+actor_path = NodePath("../Player")
+seat_path = NodePath("../BarEnvironment/SouthLounge/Tables/Setting1/SouthSofa/Seats/Center")
+mode = 1
+
+[sub_resource type="Resource" id="SceneAction_clear_delivery_crate"]
+script = ExtResource("run_provider_action")
+target_path = NodePath("../Opening")
+parameters = {
+"opening_command": &"clear_delivery_crate"
+}
+
+[sub_resource type="Resource" id="SceneAction_grant_opening_equipment"]
+script = ExtResource("give_equipment_action")
+grant_path = NodePath("../Opening/EquipmentGrant")
+player_path = NodePath("../Player")
+
+[sub_resource type="Resource" id="SceneAction_finalize_opening_equipment"]
+script = ExtResource("run_provider_action")
+target_path = NodePath("../Opening")
+parameters = {
+"opening_command": &"finalize_equipment"
+}
+
+[sub_resource type="Resource" id="SceneEvent_opening_delivery_equipment"]
+script = ExtResource("scene_event_definition")
+event_id = &"opening_delivery_equipment"
+label = "对白和清桌后发放装备"
+combination = 1
+triggers = Array[ExtResource("scene_event_trigger")]([SubResource("SceneEventTrigger_runner_clear"), SubResource("SceneEventTrigger_delivery_dialogue_ended")])
+actions = Array[ExtResource("scene_action_base")]([SubResource("SceneAction_leave_merchant_seat"), SubResource("SceneAction_clear_delivery_crate"), SubResource("SceneAction_grant_opening_equipment"), SubResource("SceneAction_finalize_opening_equipment")])
+
 [sub_resource type="StandardMaterial3D" id="env_Floor"]
 albedo_color = Color(0.14, 0.15, 0.18, 1)
 
@@ -1034,6 +1169,7 @@ rotation_degrees = Vector3(0, 180, 0)
 [editable path="Camera3D"]
 
 [node name="SceneDirector" parent="." instance=ExtResource("director_authority")]
+event_sequences = Array[ExtResource("scene_event_definition")]([SubResource("SceneEvent_opening_delivery_arrival"), SubResource("SceneEvent_opening_runner_departure"), SubResource("SceneEvent_opening_delivery_equipment")])
 auto_start_on_enter = false
 complete_when_all_waves_cleared = false
 result_view_path = NodePath("")

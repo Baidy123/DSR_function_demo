@@ -8,6 +8,7 @@ var _scene_request: Request
 
 signal dialogue_started(source: Node)
 signal dialogue_ended(source: Node)
+signal dialogue_sequence_ended(source: Node, start: StringName, result: StringName)
 signal camera_cue_started(cue: String)
 signal scripted_seat_assigned(cue: String)
 
@@ -23,6 +24,7 @@ var _pages: PackedStringArray
 var _page := 0
 var _skip_followup := ""
 var _presenting_camera := false
+var _start_cue: StringName
 
 const PORTRAITS := {
 	"酒保": preload("res://resources/dialogue/portraits/bartender.png"),
@@ -83,7 +85,8 @@ func begin_scene_action(request: Request) -> void:
 	dialogue_source = request.node(&"source")
 	dialogue_player = request.node(&"player")
 	dialogue_resource = request.parameters.resource
-	await _show_line(request.parameters.get("start", "start"))
+	_start_cue = StringName(request.parameters.get("start", "start"))
+	await _show_line(_start_cue)
 	scene_action_opened.emit(request.id)
 
 func finish_scene_action(request: Request) -> void:
@@ -336,6 +339,8 @@ func _close_authorized(result: StringName) -> void:
 	if _announced:
 		_announced = false
 		dialogue_ended.emit(source if is_instance_valid(source) else null)
+		dialogue_sequence_ended.emit(source if is_instance_valid(source) else null, _start_cue, result)
+	_start_cue = &""
 	dialogue_panel.hide()
 	portrait.hide()
 	dialogue_player = null
