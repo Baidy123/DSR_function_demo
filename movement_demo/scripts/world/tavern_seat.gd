@@ -44,14 +44,17 @@ func exit_position_for(actor: TavernNPC) -> Vector3:
 
 
 func begin_scene_action(request: SceneRequest) -> void:
-	if request.parent_id != 0 and request.parameters.get("npc_seat", false):
-		if request.is_current() and _seat_arriving_npc(request.node(&"source") as TavernNPC):
+	if request.parameters.get("npc_seat", false):
+		var npc := request.node(&"source") as TavernNPC
+		var success := request.is_current() and npc != null \
+			and (try_leave(npc) if request.parameters.get("leave", false) else _seat_arriving_npc(npc))
+		if success:
 			request.complete()
 		else:
 			request.fail("seat_blocked")
 		return
 	var actor := request.node(&"player") as CharacterBody3D
-	var scripted: bool = request.parent_id != 0 and request.parameters.get("scripted", false)
+	var scripted: bool = request.parameters.get("scripted", false)
 	if not request.is_current() or actor == null or (actor.is_in_dialogue and not scripted) or actor.is_dead() or actor.is_vaulting():
 		request.fail("seat_unavailable")
 		return

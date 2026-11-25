@@ -218,12 +218,20 @@ func begin_scene_action(request: SceneRequest) -> void:
 	if _request != null and _request.is_current():
 		request.fail("actor_is_moving")
 		return
+	var requested_route_path: NodePath = request.parameters.get("route_path", NodePath())
+	var authored: TavernRoute = get_node_or_null(requested_route_path) as TavernRoute \
+		if not requested_route_path.is_empty() else _authored_route()
+	if not requested_route_path.is_empty() and authored == null:
+		request.fail("route_missing")
+		return
 	var points: Array[Vector3] = []
-	points.assign(request.parameters.get("points", route_points()))
+	points.assign(request.parameters.get("points",
+		authored.world_points() if authored != null else route.duplicate()))
 	if points.is_empty():
 		request.fail("route_empty")
 		return
-	var authored: TavernRoute = null if request.parameters.has("points") else _authored_route()
+	if request.parameters.has("points"):
+		authored = null
 	var mode := authored.finish_mode if authored != null else TavernRoute.Finish.STAY
 	var patrolling: bool = request.parameters.get("patrol", mode == TavernRoute.Finish.LOOP)
 	var vanish: bool = not patrolling and request.parameters.get("vanish_at_end", mode == TavernRoute.Finish.DESPAWN)

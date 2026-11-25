@@ -243,6 +243,9 @@ func _run() -> void:
 	board.close_button.pressed.emit()
 	await _conversation(ui, "price reaction", ["到底为什么这么贵"])
 	var runner := current_scene.get_node("Runner") as TavernNPC
+	check(runner.has_method("begin_scene_action") and runner.has_method("cancel_scene_action")
+		and not runner.route_points().is_empty(),
+		"opening runner retains its authored route and cancellable directed-movement provider")
 	var merchant_table := current_scene.get_node("BarEnvironment/SouthLounge/Tables/Setting1/Table") as Node3D
 	var tabletop := merchant_table.get_node("Collision").shape as BoxShape3D
 	var delivery_open: bool = await _wait_for(func(): return ui.dialogue_panel.visible)

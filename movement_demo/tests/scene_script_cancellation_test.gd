@@ -40,6 +40,16 @@ class Provider extends Node:
 		cancel_legacy()
 		request.complete()
 
+class SeatProbe extends TavernSeat:
+	var request: SceneRequest
+	var cancels := 0
+
+	func begin_scene_action(value: SceneRequest) -> void:
+		request = value
+
+	func cancel_scene_action(_value: SceneRequest, _reason: StringName) -> void:
+		cancels += 1
+
 func _initialize() -> void: _run.call_deferred()
 func check(value: bool, label: String) -> void:
 	checks += 1
@@ -117,9 +127,34 @@ func _run() -> void:
 		"region cancellation preserves independently running scene-scoped background work")
 	f.scene.free()
 	await process_frame
+	await _typed_seat_cancellation()
 	await _door()
 	print("Scene script cancellation: %d checks; %d failures" % [checks, failures])
 	quit(0 if failures == 0 else 1)
+
+func _typed_seat_cancellation() -> void:
+	var f := fixture()
+	var actor := CharacterBody3D.new()
+	actor.name = "Actor"
+	f.scene.add_child(actor)
+	var seat := SeatProbe.new()
+	seat.name = "Seat"
+	f.scene.add_child(seat)
+	var action := SeatActorAction.new()
+	action.actor_path = ^"Actor"
+	action.seat_path = ^"Seat"
+	var definition := SceneEventDefinition.new()
+	definition.event_id = &"seat_cancel"
+	var context := SceneActionContext.new().configure(f.director, f.scene, definition, action, 1, 0)
+	action.begin(context)
+	check(seat.request != null and not context.is_terminal(),
+		"typed seating remains pending at the provider completion boundary")
+	context.cancel(&"test_cancel")
+	seat.request.complete()
+	check(context.status == &"cancelled" and seat.cancels == 1,
+		"typed seat cancellation reaches the provider once and ignores late completion")
+	f.scene.free()
+	await process_frame
 
 func _door() -> void:
 	var f := fixture()
