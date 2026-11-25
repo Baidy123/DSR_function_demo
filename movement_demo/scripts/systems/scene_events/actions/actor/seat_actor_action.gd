@@ -12,6 +12,10 @@ enum Mode { SIT, LEAVE }
 func begin(context: SceneActionContext) -> void:
 	var actor := context.resolve(actor_path) as CharacterBody3D
 	var seat := context.resolve(seat_path) as TavernSeat
+	if mode == Mode.LEAVE and actor != null and actor.has_method(&"current_seat"):
+		var current := actor.call(&"current_seat") as TavernSeat
+		if current != null:
+			seat = current
 	if actor == null or seat == null:
 		context.fail(&"missing_actor_or_seat")
 		return
@@ -20,4 +24,5 @@ func begin(context: SceneActionContext) -> void:
 		parameters["npc_seat"] = true
 	else:
 		parameters["scripted"] = true
-	context.request(&"script", seat, parameters, {"source": actor, "player": actor})
+	context.request(&"script", seat, parameters, {"source": actor, "player": actor},
+		mode == Mode.LEAVE)

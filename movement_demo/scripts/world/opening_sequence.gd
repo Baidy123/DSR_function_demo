@@ -1,5 +1,16 @@
 extends Node
 
+signal arrival_event_requested
+signal scene_transition_requested
+signal bartender_event_requested
+signal visitor_event_requested
+signal visitor_ready
+signal visitor_motion_finished
+signal visitor_camera_finished
+signal visitor_dialogue_finished
+signal curtain_event_requested
+signal commissioner_event_requested
+signal merchant_event_requested
 signal delivery_event_requested
 signal delivery_arrived
 signal runner_clear_table_reached
@@ -11,20 +22,11 @@ const ACTIVE := &"opening_active"
 const COMPLETE := &"opening_complete"
 const BOOTH_APPROACH := Vector3(-0.42, 0, -1.03)
 const BARTENDER_HINT_HEIGHT := 2.35
-const CAMERA_CUES := {
-	"booth": ^"../BarEnvironment/Booths/Booth4/Curtain",
-	"merchant": ^"../RewardNPC",
-}
 const MERCHANT_PLAYER_SEAT := ^"../BarEnvironment/SouthLounge/Tables/Setting1/SouthSofa/Seats/Center"
-const SEAT_CUES := {
-	"commissioner": [^"../BarEnvironment/Booths/Booth4/Seating/Seats/LeftRear"],
-	"merchant": [MERCHANT_PLAYER_SEAT],
-}
 
 enum Phase { ARRIVAL, ENTER, BARTENDER, VISITOR, CURTAIN, COMMISSIONER, MERCHANT, CATALOG, DELIVERY, DEPART }
 
 @export var exterior := false
-@export_node_path("Node") var equipment_grant_path: NodePath = ^"EquipmentGrant"
 
 @onready var scene: Node3D = get_parent()
 @onready var player: CharacterBody3D = scene.get_node("Player")
@@ -34,6 +36,8 @@ enum Phase { ARRIVAL, ENTER, BARTENDER, VISITOR, CURTAIN, COMMISSIONER, MERCHANT
 
 var phase: Phase
 var _request: SceneRequest
+var _event_busy := false
+var _active_event_ids: Array[StringName] = []
 var _motion: Tween
 var _entrance: Node3D
 var _bartender: Node3D
@@ -53,7 +57,7 @@ var _objective: Label
 var _marker: Label3D
 var _target: Vector3
 var _range := 1.6
-var _scripted_seat: TavernSeat
+var _director: Node
 
 
 func _ready() -> void:
@@ -76,7 +80,6 @@ func _ready() -> void:
 		_curtain.story_managed = true
 		_visitor = scene.get_node("Visitor")
 		_runner = scene.get_node("Runner")
-		ui.scripted_seat_assigned.connect(_on_scripted_seat_assigned)
 		_visitor_start = _visitor.global_position
 		_runner_start = _runner.global_position
 		_portal = scene.get_node("Interactables/LevelPortal")
@@ -147,13 +150,14 @@ func _near_bartender() -> bool:
 
 
 func _busy() -> bool:
-	return _request != null and not _request.is_terminal()
+	return _event_busy or (_request != null and not _request.is_terminal())
 
 
 func _start(origin: StringName) -> void:
 	var director = Director.for_node(self)
 	if director == null:
 		return
+	_bind_director(director)
 	_request = director.request_action(&"script", {
 		"source": self, "target": self, "player": player, "origin": origin,
 		"dedupe_key": &"opening_step",
@@ -169,85 +173,57 @@ func begin_scene_action(request: SceneRequest) -> void:
 	if request.parameters.get("mode", &"") == &"provider":
 		_begin_event_adapter(request)
 		return
-	var director = Director.for_node(self)
-	if phase == Phase.ENTER:
-		state.set_flag(ACTIVE)
-		var transition: SceneRequest = director.request_child(request, &"transition", {
-			"source": self, "player": player,
-			"parameters": {"path": "res://scenes/main.tscn", "return_control_on_failure": true},
-		})
-		if request.is_current() and transition.is_terminal():
-			request.fail(String(transition.reason))
+	if _event_busy:
+		request.fail("opening_event_busy")
 		return
-
-	director.hold_request_controls(request, false, true)
-	var completed := false
+	var director = Director.for_node(self)
+	if director == null:
+		request.fail("missing_scene_director")
+		return
+	_bind_director(director)
+	var family := _event_family(phase)
+	for event_id in family:
+		if not director.can_accept_event(event_id):
+			request.fail("opening_event_unavailable:%s" % event_id)
+			_refresh_objective()
+			return
+	_event_busy = true
+	_active_event_ids = family.duplicate()
+	_marker.hide()
 	match phase:
 		Phase.ARRIVAL:
-			completed = await _arrival(request)
+			arrival_event_requested.emit()
+		Phase.ENTER:
+			scene_transition_requested.emit()
 		Phase.BARTENDER:
-			completed = await _say(request, _bartender, "bartender")
+			bartender_event_requested.emit()
 		Phase.VISITOR:
-			completed = await _visitor_sequence(request)
+			visitor_event_requested.emit()
 		Phase.CURTAIN:
-			completed = await _say(request, _commissioner, "knock")
-			if completed:
-				_curtain.authorize_passage()
-				await get_tree().physics_frame
-				if not request.is_current():
-					return
-				await _walk(request, player, [
-					_curtain.to_global(Vector3(0, 0, 0.56)),
-					_curtain.to_global(Vector3(0, 0, -0.63)),
-					_curtain.to_global(BOOTH_APPROACH),
-				])
+			curtain_event_requested.emit()
 		Phase.COMMISSIONER:
-			completed = await _say(request, _commissioner, "commissioner")
-			if completed and request.is_current():
-				await _release_scripted_seat(request)
-				if not request.is_current():
-					return
-				state.help_choice = "accepted"
-				state.available_level = 1
-				state.talked_to_a = true
+			commissioner_event_requested.emit()
 		Phase.MERCHANT:
-			completed = await _say(request, _merchant, "merchant")
-		Phase.CATALOG:
-			completed = await _browse(request)
+			merchant_event_requested.emit()
 		Phase.DELIVERY:
-			completed = await _start_delivery_event(request)
-			if not request.is_current():
-				return
-			if completed:
-				request.complete()
-			else:
-				request.fail("opening_step_incomplete")
+			_reset_delivery()
+			delivery_event_requested.emit()
+		_:
+			_event_busy = false
+			_active_event_ids.clear()
+			request.fail("opening_phase_has_no_direct_event")
+			_refresh_objective()
 			return
-	if not request.is_current():
-		return
-	if not completed:
-		request.fail("opening_step_incomplete")
-		return
-	phase = (int(phase) + 1) as Phase
 	request.complete()
-	if phase == Phase.CATALOG or phase == Phase.DELIVERY:
-		_start_if_current_phase.call_deferred(phase)
-
-
-func _start_if_current_phase(expected: Phase) -> void:
-	if is_inside_tree() and phase == expected and not _busy() and _near_target():
-		_start(&"system")
 
 
 func cancel_scene_action(_request_to_cancel: SceneRequest, _reason: StringName) -> void:
 	if _motion != null:
 		_motion.kill()
 		_motion = null
+	if is_instance_valid(player):
+		player.set_scripted_seat_motion(false)
 	if not exterior and is_instance_valid(_curtain):
-		if is_instance_valid(_scripted_seat) and is_instance_valid(player) \
-				and not player.is_dead() and not player.is_scripted_seat_moving():
-			_scripted_seat.try_leave(player)
-		_scripted_seat = null
 		_curtain.set_open(false)
 		if phase == Phase.VISITOR:
 			_visitor.global_position = _visitor_start
@@ -260,61 +236,72 @@ func _on_step_finished(_finished: SceneRequest) -> void:
 		_refresh_objective()
 
 
-func _arrival(request: SceneRequest) -> bool:
-	if not await _say(request, scene.get_node("Car"), "arrival"):
-		return false
-	player.get_node("Visual").show()
-	await _walk(request, player, [scene.get_node("CarExit").global_position])
-	if not request.is_current():
-		return false
-	await _show_focus(request, _entrance, 11.0, 0.30)
-	return request.is_current()
-
-
-func _visitor_sequence(request: SceneRequest) -> bool:
-	_curtain.set_open(true, true)
-	var director = Director.for_node(self)
-	var camera: SceneRequest = director.request_child(request, &"presentation", {
-		"source": self, "target": _curtain,
-		"parameters": {"size": 8.0, "move_seconds": 0.45, "hold_seconds": 0.78, "return_seconds": 0.45},
-	})
-	var side := 0.68 if _curtain.to_local(player.global_position).x <= 0.0 else -0.68
-	await _walk(request, _visitor, [
-		_curtain.to_global(Vector3(side, 0, -0.57)),
-		_curtain.to_global(Vector3(side, 0, 0.92)),
-	], true)
-	await camera.wait_result()
-	if not request.is_current():
-		return false
-	if not await _say(request, _visitor, "visitor"):
-		return false
-	_curtain.set_open(false)
-	director.request_action(&"script", {
-		"source": self, "target": _visitor, "dedupe_key": &"visitor_departure",
-	})
-	return true
-
-
-func _browse(request: SceneRequest) -> bool:
-	var director = Director.for_node(self)
-	var action: SceneRequest = director.request_child(request, &"shop", {
-		"source": _merchant, "target": scene.get_node("ShopController"), "player": player,
-		"parameters": {"browse_only": true},
-	})
-	var result := await action.wait_result()
-	return request.is_current() and result.status == &"completed"
-
-
-func _start_delivery_event(request: SceneRequest) -> bool:
-	if not await _say(request, _merchant, "prices"):
-		return false
-	_runner_cleared_table = false
-	delivery_event_requested.emit()
-	return request.is_current()
-
-
 func _begin_event_adapter(request: SceneRequest) -> void:
 	match request.parameters.get("opening_command", &""):
+		&"exit_car":
+			player.get_node("Visual").show()
+			await _move_player(request, [scene.get_node("CarExit").global_position])
+			if request.is_current():
+				request.complete()
+		&"finish_arrival":
+			_finish_event(Phase.ENTER)
+			request.complete()
+		&"finish_bartender":
+			_finish_event(Phase.VISITOR)
+			request.complete()
+		&"open_visitor_curtain":
+			_curtain.set_open(true, true)
+			var side := 0.68 if _curtain.to_local(player.global_position).x <= 0.0 else -0.68
+			scene.get_node("OpeningMarkers/VisitorCurtainRoute/VisitorCurtainNear").global_position = \
+				_curtain.to_global(Vector3(side, 0, -0.57))
+			scene.get_node("OpeningMarkers/VisitorCurtainRoute/VisitorCurtainFar").global_position = \
+				_curtain.to_global(Vector3(side, 0, 0.92))
+			visitor_ready.emit()
+			request.complete()
+		&"visitor_motion_finished":
+			visitor_motion_finished.emit()
+			request.complete()
+		&"visitor_camera_finished":
+			visitor_camera_finished.emit()
+			request.complete()
+		&"close_visitor_curtain":
+			_curtain.set_open(false)
+			request.complete()
+		&"finish_visitor_dialogue":
+			_finish_event(Phase.CURTAIN)
+			visitor_dialogue_finished.emit()
+			request.complete()
+		&"enter_booth":
+			_curtain.authorize_passage()
+			await get_tree().physics_frame
+			if not request.is_current():
+				return
+			await _move_player(request, [
+				_curtain.to_global(Vector3(0, 0, 0.56)),
+				_curtain.to_global(Vector3(0, 0, -0.63)),
+				_curtain.to_global(BOOTH_APPROACH),
+			])
+			if request.is_current():
+				_finish_event(Phase.COMMISSIONER)
+				request.complete()
+		&"finish_commissioner":
+			state.help_choice = "accepted"
+			state.available_level = 1
+			state.talked_to_a = true
+			_finish_event(Phase.MERCHANT)
+			request.complete()
+		&"enter_catalog":
+			phase = Phase.CATALOG
+			_refresh_objective()
+			request.complete()
+		&"enter_delivery":
+			phase = Phase.DELIVERY
+			_refresh_objective()
+			request.complete()
+		&"request_delivery":
+			_runner_cleared_table = false
+			delivery_event_requested.emit()
+			request.complete()
 		&"drop_delivery_crate":
 			var delivery_point: Marker3D = scene.get_node(
 				"BarEnvironment/SouthLounge/Tables/Setting1/Table/RunnerDeliveryPoint")
@@ -336,11 +323,102 @@ func _begin_event_adapter(request: SceneRequest) -> void:
 			_commissioner.set_process_unhandled_input(true)
 			_merchant.set_process_unhandled_input(true)
 			phase = Phase.DEPART
+			_event_busy = false
+			_active_event_ids.clear()
 			_refresh_objective()
 			equipment_granted.emit()
 			request.complete()
 		_:
 			request.fail("unknown_opening_event_command")
+
+
+func _finish_event(next_phase: Phase) -> void:
+	phase = next_phase
+	_event_busy = false
+	_active_event_ids.clear()
+	_refresh_objective()
+
+
+func _bind_director(director: Node) -> void:
+	if _director == director:
+		return
+	_director = director
+	if not director.typed_event_finished.is_connected(_on_typed_event_finished):
+		director.typed_event_finished.connect(_on_typed_event_finished)
+	if not director.action_failed.is_connected(_on_director_action_failed):
+		director.action_failed.connect(_on_director_action_failed)
+
+
+func _on_typed_event_finished(event_id: StringName, status: StringName, reason: StringName) -> void:
+	if not _event_busy or status == &"completed" or event_id not in _active_event_ids:
+		return
+	if phase == Phase.ENTER and status == &"cancelled":
+		return
+	_retry_current_event_family(event_id)
+
+
+func _on_director_action_failed(rule: String, _reason: String) -> void:
+	if _event_busy and phase == Phase.ENTER and rule == "loading":
+		_retry_current_event_family(&"opening_scene_transition")
+
+
+func _retry_current_event_family(failed_event_id: StringName) -> void:
+	if not is_instance_valid(_director):
+		return
+	var retry_ids := _active_event_ids.duplicate()
+	var delivery_ids := _event_family(Phase.DELIVERY)
+	if failed_event_id in delivery_ids:
+		retry_ids = delivery_ids
+		phase = Phase.DELIVERY
+		_reset_delivery()
+	elif failed_event_id == &"opening_merchant_catalog":
+		phase = Phase.MERCHANT
+		_reset_delivery()
+	for event_id in retry_ids:
+		_director.reset_event(event_id)
+	_event_busy = false
+	_active_event_ids.clear()
+	_refresh_objective()
+
+
+func _event_family(value: Phase) -> Array[StringName]:
+	match value:
+		Phase.ARRIVAL:
+			return [&"opening_arrival"]
+		Phase.ENTER:
+			return [&"opening_scene_transition"]
+		Phase.BARTENDER:
+			return [&"opening_bartender_guidance"]
+		Phase.VISITOR:
+			return [&"opening_visitor_entrance", &"opening_visitor_motion", &"opening_visitor_camera",
+				&"opening_visitor_dialogue", &"opening_visitor_departure"]
+		Phase.CURTAIN:
+			return [&"opening_curtain_entry"]
+		Phase.COMMISSIONER:
+			return [&"opening_commissioner_seating"]
+		Phase.MERCHANT, Phase.CATALOG:
+			return [&"opening_merchant_catalog", &"opening_delivery_arrival",
+				&"opening_runner_departure", &"opening_delivery_equipment"]
+		Phase.DELIVERY:
+			return [&"opening_delivery_arrival", &"opening_runner_departure",
+				&"opening_delivery_equipment"]
+	return []
+
+
+func _move_player(request: SceneRequest, points: Array[Vector3]) -> void:
+	player.set_scripted_seat_motion(true)
+	_motion = create_tween().set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+	var previous := player.global_position
+	for position in points:
+		var point := position if exterior else _visitor.floor_position(position)
+		_motion.tween_property(player, "global_position", point,
+			maxf(0.2, previous.distance_to(point) / 4.0))
+		previous = point
+	while request.is_current() and _motion.is_running():
+		await get_tree().process_frame
+	player.set_scripted_seat_motion(false)
+	if request.is_current():
+		_motion = null
 
 
 func _set_down_delivery_crate(table: Node3D) -> void:
@@ -366,59 +444,6 @@ func _reset_delivery() -> void:
 	_runner.get_node("Crate").show()
 	_runner.set_physical_presence(false)
 	_runner.global_position = _runner_start
-
-
-func _say(request: SceneRequest, source: Node, cue: String) -> bool:
-	var director = Director.for_node(self)
-	var action: SceneRequest = director.request_child(request, &"dialogue", {
-		"source": source, "target": ui, "player": player,
-		"parameters": {"resource": Dialogue, "start": cue, "face_source": cue != "arrival",
-			"camera_cues": CAMERA_CUES, "seat_cues": SEAT_CUES},
-	})
-	var result := await action.wait_result()
-	return request.is_current() and result.status == &"completed"
-
-
-func _on_scripted_seat_assigned(_cue: String) -> void:
-	_scripted_seat = player.current_seat()
-
-
-func _release_scripted_seat(request: SceneRequest) -> void:
-	if not is_instance_valid(_scripted_seat) or player.current_seat() != _scripted_seat:
-		return
-	var director = Director.for_node(self)
-	var action: SceneRequest = director.request_child(request, &"script", {
-		"source": self, "target": _scripted_seat, "player": player,
-		"parameters": {"scripted": true, "leave": true},
-	})
-	var result := await action.wait_result()
-	if result.status == &"completed":
-		_scripted_seat = null
-
-
-func _show_focus(request: SceneRequest, subject: Node3D, size: float, hold: float) -> void:
-	var director = Director.for_node(self)
-	var action: SceneRequest = director.request_child(request, &"presentation", {
-		"source": self, "target": subject,
-		"parameters": {"size": size, "move_seconds": 0.55, "hold_seconds": hold, "return_seconds": 0.45},
-	})
-	await action.wait_result()
-
-
-func _walk(request: SceneRequest, actor: Node3D, points: Array[Vector3], during_camera := false) -> void:
-	_motion = create_tween().set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
-	if during_camera:
-		_motion.set_pause_mode(Tween.TWEEN_PAUSE_PROCESS)
-	var previous := actor.global_position
-	for position in points:
-		var point := position if exterior else _visitor.floor_position(position)
-		_motion.tween_property(actor, "global_position", point,
-			maxf(0.2, previous.distance_to(point) / 4.0))
-		previous = point
-	while request.is_current() and _motion.is_running():
-		await get_tree().process_frame
-	if request.is_current():
-		_motion = null
 
 
 func _create_objective() -> void:
@@ -495,4 +520,4 @@ func _refresh_objective() -> void:
 	_objective.text = text
 	_marker.global_position = _target + Vector3.UP * height
 	_marker.text = label
-	_marker.show()
+	_marker.visible = not _event_busy

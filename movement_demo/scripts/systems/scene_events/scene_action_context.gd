@@ -12,6 +12,7 @@ var event_id: StringName
 var action_index := -1
 var state: Dictionary = {}
 var _request: SceneRequest
+var _complete_on_request_failure := false
 var status: StringName = &"running"
 var reason: StringName
 var _current_guard: Callable
@@ -39,7 +40,7 @@ func resolve(path: NodePath) -> Node:
 
 
 func request(kind: StringName, target: Node = null, parameters: Dictionary = {},
-		options: Dictionary = {}) -> SceneRequest:
+		options: Dictionary = {}, complete_on_failure := false) -> SceneRequest:
 	if is_terminal() or _request != null or not is_instance_valid(director) \
 			or not director.has_method(&"request_action"):
 		fail(&"request_unavailable")
@@ -51,6 +52,7 @@ func request(kind: StringName, target: Node = null, parameters: Dictionary = {},
 	request_context["parameters"] = parameters.duplicate(true)
 	request_context["scope"] = int(definition.scope) if definition != null else 0
 	_request = director.request_action(kind, request_context) as SceneRequest
+	_complete_on_request_failure = complete_on_failure
 	if _request == null:
 		fail(&"request_unavailable")
 		return null
@@ -86,7 +88,9 @@ func _on_request_finished(value: SceneRequest) -> void:
 		return
 	match value.status:
 		&"completed": complete()
-		&"failed", &"rejected": fail(value.reason)
+		&"failed", &"rejected":
+			if _complete_on_request_failure: complete()
+			else: fail(value.reason)
 		&"cancelled": cancel(value.reason)
 		_:
 			fail(&"invalid_request_result")

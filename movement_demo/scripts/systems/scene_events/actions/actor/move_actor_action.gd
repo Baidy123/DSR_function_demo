@@ -8,6 +8,8 @@ extends SceneAction
 ## Direct target movement stays visible by default; routes keep their authored finish mode.
 ## Enabling this forces either form of movement to despawn at the destination.
 @export var vanish_at_end := false
+## Keeps directed NPC physics active while a presentation pauses the scene tree.
+@export var process_while_paused := false
 ## Zero keeps the actor's authored speed for this execution.
 @export_range(0.0, 20.0, 0.05) var speed_override := 0.0
 
@@ -24,6 +26,8 @@ func begin(context: SceneActionContext) -> void:
 	var parameters := {}
 	if vanish_at_end or not target_path.is_empty():
 		parameters["vanish_at_end"] = vanish_at_end
+	if process_while_paused:
+		parameters["process_while_paused"] = true
 	if not target_path.is_empty():
 		var target := context.resolve(target_path) as Node3D
 		if target == null:

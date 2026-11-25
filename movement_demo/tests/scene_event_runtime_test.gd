@@ -66,6 +66,7 @@ func _run() -> void:
 	await _test_start_modes_and_order()
 	await _test_failure_policies_and_single_terminal()
 	await _test_region_reset_and_late_completion()
+	await _test_event_terminal_and_manual_reset()
 	await _test_context_request_contract()
 	await _test_duplicate_ids()
 	print("Scene event runtime assertions: %d failures" % failures)
@@ -183,6 +184,32 @@ func _test_region_reset_and_late_completion() -> void:
 	f.host.pending_context = null
 	f.runner.release()
 	check(pending_weak.get_ref() == null, "runner release breaks pending context references")
+	f.root.queue_free()
+	await process_frame
+
+
+func _test_event_terminal_and_manual_reset() -> void:
+	var f := _fixture()
+	var terminals: Array[Array] = []
+	f.runner.event_finished.connect(func(id, status, reason): terminals.append([id, status, reason]))
+	var replay := _definition(&"replay", SceneEventDefinition.StartMode.MANUAL, [_record("replay")])
+	var stopped := _definition(&"stopped", SceneEventDefinition.StartMode.MANUAL, [FailAction.new()])
+	f.runner.configure([replay, stopped])
+	check(f.runner.can_accept_event(&"replay"), "an unfired event reports that it can accept its trigger")
+	check(f.runner.trigger_event(&"replay"), "replay event accepts its first manual trigger")
+	f.runner.advance(0.0)
+	check(terminals == [[&"replay", &"completed", &""]] and not f.runner.can_accept_event(&"replay"),
+		"event completion emits one stable terminal notification")
+	check(f.runner.reset_event(&"replay") and f.runner.can_accept_event(&"replay") \
+		and f.runner.trigger_event(&"replay"), "a named event can be reset and accepted again")
+	f.runner.advance(0.0)
+	check(f.host.calls.count("replay") == 2 and terminals.size() == 2,
+		"reset starts a fresh event generation without duplicating the old terminal")
+	check(f.runner.trigger_event(&"stopped"), "failure event accepts its trigger")
+	f.runner.advance(0.0)
+	check(terminals.back() == [&"stopped", &"failed", &"expected_failure"],
+		"STOP failure emits its failed terminal reason")
+	f.runner.release()
 	f.root.queue_free()
 	await process_frame
 

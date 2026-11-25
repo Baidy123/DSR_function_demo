@@ -5,6 +5,79 @@
 [ext_resource type="PackedScene" path="res://scenes/ui/dialogue_ui.tscn" id="dialogue"]
 [ext_resource type="PackedScene" path="res://scenes/world/scene_director.tscn" id="director"]
 [ext_resource type="Script" path="res://scripts/world/opening_sequence.gd" id="opening"]
+[ext_resource type="Script" uid="uid://b0pst3hbwfcpw" path="res://scripts/systems/scene_events/scene_event_definition.gd" id="scene_event_definition"]
+[ext_resource type="Script" uid="uid://c3dk3irrb766n" path="res://scripts/systems/scene_event_trigger.gd" id="scene_event_trigger"]
+[ext_resource type="Script" uid="uid://bpxk55iv6epf3" path="res://scripts/systems/scene_events/scene_action.gd" id="scene_action_base"]
+[ext_resource type="Script" uid="uid://2h66nl7yf0s2" path="res://scripts/systems/scene_events/actions/presentation/dialogue_action.gd" id="dialogue_action"]
+[ext_resource type="Script" uid="uid://dsbymt72fs5kh" path="res://scripts/systems/scene_events/actions/presentation/camera_action.gd" id="camera_action"]
+[ext_resource type="Script" uid="uid://5blh8n416pfe" path="res://scripts/systems/scene_events/actions/advanced/run_provider_action.gd" id="run_provider_action"]
+[ext_resource type="Script" uid="uid://yexw8bshlxwm" path="res://scripts/systems/scene_events/actions/state/set_flag_action.gd" id="set_flag_action"]
+[ext_resource type="Script" uid="uid://dtjphedtwmwi7" path="res://scripts/systems/scene_events/actions/transition/change_scene_action.gd" id="change_scene_action"]
+[ext_resource type="Resource" path="res://resources/dialogue/opening.dialogue" id="opening_dialogue"]
+
+[sub_resource type="Resource" id="SceneEventTrigger_arrival_requested"]
+script = ExtResource("scene_event_trigger")
+source_path = NodePath("../Opening")
+signal_name = &"arrival_event_requested"
+
+[sub_resource type="Resource" id="SceneAction_arrival_dialogue"]
+script = ExtResource("dialogue_action")
+target_path = NodePath("../DialogueUI")
+player_path = NodePath("../Player")
+source_path = NodePath("../Car")
+dialogue = ExtResource("opening_dialogue")
+start = "arrival"
+
+[sub_resource type="Resource" id="SceneAction_exit_car"]
+script = ExtResource("run_provider_action")
+target_path = NodePath("../Opening")
+parameters = {
+"opening_command": &"exit_car"
+}
+
+[sub_resource type="Resource" id="SceneAction_focus_entrance"]
+script = ExtResource("camera_action")
+target_path = NodePath("../Entrance")
+move_seconds = 0.55
+hold_seconds = 0.3
+return_seconds = 0.45
+camera_size = 11.0
+
+[sub_resource type="Resource" id="SceneAction_finish_arrival"]
+script = ExtResource("run_provider_action")
+target_path = NodePath("../Opening")
+parameters = {
+"opening_command": &"finish_arrival"
+}
+
+[sub_resource type="Resource" id="SceneEvent_opening_arrival"]
+script = ExtResource("scene_event_definition")
+event_id = &"opening_arrival"
+label = "车内独白、下车并聚焦酒吧入口"
+triggers = Array[ExtResource("scene_event_trigger")]([SubResource("SceneEventTrigger_arrival_requested")])
+actions = Array[ExtResource("scene_action_base")]([SubResource("SceneAction_arrival_dialogue"), SubResource("SceneAction_exit_car"), SubResource("SceneAction_focus_entrance"), SubResource("SceneAction_finish_arrival")])
+
+[sub_resource type="Resource" id="SceneEventTrigger_transition_requested"]
+script = ExtResource("scene_event_trigger")
+source_path = NodePath("../Opening")
+signal_name = &"scene_transition_requested"
+
+[sub_resource type="Resource" id="SceneAction_mark_opening_active"]
+script = ExtResource("set_flag_action")
+state_path = NodePath("/root/GameState")
+flag = &"opening_active"
+
+[sub_resource type="Resource" id="SceneAction_enter_tavern"]
+script = ExtResource("change_scene_action")
+scene_path = "res://scenes/main.tscn"
+return_control_on_failure = true
+
+[sub_resource type="Resource" id="SceneEvent_opening_scene_transition"]
+script = ExtResource("scene_event_definition")
+event_id = &"opening_scene_transition"
+label = "进入酒吧并保留转场失败后的控制权"
+triggers = Array[ExtResource("scene_event_trigger")]([SubResource("SceneEventTrigger_transition_requested")])
+actions = Array[ExtResource("scene_action_base")]([SubResource("SceneAction_mark_opening_active"), SubResource("SceneAction_enter_tavern")])
 
 [sub_resource type="Environment" id="night"]
 background_mode = 1
@@ -437,6 +510,7 @@ follow_offset = Vector3(1.65, 8.0, 5.25)
 auto_start_on_enter = false
 complete_when_all_waves_cleared = false
 result_view_path = NodePath("")
+event_sequences = Array[ExtResource("scene_event_definition")]([SubResource("SceneEvent_opening_arrival"), SubResource("SceneEvent_opening_scene_transition")])
 
 [node name="Opening" type="Node" parent="."]
 script = ExtResource("opening")

@@ -30,6 +30,18 @@ func _run() -> void:
 	var opening := scene.get_node("Opening")
 	var player := scene.get_node("Player")
 	var ui := scene.get_node("DialogueUI")
+	var exterior_event_ids := _event_ids(scene.get_node("SceneDirector"))
+	var fail_first_transition := OS.get_cmdline_user_args().has("--fail-first-transition")
+	var exterior_director: Node
+	var failed_transition_once := [false]
+	if fail_first_transition:
+		await _wait_for(func(): return Director.for_node(player) != null)
+		exterior_director = Director.for_node(player)
+		exterior_director.scene_loader = func(path: String, reload: bool) -> Error:
+			if not failed_transition_once[0]:
+				failed_transition_once[0] = true
+				return ERR_CANT_OPEN
+			return reload_current_scene() if reload else change_scene_to_file(path)
 	var cameras: Array[String] = []
 	var state := root.get_node("GameState")
 	check(await _wait_for(func(): return ui.dialogue_panel.visible), "the arrival dialogue opens on load")
@@ -50,6 +62,10 @@ func _run() -> void:
 	await _capture("exterior")
 	await _go_to(opening._target)
 	_interact()
+	if fail_first_transition:
+		check(await _wait_for(func(): return current_scene == scene and not opening._event_busy),
+			"failed tavern load returns control and re-enables the entrance")
+		_interact()
 	if not await _wait_for(func(): return current_scene != null and current_scene.name == "Main"):
 		check(false, "entrance loads the tavern")
 		quit(1)
@@ -69,6 +85,7 @@ func _run() -> void:
 	var merchant := current_scene.get_node("RewardNPC") as TavernNPC
 	var across_merchant := current_scene.get_node("BarEnvironment/SouthLounge/Tables/Setting1/SouthSofa/Seats/Center") as TavernSeat
 	var block_merchant_approach := OS.get_cmdline_user_args().has("--block-merchant-approach")
+	var alternate_commissioner_seat := OS.get_cmdline_user_args().has("--alternate-commissioner-seat")
 	var seated_cues: Array[String] = []
 	var presentation := player.get_node("PlayerPresentation")
 	var seat_motion := {
@@ -103,7 +120,10 @@ func _run() -> void:
 	physics_frame.connect(sample_seat_motion)
 	ui.scripted_seat_assigned.connect(func(cue: String) -> void:
 		sample_seat_motion.call()
-		if block_merchant_approach and cue == "merchant":
+		if alternate_commissioner_seat and cue == "commissioner":
+			check(seat_motion.steps <= 1,
+				"same-table commissioner cue preserves the player's alternate authored seat")
+		elif block_merchant_approach and cue == "merchant":
 			check(seat_motion.steps <= 1 and seat_motion.largest_step > 0.16,
 				"blocked merchant approach places the player directly in the seat")
 		else:
@@ -127,7 +147,7 @@ func _run() -> void:
 				"merchant dialogue seats the player directly across from the merchant")
 		seated_cues.append(cue))
 	check(Director.for_node(player) != null, "tavern has its own director")
-	_check_typed_event_structure(opening)
+	_check_typed_event_structure(opening, exterior_event_ids)
 	check(current_scene.get_node("BarEnvironment").scene_file_path.is_empty(),
 		"the tavern environment is authored inline in Main")
 	check(curtain.to_local(commissioner.global_position).z < -1.0, "commissioner starts behind the northeast curtain")
@@ -176,12 +196,20 @@ func _run() -> void:
 	await _go_to(counter.to_global(bar_position))
 	_interact()
 	await _conversation(ui, "bartender", ["你这里是不是", "这么明显", "她好说话吗"])
-	check(opening.phase == Opening.Phase.VISITOR, "bartender points to the curtain")
+	check(await _wait_for(func(): return opening.phase == Opening.Phase.VISITOR),
+		"bartender points to the curtain")
 	check(cameras == ["booth"], "bartender guidance triggers the booth camera during the dialogue")
-	await _go_to(opening._target)
-	await _conversation(ui, "departing visitor", ["她把你赶出来了？"])
 	var visitor := current_scene.get_node("Visitor") as CharacterBody3D
-	check(opening.phase == Opening.Phase.CURTAIN and visitor.visible,
+	var visitor_start := visitor.global_position
+	var main_director = Director.for_node(player)
+	await _go_to(opening._target)
+	check(await _wait_for(func(): return main_director.debug_snapshot().presentation != 0),
+		"visitor curtain presentation starts")
+	check(await _wait_for(func(): return main_director.debug_snapshot().presentation != 0 \
+		and visitor.global_position.distance_to(visitor_start) > 0.08),
+		"visitor movement begins while the real camera presentation is still active")
+	await _conversation(ui, "departing visitor", ["她把你赶出来了？"])
+	check(await _wait_for(func(): return opening.phase == Opening.Phase.CURTAIN) and visitor.visible,
 		"visitor remains visible while walking towards the exit")
 	check(not curtain.passage_authorized and not curtain.get_node("SolidCurtain/CollisionShape3D").disabled,
 		"the visitor's scripted exit leaves the curtain locked again")
@@ -189,6 +217,17 @@ func _run() -> void:
 	_interact()
 	await _conversation(ui, "knocking at the curtain")
 	check(await _wait_for(func(): return opening.phase == Opening.Phase.COMMISSIONER), "player crosses the curtain")
+	if alternate_commissioner_seat:
+		var alternate_seat := current_scene.get_node(
+			"BarEnvironment/Booths/Booth4/Seating/Seats/LeftFront") as TavernSeat
+		var alternate_request: SceneRequest = main_director.request_action(&"script", {
+			"source": player, "target": alternate_seat, "player": player,
+			"parameters": {"scripted": true},
+		})
+		if not alternate_request.is_terminal():
+			await alternate_request.finished
+		check(alternate_request.status == &"completed" and player.current_seat() == alternate_seat,
+			"alternate commissioner seat is occupied before the dialogue cue")
 	_interact()
 	check(await _wait_for(func(): return ui.dialogue_panel.visible), "speaking from inside opens the commission")
 	check(await _dialogue(ui, ["你想去那个仓库", "去过，但", "为什么找我", "可我现在没钱", "你怎么知道", "有这么多人"]),
@@ -303,27 +342,43 @@ func _run() -> void:
 	quit(0 if failures == 0 else 1)
 
 
-func _check_typed_event_structure(opening: Node) -> void:
-	var host = current_scene.get_node("SceneDirector")
+func _event_ids(host: Node) -> Array[StringName]:
 	var ids: Array[StringName] = []
 	for event: SceneEventDefinition in host.event_sequences:
 		if event != null:
 			ids.append(event.event_id)
-	var required: Array[StringName] = [
+	return ids
+
+
+func _check_typed_event_structure(opening: Node, exterior_ids: Array[StringName]) -> void:
+	var host = current_scene.get_node("SceneDirector")
+	var ids := _event_ids(host)
+	var required_main: Array[StringName] = [
 		&"opening_visitor_entrance",
+		&"opening_visitor_motion",
 		&"opening_commissioner_seating",
 		&"opening_merchant_catalog",
 		&"opening_delivery_equipment",
 		&"opening_runner_departure",
-		&"opening_scene_transition",
 	]
-	check(required.all(func(id: StringName): return ids.has(id)),
-		"Main stores every named opening sequence on SceneDirector")
+	check(required_main.all(func(id: StringName): return ids.has(id)) \
+		and exterior_ids.has(&"opening_scene_transition"),
+		"each scene stores its named opening sequences on its own SceneDirector")
 	var legacy_orchestration := [
 		&"_deliver", &"_say", &"_browse", &"_release_scripted_seat", &"_show_focus", &"_walk",
 	]
 	check(legacy_orchestration.all(func(method: StringName): return not opening.has_method(method)),
 		"Opening no longer directly orchestrates dialogue, shop, seating, equipment, presentation, or routes")
+	var merchant_event: SceneEventDefinition
+	for event: SceneEventDefinition in host.event_sequences:
+		if event != null and event.event_id == &"opening_merchant_catalog":
+			merchant_event = event
+			break
+	var shop_action := merchant_event.actions[2] as RunProviderAction if merchant_event != null else null
+	check(shop_action != null and shop_action.request_kind == RunProviderAction.RequestKind.SHOP \
+		and shop_action.target_path == ^"../ShopController" and shop_action.player_path == ^"../Player" \
+		and bool(shop_action.parameters.get("browse_only", false)),
+		"browse-only catalog target, player, kind, and parameters are inspector-authored")
 
 
 func _check_initial_occupants() -> void:

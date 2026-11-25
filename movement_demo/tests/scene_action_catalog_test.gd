@@ -39,6 +39,12 @@ class DialogueProbe extends Resource:
 	func get_next_dialogue_line() -> Variant:
 		return null
 
+class ProviderProbe extends Node:
+	func begin_scene_action(_request: SceneRequest) -> void:
+		pass
+	func cancel_scene_action(_request: SceneRequest, _reason: StringName) -> void:
+		pass
+
 var failures := 0
 
 
@@ -181,20 +187,62 @@ func _test_combat_and_presentation_actions() -> void:
 	await _dispose(f)
 
 	dialogue = DialogueAction.new()
-	dialogue.target_path = ^"DialogueUI"
+	dialogue.target_path = ^"UIRoot/DialogueUI"
 	dialogue.player_path = ^"Player"
+	dialogue.source_path = ^"Speaker"
 	dialogue.dialogue = DialogueProbe.new()
+	dialogue.face_source = true
+	dialogue.camera_cues = {"merchant": ^"CameraTarget"}
+	dialogue.seat_cues = {"commissioner": [^"CommissionerSeat"]}
 	f = _fixture(dialogue)
+	var ui_root := Node.new()
+	ui_root.name = "UIRoot"
+	f.host.add_child(ui_root)
 	dialogue_ui = Node.new()
 	dialogue_ui.name = "DialogueUI"
-	f.host.add_child(dialogue_ui)
+	ui_root.add_child(dialogue_ui)
 	var player := Node.new()
 	player.name = "Player"
 	f.host.add_child(player)
+	var speaker := Node3D.new()
+	speaker.name = "Speaker"
+	f.host.add_child(speaker)
+	var camera_target := Node3D.new()
+	camera_target.name = "CameraTarget"
+	f.host.add_child(camera_target)
+	var commissioner_seat := Node.new()
+	commissioner_seat.name = "CommissionerSeat"
+	f.host.add_child(commissioner_seat)
 	f.runner.advance(0.0)
 	check(f.director.requests[0].kind == &"dialogue" \
-		and f.director.contexts[0].player == player,
-		"dialogue submits its resource, provider, and explicit player")
+		and f.director.contexts[0].player == player and f.director.contexts[0].source == speaker \
+		and bool(f.director.contexts[0].parameters.face_source) \
+		and f.director.contexts[0].parameters.camera_cues == {"merchant": ^"../../CameraTarget"} \
+		and f.director.contexts[0].parameters.seat_cues == {"commissioner": [^"../../CommissionerSeat"]},
+		"dialogue converts host-authored cue paths for its nested UI provider")
+	f.director.requests[0]._settle(&"completed")
+	f.runner.advance(0.0)
+	await _dispose(f)
+
+	var provider_action := RunProviderAction.new()
+	provider_action.target_path = ^"ShopProvider"
+	provider_action.player_path = ^"Player"
+	provider_action.request_kind = RunProviderAction.RequestKind.SHOP
+	provider_action.parameters = {"browse_only": true}
+	f = _fixture(provider_action)
+	var provider := ProviderProbe.new()
+	provider.name = "ShopProvider"
+	f.host.add_child(provider)
+	player = Node3D.new()
+	player.name = "Player"
+	f.host.add_child(player)
+	f.runner.advance(0.0)
+	check(f.director.requests[0].kind == &"shop" \
+		and f.director.contexts[0].player == player \
+		and f.director.contexts[0].target == provider \
+		and bool(f.director.contexts[0].parameters.browse_only) \
+		and not f.director.contexts[0].parameters.has("mode"),
+		"RunProviderAction authors a browse-only shop request entirely in the inspector")
 	f.director.requests[0]._settle(&"completed")
 	f.runner.advance(0.0)
 	await _dispose(f)
@@ -248,11 +296,13 @@ func _test_audio_and_transition_actions() -> void:
 
 	var change := ChangeSceneAction.new()
 	change.scene_path = "res://tests/scene_transition_target.tscn"
+	change.return_control_on_failure = true
 	f = _fixture(change)
 	f.runner.advance(0.0)
 	check(f.director.requests[0].kind == &"transition" \
-		and f.director.contexts[0].parameters.path == change.scene_path,
-		"change-scene submits the authored transition path")
+		and f.director.contexts[0].parameters.path == change.scene_path \
+		and bool(f.director.contexts[0].parameters.return_control_on_failure),
+		"change-scene submits the authored transition path and failure-control policy")
 	f.director.requests[0]._settle(&"failed", &"prepare_failed")
 	f.runner.advance(0.0)
 	check(not f.director.errors.is_empty(), "transition failure reaches the event failure policy")

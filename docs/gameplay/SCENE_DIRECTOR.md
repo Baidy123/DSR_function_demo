@@ -22,7 +22,9 @@
 
 ## 开场接线
 
-`Opening` 节点负责阶段、交互范围与目标提示。剧情文本保存于 `resources/dialogue/opening.dialogue`。对话中的 `[#camera=booth]` 和 `[#camera=merchant]` 通过 `camera_cues` 选择镜头目标，镜头是对话的子请求。镜头返回后显示当前页回复。对话记录保留台词、内心独白和已选回复。
+`Opening` 节点只负责阶段、交互范围、目标提示和本场机械适配。跨节点顺序保存在外景或酒馆 **SceneDirector → Event Sequences**：外景负责到店与切场景，酒馆负责酒保、访客、门帘、大姐头、商人、送货和装备。剧情文本保存于 `resources/dialogue/opening.dialogue`。对话中的 `[#camera=booth]` 和 `[#camera=merchant]` 由对应 `DialogueAction → Camera Cues` 选择镜头目标；`sit` 标签同理由 `Seat Cues` 选择座位。镜头返回后显示当前页回复。对话记录保留台词、内心独白和已选回复。
+
+每个类型化事件结束时，运行器按稳定 ID 报告 completed、failed 或 cancelled。开场在提交前检查本阶段全部事件是否可接收；失败或配置不可用时归还交互并保留目标提示。外景 `opening_scene_transition` 的加载失败会重置该事件，再次按 E 重试同一检查器目标；成功切场时旧场景的 `scene_interrupted` 取消只负责卸载，不会在旧节点重启事件。
 
 门帘默认有物理阻挡。开场敲隔断后，导演授权玩家穿过门帘，之后可双向感应开合。访客出卡座由演出短暂开帘，随后用后台移动请求沿路线走到酒馆正门再隐藏。直接 F6 运行酒馆时可在门帘前按 E 授权通行。
 
@@ -32,7 +34,7 @@
 
 对白的 `sit` 标签向 SceneDirector 提交以座位为目标的 `script` 子请求。座位执行走位、落座姿态和离席。脚本将玩家直接置于指定空座，可通行时保留走近演出。剧情离席检查站立落脚点并走出通道。商人对话绑定其正对面的座位。NPC 路线可在抵达后向导演请求座位或活动作为子动作。布景、座位和路线的编辑步骤见[酒馆编辑与调试](TAVERN_AUTHORING.md)。
 
-`shop` 请求传入 `browse_only = true` 时，面板禁用购买按钮，`ShopController.purchase()` 同时拒绝交易。目录关闭后继续价格对话和交付。伙计以 `script` 子请求到桌前，放下箱子后立即提交后台离场请求，商人继续交付对白。装备由 `Opening/EquipmentGrant` 在导演批准的子请求中发放，开场收到完成结果后继续原流程。大姐头和商人的位置直接保存在主场景，`keep_authored_position` 使阶段刷新继续使用保存的位置。
+`shop` 请求传入 `browse_only = true` 时，面板禁用购买按钮，`ShopController.purchase()` 同时拒绝交易。`opening_merchant_catalog` 在目录关闭后继续价格对话并触发送货。伙计的到桌、清桌边与员工门离场分别由 `MoveActorAction` 使用手摆目标或 `TavernRoute`；商人交付对白可与后台离场事件并行。`opening_delivery_equipment` 等待对白完成和伙计清出桌边两个信号，再通过 `GiveEquipmentAction` 调用 `Opening/EquipmentGrant`。大姐头和商人的位置直接保存在主场景，`keep_authored_position` 使阶段刷新继续使用保存的位置。
 
 两场通过 GameState 的 `opening_active` / `opening_complete` 交接。直接 F6 运行酒馆或完成开场后返程，使用酒馆的常规任务和商店入口。首次流程的付款、人物原则、接入制度和供应信息旗标由对应选项设置，活跃于本次运行。
 

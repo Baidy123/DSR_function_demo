@@ -46,6 +46,7 @@ var _vanish_at_end := false
 var _loop_wait := 0.0
 var _route_gate: TavernStaffDoor
 var _route_finish_action: Dictionary = {}
+var _original_process_mode := -1
 var _floor_plane := Plane(Vector3.UP, 0.0)
 var _detour_blocked_time := 0.0
 
@@ -233,8 +234,9 @@ func begin_scene_action(request: SceneRequest) -> void:
 	if request.parameters.has("points"):
 		authored = null
 	var mode := authored.finish_mode if authored != null else TavernRoute.Finish.STAY
-	var patrolling: bool = request.parameters.get("patrol", mode == TavernRoute.Finish.LOOP)
-	var vanish: bool = not patrolling and request.parameters.get("vanish_at_end", mode == TavernRoute.Finish.DESPAWN)
+	var force_vanish: bool = request.parameters.get("vanish_at_end", false)
+	var patrolling: bool = false if force_vanish else request.parameters.get("patrol", mode == TavernRoute.Finish.LOOP)
+	var vanish: bool = force_vanish or (not patrolling and mode == TavernRoute.Finish.DESPAWN)
 	var finish_action := authored.finish_action() if authored != null and not patrolling and not vanish else {}
 	if not finish_action.is_empty() and not is_instance_valid(finish_action.target):
 		request.fail("route_finish_target_missing")
@@ -249,6 +251,9 @@ func begin_scene_action(request: SceneRequest) -> void:
 	_points = points
 	_route_gate = authored.exit_gate() if authored != null and _vanish_at_end else null
 	_route_finish_action = finish_action
+	if request.parameters.get("process_while_paused", false):
+		_original_process_mode = process_mode
+		process_mode = Node.PROCESS_MODE_ALWAYS
 	_detour.clear()
 	_index = 0
 	_delay = 0
@@ -376,6 +381,9 @@ func _stop() -> void:
 		_route_gate.close_for(self)
 	_route_gate = null
 	_route_finish_action.clear()
+	if _original_process_mode >= 0:
+		process_mode = _original_process_mode as ProcessMode
+		_original_process_mode = -1
 	set_physics_process(false)
 	_request = null
 	_detour.clear()

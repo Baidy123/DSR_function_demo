@@ -1,6 +1,8 @@
 class_name SceneEventRunner
 extends RefCounted
 
+signal event_finished(event_id: StringName, status: StringName, reason: StringName)
+
 const Subscription = preload("res://scripts/systems/scene_event_subscription.gd")
 
 var _director: Node
@@ -44,6 +46,7 @@ func configure(definitions: Array) -> void:
 			"context": null,
 			"subscriptions": [],
 			"error": "",
+			"terminal_generation": -1,
 		}
 		_entries.append(entry)
 		_validate_and_subscribe(entry)
@@ -59,6 +62,24 @@ func trigger_event(event_id: StringName) -> bool:
 			return false
 		entry.manual_requested = true
 		return true
+	return false
+
+
+func can_accept_event(event_id: StringName) -> bool:
+	for entry in _entries:
+		var definition: SceneEventDefinition = entry.definition
+		if definition.event_id == event_id:
+			return definition.enabled and not entry.fired and not entry.active and entry.error.is_empty()
+	return false
+
+
+func reset_event(event_id: StringName) -> bool:
+	for entry in _entries:
+		var definition: SceneEventDefinition = entry.definition
+		if definition.event_id != event_id:
+			continue
+		_reset_entry(entry, &"event_reset")
+		return entry.error.is_empty()
 	return false
 
 
@@ -81,25 +102,18 @@ func reset_region() -> void:
 		var definition: SceneEventDefinition = entry.definition
 		if definition.scope != SceneEventDefinition.Scope.REGION:
 			continue
-		_cancel_context(entry, &"region_reset")
-		_clear_subscriptions(entry)
-		entry.generation += 1
-		entry.received.clear()
-		entry.manual_requested = false
-		entry.fired = false
-		entry.active = false
-		entry.index = 0
-		entry.context = null
-		entry.error = ""
-		_validate_and_subscribe(entry)
+		_reset_entry(entry, &"region_reset")
 
 
 func cancel_all(reason: StringName = &"event_runner_cancelled") -> void:
 	for entry in _entries:
+		var was_active: bool = entry.active
 		_cancel_context(entry, reason)
 		entry.active = false
 		entry.fired = true
 		_clear_subscriptions(entry)
+		if was_active:
+			_emit_terminal(entry, &"cancelled", reason)
 
 
 func release() -> void:
@@ -185,6 +199,7 @@ func _step(entry: Dictionary, delta: float) -> void:
 	var definition: SceneEventDefinition = entry.definition
 	if entry.index >= definition.actions.size():
 		entry.active = false
+		_emit_terminal(entry, &"completed", &"")
 		return
 	var action: SceneAction = definition.actions[entry.index]
 	if action == null:
@@ -213,10 +228,38 @@ func _finish_action(entry: Dictionary, status: StringName, reason: StringName) -
 			entry.index += 1
 		else:
 			entry.active = false
+			_emit_terminal(entry, &"failed", reason)
 	else:
 		entry.active = false
+		_emit_terminal(entry, status, reason)
 	if entry.index >= definition.actions.size():
 		entry.active = false
+		_emit_terminal(entry, &"completed", &"")
+
+
+func _reset_entry(entry: Dictionary, reason: StringName) -> void:
+	var was_active: bool = entry.active
+	_cancel_context(entry, reason)
+	_clear_subscriptions(entry)
+	if was_active:
+		_emit_terminal(entry, &"cancelled", reason)
+	entry.generation += 1
+	entry.received.clear()
+	entry.manual_requested = false
+	entry.fired = false
+	entry.active = false
+	entry.index = 0
+	entry.context = null
+	entry.error = ""
+	_validate_and_subscribe(entry)
+
+
+func _emit_terminal(entry: Dictionary, status: StringName, reason: StringName) -> void:
+	var generation: int = entry.generation
+	if entry.get("terminal_generation", -1) == generation:
+		return
+	entry.terminal_generation = generation
+	event_finished.emit(entry.definition.event_id, status, reason)
 
 
 func _cancel_context(entry: Dictionary, reason: StringName) -> void:

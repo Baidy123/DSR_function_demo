@@ -4,6 +4,7 @@ extends SceneAction
 
 @export_file("*.tscn") var scene_path := ""
 @export var mode: StringName
+@export var return_control_on_failure := false
 
 
 func begin(context: SceneActionContext) -> void:
@@ -13,4 +14,6 @@ func begin(context: SceneActionContext) -> void:
 	var parameters := {"path": scene_path}
 	if not mode.is_empty():
 		parameters["mode"] = mode
+	if return_control_on_failure:
+		parameters["return_control_on_failure"] = true
 	context.request(&"transition", null, parameters)

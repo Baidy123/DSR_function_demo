@@ -32,6 +32,7 @@ var _completion_executing := false
 var _request_controls: Dictionary = {}
 signal state_changed(value: StringName)
 signal action_failed(rule: String, reason: String)
+signal typed_event_finished(event_id: StringName, status: StringName, reason: StringName)
 var state: StringName = &"preparing"
 ## Optional loading adapter; return an Error, never report success before accepting the load.
 var scene_loader: Callable
@@ -132,6 +133,7 @@ func initialize() -> void:
 	_flows = Flows.new(self, _host)
 	_flows.configure(_bindings.get("rules", []))
 	_events = Events.new(self, _host)
+	_events.event_finished.connect(_on_typed_event_finished)
 	_events.configure(_bindings.get("events", []))
 	if _waves != null: _waves.prepare_events()
 	_pause_menu = PauseMenuScene.instantiate()
@@ -183,6 +185,15 @@ func can_run_actions() -> bool:
 
 func trigger_event(event_id: StringName) -> bool:
 	return _events != null and _events.trigger_event(event_id)
+
+func can_accept_event(event_id: StringName) -> bool:
+	return _events != null and _events.can_accept_event(event_id)
+
+func reset_event(event_id: StringName) -> bool:
+	return _events != null and _events.reset_event(event_id)
+
+func _on_typed_event_finished(event_id: StringName, status: StringName, reason: StringName) -> void:
+	typed_event_finished.emit(event_id, status, reason)
 
 func can_save_game() -> bool:
 	var service := get_node_or_null("/root/CampaignSaveService")

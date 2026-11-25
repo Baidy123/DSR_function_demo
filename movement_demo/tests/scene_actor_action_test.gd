@@ -148,6 +148,41 @@ func _test_move_and_route(f: Dictionary) -> void:
 		"MoveActorAction preserves the TavernRoute DESPAWN finish mode by default")
 	f.npc.set_physical_presence(true)
 
+	var loop_route := TavernRoute.new()
+	loop_route.name = "LoopRoute"
+	loop_route.finish_mode = TavernRoute.Finish.LOOP
+	var loop_marker := Marker3D.new()
+	loop_marker.position = Vector3(2.7, 0.0, 1.0)
+	loop_route.add_child(loop_marker)
+	f.scene.add_child(loop_route)
+	move = MoveActorAction.new()
+	move.actor_path = ^"NPC"
+	move.route_path = ^"LoopRoute"
+	move.vanish_at_end = true
+	context = _context(f, move, &"force_vanish_loop_route")
+	move.begin(context)
+	check(await _wait_terminal(context) and context.status == &"completed" and not f.npc.visible,
+		"explicit vanish_at_end overrides a TavernRoute LOOP finish mode")
+	f.npc.set_physical_presence(true)
+
+	var paused_target := Marker3D.new()
+	paused_target.name = "PausedTarget"
+	paused_target.position = Vector3(3.0, 0.0, 1.0)
+	f.scene.add_child(paused_target)
+	move = MoveActorAction.new()
+	move.actor_path = ^"NPC"
+	move.target_path = ^"PausedTarget"
+	move.process_while_paused = true
+	context = _context(f, move, &"move_during_camera")
+	move.begin(context)
+	paused = true
+	check(await _wait_terminal(context) and context.status == &"completed" \
+		and f.npc.global_position.distance_to(paused_target.global_position) < 0.2,
+		"MoveActorAction can keep directed NPC motion running during a paused camera")
+	paused = false
+	check(f.npc.process_mode == Node.PROCESS_MODE_INHERIT,
+		"paused directed movement restores the NPC process mode")
+
 	var empty := TavernRoute.new()
 	empty.name = "EmptyRoute"
 	f.scene.add_child(empty)
@@ -177,14 +212,20 @@ func _test_seat_and_visibility(f: Dictionary) -> void:
 	seating.begin(context)
 	check(await _wait_terminal(context) and context.status == &"completed" \
 		and f.npc.current_seat() == seat, "SeatActorAction seats a TavernNPC through TavernSeat")
+	var other_seat := TavernSeat.new()
+	other_seat.name = "OtherSeat"
+	other_seat.position = seat.position + Vector3(0.3, 0.0, 0.0)
+	f.scene.add_child(other_seat)
+	await process_frame
 	seating = SeatActorAction.new()
 	seating.actor_path = ^"NPC"
-	seating.seat_path = ^"Seat"
+	seating.seat_path = ^"OtherSeat"
 	seating.mode = SeatActorAction.Mode.LEAVE
 	context = _context(f, seating, &"leave")
 	seating.begin(context)
 	check(await _wait_terminal(context) and context.status == &"completed" \
-		and f.npc.current_seat() == null, "SeatActorAction releases a TavernNPC from its seat")
+		and f.npc.current_seat() == null,
+		"SeatActorAction releases the actor's actual seat even when the authored fallback differs")
 
 	var visibility := SetActorVisibleAction.new()
 	visibility.actor_path = ^"NPC"

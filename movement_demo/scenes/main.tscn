@@ -55,8 +55,295 @@
 [ext_resource type="Script" uid="uid://5blh8n416pfe" path="res://scripts/systems/scene_events/actions/advanced/run_provider_action.gd" id="run_provider_action"]
 [ext_resource type="Script" uid="uid://chguup2bf5sgv" path="res://scripts/systems/scene_event_filter.gd" id="scene_event_filter"]
 [ext_resource type="Script" uid="uid://2h66nl7yf0s2" path="res://scripts/systems/scene_events/actions/presentation/dialogue_action.gd" id="dialogue_action"]
+[ext_resource type="Script" uid="uid://dsbymt72fs5kh" path="res://scripts/systems/scene_events/actions/presentation/camera_action.gd" id="camera_action"]
 [ext_resource type="Script" uid="uid://dihdcynne8e1t" path="res://scripts/systems/scene_events/actions/actor/seat_actor_action.gd" id="seat_actor_action"]
 [ext_resource type="Resource" path="res://resources/dialogue/opening.dialogue" id="opening_dialogue"]
+
+[sub_resource type="Resource" id="SceneEventTrigger_bartender_requested"]
+script = ExtResource("scene_event_trigger")
+source_path = NodePath("../Opening")
+signal_name = &"bartender_event_requested"
+
+[sub_resource type="Resource" id="SceneAction_bartender_dialogue"]
+script = ExtResource("dialogue_action")
+target_path = NodePath("../DialogueUI")
+player_path = NodePath("../Player")
+source_path = NodePath("../BarEnvironment/BarCounter/Bartender")
+dialogue = ExtResource("opening_dialogue")
+start = "bartender"
+face_source = true
+camera_cues = {
+"booth": NodePath("../BarEnvironment/Booths/Booth4/Curtain")
+}
+
+[sub_resource type="Resource" id="SceneAction_finish_bartender"]
+script = ExtResource("run_provider_action")
+target_path = NodePath("../Opening")
+parameters = {
+"opening_command": &"finish_bartender"
+}
+
+[sub_resource type="Resource" id="SceneEvent_opening_bartender_guidance"]
+script = ExtResource("scene_event_definition")
+event_id = &"opening_bartender_guidance"
+label = "向酒保打听并指向门帘卡座"
+triggers = Array[ExtResource("scene_event_trigger")]([SubResource("SceneEventTrigger_bartender_requested")])
+actions = Array[ExtResource("scene_action_base")]([SubResource("SceneAction_bartender_dialogue"), SubResource("SceneAction_finish_bartender")])
+
+[sub_resource type="Resource" id="SceneEventTrigger_visitor_requested"]
+script = ExtResource("scene_event_trigger")
+source_path = NodePath("../Opening")
+signal_name = &"visitor_event_requested"
+
+[sub_resource type="Resource" id="SceneEventTrigger_visitor_ready"]
+script = ExtResource("scene_event_trigger")
+source_path = NodePath("../Opening")
+signal_name = &"visitor_ready"
+
+[sub_resource type="Resource" id="SceneAction_open_visitor_curtain"]
+script = ExtResource("run_provider_action")
+target_path = NodePath("../Opening")
+parameters = {
+"opening_command": &"open_visitor_curtain"
+}
+
+[sub_resource type="Resource" id="SceneAction_move_visitor_route"]
+script = ExtResource("move_actor_action")
+actor_path = NodePath("../Visitor")
+route_path = NodePath("../OpeningMarkers/VisitorCurtainRoute")
+process_while_paused = true
+
+[sub_resource type="Resource" id="SceneAction_notify_visitor_motion"]
+script = ExtResource("run_provider_action")
+target_path = NodePath("../Opening")
+parameters = {
+"opening_command": &"visitor_motion_finished"
+}
+
+[sub_resource type="Resource" id="SceneEvent_opening_visitor_entrance"]
+script = ExtResource("scene_event_definition")
+event_id = &"opening_visitor_entrance"
+label = "访客掀帘离开卡座"
+triggers = Array[ExtResource("scene_event_trigger")]([SubResource("SceneEventTrigger_visitor_requested")])
+actions = Array[ExtResource("scene_action_base")]([SubResource("SceneAction_open_visitor_curtain")])
+
+[sub_resource type="Resource" id="SceneEvent_opening_visitor_motion"]
+script = ExtResource("scene_event_definition")
+event_id = &"opening_visitor_motion"
+label = "访客在镜头展示期间走出门帘"
+triggers = Array[ExtResource("scene_event_trigger")]([SubResource("SceneEventTrigger_visitor_ready")])
+actions = Array[ExtResource("scene_action_base")]([SubResource("SceneAction_move_visitor_route"), SubResource("SceneAction_notify_visitor_motion")])
+
+[sub_resource type="Resource" id="SceneAction_camera_visitor_curtain"]
+script = ExtResource("camera_action")
+target_path = NodePath("../BarEnvironment/Booths/Booth4/Curtain")
+move_seconds = 0.45
+hold_seconds = 0.78
+return_seconds = 0.45
+camera_size = 8.0
+
+[sub_resource type="Resource" id="SceneAction_notify_visitor_camera"]
+script = ExtResource("run_provider_action")
+target_path = NodePath("../Opening")
+parameters = {
+"opening_command": &"visitor_camera_finished"
+}
+
+[sub_resource type="Resource" id="SceneEvent_opening_visitor_camera"]
+script = ExtResource("scene_event_definition")
+event_id = &"opening_visitor_camera"
+label = "镜头展示访客离开门帘"
+triggers = Array[ExtResource("scene_event_trigger")]([SubResource("SceneEventTrigger_visitor_ready")])
+actions = Array[ExtResource("scene_action_base")]([SubResource("SceneAction_camera_visitor_curtain"), SubResource("SceneAction_notify_visitor_camera")])
+
+[sub_resource type="Resource" id="SceneEventTrigger_visitor_motion_finished"]
+script = ExtResource("scene_event_trigger")
+source_path = NodePath("../Opening")
+signal_name = &"visitor_motion_finished"
+
+[sub_resource type="Resource" id="SceneEventTrigger_visitor_camera_finished"]
+script = ExtResource("scene_event_trigger")
+source_path = NodePath("../Opening")
+signal_name = &"visitor_camera_finished"
+
+[sub_resource type="Resource" id="SceneAction_visitor_dialogue"]
+script = ExtResource("dialogue_action")
+target_path = NodePath("../DialogueUI")
+player_path = NodePath("../Player")
+source_path = NodePath("../Visitor")
+dialogue = ExtResource("opening_dialogue")
+start = "visitor"
+face_source = true
+
+[sub_resource type="Resource" id="SceneAction_close_visitor_curtain"]
+script = ExtResource("run_provider_action")
+target_path = NodePath("../Opening")
+parameters = {
+"opening_command": &"close_visitor_curtain"
+}
+
+[sub_resource type="Resource" id="SceneAction_finish_visitor_dialogue"]
+script = ExtResource("run_provider_action")
+target_path = NodePath("../Opening")
+parameters = {
+"opening_command": &"finish_visitor_dialogue"
+}
+
+[sub_resource type="Resource" id="SceneEvent_opening_visitor_dialogue"]
+script = ExtResource("scene_event_definition")
+event_id = &"opening_visitor_dialogue"
+label = "镜头与移动结束后询问访客"
+combination = 1
+triggers = Array[ExtResource("scene_event_trigger")]([SubResource("SceneEventTrigger_visitor_motion_finished"), SubResource("SceneEventTrigger_visitor_camera_finished")])
+actions = Array[ExtResource("scene_action_base")]([SubResource("SceneAction_visitor_dialogue"), SubResource("SceneAction_close_visitor_curtain"), SubResource("SceneAction_finish_visitor_dialogue")])
+
+[sub_resource type="Resource" id="SceneEventTrigger_visitor_dialogue_finished"]
+script = ExtResource("scene_event_trigger")
+source_path = NodePath("../Opening")
+signal_name = &"visitor_dialogue_finished"
+
+[sub_resource type="Resource" id="SceneAction_depart_visitor"]
+script = ExtResource("move_actor_action")
+actor_path = NodePath("../Visitor")
+route_path = NodePath("../TavernRoutes/VisitorToEntrance")
+
+[sub_resource type="Resource" id="SceneEvent_opening_visitor_departure"]
+script = ExtResource("scene_event_definition")
+event_id = &"opening_visitor_departure"
+label = "访客沿正门路线离开"
+triggers = Array[ExtResource("scene_event_trigger")]([SubResource("SceneEventTrigger_visitor_dialogue_finished")])
+actions = Array[ExtResource("scene_action_base")]([SubResource("SceneAction_depart_visitor")])
+
+[sub_resource type="Resource" id="SceneEventTrigger_curtain_requested"]
+script = ExtResource("scene_event_trigger")
+source_path = NodePath("../Opening")
+signal_name = &"curtain_event_requested"
+
+[sub_resource type="Resource" id="SceneAction_knock_dialogue"]
+script = ExtResource("dialogue_action")
+target_path = NodePath("../DialogueUI")
+player_path = NodePath("../Player")
+source_path = NodePath("../NPC")
+dialogue = ExtResource("opening_dialogue")
+start = "knock"
+face_source = true
+
+[sub_resource type="Resource" id="SceneAction_enter_booth"]
+script = ExtResource("run_provider_action")
+target_path = NodePath("../Opening")
+parameters = {
+"opening_command": &"enter_booth"
+}
+
+[sub_resource type="Resource" id="SceneEvent_opening_curtain_entry"]
+script = ExtResource("scene_event_definition")
+event_id = &"opening_curtain_entry"
+label = "敲门帘并进入大姐头卡座"
+triggers = Array[ExtResource("scene_event_trigger")]([SubResource("SceneEventTrigger_curtain_requested")])
+actions = Array[ExtResource("scene_action_base")]([SubResource("SceneAction_knock_dialogue"), SubResource("SceneAction_enter_booth")])
+
+[sub_resource type="Resource" id="SceneEventTrigger_commissioner_requested"]
+script = ExtResource("scene_event_trigger")
+source_path = NodePath("../Opening")
+signal_name = &"commissioner_event_requested"
+
+[sub_resource type="Resource" id="SceneAction_commissioner_dialogue"]
+script = ExtResource("dialogue_action")
+target_path = NodePath("../DialogueUI")
+player_path = NodePath("../Player")
+source_path = NodePath("../NPC")
+dialogue = ExtResource("opening_dialogue")
+start = "commissioner"
+face_source = true
+camera_cues = {
+"merchant": NodePath("../RewardNPC")
+}
+seat_cues = {
+"commissioner": [NodePath("../BarEnvironment/Booths/Booth4/Seating/Seats/LeftRear")]
+}
+
+[sub_resource type="Resource" id="SceneAction_leave_commissioner_seat"]
+script = ExtResource("seat_actor_action")
+actor_path = NodePath("../Player")
+seat_path = NodePath("../BarEnvironment/Booths/Booth4/Seating/Seats/LeftRear")
+mode = 1
+
+[sub_resource type="Resource" id="SceneAction_finish_commissioner"]
+script = ExtResource("run_provider_action")
+target_path = NodePath("../Opening")
+parameters = {
+"opening_command": &"finish_commissioner"
+}
+
+[sub_resource type="Resource" id="SceneEvent_opening_commissioner_seating"]
+script = ExtResource("scene_event_definition")
+event_id = &"opening_commissioner_seating"
+label = "大姐头委托、入座和离席"
+triggers = Array[ExtResource("scene_event_trigger")]([SubResource("SceneEventTrigger_commissioner_requested")])
+actions = Array[ExtResource("scene_action_base")]([SubResource("SceneAction_commissioner_dialogue"), SubResource("SceneAction_leave_commissioner_seat"), SubResource("SceneAction_finish_commissioner")])
+
+[sub_resource type="Resource" id="SceneEventTrigger_merchant_requested"]
+script = ExtResource("scene_event_trigger")
+source_path = NodePath("../Opening")
+signal_name = &"merchant_event_requested"
+
+[sub_resource type="Resource" id="SceneAction_merchant_dialogue"]
+script = ExtResource("dialogue_action")
+target_path = NodePath("../DialogueUI")
+player_path = NodePath("../Player")
+source_path = NodePath("../RewardNPC")
+dialogue = ExtResource("opening_dialogue")
+start = "merchant"
+face_source = true
+seat_cues = {
+"merchant": [NodePath("../BarEnvironment/SouthLounge/Tables/Setting1/SouthSofa/Seats/Center")]
+}
+
+[sub_resource type="Resource" id="SceneAction_enter_catalog"]
+script = ExtResource("run_provider_action")
+target_path = NodePath("../Opening")
+parameters = {
+"opening_command": &"enter_catalog"
+}
+
+[sub_resource type="Resource" id="SceneAction_browse_catalog"]
+script = ExtResource("run_provider_action")
+target_path = NodePath("../ShopController")
+player_path = NodePath("../Player")
+request_kind = 1
+parameters = {
+"browse_only": true
+}
+
+[sub_resource type="Resource" id="SceneAction_enter_delivery"]
+script = ExtResource("run_provider_action")
+target_path = NodePath("../Opening")
+parameters = {
+"opening_command": &"enter_delivery"
+}
+
+[sub_resource type="Resource" id="SceneAction_prices_dialogue"]
+script = ExtResource("dialogue_action")
+target_path = NodePath("../DialogueUI")
+player_path = NodePath("../Player")
+source_path = NodePath("../RewardNPC")
+dialogue = ExtResource("opening_dialogue")
+start = "prices"
+face_source = true
+
+[sub_resource type="Resource" id="SceneAction_request_delivery"]
+script = ExtResource("run_provider_action")
+target_path = NodePath("../Opening")
+parameters = {
+"opening_command": &"request_delivery"
+}
+
+[sub_resource type="Resource" id="SceneEvent_opening_merchant_catalog"]
+script = ExtResource("scene_event_definition")
+event_id = &"opening_merchant_catalog"
+label = "商人介绍、只读目录和价格对话"
+triggers = Array[ExtResource("scene_event_trigger")]([SubResource("SceneEventTrigger_merchant_requested")])
+actions = Array[ExtResource("scene_action_base")]([SubResource("SceneAction_merchant_dialogue"), SubResource("SceneAction_enter_catalog"), SubResource("SceneAction_browse_catalog"), SubResource("SceneAction_enter_delivery"), SubResource("SceneAction_prices_dialogue"), SubResource("SceneAction_request_delivery")])
 
 [sub_resource type="Resource" id="SceneEventTrigger_delivery_requested"]
 script = ExtResource("scene_event_trigger")
@@ -93,8 +380,10 @@ parameters = {
 script = ExtResource("dialogue_action")
 target_path = NodePath("../DialogueUI")
 player_path = NodePath("../Player")
+source_path = NodePath("../RewardNPC")
 dialogue = ExtResource("opening_dialogue")
 start = "delivery"
+face_source = true
 
 [sub_resource type="Resource" id="SceneEvent_opening_delivery_arrival"]
 script = ExtResource("scene_event_definition")
@@ -1169,7 +1458,7 @@ rotation_degrees = Vector3(0, 180, 0)
 [editable path="Camera3D"]
 
 [node name="SceneDirector" parent="." instance=ExtResource("director_authority")]
-event_sequences = Array[ExtResource("scene_event_definition")]([SubResource("SceneEvent_opening_delivery_arrival"), SubResource("SceneEvent_opening_runner_departure"), SubResource("SceneEvent_opening_delivery_equipment")])
+event_sequences = Array[ExtResource("scene_event_definition")]([SubResource("SceneEvent_opening_bartender_guidance"), SubResource("SceneEvent_opening_visitor_entrance"), SubResource("SceneEvent_opening_visitor_motion"), SubResource("SceneEvent_opening_visitor_camera"), SubResource("SceneEvent_opening_visitor_dialogue"), SubResource("SceneEvent_opening_visitor_departure"), SubResource("SceneEvent_opening_curtain_entry"), SubResource("SceneEvent_opening_commissioner_seating"), SubResource("SceneEvent_opening_merchant_catalog"), SubResource("SceneEvent_opening_delivery_arrival"), SubResource("SceneEvent_opening_runner_departure"), SubResource("SceneEvent_opening_delivery_equipment")])
 auto_start_on_enter = false
 complete_when_all_waves_cleared = false
 result_view_path = NodePath("")
@@ -1212,6 +1501,15 @@ route_path = NodePath("../TavernRoutes/RunnerToStaffDoor")
 script = ExtResource("opening")
 
 [node name="EquipmentGrant" parent="Opening" instance=ExtResource("opening_equipment_grant")]
+
+[node name="OpeningMarkers" type="Node3D" parent="."]
+
+[node name="VisitorCurtainRoute" type="Node3D" parent="OpeningMarkers"]
+script = ExtResource("tavern_route")
+
+[node name="VisitorCurtainNear" type="Marker3D" parent="OpeningMarkers/VisitorCurtainRoute"]
+
+[node name="VisitorCurtainFar" type="Marker3D" parent="OpeningMarkers/VisitorCurtainRoute"]
 
 [node name="TavernSeating" type="Node3D" parent="."]
 script = ExtResource("seating")
