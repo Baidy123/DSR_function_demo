@@ -155,6 +155,37 @@ SceneDirector
 
 分类用于检查器查找和文档组织，不改变调度优先级。
 
+首批核心动作的分类总览如下。这里展示稳定的主干类型；后文列出的扩展动作继续归入对应类别，不需要回到单一大枚举中堆叠字段。
+
+```text
+SceneAction
+├─ Flow
+│  ├─ WaitAction
+│  ├─ WaitSignalAction
+│  └─ CompleteSceneAction
+├─ Combat
+│  ├─ SpawnWaveAction
+│  └─ WaitWaveClearedAction
+├─ Presentation
+│  ├─ CameraAction
+│  ├─ DialogueAction
+│  └─ PlayAudioAction
+├─ Actor
+│  ├─ MoveActorAction
+│  ├─ SeatActorAction
+│  └─ SetActorVisibleAction
+├─ World
+│  ├─ SetDoorAction
+│  └─ CallInteractionAction
+├─ State
+│  ├─ SetFlagAction
+│  ├─ GiveEquipmentAction
+│  └─ UpdateQuestAction
+└─ Transition
+   ├─ ChangeSceneAction
+   └─ RestartSceneAction
+```
+
 #### 流程 `Flow`
 
 - 等待时间；
