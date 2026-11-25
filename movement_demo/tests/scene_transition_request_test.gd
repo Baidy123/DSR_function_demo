@@ -104,6 +104,21 @@ func _review_cancellation_and_condition() -> void:
 	f.scene.free()
 	current_scene = null
 	await process_frame
+	var typed := fixture()
+	typed.director.scene_loader = func(_path: String, _reload: bool) -> Error: return ERR_CANT_OPEN
+	var typed_action := ChangeSceneAction.new()
+	typed_action.scene_path = "res://tests/scene_transition_target.tscn"
+	var definition := SceneEventDefinition.new()
+	definition.event_id = &"typed_transition"
+	var typed_context := SceneActionContext.new().configure(
+		typed.director, typed.scene, definition, typed_action, 1, 0)
+	typed_action.begin(typed_context)
+	for _frame in range(5): await process_frame
+	check(typed_context.status == &"failed",
+		"typed ChangeSceneAction keeps the director's prepare failure boundary")
+	typed.scene.free()
+	current_scene = null
+	await process_frame
 
 func _run() -> void:
 	if OS.get_cmdline_user_args().has("--review-only"):

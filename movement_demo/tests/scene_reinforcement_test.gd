@@ -81,6 +81,7 @@ func _run() -> void:
 	if not mouse_only:
 		await _real_spawn_barrier_and_return()
 		await _blocked_spawn()
+		await _typed_static_invalid_spawn()
 		await _direct_wave_presentation()
 		await _missing_target(false, true)
 		await _missing_target(false)
@@ -106,7 +107,8 @@ func _run() -> void:
 	quit(0 if failures == 0 else 1)
 
 
-func _fixture(blocked: bool = false, bind_target: bool = true, direct_wave: bool = false) -> void:
+func _fixture(blocked: bool = false, bind_target: bool = true, direct_wave: bool = false,
+		typed_wave: bool = false, static_invalid: bool = false) -> void:
 	ready_observations.clear()
 	public_observations.clear()
 	started_observations.clear()
@@ -197,6 +199,23 @@ func _fixture(blocked: bool = false, bind_target: bool = true, direct_wave: bool
 	wait_action.seconds = 5.0
 	wait_rule.actions.append(wait_action)
 	var rules: Array[SceneFlowRule] = [delayed_rule, wait_rule, request_rule]
+	var typed_events: Array[SceneEventDefinition] = []
+	if typed_wave:
+		rules = [delayed_rule, wait_rule]
+		var definition := SceneEventDefinition.new()
+		definition.event_id = &"typed_reinforcement"
+		definition.label = "Typed reinforcement"
+		definition.start_mode = SceneEventDefinition.StartMode.TRIGGERS
+		var event_trigger := SceneEventTrigger.new()
+		event_trigger.source_path = ^"../Events"
+		event_trigger.signal_name = &"reinforce"
+		definition.triggers = [event_trigger]
+		var spawn_action := SpawnWaveAction.new()
+		spawn_action.wave_path = ^"Reinforcement"
+		spawn_action.present_spawn = true
+		spawn_action.presentation_target_path = ^"../CameraFocus"
+		definition.actions = [spawn_action]
+		typed_events = [definition]
 	if direct_wave:
 		# Editor-facing Wave route: no SceneFlowRule or REQUEST_WAVE can arm this camera.
 		rules.clear()
@@ -213,6 +232,7 @@ func _fixture(blocked: bool = false, bind_target: bool = true, direct_wave: bool
 		reinforcement.set("presentation_return_seconds", 0.15)
 		reinforcement.set("presentation_size", 6.25)
 	host.set("scene_rules", rules)
+	host.set("event_sequences", typed_events)
 	reinforcement.connect("spawned", _on_public_spawned)
 	host.connect("wave_started", _on_wave_started)
 	if blocked:
@@ -226,6 +246,16 @@ func _fixture(blocked: bool = false, bind_target: bool = true, direct_wave: bool
 		shape.shape = capsule
 		blocker.add_child(shape)
 		region.add_child(blocker)
+	if static_invalid:
+		var obstacle := StaticBody3D.new()
+		obstacle.name = "StaticSpawnObstacle"
+		obstacle.position = Vector3(4.0, 0.875, -4.0)
+		var obstacle_shape := CollisionShape3D.new()
+		var obstacle_box := BoxShape3D.new()
+		obstacle_box.size = Vector3(0.8, 1.75, 0.8)
+		obstacle_shape.shape = obstacle_box
+		obstacle.add_child(obstacle_shape)
+		region.add_child(obstacle)
 	root.add_child(region)
 	current_scene = region
 	_check("real facade captures templates before runtime enemies enter the tree", ready_observations.is_empty() and (region.get("enemies") as Array).is_empty())
@@ -369,6 +399,20 @@ func _blocked_spawn() -> void:
 		_check_manual_focus(root.get_camera_3d())
 		_director().call("skip_presentation")
 		_check("skipping presentation keeps the committed reinforcement alive", not paused and source.is_current() and host.call("wave_status", reinforcement) == &"active" and (region.get("enemies") as Array).size() == 3)
+	await _cleanup()
+
+
+func _typed_static_invalid_spawn() -> void:
+	await _fixture(false, true, false, true, true)
+	events.reinforce.emit()
+	_check("typed SpawnWaveAction reports a static invalid deployment as failed",
+		await _await_wave(reinforcement, &"error"))
+	await _steps(1)
+	var snapshot: Dictionary = _director().debug_snapshot()
+	_check("static deployment failure preserves the runtime reason on the typed event",
+		"静态障碍" in String(snapshot.last_error) and not snapshot.events.errors.is_empty())
+	_check("failed typed deployment never accepts an empty camera presentation",
+		snapshot.presentation == 0 and public_observations.is_empty() and not paused)
 	await _cleanup()
 
 

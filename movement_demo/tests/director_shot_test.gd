@@ -34,10 +34,17 @@ func _run() -> void:
 	shot.enter_seconds = 0.1
 	shot.hold_seconds = 0.2
 	shot.return_seconds = 0.1
-	var authored: SceneRequest = director.request_cinematic_shot(shot)
+	var shot_action := CameraAction.new()
+	shot_action.target_path = shot.get_path()
+	shot_action.cinematic_shot = true
+	var definition := SceneEventDefinition.new()
+	definition.event_id = &"typed_shot"
+	var shot_context := SceneActionContext.new().configure(director, scene, definition, shot_action, 1, 0)
+	shot_action.begin(shot_context)
+	var authored: SceneRequest = shot_context._request
 	var camera := root.get_camera_3d()
 	_check(authored.status == &"running" and not paused and camera != player_camera,
-		"自定义机位由导演切入，并遵守不暂停的配置")
+		"类型化 CameraAction 由导演切入自定义机位，并遵守不暂停的配置")
 
 	var target := Marker3D.new()
 	scene.add_child(target)
