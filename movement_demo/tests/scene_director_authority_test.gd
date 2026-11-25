@@ -3,6 +3,9 @@ extends SceneTree
 const Director = preload("res://scripts/systems/scene_director.gd")
 const Region = preload("res://scripts/world/shooting_range.gd")
 const PlayerScene = preload("res://scenes/player/player.tscn")
+const Wave = preload("res://scripts/world/enemy_wave_definition.gd")
+const Squad = preload("res://scripts/world/squad_controller.gd")
+const Enemy = preload("res://scripts/enemy/enemy_actor.gd")
 const MAIN := "res://scenes/main.tscn"
 var checks := 0
 var failures := 0
@@ -36,6 +39,14 @@ func _run() -> void:
 	for path in [MAIN, "res://scenes/world/levels/lvl_1.tscn", "res://scenes/world/levels/lvl_2.tscn",
 			"res://scenes/world/levels/lvl_3.tscn", "res://scenes/world/levels/lvl_4.tscn", "res://scenes/world/levels/lvl_5.tscn"]:
 		var scene = load(path).instantiate()
+		var authored_host: Node = scene.get_node("SceneDirector")
+		var authored_events: Variant = authored_host.get("event_sequences")
+		check(authored_events is Array, "authored scene exposes the typed event array: " + path)
+		if path == MAIN:
+			check((authored_events as Array).size() > 0, "tavern authors its opening through typed events")
+		else:
+			check((authored_events as Array).is_empty(), "combat level keeps cross-scene events empty until authored: " + path)
+			_check_wave_hierarchy(authored_host, path)
 		root.add_child(scene)
 		current_scene = scene
 		await _settle()
@@ -52,6 +63,28 @@ func _run() -> void:
 	if OS.get_cmdline_user_args().has("--capture"): await _run_capture()
 	print("Scene director authority: %d checks; %d failures" % [checks, failures])
 	quit(0 if failures == 0 else 1)
+
+
+func _check_wave_hierarchy(host: Node, path: String) -> void:
+	var waves: Array[Node] = []
+	for child: Node in host.get_children():
+		if child.get_script() == Wave: waves.append(child)
+	check(not waves.is_empty(), "combat level retains Wave children under SceneDirector: " + path)
+	var valid := not waves.is_empty()
+	for wave: Node in waves:
+		var deployment: Dictionary = wave.call("deployment_configuration")
+		var squads: Array = deployment.get("squads", [])
+		valid = valid and (deployment.get("errors", PackedStringArray()) as PackedStringArray).is_empty()
+		valid = valid and not squads.is_empty()
+		for squad: Node in squads:
+			valid = valid and squad.get_script() == Squad and _has_enemy_child(squad)
+	check(valid, "every authored Wave resolves Squad children containing Enemy actors: " + path)
+
+
+func _has_enemy_child(squad: Node) -> bool:
+	for child: Node in squad.get_children():
+		if child.get_script() == Enemy: return true
+	return false
 
 func _missing_director() -> void:
 	var scene := Node3D.new()

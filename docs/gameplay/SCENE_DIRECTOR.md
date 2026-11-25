@@ -1,6 +1,6 @@
 # 场景导演使用指南
 
-`SceneDirector` 统一安排本场的对话、商店、交互、脚本演出、镜头、波次、出口和切场景。日常交互直接请求，复杂演出使用 **Scene Rules → Actions**。伤害、库存、扣款、任务和刷怪细节仍由原组件执行。
+`SceneDirector` 统一安排本场的对话、商店、交互、脚本演出、镜头、波次、出口和切场景。日常交互直接请求，复杂演出统一使用检查器里的 **Event Sequences → SceneEventDefinition → Actions**。伤害、库存、扣款、任务和刷怪细节仍由原组件执行。旧 **Scene Rules** 只保留已有资源兼容，不再作为新流程入口。
 
 ## 新场景先这样接入
 
@@ -67,7 +67,8 @@ if result.status == &"completed":
 
 | 对象 | 怎么创建 | 配置内容 |
 | --- | --- | --- |
-| SceneDirector | 酒馆与五关已有；新场景拖入 `scene_director.tscn` | 玩家/UI绑定、可选引导、场景规则 |
+| SceneDirector | 酒馆与五关已有；新场景拖入 `scene_director.tscn` | 玩家/UI绑定、可选引导、Event Sequences |
+| SceneEventDefinition | 在 SceneDirector → Event Sequences 中新建 | 稳定ID、作用域、触发、条件和类型化动作队列 |
 | SceneEvent | 拖入 `scenes/world/scene_event.tscn`，自行改名 | 来源节点、来源信号、可选过滤；也可手动触发 |
 | Wave | 原 `enemy_wave.tscn`，部署方式不变 | 出场模式、事件节点列表、延迟、出场镜头 |
 | Marker3D | 在3D编辑器创建并手动摆放 | 镜头画面中心；也可直接绑定已有 Node3D |
@@ -136,11 +137,11 @@ $SceneEvents/CallReinforcements.trigger()
 
 如果你的脚本节点本身声明 **无参 `signal triggered`**，可以直接让 Wave 选择该节点，不必再套 SceneEvent。带参原信号则使用适配节点或高级 Triggers。
 
-事件节点不保存某个 Wave 的引用，是 Wave 选择监听谁；同一个事件还可被场景规则使用。不要循环接线。已经有效发出事件的拾取物随后删除是允许的；先离树再发出的过期信号不会推进流程。
+事件节点不保存某个 Wave 的引用，是 Wave 选择监听谁；同一个事件还可作为 Event Sequences 的 Trigger 来源。不要循环接线。已经有效发出事件的拾取物随后删除是允许的；先离树再发出的过期信号不会推进流程。
 
 ## 三、手摆目标，展示真实增援
 
-只需要增援镜头时，直接配 Wave，不必先建场景规则：
+只需要增援镜头时，直接配 Wave，不必先建 Event Sequence：
 
 1. 在 CameraPoints 下创建 `Marker3D`，改名 `ReinforcementLookAt`，在3D视图摆到想关注的地方。
 2. 选中对应 Wave，展开 **出场镜头**，开启 **Show Spawn Presentation**。
@@ -158,52 +159,44 @@ SceneDirector 另有可选“统一出场镜头”，适合所有波使用同一
 
 ## 四、事件之后安排多个动作
 
-单纯刷怪及出场展示用前三节即可。需要顺序流程时，配置 SceneDirector 的 **Scene Rules**：
+单纯让某一波响应信号并展示出场镜头，用前三节的 Wave → EVENTS 即可。需要“等待、刷怪、镜头、对白、NPC 移动、状态变更、切场”等顺序流程时，选中 SceneDirector，在 **Event Sequences** 数组中添加 `SceneEventDefinition`：
 
-1. 添加 `SceneFlowRule`，写 **Label**，例如“交互后增援”。
-2. **Event Nodes** 选择事件节点。这里路径相对 **SceneDirector**，如 `../SceneEvents/CallReinforcements`。
-3. **Scope = REGION**：本轮区域战斗一次，复位可重播；**SCENE**：本场一次，出入区域不重播。
-4. **Actions** 按顺序添加 `SceneFlowAction`，先选 **Kind**，再填相关字段。
+1. 填写唯一 **Event Id** 和便于阅读的 **Label**。外部脚本只用稳定 ID 触发、查询和重置。
+2. 选择 **Start Mode**：AUTO 进场自动开始，TRIGGERS 等来源信号，MANUAL 由 `trigger_event(id)` 开始。
+3. **Scope = REGION** 表示离开战斗区后复位、下轮可重播；**SCENE** 表示本场一次。
+4. 在 **Triggers**、**Conditions** 和 **Actions** 中按检查器队列增删资源。路径均相对 SceneDirector；动作按数组顺序逐个完成。
 
-将鼠标悬停在 **Kind** 属性名上查看用途与必填参数；目前有 12 种动作，旧资源编号保持。
+例如“事件 → 等1秒 → 请求Wave2 → 等清空 → 完成本场”：
 
-例如“事件 → 等1秒 → 请求Wave2 → 等清空 → 调已有公开方法”：
-
-| 顺序 | Kind | 配置 |
+| 顺序 | 类型化动作 | 关键配置 |
 | --- | --- | --- |
-| 1 | WAIT | Seconds = 1 |
-| 2 | REQUEST_WAVE | Target Path = `Wave2`；Wave2 设成 REQUEST 模式 |
-| 3 | WAIT_WAVE_CLEARED | Target Path = `Wave2` |
-| 4 | CALL_METHOD | Target Path 选已有对象，Method 写公开方法名，Arguments 按真实签名填 |
+| 1 | `WaitAction` | Seconds = 1 |
+| 2 | `SpawnWaveAction` | Wave Path = `Wave2`；Wave2 设为 REQUEST；可配置出场镜头 |
+| 3 | `WaitWaveClearedAction` | Wave Path = `Wave2` |
+| 4 | `CompleteSceneAction` | 请求导演进入正式完成边界 |
 
-REQUEST_WAVE 等真实生成才继续；若勾选 **Present Spawn**，动作的 **Presentation Target Path** 手选标记（相对 SceneDirector），留空则使用 Wave 自己绑定的目标。两处都没有目标时跳过镜头并诊断。不要让同一部署由两份无约束配置反复请求。
+`SpawnWaveAction` 等真实生成才继续；开启 **Present Spawn** 后，`Presentation Target Path` 手选 Marker3D/Node3D。目标缺失会跳过镜头并诊断，不回退猜测敌人中心，也不重复生成。不要让同一个 Wave 同时由直接 EVENTS 和无约束的 typed action 重复请求。
 
-| 其他动作 | 用途 |
-| --- | --- |
-| PRESENT_TARGET | 单独展示 Target Path 指向的 Marker3D/Node3D，不要求刷怪 |
-| GUIDE | 调用 begin() 并等待无参 finished，可选择是否暂停 |
-| WAIT_SIGNAL | 等待 Completed Trigger 的来源信号及过滤结果 |
-| PLAY_CINEMATIC_SHOT | Target Path 指向 CinematicShot3D，遵守机位的暂停配置，正常返回后继续 |
-| COMPLETE_SCENE | 请求完成，必要镜头结束后显示结果，同帧死亡优先 |
-| RESTART | 编排者配置的重载动作；当前五关未配置，不是玩家平时的重试入口 |
-| CHANGE_SCENE | 请求 Scene Path 指定场景，失败可重试原目标 |
+动作资源按职责分为 Flow、Combat、Presentation、Actor、World、State、Transition 和 Advanced。常用类型包括 Wait/WaitSignal/CompleteScene、SpawnWave/WaitWaveCleared、Camera/Dialogue/PlayAudio、MoveActor/SeatActor/SetActorVisible、SetDoor/CallInteraction、SetFlag/GiveEquipment/UpdateQuest、ChangeScene/RestartScene；已有特殊执行器用 `RunProviderAction` 接入。固定 NPC 移动属于 `MoveActorAction`，目标点、路线和等待方式都在该动作资源里配置。
 
-CALL_METHOD 不接受以下划线开头的私有方法，并检查参数数量和基础类型。即时方法留空 Completed Trigger；需要等待异步完成时，必须同时配置 **Completed Trigger** 与 **Cancel Method**（公开、无参停止方法），缺少取消契约会在执行前拒绝。订阅先于方法调用，不遗漏同步完成；滑门状态改变不等于 Tween 已经结束。
+每个事件按 `failure_policy` 决定动作失败后停止或继续，并通过 `typed_event_finished(event_id, status, reason)` 报告 completed、failed、cancelled。REGION 复位会取消当前动作并增加 generation；迟到回调无权推进新一轮。类型化切场会保留发起切场的事件直到加载结果返回，其他旧动作照常中断。
 
-规则请求排队后，真正开始前会重新检查 **Condition**。条件已经失效时取消本次动作，原因是 `condition_changed`，不会先执行副作用。本次规则已触发，不自动重投；REGION 规则在所属区域复位后可以重新触发，SCENE 规则本场不重播。
+### 旧 Scene Rules 兼容边界
+
+`SceneFlowRule` / `SceneFlowAction` 仍能读取和执行旧场景，供已保存资源与一条专项兼容测试使用。新事件、新增援和新剧情不要再添加 Scene Rules；迁移时应在 Event Sequences 中建立等价 typed actions，并保留 Wave → Squad → Enemy 部署节点。五个正式关卡当前没有跨场编排需求，因此 `event_sequences` 合法保持空数组，不能为了“统一格式”虚构事件。
 
 ## 用导演发放装备
 
 1. 在场景根下添加 **PlayerEquipmentGrant** 节点。给现有开场换装备时，在酒馆场景选 **Opening → EquipmentGrant**。
 2. **Weapon** 拖入武器资源，**Weapon Slot** 选择主槽或副槽。新枪满弹匣发放。只补给时把 Weapon 留空。
 3. **Ammo Supplies** 可添加多条 AmmoSupply，逐条指定弹种和备弹数量。**Medkit** 和 **Medkit Amount** 配置医疗包资源与数量。
-4. 在 SceneDirector 的规则中加 **RUN_SCRIPT**，Target Path 指向发放节点，规则本身绑定触发事件。导演获准后在当前场景发给玩家，并在整组配置通过校验后提交。配置无效时动作失败，停止该规则的后续动作。
+4. 在 SceneDirector 的 Event Sequences 中加入 `GiveEquipmentAction`，Grant Path 指向发放节点，并按需要绑定触发。导演获准后在当前场景发给玩家，并在整组配置通过校验后提交。配置无效时动作失败，按事件的 failure policy 处理后续动作。
 
-发放复用玩家 Equipment 的武器槽和库存。备弹与医疗包追加到已有数量，武器替换所选槽位。纯补给保留已有弹匣与换弹状态。开场沿用原有完成标记，场景规则的重播由其 Scope 决定。
+发放复用玩家 Equipment 的武器槽和库存。备弹与医疗包追加到已有数量，武器替换所选槽位。纯补给保留已有弹匣与换弹状态。开场沿用原有完成标记，事件的重播由其 Scope 决定。
 
 ## 五、接入可取消的脚本演出
 
-复杂演出优先用 **RUN_SCRIPT**，Target Path 选实现 `begin_scene_action(request)` 与 `cancel_scene_action(request, reason)` 的节点。Arguments 保存在 request.parameters.arguments，执行者用 `request.complete()` 或 `request.fail(reason)` 报告实际结果。每次 await 后先检查 `request.is_current()`；取消时停止自己持有的 Timer、Tween 与动画，不能只断开完成通知。
+已有明确 typed action 时优先使用对应资源；只有项目特有、无法由现有动作表达的执行器才使用 Advanced 类别的 `RunProviderAction`。它的 Provider Path 选择同时实现 `begin_scene_action(request)` 与 `cancel_scene_action(request, reason)` 的节点，Arguments 会保存到 `request.parameters.arguments`。执行者用 `request.complete()` 或 `request.fail(reason)` 报告实际结果；每次 await 后先检查 `request.is_current()`，取消时停止自己持有的 Timer、Tween 与动画，不能只断开完成通知。旧 `RUN_SCRIPT` 仅是 SceneFlowAction 兼容名称，不用于新事件。
 
 例如节点下添加一次性 Timer，按下面的合同接入；持续逻辑仍留在自己的脚本中：
 
@@ -235,18 +228,19 @@ func _finished() -> void:
 
 切场景仍配置 **ChangeSceneEffect → Scene Path**。普通交互默认 plain；QuestPortal 自动准备入关快照，TavernReturnPortal 按原 Level Number 准备完成级别、返程快照与检查点，无需重配资源。准备不改变 GameState；引擎接受切换后才提交，目标 `_ready()` 已能读取，且快照仍只消费一次。切场成功后旧来源已离树，不补发旧节点的交互信号；跨场结果查询 transition 请求与业务状态。
 
-普通门加载失败会归还本次控制，显示“交互失败，请重试”，再次按 E 重试当前配置目标。死亡／结果按钮和规则切换失败保留原暂停与重试界面；`request_load_retry()` 保留原路径与 reload 方式。源场景卸载后返回的旧异步加载结果无权提交状态。原检查点规则继续恢复医疗包资源、武器、弹药、货币及商店旗标。
+普通门加载失败会归还本次控制，显示“交互失败，请重试”，再次按 E 重试当前配置目标。死亡／结果按钮和事件切换失败保留原暂停与重试界面；`request_load_retry()` 保留原路径与 reload 方式。源场景卸载后返回的旧异步加载结果无权提交状态。原检查点规则继续恢复医疗包资源、武器、弹药、货币及商店旗标。
 
 引擎尚未接受加载时，可用 `cancel_request()` 取消加载请求或其父交互；来源离场也会取消，并恢复本次状态、界面与暂停所有权，迟到结果不能再提交。引擎接受切换后进入提交边界，旧来源正常离场不会把成功切换误判为取消。
 
-规则的 Event Nodes 和高级 Triggers 都为空表示准备好后自动运行一次。不同规则可独立等待，事件回调只记录事实，动作在调度边界推进。普通等待在暂停时冻结，资源不保存本场执行进度。
+类型化事件选择 AUTO 表示准备好后自动运行一次；TRIGGERS 事件必须至少配置一个触发。不同事件可独立等待，信号回调只记录事实，动作在调度边界推进。普通等待在暂停时冻结，资源不保存本场执行进度。
 
 ## 路径和过滤速查
 
 | 配置位置 | 路径相对谁 | 上图例子 |
 | --- | --- | --- |
 | Wave 的 Event Nodes / Triggers / 镜头 | 此 Wave | `../../SceneEvents/CallReinforcements` |
-| SceneFlowRule / SceneFlowAction | SceneDirector | `../CameraPoints/ReinforcementLookAt` |
+| SceneEventDefinition / SceneAction | SceneDirector | `../CameraPoints/ReinforcementLookAt` |
+| 旧 SceneFlowRule / SceneFlowAction | SceneDirector | 仅兼容已有资源 |
 | SceneEvent.Source Path | 此事件节点 | `../../CombatZone` |
 | 全局状态来源 | 可用绝对路径 | `/root/GameState` |
 
@@ -260,23 +254,23 @@ func _finished() -> void:
 | GameState.flag_changed(flag: StringName, value: bool) | 参数0：STRING_NAME旗标名；参数1：BOOL=true |
 | Timer.timeout、Wave.spawned、Wave.cleared | 无参，不填过滤 |
 
-String 不等于 StringName，整数1不等于布尔true。需要“事件发生过，且当前旗标仍成立”时可用规则的可选 Condition：目标 `/root/GameState`、方法 `has_flag`、参数为实际 StringName ID；查询必须返回 bool。
+String 不等于 StringName，整数1不等于布尔true。需要“事件发生过，且当前旗标仍成立”时可在 SceneEventDefinition 的 Conditions 中添加 `SceneFlagCondition`；只有兼容旧资源才继续使用方法条件。
 
 ## 开场、死亡、完成和取消
 
 - **Guide Path** 默认留空，当前五关进入与死亡重开不自动弹出操作说明；保留 `LevelFlow/PlayGuide` 节点路径，显式绑定的独立教程仍适配 `begin()/cancel()/finished`。允许走动的教程关闭 Guide Pauses World，核心不依赖 PlayGuide 类型。
-- 导演初始化时装配一个 `PauseMenu`，不改变地图的 Wave／Squad 层级。`request_pause_menu()` 仅在可游玩、无加载失败、世界未暂停且没有前台请求／其他控制拥有者时取得 `pause_menu` 暂停；`resume_from_pause_menu()` 只释放该令牌。菜单回传暂停、继续和确认退出意图，设置／说明子页不自行恢复世界。菜单打开时不推进导演排队请求、普通规则或演出计时；死亡／加载等状态变化及卸载关闭菜单并保留其他暂停所有权。
+- 导演初始化时装配一个 `PauseMenu`，不改变地图的 Wave／Squad 层级。`request_pause_menu()` 仅在可游玩、无加载失败、世界未暂停且没有前台请求／其他控制拥有者时取得 `pause_menu` 暂停；`resume_from_pause_menu()` 只释放该令牌。菜单回传暂停、继续和确认退出意图，设置／说明子页不自行恢复世界。菜单打开时不推进导演排队请求、类型化事件、兼容规则或演出计时；死亡／加载等状态变化及卸载关闭菜单并保留其他暂停所有权。
 - 战斗设置中的瞄准方式由 `UserSettings` 持久化，玩家 Combat 在每个场景读取同一选择。该选择独立于场景请求、暂停令牌和关卡快照。
 - Health 只结算生命、停止玩家自身动作并发 `died`。调度器先取得死亡暂停，再取消镜头/动作，独立视图控制原 `Player/Health/DeathScreen`；“重新挑战”准备入关状态并重载当前场景，“返回酒馆”准备恢复最近酒馆检查点，再通过 `LevelFlow.next_scene_path()` 加载酒馆。两者均在加载接受后提交。没有 `LevelFlow` 适配器的通用场景隐藏“返回酒馆”，保留当前场景重开。
 - 配置了 `LevelFlow.return_portal_path` 的五关在全部波次完成后只开放本关 `TavernReturnPortal`，不暂停世界，也不显示直接进入下一关的按钮。没有返程门的结果界面仍可暂停并显示原按钮；没有任何 Wave 不自动通关。
 - `LevelFlow.completion_pauses_world()` 决定完成时是否取得暂停所有权：有返程门时返回 false，保留结果按钮时返回 true。该接口只影响完成，不改变死亡暂停。
-- 离区仍由区域服务清理敌人、掉落与协同，调度器取消 REGION 规则和镜头。SCENE 开场和结果不重播；若 SCENE 规则正等旧轮波次，该等待明确取消诊断，不自动跨轮重投。
+- 离区仍由区域服务清理敌人、掉落与协同，调度器复位 REGION 类型化事件、兼容规则和镜头。SCENE 开场和结果不重播；若 SCENE 事件正等旧轮波次，该等待明确取消诊断，不自动跨轮重投。
 
 - 区域请求的 scope_owner 标明所属区域，`reset_region(region)` 只取消该区域的执行；不传参数沿用当前部署区域。另一区域的引导、镜头与 SCENE 请求不会被全局收尾分支误停。LevelFlow.show_completion 是兼容请求入口，真实出口启用由导演完成边界调用执行端。
 - 关闭说明、结束镜头、旧场景卸载只释放自己的暂停，不清除别的拥有者。重开不清空 GameState。
-- 死亡／结果／规则加载失败保留暂停并恢复重试按钮；普通交互失败归还控制。重试沿用上一次选择的路径和重载方式，不误用五关路径表。自定义无 UI 流程可读核心诊断并调用 `request_load_retry()`。
+- 死亡／结果／事件加载失败保留暂停并恢复重试按钮；普通交互失败归还控制。重试沿用上一次选择的路径和重载方式，不误用五关路径表。自定义无 UI 流程可读核心诊断并调用 `request_load_retry()`。
 
-入口的 `director` 属性指向内部核心，`debug_snapshot().scene` 提供场景状态、暂停原因、规则进度与最近错误。原波次接口仍可用：`start_encounter()`、`request_wave(wave)`、`reset_encounter()`、`wave_started`、`wave_cleared`、`encounter_completed`。
+入口的 `director` 属性指向内部核心，`debug_snapshot()` 提供场景状态、暂停原因、typed events、兼容规则进度与最近错误。原波次接口仍可用：`start_encounter()`、`request_wave(wave)`、`reset_encounter()`、`wave_started`、`wave_cleared`、`encounter_completed`。
 
 同场多个区域通过查找共享已装配的核心。单独复用 Player 或区域时也要显式装配导演；Player 不自行暂停／重开，区域不创建替代核心。
 

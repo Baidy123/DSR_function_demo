@@ -45,6 +45,10 @@ func _run() -> void:
 	check(equipment.campaign_snapshot() == before, "无导演批准时发放节点不改库存")
 	director.advance(0.016)
 	var after: Dictionary = equipment.campaign_snapshot()
+	var event_snapshot: Dictionary = director.debug_snapshot().events
+	check(event_snapshot.events.size() == 1 and event_snapshot.events[0].id == &"typed_equipment_grant"
+		and event_snapshot.events[0].fired and not event_snapshot.events[0].active,
+		"装备发放由 event_sequences 完整执行并结束")
 	check(after.primary_weapon == grant.weapon and after.secondary_weapon == Pistol,
 		"类型化装备动作可发到指定槽，保留原副武器")
 	var ammo_id: StringName = grant.ammo_supplies[0].ammo.ammo_id

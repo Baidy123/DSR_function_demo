@@ -33,7 +33,7 @@ func check(value: bool, label: String) -> void:
 		failures += 1
 		push_error(label)
 
-func fixture() -> Dictionary:
+func fixture(events: Array = []) -> Dictionary:
 	var scene := Node3D.new()
 	root.add_child(scene)
 	current_scene = scene
@@ -45,7 +45,7 @@ func fixture() -> Dictionary:
 	var ui = UI.instantiate()
 	scene.add_child(ui)
 	var director = Director.new()
-	director.configure(scene, {"scene_root": scene})
+	director.configure(scene, {"scene_root": scene, "events": events})
 	scene.add_child(director)
 	director.initialize()
 	return {"scene": scene, "player": player, "source": source, "ui": ui, "director": director}
@@ -104,19 +104,57 @@ func _review_cancellation_and_condition() -> void:
 	f.scene.free()
 	current_scene = null
 	await process_frame
-	var typed := fixture()
-	typed.director.scene_loader = func(_path: String, _reload: bool) -> Error: return ERR_CANT_OPEN
 	var typed_action := ChangeSceneAction.new()
 	typed_action.scene_path = "res://tests/scene_transition_target.tscn"
 	var definition := SceneEventDefinition.new()
 	definition.event_id = &"typed_transition"
-	var typed_context := SceneActionContext.new().configure(
-		typed.director, typed.scene, definition, typed_action, 1, 0)
-	typed_action.begin(typed_context)
+	definition.label = "Typed transition"
+	definition.start_mode = SceneEventDefinition.StartMode.AUTO
+	definition.actions = [typed_action]
+	var typed := fixture([definition])
+	var terminals: Array[Array] = []
+	typed.director.typed_event_finished.connect(func(id: StringName, status: StringName, reason: StringName) -> void:
+		terminals.append([id, status, reason]))
+	typed.director.scene_loader = func(_path: String, _reload: bool) -> Error: return ERR_CANT_OPEN
 	for _frame in range(5): await process_frame
-	check(typed_context.status == &"failed",
-		"typed ChangeSceneAction keeps the director's prepare failure boundary")
+	var typed_snapshot: Dictionary = typed.director.debug_snapshot()
+	var typed_state: Dictionary = typed_snapshot.events.events[0] if not typed_snapshot.events.events.is_empty() else {}
+	var typed_boundary_ok: bool = (not typed_state.get("active", true) and typed_state.get("fired", false)
+		and terminals.size() == 1 and terminals[0][0] == &"typed_transition"
+		and terminals[0][1] == &"failed" and not String(terminals[0][2]).is_empty()
+		and typed_snapshot.events.errors.size() == 1
+		and String(typed_snapshot.last_error).begins_with("Typed transition:"))
+	check(typed_boundary_ok,
+		"typed ChangeSceneAction runs through event_sequences and keeps the director's prepare failure boundary")
 	typed.scene.free()
+	current_scene = null
+	await process_frame
+	var waiting_action := WaitAction.new()
+	waiting_action.seconds = 30.0
+	var waiting_definition := SceneEventDefinition.new()
+	waiting_definition.event_id = &"typed_waiting_sibling"
+	waiting_definition.label = "Waiting sibling"
+	waiting_definition.start_mode = SceneEventDefinition.StartMode.AUTO
+	waiting_definition.actions = [waiting_action]
+	var success_action := ChangeSceneAction.new()
+	success_action.scene_path = "res://tests/scene_transition_target.tscn"
+	var success_definition := SceneEventDefinition.new()
+	success_definition.event_id = &"typed_success_transition"
+	success_definition.label = "Successful typed transition"
+	success_definition.start_mode = SceneEventDefinition.StartMode.AUTO
+	success_definition.actions = [success_action]
+	# Put the waiter first so it is active before the transition cancels other events.
+	var successful := fixture([waiting_definition, success_definition])
+	var success_terminals: Array[Array] = []
+	successful.director.typed_event_finished.connect(func(id: StringName, status: StringName, reason: StringName) -> void:
+		success_terminals.append([id, status, reason]))
+	successful.director.scene_loader = func(_path: String, _reload: bool) -> Error: return OK
+	for _frame in range(5): await process_frame
+	check(success_terminals.count([&"typed_waiting_sibling", &"cancelled", &"event_runner_cancelled"]) == 1
+		and success_terminals.count([&"typed_success_transition", &"completed", &""]) == 1
+		and success_terminals.size() == 2,
+		"typed transition preserves only its initiating event and completes it exactly once")
+	successful.scene.free()
 	current_scene = null
 	await process_frame
 

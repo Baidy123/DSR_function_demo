@@ -412,7 +412,9 @@ func _start_transition(request: Request) -> void:
 	_set_state(&"loading")
 	_load_chain = _requests.detach_chain(request)
 	_generation += 1
-	_cancel_actions()
+	var preserved_event_ids: Array[StringName] = []
+	if not request.event_id.is_empty(): preserved_event_ids.append(request.event_id)
+	_cancel_actions(_load_chain, preserved_event_ids)
 	_result_view.set_pending(true)
 	if is_instance_valid(_level_flow): _level_flow.set_transition_pending(true)
 	_transitions = Transitions.new(self)
@@ -469,6 +471,9 @@ func finish_transition(request: Request, status: StringName, reason: StringName 
 		else: report_action_error("loading", _last_error)
 	chain.reverse()
 	for execution in chain: execution._settle(status, reason)
+	# A typed transition owns one of the detached requests. Let that event observe
+	# the terminal request before a successful scene swap releases the old runner.
+	_events.advance(0.0)
 
 func request_wave_for_flow(wave: Node, present: bool, options: Dictionary, scope: int = 1, target_path: NodePath = NodePath()) -> bool:
 	var request := request_action(&"wave", {"source": _host, "target": wave, "scope": scope,
@@ -680,11 +685,11 @@ func reset_region(owner: Node = null) -> void:
 	_events.reset_region()
 	_completion_pending = false
 
-func _cancel_actions() -> void:
+func _cancel_actions(preserve_event_requests: Array = [], preserve_event_ids: Array[StringName] = []) -> void:
 	if _requests != null: _requests.cancel_all(&"scene_interrupted")
 	_armed_presentations.clear()
 	_flows.cancel_all()
-	_events.cancel_all()
+	_events.cancel_all(&"event_runner_cancelled", preserve_event_requests, preserve_event_ids)
 	_clear_guide(true)
 	_cancel_presentation()
 
@@ -748,6 +753,7 @@ func request_action(kind: StringName, context: Dictionary = {}) -> Request:
 	request._director = weakref(self)
 	request.kind = kind
 	request.origin = context.get("origin", &"system")
+	request.event_id = context.get("event_id", &"")
 	request.scope = context.get("scope", 0)
 	request.parent_id = context.get("parent_id", 0)
 	request.dedupe_key = context.get("dedupe_key", &"")

@@ -105,8 +105,15 @@ func reset_region() -> void:
 		_reset_entry(entry, &"region_reset")
 
 
-func cancel_all(reason: StringName = &"event_runner_cancelled") -> void:
+func cancel_all(reason: StringName = &"event_runner_cancelled", preserve_requests: Array = [],
+		preserve_event_ids: Array[StringName] = []) -> void:
 	for entry in _entries:
+		var definition: SceneEventDefinition = entry.definition
+		if preserve_event_ids.has(definition.event_id):
+			continue
+		var context: SceneActionContext = entry.context
+		if context != null and context.is_waiting_on_any(preserve_requests):
+			continue
 		var was_active: bool = entry.active
 		_cancel_context(entry, reason)
 		entry.active = false

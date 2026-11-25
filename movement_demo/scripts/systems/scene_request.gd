@@ -13,6 +13,7 @@ var reason: StringName:
 	get: return _reason
 var kind: StringName
 var origin: StringName = &"system"
+var event_id: StringName
 var scope := 0
 var parent_id := 0
 var dedupe_key: StringName

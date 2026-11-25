@@ -1,6 +1,6 @@
 extends SceneTree
 
-## Integration coverage: real region, facade/runtime, rules, actors, AI and camera rig.
+## Integration coverage: real region, typed events, legacy compatibility, actors, AI and camera rig.
 ## No gameplay process is disabled and no director/runtime clock is manually advanced.
 const Region = preload("res://scripts/world/shooting_range.gd")
 const Waves = preload("res://scripts/world/enemy_wave_controller.gd")
@@ -82,6 +82,7 @@ func _run() -> void:
 		await _real_spawn_barrier_and_return()
 		await _blocked_spawn()
 		await _typed_static_invalid_spawn()
+		await _legacy_rule_compatibility()
 		await _direct_wave_presentation()
 		await _missing_target(false, true)
 		await _missing_target(false)
@@ -108,7 +109,7 @@ func _run() -> void:
 
 
 func _fixture(blocked: bool = false, bind_target: bool = true, direct_wave: bool = false,
-		typed_wave: bool = false, static_invalid: bool = false) -> void:
+		typed_wave: bool = true, static_invalid: bool = false) -> void:
 	ready_observations.clear()
 	public_observations.clear()
 	started_observations.clear()
@@ -200,11 +201,12 @@ func _fixture(blocked: bool = false, bind_target: bool = true, direct_wave: bool
 	wait_rule.actions.append(wait_action)
 	var rules: Array[SceneFlowRule] = [delayed_rule, wait_rule, request_rule]
 	var typed_events: Array[SceneEventDefinition] = []
-	if typed_wave:
+	if typed_wave and not direct_wave:
 		rules = [delayed_rule, wait_rule]
 		var definition := SceneEventDefinition.new()
 		definition.event_id = &"typed_reinforcement"
 		definition.label = "Typed reinforcement"
+		definition.scope = SceneEventDefinition.Scope.REGION
 		definition.start_mode = SceneEventDefinition.StartMode.TRIGGERS
 		var event_trigger := SceneEventTrigger.new()
 		event_trigger.source_path = ^"../Events"
@@ -213,7 +215,10 @@ func _fixture(blocked: bool = false, bind_target: bool = true, direct_wave: bool
 		var spawn_action := SpawnWaveAction.new()
 		spawn_action.wave_path = ^"Reinforcement"
 		spawn_action.present_spawn = true
-		spawn_action.presentation_target_path = ^"../CameraFocus"
+		if bind_target: spawn_action.presentation_target_path = ^"../CameraFocus"
+		spawn_action.move_seconds = 0.15
+		spawn_action.hold_seconds = 0.5
+		spawn_action.return_seconds = 0.15
 		definition.actions = [spawn_action]
 		typed_events = [definition]
 	if direct_wave:
@@ -416,6 +421,20 @@ func _typed_static_invalid_spawn() -> void:
 	await _cleanup()
 
 
+func _legacy_rule_compatibility() -> void:
+	await _fixture(false, true, false, false)
+	events.reinforce.emit()
+	if not await _await_presentation():
+		await _cleanup()
+		return
+	var snapshot: Dictionary = _director().debug_snapshot()
+	_check("legacy SceneFlowRule remains a focused compatibility route",
+		snapshot.events.events.is_empty() and _rule_state("reinforcement").fired
+		and public_observations.size() == 1)
+	_director().skip_presentation()
+	await _cleanup()
+
+
 func _direct_wave_presentation() -> void:
 	await _fixture(true, true, true)
 	_check("editor Wave route has no scene rules or global presentation fallback", _director().call("debug_snapshot").flows.rules.is_empty() and not bool(host.get("present_spawned_waves")))
@@ -502,7 +521,11 @@ func _region_exit_cancels_presentation() -> void:
 	_check("region exit cancels its camera and immediately restores player view", not paused and source.is_current() and not bool(camera.call("is_presenting")) and _director().call("debug_snapshot").presentation == 0)
 	await _steps(5)
 	_check("real region reset retires all wave actors and clears pending requests", (region.get("enemies") as Array).is_empty() and host.call("wave_status", reinforcement) == &"waiting" and not bool(region.call("has_active_player")))
-	_check("region-scoped presentation rule resets without stale completion", _director().call("debug_snapshot").pause.count == 0 and _rule_state("reinforcement").events == 0 and not _rule_state("reinforcement").fired and public_observations.size() == 1)
+	var event_state: Dictionary = _event_state(&"typed_reinforcement")
+	_check("region-scoped typed event resets without stale completion",
+		_director().call("debug_snapshot").pause.count == 0
+		and not event_state.get("active", true) and not event_state.get("fired", true)
+		and int(event_state.get("generation", 0)) > 0 and public_observations.size() == 1)
 	player.position = Vector3(0, 0, 7)
 	player.reset_physics_interpolation()
 	_check("re-entering starts the ordinary first wave again", await _await_wave(host.get_node("Old"), &"active"))
@@ -634,6 +657,13 @@ func _rule_state(label: String) -> Dictionary:
 	return {}
 
 
+func _event_state(event_id: StringName) -> Dictionary:
+	var snapshot: Dictionary = _director().call("debug_snapshot")
+	for event: Dictionary in snapshot.events.events:
+		if event.id == event_id: return event
+	return {}
+
+
 func _ordinary_remaining() -> float:
 	return float(_rule_state("ordinary_delay").get("remaining", 0.0))
 
@@ -649,10 +679,10 @@ func _await_wave(wave: Node, status: StringName) -> bool:
 func _await_presentation() -> bool:
 	for frame in 120:
 		if not public_observations.is_empty():
-			_check("scene rule reaches real spawn and presentation", true)
+			_check("configured event route reaches real spawn and presentation", true)
 			return true
 		await _steps(1)
-	_check("scene rule reaches real spawn and presentation", false)
+	_check("configured event route reaches real spawn and presentation", false)
 	print("DIAGNOSTIC ", host.call("debug_snapshot"))
 	return false
 

@@ -51,6 +51,7 @@ func request(kind: StringName, target: Node = null, parameters: Dictionary = {},
 		request_context["target"] = target
 	request_context["parameters"] = parameters.duplicate(true)
 	request_context["scope"] = int(definition.scope) if definition != null else 0
+	request_context["event_id"] = event_id
 	_request = director.request_action(kind, request_context) as SceneRequest
 	_complete_on_request_failure = complete_on_failure
 	if _request == null:
@@ -81,6 +82,10 @@ func is_terminal() -> bool:
 
 func is_current() -> bool:
 	return not is_terminal() and (not _current_guard.is_valid() or _current_guard.call() == true)
+
+
+func is_waiting_on_any(requests: Array) -> bool:
+	return not is_terminal() and _request != null and requests.has(_request)
 
 
 func _on_request_finished(value: SceneRequest) -> void:

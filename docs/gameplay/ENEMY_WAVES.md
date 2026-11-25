@@ -4,7 +4,7 @@ SEQUENCE／EVENTS／REQUEST 均向本场导演申请 wave 执行；Runtime 保�
 
 实例化或出生检查发生错误时，Runtime 报告原因，导演把仍在等待的波次请求结束为 failed，规则会显示失败原因。出生点暂时被占只是 blocked 并继续等待，两者不要混淆。
 
-每波仍在场景中摆好小队和敌人，支持原顺序、多波同场，以及事件节点/显式请求出场。原EnemyWaves入口已改名SceneDirector，内部敌人执行部分报告真实结果，总调度处理死亡、完成界面或返程门以及镜头。当前五关清场后开放返程门；结果按钮与自动加载是其他场景可用的调度能力。事件接线和手摆目标见[中文教程](SCENE_DIRECTOR.md)，旧部署见[历史记录](../history/2026-10-28/gameplay/ENEMY_WAVES.md)。
+每波仍在场景中摆好小队和敌人，支持原顺序、多波同场，以及事件节点/显式请求出场。原EnemyWaves入口已改名SceneDirector，内部敌人执行部分报告真实结果，总调度处理死亡、完成界面或返程门以及镜头。当前五关清场后开放返程门；结果按钮与自动加载是其他场景可用的调度能力。复杂跨系统流程写在 SceneDirector 的 **Event Sequences**；简单的单波触发继续直接配置 Wave → EVENTS，不必额外包一层事件队列。旧 Scene Rules 只用于保存资源兼容。事件接线和手摆目标见[中文教程](SCENE_DIRECTOR.md)，旧部署见[历史记录](../history/2026-10-28/gameplay/ENEMY_WAVES.md)。
 
 ## 第一关在哪里改
 
@@ -59,6 +59,8 @@ Wave 的 **Cinematic Shot Path** 可指向同一场景的 CinematicShot3D。配�
 4. 保存场景与引用资源后试玩。已有五关先检查现有SceneDirector，不能重复添加第二套控制器。
 
 已有小队不便移动时，用Wave的Existing Squads引用。需要修改继承场景子节点时开启“可编辑子节点”，保留原路径与UID。关卡入口和导航维护见[关卡地图](LEVEL_MAPS.md)。
+
+Event Sequences 只保存编排资源，不接管敌人部署。正式层级仍是 `SceneDirector/Wave/Squad/Enemy`；第一波因兼容旧地图也可由 Wave 的 Existing Squads 指向场景根 Squad。当前五关没有已设计的跨场事件，因此数组保持空是明确状态，不应移动 Wave、伪造空动作或把 Enemy 塞进事件资源来追求表面统一。
 
 ## 不刷怪时检查
 
