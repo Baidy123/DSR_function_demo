@@ -61,6 +61,7 @@ SPECIAL = {
     "scene_transition_target.gd": "target-ready fixture loaded by scene_transition_request_test",
     "shotgun_pattern_editor_test.gd": "standalone --editor --max-fps 60 --script; also --headless --script with -- --preview-runtime; captures editor UI when rendered",
     "shotgun_inspector_test.gd": "standalone --headless --editor --script",
+    "scene_event_inspector_test.gd": "standalone --headless --editor --script",
     "bake_arena.gd": "maintenance command: writes navigation; never a regression",
     "bake_levels.gd": "maintenance command: writes level navigation; never a regression",
     "presentation_fixture.gd": "fixture used by presentation tests",
