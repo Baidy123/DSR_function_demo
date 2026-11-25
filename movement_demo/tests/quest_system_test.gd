@@ -12,7 +12,7 @@ const GameStateScript := preload("res://scripts/systems/game_state.gd")
 const ZoneVolumeScript := preload("res://scripts/world/zone_volume.gd")
 
 ## 断言总数；脚本报错会中断检查函数，最后用它兜住「报错却显示全绿」的假通过。
-const EXPECTED_CHECKS := 28
+const EXPECTED_CHECKS := 30
 
 var failures: int = 0
 var checks_run: int = 0
@@ -63,6 +63,7 @@ func run_checks() -> void:
 	_check_entries()
 	_check_stage_readonly()
 	_check_stage_independent()
+	_check_typed_quest_action()
 	if checks_run != EXPECTED_CHECKS:
 		failures += 1
 		push_error("检查数量不符：期望 %d，实际 %d（脚本报错会中断后续检查）" % [EXPECTED_CHECKS, checks_run])
@@ -158,6 +159,24 @@ func _check_initial() -> void:
 	check(quests.status_of(&"main") == QuestControllerScript.Status.NOT_STARTED, "任务初始为未接")
 	check(not quests.is_locked(&"main"), "未填解锁阶段的任务默认可用")
 	check(quests.is_locked(&"timed"), "解锁阶段 2 的任务在阶段 1 未解锁")
+
+
+func _check_typed_quest_action() -> void:
+	var changes := [0]
+	quests.quest_changed.connect(func(id: StringName, _previous: int, _current: int):
+		if id == &"typed": changes[0] += 1)
+	var action := UpdateQuestAction.new()
+	action.controller_path = quests.get_path()
+	action.quest_id = &"typed"
+	action.operation = UpdateQuestAction.Operation.ACCEPT
+	var definition := SceneEventDefinition.new()
+	definition.event_id = &"typed_quest"
+	var context := SceneActionContext.new().configure(quests, root, definition, action, 1, 0)
+	action.begin(context)
+	action.begin(SceneActionContext.new().configure(quests, root, definition, action, 1, 1))
+	check(context.status == &"completed" and quests.status_of(&"typed") == QuestControllerScript.Status.IN_PROGRESS,
+		"类型化任务动作映射到公开 accept 接口")
+	check(changes[0] == 1, "重复的类型化任务状态不会重复发出 quest_changed")
 
 
 func _check_field_conditions() -> void:

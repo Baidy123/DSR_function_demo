@@ -28,13 +28,15 @@ func _run() -> void:
 	equipment.replace_weapon_slot(1, Pistol)
 	var grant: Node = load(GrantPath).instantiate()
 	scene.add_child(grant)
-	var action := SceneFlowAction.new()
-	action.kind = SceneFlowAction.Kind.RUN_SCRIPT
-	action.target_path = scene.get_path_to(grant)
-	var rule := SceneFlowRule.new()
-	rule.actions.append(action)
+	var action := GiveEquipmentAction.new()
+	action.grant_path = scene.get_path_to(grant)
+	action.player_path = scene.get_path_to(player)
+	var event := SceneEventDefinition.new()
+	event.event_id = &"typed_equipment_grant"
+	event.start_mode = SceneEventDefinition.StartMode.AUTO
+	event.actions = [action]
 	var director := Director.new()
-	director.configure(scene, {"scene_root": scene, "rules": [rule]})
+	director.configure(scene, {"scene_root": scene, "events": [event]})
 	scene.add_child(director)
 	director.initialize()
 
@@ -44,7 +46,7 @@ func _run() -> void:
 	director.advance(0.016)
 	var after: Dictionary = equipment.campaign_snapshot()
 	check(after.primary_weapon == grant.weapon and after.secondary_weapon == Pistol,
-		"导演规则可发到指定槽，保留原副武器")
+		"类型化装备动作可发到指定槽，保留原副武器")
 	var ammo_id: StringName = grant.ammo_supplies[0].ammo.ammo_id
 	check(after.reserve_ammo.get(ammo_id, 0) == before.reserve_ammo.get(ammo_id, 0) + 60
 		and after.magazines[0] == grant.weapon.magazine_capacity

@@ -2,6 +2,7 @@ extends SceneTree
 
 const Director = preload("res://scripts/systems/scene_director.gd")
 const NpcScene = preload("res://scenes/access_denied/hub/tavern_npc.tscn")
+const Door = preload("res://scripts/world/range_door.gd")
 
 var failures := 0
 
@@ -15,6 +16,33 @@ class FinishProvider extends Node:
 	func cancel_scene_action(_request: SceneRequest, _reason: StringName) -> void:
 		pass
 
+class StateProbe extends Node:
+	var flags: Dictionary = {}
+	func set_flag(key: StringName, value: bool = true) -> void: flags[key] = value
+
+class QuestProbe extends Node:
+	signal quest_changed(id: StringName, previous: int, current: int)
+	var statuses: Dictionary = {}
+	func apply_status(id: StringName, value: int) -> void:
+		var previous := int(statuses.get(id, 0))
+		if previous == value: return
+		statuses[id] = value
+		quest_changed.emit(id, previous, value)
+	func accept(id: StringName) -> void: apply_status(id, 1)
+	func refuse(id: StringName) -> void: apply_status(id, 2)
+	func complete(id: StringName) -> void: apply_status(id, 3)
+	func fail(id: StringName) -> void: apply_status(id, 4)
+	func set_status(id: StringName, value: int) -> void: apply_status(id, value)
+
+class ProviderProbe extends Node:
+	var begins := 0
+	var parameters: Dictionary = {}
+	func begin_scene_action(request: SceneRequest) -> void:
+		begins += 1
+		parameters = request.parameters.duplicate(true)
+		request.complete()
+	func cancel_scene_action(_request: SceneRequest, _reason: StringName) -> void: pass
+
 
 func _init() -> void:
 	call_deferred("_run")
@@ -25,6 +53,7 @@ func _run() -> void:
 	await _test_move_and_route(f)
 	await _test_seat_and_visibility(f)
 	await _test_cancel_and_patrol(f)
+	await _test_world_and_state_actions(f)
 	f.scene.free()
 	await process_frame
 	print("Scene actor actions: %d failures" % failures)
@@ -191,6 +220,102 @@ func _test_cancel_and_patrol(f: Dictionary) -> void:
 		"movement cancellation closes gate ownership and cannot run the route finish action")
 	check(f.npc.patrol_on_ready == false and f.npc.route == [Vector3(9.0, 0.0, 9.0)],
 		"directed movement preserves daily patrol configuration")
+
+
+func _test_world_and_state_actions(f: Dictionary) -> void:
+	var door = Door.new()
+	door.name = "Door"
+	door.animation_seconds = 0.05
+	for item in [[Area3D.new(), "Sensor"], [Node3D.new(), "Panel"], [Label3D.new(), "Label"]]:
+		item[0].name = item[1]
+		door.add_child(item[0])
+	f.scene.add_child(door)
+	door.set_physics_process(false)
+	var door_action := SetDoorAction.new()
+	door_action.door_path = ^"Door"
+	door_action.open = true
+	var context := _context(f, door_action, &"door")
+	door_action.begin(context)
+	check(not context.is_terminal(), "SetDoorAction waits for the real door tween")
+	check(await _wait_terminal(context) and context.status == &"completed",
+		"SetDoorAction completes at the provider tween boundary")
+	check(door.is_open and is_equal_approx(door.get_node("Panel").position.x, door.slide_distance),
+		"SetDoorAction leaves the authored door at its requested open pose")
+	door_action = SetDoorAction.new()
+	door_action.door_path = ^"Door"
+	door_action.open = false
+	context = _context(f, door_action, &"door_cancel")
+	door_action.begin(context)
+	await physics_frame
+	context.cancel(&"test_cancel")
+	var stopped_door_x: float = door.get_node("Panel").position.x
+	await create_timer(0.10).timeout
+	check(context.status == &"cancelled" \
+		and is_equal_approx(stopped_door_x, door.get_node("Panel").position.x),
+		"cancelling SetDoorAction kills the provider tween")
+
+	var state := StateProbe.new()
+	state.name = "State"
+	f.scene.add_child(state)
+	var flag_action := SetFlagAction.new()
+	flag_action.state_path = ^"State"
+	flag_action.flag = &"opened"
+	flag_action.value = true
+	context = _context(f, flag_action, &"flag")
+	flag_action.begin(context)
+	check(context.status == &"completed" and state.flags.get(&"opened") == true,
+		"SetFlagAction uses the configured state target")
+	flag_action.state_path = ^"MissingState"
+	context = _context(f, flag_action, &"invalid_flag")
+	flag_action.begin(context)
+	check(context.status == &"failed", "SetFlagAction rejects a missing state target")
+
+	var quests := QuestProbe.new()
+	quests.name = "Quests"
+	f.scene.add_child(quests)
+	var changed := [0]
+	quests.quest_changed.connect(func(_id, _old, _new): changed[0] += 1)
+	var quest_action := UpdateQuestAction.new()
+	quest_action.controller_path = ^"Quests"
+	quest_action.quest_id = &"escape"
+	quest_action.operation = UpdateQuestAction.Operation.COMPLETE
+	context = _context(f, quest_action, &"quest")
+	quest_action.begin(context)
+	quest_action.begin(_context(f, quest_action, &"quest_repeat"))
+	check(context.status == &"completed" and quests.statuses.get(&"escape") == 3 \
+		and changed[0] == 1, "UpdateQuestAction maps its enum and preserves one quest signal")
+
+	var provider := ProviderProbe.new()
+	provider.name = "Provider"
+	f.scene.add_child(provider)
+	var provider_action := RunProviderAction.new()
+	provider_action.target_path = ^"Provider"
+	provider_action.parameters = {"payload": &"safe", "mode": &"method"}
+	context = _context(f, provider_action, &"provider")
+	provider_action.begin(context)
+	check(await _wait_terminal(context) and context.status == &"completed" and provider.begins == 1,
+		"RunProviderAction completes through a provider contract")
+	check(provider.parameters.get("payload") == &"safe" and provider.parameters.get("mode") == &"provider",
+		"RunProviderAction forwards parameters but cannot switch to arbitrary method mode")
+
+	var player := Node3D.new()
+	player.name = "Player"
+	player.add_to_group(&"player")
+	f.scene.add_child(player)
+	var interactable: Node3D = load("res://scenes/world/interactable.tscn").instantiate()
+	interactable.name = "Interactable"
+	f.scene.add_child(interactable)
+	var interaction := CallInteractionAction.new()
+	interaction.interaction_path = ^"Interactable"
+	interaction.player_path = ^"Player"
+	context = _context(f, interaction, &"interaction")
+	interaction.begin(context)
+	check(await _wait_terminal(context) and context.status == &"completed" \
+		and interactable.has_interacted, "CallInteractionAction completes through Interactable")
+	interactable.enabled = false
+	context = _context(f, interaction, &"blocked_interaction")
+	interaction.begin(context)
+	check(context.status == &"failed", "CallInteractionAction reports a blocked interaction")
 
 
 func check(value: bool, label: String) -> void:
